@@ -46,12 +46,15 @@ func (s *Server) Routes() http.Handler {
 
 	r.Get("/teams", teamsHandler.HandleTeams)
 	r.Post("/teams", teamsHandler.HandleCreateTeam)
+	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
 	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)
 
 	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
 	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
+	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
+	r.Get("/goals/year", goalsHandler.HandleYearGoals)
 
 	r.Post("/key-results/{krID}/stages", krHandler.HandleAddStage)
 	r.Post("/stages/{stageID}/toggle", krHandler.HandleToggleStage)
@@ -59,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/checkpoints", krHandler.HandleAddCheckpoint)
 	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
+	r.Post("/key-results/{krID}/delete", krHandler.HandleDeleteKeyResult)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/teams", apiHandler.HandleAPITeams)

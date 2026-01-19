@@ -105,7 +105,12 @@
       </div>
       <p class="text-muted mb-2">{{.Description}}</p>
       <p class="mb-3">Work: {{.WorkType}} | Focus: {{.FocusType}} | Owner: {{.OwnerText}}</p>
-      <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
+        <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
+          <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+        </form>
+      </div>
     </div>
   </div>
 {{end}}

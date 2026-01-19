@@ -66,6 +66,40 @@ func (s *Store) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 	return goal, nil
 }
 
+func (s *Store) DeleteGoal(ctx context.Context, id int64) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM goals WHERE id=$1`, id)
+	return err
+}
+
+type GoalWithTeam struct {
+	Goal     domain.Goal
+	TeamName string
+}
+
+func (s *Store) ListGoalsByYear(ctx context.Context, year int) ([]GoalWithTeam, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT g.id, g.team_id, g.year, g.quarter, g.title, g.description, g.priority, g.weight, g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
+		       t.name
+		FROM goals g
+		JOIN teams t ON t.id = g.team_id
+		WHERE g.year=$1
+		ORDER BY g.quarter, g.priority, g.weight DESC`, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	results := make([]GoalWithTeam, 0)
+	for rows.Next() {
+		var goal domain.Goal
+		var teamName string
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.Year, &goal.Quarter, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt, &teamName); err != nil {
+			return nil, err
+		}
+		results = append(results, GoalWithTeam{Goal: goal, TeamName: teamName})
+	}
+	return results, rows.Err()
+}
+
 func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string) error {
 	_, err := s.DB.Exec(ctx, `INSERT INTO goal_comments (goal_id, text) VALUES ($1,$2)`, goalID, text)
 	return err

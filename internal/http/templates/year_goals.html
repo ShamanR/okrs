@@ -1,0 +1,49 @@
+{{define "title"}}Цели за год{{end}}
+{{define "content"}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Цели за {{.Year}} год</h1>
+  <a class="btn btn-outline-secondary btn-sm" href="/teams">К командам</a>
+</div>
+
+<form method="get" class="card card-body mb-4">
+  <div class="row g-3 align-items-end">
+    <div class="col-sm-4">
+      <label class="form-label">Год</label>
+      <select class="form-select" name="year">
+        {{range .YearValues}}
+          <option value="{{.}}" {{if eq . $.Year}}selected{{end}}>{{.}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Показать</button>
+    </div>
+  </div>
+</form>
+
+<table class="table table-striped align-middle">
+  <thead>
+    <tr>
+      <th>Команда</th>
+      <th>Квартал</th>
+      <th>Цель</th>
+      <th>Вес</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Goals}}
+    <tr>
+      <td>{{.TeamName}}</td>
+      <td>Q{{.Goal.Quarter}}</td>
+      <td>{{.Goal.Title}}</td>
+      <td>{{.Goal.Weight}}</td>
+      <td class="text-end">
+        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.Goal.ID}}">Открыть</a>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}
+{{template "base" .}}

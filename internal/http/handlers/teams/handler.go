@@ -33,6 +33,7 @@ type teamsPage struct {
 	SelectedQuarter int
 	Teams           []teamRow
 	FormError       string
+	CurrentYear     int
 }
 
 type teamOKRPage struct {
@@ -71,7 +72,7 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: quarterProgress, GoalsCount: len(goals)})
 	}
 
-	page := teamsPage{QuarterOptions: options, SelectedYear: year, SelectedQuarter: quarter, Teams: rows}
+	page := teamsPage{QuarterOptions: options, SelectedYear: year, SelectedQuarter: quarter, Teams: rows, CurrentYear: year}
 	common.RenderTemplate(w, h.deps.Templates, "teams.html", page, h.deps.Logger)
 }
 
@@ -121,8 +122,23 @@ func (h *Handler) renderTeamsWithError(w http.ResponseWriter, r *http.Request, m
 		SelectedQuarter: quarter,
 		Teams:           rows,
 		FormError:       message,
+		CurrentYear:     year,
 	}
 	common.RenderTemplate(w, h.deps.Templates, "teams.html", page, h.deps.Logger)
+}
+
+func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.DeleteTeam(ctx, teamID); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, "/teams", http.StatusSeeOther)
 }
 
 func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {

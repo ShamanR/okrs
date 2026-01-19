@@ -207,3 +207,8 @@ func (s *Store) GetBooleanMeta(ctx context.Context, krID int64) (*domain.KRBoole
 	}
 	return &meta, nil
 }
+
+func (s *Store) DeleteKeyResult(ctx context.Context, id int64) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM key_results WHERE id=$1`, id)
+	return err
+}

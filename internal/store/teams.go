@@ -38,3 +38,8 @@ func (s *Store) CreateTeam(ctx context.Context, name string) (int64, error) {
 	err := s.DB.QueryRow(ctx, `INSERT INTO teams (name) VALUES ($1) RETURNING id`, name).Scan(&id)
 	return id, err
 }
+
+func (s *Store) DeleteTeam(ctx context.Context, id int64) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM teams WHERE id=$1`, id)
+	return err
+}

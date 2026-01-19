@@ -3,6 +3,7 @@ package goals
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
@@ -123,6 +124,56 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+}
+
+func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+}
+
+type yearGoalsPage struct {
+	Year       int
+	Goals      []store.GoalWithTeam
+	YearValues []int
+}
+
+func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
+	year := common.ParseIntField(r.URL.Query().Get("year"))
+	if year == 0 {
+		current := store.CurrentQuarter(time.Now().In(h.deps.Zone))
+		year = current.Year
+	}
+	goals, err := h.deps.Store.ListGoalsByYear(r.Context(), year)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	values := buildYearOptions(year)
+	page := yearGoalsPage{Year: year, Goals: goals, YearValues: values}
+	common.RenderTemplate(w, h.deps.Templates, "year_goals.html", page, h.deps.Logger)
+}
+
+func buildYearOptions(selected int) []int {
+	values := make([]int, 0, 7)
+	start := selected - 3
+	for i := 0; i < 7; i++ {
+		values = append(values, start+i)
+	}
+	return values
 }
 
 func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, goalID int64, message string) {

@@ -155,6 +155,25 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
+func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goalID, err := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.DeleteKeyResult(ctx, krID); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
+}
+
 func errInvalidPercent() error {
 	return fmt.Errorf("Процент должен быть 0..100")
 }
