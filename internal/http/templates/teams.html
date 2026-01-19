@@ -2,20 +2,10 @@
 {{define "content"}}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h3 mb-0">Команды</h1>
-  <a class="btn btn-outline-secondary btn-sm" href="/goals/year?year={{.CurrentYear}}">Цели за год</a>
-</div>
-<div class="card card-body mb-4">
-  <h2 class="h5">Добавить команду</h2>
-  {{if .FormError}}<div class="alert alert-danger py-2">{{.FormError}}</div>{{end}}
-  <form method="post" action="/teams" class="row g-3 align-items-end">
-    <div class="col-sm-6 col-md-4">
-      <label class="form-label">Название команды</label>
-      <input class="form-control" name="name" required>
-    </div>
-    <div class="col-auto">
-      <button type="submit" class="btn btn-primary">Создать</button>
-    </div>
-  </form>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/goals/year?year={{.CurrentYear}}">Цели за год</a>
+    <a class="btn btn-primary btn-sm" href="/teams/new">Новая команда</a>
+  </div>
 </div>
 <form method="get" class="card card-body mb-4">
   <div class="row g-3 align-items-end">

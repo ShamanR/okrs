@@ -45,6 +45,7 @@ func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	r.Get("/teams", teamsHandler.HandleTeams)
+	r.Get("/teams/new", teamsHandler.HandleNewTeam)
 	r.Post("/teams", teamsHandler.HandleCreateTeam)
 	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)

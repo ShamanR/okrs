@@ -32,7 +32,6 @@ type teamsPage struct {
 	SelectedYear    int
 	SelectedQuarter int
 	Teams           []teamRow
-	FormError       string
 	CurrentYear     int
 }
 
@@ -84,7 +83,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	name := common.TrimmedFormValue(r, "name")
 	if name == "" {
-		h.renderTeamsWithError(w, r, "Название команды обязательно")
+		h.renderTeamForm(w, r, "Название команды обязательно")
 		return
 	}
 	if _, err := h.deps.Store.CreateTeam(ctx, name); err != nil {
@@ -94,37 +93,30 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/teams", http.StatusSeeOther)
 }
 
-func (h *Handler) renderTeamsWithError(w http.ResponseWriter, r *http.Request, message string) {
+func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
+	h.renderTeamForm(w, r, "")
+}
+
+func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, message string) {
 	ctx := r.Context()
 	year, quarter := common.ParseQuarter(r, h.deps.Zone)
-	options := common.BuildQuarterOptions(year, quarter, h.deps.Zone)
 	teams, err := h.deps.Store.ListTeams(ctx)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	rows := make([]teamRow, 0, len(teams))
-	for _, team := range teams {
-		goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, team.ID, year, quarter)
-		if err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-		for i := range goals {
-			goals[i].Progress = common.CalculateGoalProgress(goals[i])
-		}
-		quarterProgress := okr.QuarterProgress(goals)
-		rows = append(rows, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: quarterProgress, GoalsCount: len(goals)})
+	page := struct {
+		Year      int
+		Quarter   int
+		Teams     []domain.Team
+		FormError string
+	}{
+		Year:      year,
+		Quarter:   quarter,
+		Teams:     teams,
+		FormError: message,
 	}
-	page := teamsPage{
-		QuarterOptions:  options,
-		SelectedYear:    year,
-		SelectedQuarter: quarter,
-		Teams:           rows,
-		FormError:       message,
-		CurrentYear:     year,
-	}
-	common.RenderTemplate(w, h.deps.Templates, "teams.html", page, h.deps.Logger)
+	common.RenderTemplate(w, h.deps.Templates, "team_new.html", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {

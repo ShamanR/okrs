@@ -1,0 +1,40 @@
+{{define "title"}}Новая команда{{end}}
+{{define "content"}}
+<nav class="mb-4" aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
+    <li class="breadcrumb-item active" aria-current="page">Новая команда</li>
+  </ol>
+</nav>
+
+<div class="row g-4">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h1 class="h4">Создать команду</h1>
+        {{if .FormError}}<div class="alert alert-danger py-2">{{.FormError}}</div>{{end}}
+        <form method="post" action="/teams">
+          <div class="mb-3">
+            <label class="form-label">Название команды</label>
+            <input class="form-control" name="name" required>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Создать</button>
+            <a class="btn btn-outline-secondary" href="/teams">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body">
+        <h2 class="h5">Быстрые ссылки</h2>
+        <p class="text-muted">После создания команды можно перейти к OKR текущего квартала.</p>
+        <a class="btn btn-outline-primary" href="/teams">Вернуться к списку</a>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{template "base" .}}
