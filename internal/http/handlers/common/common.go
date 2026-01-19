@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -26,12 +27,52 @@ type Dependencies struct {
 }
 
 func RenderTemplate(w http.ResponseWriter, tmpl *template.Template, name string, data any, logger *slog.Logger) {
+	if name == "base" {
+		pageTitle, contentTemplate, err := extractLayoutFields(data)
+		if err != nil {
+			RenderError(w, logger, err)
+			return
+		}
+		var content bytes.Buffer
+		if err := tmpl.ExecuteTemplate(&content, contentTemplate, data); err != nil {
+			RenderError(w, logger, err)
+			return
+		}
+		layout := struct {
+			PageTitle   string
+			ContentHTML template.HTML
+		}{
+			PageTitle:   pageTitle,
+			ContentHTML: template.HTML(content.String()),
+		}
+		if err := tmpl.ExecuteTemplate(w, name, layout); err != nil {
+			RenderError(w, logger, err)
+		}
+		return
+	}
+
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		RenderError(w, logger, err)
 		return
 	}
 	_, _ = w.Write(buf.Bytes())
+}
+
+func extractLayoutFields(data any) (string, string, error) {
+	value := reflect.ValueOf(data)
+	if value.Kind() == reflect.Ptr {
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return "", "", fmt.Errorf("layout data must be a struct")
+	}
+	pageTitle := value.FieldByName("PageTitle")
+	contentTemplate := value.FieldByName("ContentTemplate")
+	if !pageTitle.IsValid() || !contentTemplate.IsValid() {
+		return "", "", fmt.Errorf("layout fields missing")
+	}
+	return pageTitle.String(), contentTemplate.String(), nil
 }
 
 func RenderError(w http.ResponseWriter, logger *slog.Logger, err error) {
