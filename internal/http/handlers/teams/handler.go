@@ -98,22 +98,9 @@ func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, message string) {
-	ctx := r.Context()
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
-	teams, err := h.deps.Store.ListTeams(ctx)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
 	page := struct {
-		Year      int
-		Quarter   int
-		Teams     []domain.Team
 		FormError string
 	}{
-		Year:      year,
-		Quarter:   quarter,
-		Teams:     teams,
 		FormError: message,
 	}
 	common.RenderTemplate(w, h.deps.Templates, "team_new.html", page, h.deps.Logger)
