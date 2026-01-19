@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,9 +26,12 @@ type Dependencies struct {
 }
 
 func RenderTemplate(w http.ResponseWriter, tmpl *template.Template, name string, data any, logger *slog.Logger) {
-	if err := tmpl.ExecuteTemplate(w, name, data); err != nil {
+	var buf bytes.Buffer
+	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		RenderError(w, logger, err)
+		return
 	}
+	_, _ = w.Write(buf.Bytes())
 }
 
 func RenderError(w http.ResponseWriter, logger *slog.Logger, err error) {

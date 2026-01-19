@@ -33,6 +33,8 @@ type teamsPage struct {
 	SelectedQuarter int
 	Teams           []teamRow
 	CurrentYear     int
+	PageTitle       string
+	ContentTemplate string
 }
 
 type teamOKRPage struct {
@@ -44,6 +46,8 @@ type teamOKRPage struct {
 	GoalsCount      int
 	GoalsWeight     int
 	FormError       string
+	PageTitle       string
+	ContentTemplate string
 }
 
 func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
@@ -71,8 +75,16 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: quarterProgress, GoalsCount: len(goals)})
 	}
 
-	page := teamsPage{QuarterOptions: options, SelectedYear: year, SelectedQuarter: quarter, Teams: rows, CurrentYear: year}
-	common.RenderTemplate(w, h.deps.Templates, "teams.html", page, h.deps.Logger)
+	page := teamsPage{
+		QuarterOptions:  options,
+		SelectedYear:    year,
+		SelectedQuarter: quarter,
+		Teams:           rows,
+		CurrentYear:     year,
+		PageTitle:       "Команды",
+		ContentTemplate: "teams-content",
+	}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
@@ -99,11 +111,15 @@ func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, message string) {
 	page := struct {
-		FormError string
+		FormError       string
+		PageTitle       string
+		ContentTemplate string
 	}{
-		FormError: message,
+		FormError:       message,
+		PageTitle:       "Новая команда",
+		ContentTemplate: "team-new-content",
 	}
-	common.RenderTemplate(w, h.deps.Templates, "team_new.html", page, h.deps.Logger)
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -153,8 +169,10 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		QuarterProgress: okr.QuarterProgress(goals),
 		GoalsCount:      len(goals),
 		GoalsWeight:     totalWeight,
+		PageTitle:       "OKR команды",
+		ContentTemplate: "team-okr-content",
 	}
-	common.RenderTemplate(w, h.deps.Templates, "team_okr.html", page, h.deps.Logger)
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +243,8 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		GoalsCount:      len(goals),
 		GoalsWeight:     totalWeight,
 		FormError:       message,
+		PageTitle:       "OKR команды",
+		ContentTemplate: "team-okr-content",
 	}
-	common.RenderTemplate(w, h.deps.Templates, "team_okr.html", page, h.deps.Logger)
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }

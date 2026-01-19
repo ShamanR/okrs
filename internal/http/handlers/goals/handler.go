@@ -41,11 +41,13 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 	goal.Progress = common.CalculateGoalProgress(goal)
 
 	page := struct {
-		Team      domain.Team
-		Goal      domain.Goal
-		FormError string
-	}{Team: team, Goal: goal}
-	common.RenderTemplate(w, h.deps.Templates, "goal.html", page, h.deps.Logger)
+		Team            domain.Team
+		Goal            domain.Goal
+		FormError       string
+		PageTitle       string
+		ContentTemplate string
+	}{Team: team, Goal: goal, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
@@ -146,9 +148,11 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 }
 
 type yearGoalsPage struct {
-	Year       int
-	Goals      []store.GoalWithTeam
-	YearValues []int
+	Year            int
+	Goals           []store.GoalWithTeam
+	YearValues      []int
+	PageTitle       string
+	ContentTemplate string
 }
 
 func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
@@ -163,8 +167,14 @@ func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	values := buildYearOptions(year)
-	page := yearGoalsPage{Year: year, Goals: goals, YearValues: values}
-	common.RenderTemplate(w, h.deps.Templates, "year_goals.html", page, h.deps.Logger)
+	page := yearGoalsPage{
+		Year:            year,
+		Goals:           goals,
+		YearValues:      values,
+		PageTitle:       "Цели за год",
+		ContentTemplate: "year-goals-content",
+	}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func buildYearOptions(selected int) []int {
@@ -189,9 +199,11 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 	}
 	goal.Progress = common.CalculateGoalProgress(goal)
 	page := struct {
-		Team      domain.Team
-		Goal      domain.Goal
-		FormError string
-	}{Team: team, Goal: goal, FormError: message}
-	common.RenderTemplate(w, h.deps.Templates, "goal.html", page, h.deps.Logger)
+		Team            domain.Team
+		Goal            domain.Goal
+		FormError       string
+		PageTitle       string
+		ContentTemplate string
+	}{Team: team, Goal: goal, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
