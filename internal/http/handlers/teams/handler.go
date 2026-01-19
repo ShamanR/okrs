@@ -32,6 +32,7 @@ type teamsPage struct {
 	SelectedYear    int
 	SelectedQuarter int
 	Teams           []teamRow
+	FormError       string
 }
 
 type teamOKRPage struct {
@@ -71,6 +72,56 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page := teamsPage{QuarterOptions: options, SelectedYear: year, SelectedQuarter: quarter, Teams: rows}
+	common.RenderTemplate(w, h.deps.Templates, "teams.html", page, h.deps.Logger)
+}
+
+func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	name := common.TrimmedFormValue(r, "name")
+	if name == "" {
+		h.renderTeamsWithError(w, r, "Название команды обязательно")
+		return
+	}
+	if _, err := h.deps.Store.CreateTeam(ctx, name); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, "/teams", http.StatusSeeOther)
+}
+
+func (h *Handler) renderTeamsWithError(w http.ResponseWriter, r *http.Request, message string) {
+	ctx := r.Context()
+	year, quarter := common.ParseQuarter(r, h.deps.Zone)
+	options := common.BuildQuarterOptions(year, quarter, h.deps.Zone)
+	teams, err := h.deps.Store.ListTeams(ctx)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	rows := make([]teamRow, 0, len(teams))
+	for _, team := range teams {
+		goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, team.ID, year, quarter)
+		if err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		for i := range goals {
+			goals[i].Progress = common.CalculateGoalProgress(goals[i])
+		}
+		quarterProgress := okr.QuarterProgress(goals)
+		rows = append(rows, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: quarterProgress, GoalsCount: len(goals)})
+	}
+	page := teamsPage{
+		QuarterOptions:  options,
+		SelectedYear:    year,
+		SelectedQuarter: quarter,
+		Teams:           rows,
+		FormError:       message,
+	}
 	common.RenderTemplate(w, h.deps.Templates, "teams.html", page, h.deps.Logger)
 }
 

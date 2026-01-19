@@ -32,3 +32,9 @@ func (s *Store) GetTeam(ctx context.Context, id int64) (domain.Team, error) {
 	}
 	return team, nil
 }
+
+func (s *Store) CreateTeam(ctx context.Context, name string) (int64, error) {
+	var id int64
+	err := s.DB.QueryRow(ctx, `INSERT INTO teams (name) VALUES ($1) RETURNING id`, name).Scan(&id)
+	return id, err
+}
