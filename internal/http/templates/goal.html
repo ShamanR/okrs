@@ -1,0 +1,214 @@
+{{define "title"}}Цель{{end}}
+{{define "content"}}
+<nav class="mb-4" aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
+    <li class="breadcrumb-item"><a href="/teams/{{.Team.ID}}/okr?year={{.Goal.Year}}&quarter={{.Goal.Quarter}}">{{.Team.Name}}</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{.Goal.Title}}</li>
+  </ol>
+</nav>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+      <h2 class="h4 mb-0">{{.Goal.Title}}</h2>
+      <span class="badge text-bg-secondary">{{.Goal.Priority}}</span>
+      <span class="badge text-bg-light border">Вес {{.Goal.Weight}}</span>
+      <span class="badge text-bg-light border">Прогресс {{.Goal.Progress}}%</span>
+    </div>
+    <p class="text-muted mb-2">{{.Goal.Description}}</p>
+    <p class="mb-0">Work: {{.Goal.WorkType}} | Focus: {{.Goal.FocusType}} | Owner: {{.Goal.OwnerText}}</p>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h3 class="h5">Добавить комментарий</h3>
+        <form method="post" action="/goals/{{.Goal.ID}}/comments" class="mb-3">
+          <textarea class="form-control mb-2" name="text" rows="3" required></textarea>
+          <button type="submit" class="btn btn-outline-primary btn-sm">Добавить</button>
+        </form>
+        {{range .Goal.Comments}}
+          <div class="border rounded p-2 mb-2 bg-light">
+            <div class="small text-muted">{{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+            <div>{{.Text}}</div>
+          </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <h3 class="h5">Добавить Key Result</h3>
+        {{if .FormError}}<div class="alert alert-danger py-2">{{.FormError}}</div>{{end}}
+        <form method="post" action="/goals/{{.Goal.ID}}/key-results">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Название</label>
+              <input class="form-control" name="title" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Описание</label>
+              <textarea class="form-control" name="description" rows="2"></textarea>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Вес (0-100)</label>
+              <input class="form-control" type="number" name="weight" min="0" max="100" value="100">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Тип</label>
+              <select class="form-select" name="kind">
+                <option value="PROJECT">PROJECT</option>
+                <option value="PERCENT">PERCENT</option>
+                <option value="BOOLEAN">BOOLEAN</option>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Boolean KR</label>
+              <select class="form-select" name="boolean_done">
+                <option value="false">Нет</option>
+                <option value="true">Да</option>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Percent Start</label>
+              <input class="form-control" type="number" step="0.01" name="percent_start">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Percent Target</label>
+              <input class="form-control" type="number" step="0.01" name="percent_target">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Percent Current</label>
+              <input class="form-control" type="number" step="0.01" name="percent_current">
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">Добавить KR</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="h4 mb-3">Key Results</h2>
+<div class="vstack gap-3">
+{{range .Goal.KeyResults}}
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <h3 class="h5 mb-0">{{.Title}}</h3>
+        <span class="badge text-bg-secondary">{{.Kind}}</span>
+        <span class="badge text-bg-light border">Вес {{.Weight}}</span>
+        <span class="badge text-bg-light border">Прогресс {{.Progress}}%</span>
+      </div>
+      <p class="text-muted">{{.Description}}</p>
+
+      {{if eq .Kind "PROJECT"}}
+        <div class="border-top pt-3">
+          <h4 class="h6">Этапы проекта</h4>
+          <form method="post" action="/key-results/{{.ID}}/stages" class="row g-2 align-items-end mb-3">
+            <div class="col-md-5">
+              <label class="form-label">Название</label>
+              <input class="form-control" name="title" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Вес (0-100)</label>
+              <input class="form-control" type="number" name="weight" min="0" max="100" required>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Порядок</label>
+              <input class="form-control" type="number" name="sort_order" min="1" value="1">
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-outline-primary w-100">Добавить</button>
+            </div>
+          </form>
+          <ul class="list-group">
+            {{range .Project.Stages}}
+              <li class="list-group-item d-flex align-items-center gap-2">
+                <form method="post" action="/stages/{{.ID}}/toggle" class="m-0">
+                  <input type="hidden" name="done" value="{{if .IsDone}}false{{else}}true{{end}}">
+                  <button type="submit" class="btn btn-sm {{if .IsDone}}btn-success{{else}}btn-outline-secondary{{end}}">
+                    {{if .IsDone}}Готово{{else}}В работе{{end}}
+                  </button>
+                </form>
+                <span class="flex-grow-1">{{.Title}}</span>
+                <span class="badge text-bg-light border">{{.Weight}}%</span>
+              </li>
+            {{end}}
+          </ul>
+        </div>
+      {{end}}
+
+      {{if eq .Kind "PERCENT"}}
+        <div class="border-top pt-3">
+          <h4 class="h6">Метрика</h4>
+          {{with .Percent}}
+            <p class="text-muted">Start: {{.StartValue}} → Target: {{.TargetValue}} | Current: {{.CurrentValue}}</p>
+          {{end}}
+          <form method="post" action="/key-results/{{.ID}}/percent" class="row g-2 align-items-end mb-3">
+            <div class="col-md-4">
+              <label class="form-label">Текущее значение</label>
+              <input class="form-control" type="number" step="0.01" name="current" required>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-outline-primary w-100">Обновить</button>
+            </div>
+          </form>
+          <form method="post" action="/key-results/{{.ID}}/checkpoints" class="row g-2 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label">Checkpoint значение</label>
+              <input class="form-control" type="number" step="0.01" name="metric_value" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Процент KR</label>
+              <input class="form-control" type="number" name="kr_percent" min="0" max="100" required>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-outline-primary w-100">Добавить</button>
+            </div>
+          </form>
+        </div>
+      {{end}}
+
+      {{if eq .Kind "BOOLEAN"}}
+        <div class="border-top pt-3">
+          <form method="post" action="/key-results/{{.ID}}/boolean" class="row g-2 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label">Готово</label>
+              <select class="form-select" name="done">
+                <option value="false">Нет</option>
+                <option value="true">Да</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-outline-primary w-100">Обновить</button>
+            </div>
+          </form>
+        </div>
+      {{end}}
+
+      <div class="border-top pt-3">
+        <h4 class="h6">Комментарии KR</h4>
+        <form method="post" action="/key-results/{{.ID}}/comments" class="mb-3">
+          <textarea class="form-control mb-2" name="text" rows="2" required></textarea>
+          <button type="submit" class="btn btn-outline-primary btn-sm">Добавить</button>
+        </form>
+        {{range .Comments}}
+          <div class="border rounded p-2 mb-2 bg-light">
+            <div class="small text-muted">{{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+            <div>{{.Text}}</div>
+          </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+{{end}}
+</div>
+{{end}}
+{{template "base" .}}

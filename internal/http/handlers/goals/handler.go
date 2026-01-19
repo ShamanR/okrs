@@ -1,0 +1,146 @@
+package goals
+
+import (
+	"fmt"
+	"net/http"
+
+	"okrs/internal/domain"
+	"okrs/internal/http/handlers/common"
+	"okrs/internal/store"
+
+	"github.com/go-chi/chi/v5"
+)
+
+type Handler struct {
+	deps common.Dependencies
+}
+
+func New(deps common.Dependencies) *Handler {
+	return &Handler{deps: deps}
+}
+
+func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	team, err := h.deps.Store.GetTeam(ctx, goal.TeamID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+
+	goal.Progress = common.CalculateGoalProgress(goal)
+
+	page := struct {
+		Team      domain.Team
+		Goal      domain.Goal
+		FormError string
+	}{Team: team, Goal: goal}
+	common.RenderTemplate(w, h.deps.Templates, "goal.html", page, h.deps.Logger)
+}
+
+func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	text := common.TrimmedFormValue(r, "text")
+	if text == "" {
+		http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+		return
+	}
+	if err := h.deps.Store.AddGoalComment(ctx, goalID, text); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+}
+
+func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	weight := common.ParseIntField(r.FormValue("weight"))
+	kind := domain.KRKind(r.FormValue("kind"))
+	if !common.ValidKRKind(kind) || weight < 0 || weight > 100 {
+		h.renderGoalWithError(w, r, goalID, "Некорректный тип KR или вес")
+		return
+	}
+
+	krID, err := h.deps.Store.CreateKeyResult(ctx, store.KeyResultInput{
+		GoalID:      goalID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Weight:      weight,
+		Kind:        kind,
+	})
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+
+	if kind == domain.KRKindPercent {
+		start := common.ParseFloatField(r.FormValue("percent_start"))
+		target := common.ParseFloatField(r.FormValue("percent_target"))
+		current := common.ParseFloatField(r.FormValue("percent_current"))
+		if start == target {
+			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
+			return
+		}
+		if err := h.deps.Store.UpsertPercentMeta(ctx, store.PercentMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
+
+	if kind == domain.KRKindBoolean {
+		done := r.FormValue("boolean_done") == "true"
+		if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+}
+
+func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, goalID int64, message string) {
+	goal, err := h.deps.Store.GetGoal(r.Context(), goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	team, err := h.deps.Store.GetTeam(r.Context(), goal.TeamID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal.Progress = common.CalculateGoalProgress(goal)
+	page := struct {
+		Team      domain.Team
+		Goal      domain.Goal
+		FormError string
+	}{Team: team, Goal: goal, FormError: message}
+	common.RenderTemplate(w, h.deps.Templates, "goal.html", page, h.deps.Logger)
+}

@@ -1,0 +1,114 @@
+{{define "title"}}OKR команды{{end}}
+{{define "content"}}
+<nav class="mb-4" aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
+    <li class="breadcrumb-item active" aria-current="page">{{.Team.Name}} · {{.Year}} Q{{.Quarter}}</li>
+  </ol>
+</nav>
+
+<div class="row g-4 mb-4">
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-body">
+        <h2 class="h5">Сводка квартала</h2>
+        <div class="mb-3">
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">Прогресс</span>
+            <strong>{{.QuarterProgress}}%</strong>
+          </div>
+          <div class="progress" role="progressbar" aria-valuenow="{{.QuarterProgress}}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" style="width: {{.QuarterProgress}}%"></div>
+          </div>
+        </div>
+        <div class="d-flex justify-content-between">
+          <span class="text-muted">Целей</span>
+          <span class="fw-semibold">{{.GoalsCount}}</span>
+        </div>
+        <div class="d-flex justify-content-between">
+          <span class="text-muted">Суммарный вес</span>
+          <span class="fw-semibold">{{.GoalsWeight}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <h2 class="h5">Добавить цель</h2>
+        {{if .FormError}}<div class="alert alert-danger py-2">{{.FormError}}</div>{{end}}
+        <form method="post" action="/teams/{{.Team.ID}}/okr">
+          <input type="hidden" name="year" value="{{.Year}}">
+          <input type="hidden" name="quarter" value="{{.Quarter}}">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label">Название</label>
+              <input class="form-control" name="title" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Описание</label>
+              <textarea class="form-control" name="description" rows="3"></textarea>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Приоритет</label>
+              <select class="form-select" name="priority">
+                <option value="P0">P0</option>
+                <option value="P1" selected>P1</option>
+                <option value="P2">P2</option>
+                <option value="P3">P3</option>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Вес (0-100)</label>
+              <input class="form-control" type="number" name="weight" min="0" max="100" value="50" required>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Work type</label>
+              <select class="form-select" name="work_type">
+                <option value="Discovery">Discovery</option>
+                <option value="Delivery" selected>Delivery</option>
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Focus type</label>
+              <select class="form-select" name="focus_type">
+                <option value="PROFITABILITY">Прибыльность</option>
+                <option value="STABILITY" selected>Стабильность</option>
+                <option value="SPEED_EFFICIENCY">Скорость-эффективность</option>
+                <option value="TECH_INDEPENDENCE">Технологическая независимость</option>
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Ответственный</label>
+              <input class="form-control" name="owner_text">
+            </div>
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary">Добавить цель</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2 class="h4 mb-3">Цели</h2>
+<div class="vstack gap-3">
+{{range .Goals}}
+  <div class="card">
+    <div class="card-body">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <h3 class="h5 mb-0">{{.Title}}</h3>
+        <span class="badge text-bg-secondary">{{.Priority}}</span>
+        <span class="badge text-bg-light border">Вес {{.Weight}}</span>
+        <span class="badge text-bg-light border">Прогресс {{.Progress}}%</span>
+      </div>
+      <p class="text-muted mb-2">{{.Description}}</p>
+      <p class="mb-3">Work: {{.WorkType}} | Focus: {{.FocusType}} | Owner: {{.OwnerText}}</p>
+      <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
+    </div>
+  </div>
+{{end}}
+</div>
+{{end}}
+{{template "base" .}}

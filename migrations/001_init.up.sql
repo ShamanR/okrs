@@ -1,0 +1,79 @@
+CREATE TABLE IF NOT EXISTS teams (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS goals (
+  id SERIAL PRIMARY KEY,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  year INTEGER NOT NULL,
+  quarter INTEGER NOT NULL CHECK (quarter BETWEEN 1 AND 4),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  priority TEXT NOT NULL,
+  weight INTEGER NOT NULL CHECK (weight BETWEEN 0 AND 100),
+  work_type TEXT NOT NULL,
+  focus_type TEXT NOT NULL,
+  owner_text TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS goals_team_quarter_idx ON goals(team_id, year, quarter);
+
+CREATE TABLE IF NOT EXISTS goal_comments (
+  id SERIAL PRIMARY KEY,
+  goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS key_results (
+  id SERIAL PRIMARY KEY,
+  goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  weight INTEGER NOT NULL CHECK (weight BETWEEN 0 AND 100),
+  kind TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS key_results_goal_idx ON key_results(goal_id);
+
+CREATE TABLE IF NOT EXISTS key_result_comments (
+  id SERIAL PRIMARY KEY,
+  key_result_id INTEGER NOT NULL REFERENCES key_results(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS kr_project_stages (
+  id SERIAL PRIMARY KEY,
+  key_result_id INTEGER NOT NULL REFERENCES key_results(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  weight INTEGER NOT NULL CHECK (weight BETWEEN 0 AND 100),
+  is_done BOOLEAN NOT NULL DEFAULT FALSE,
+  sort_order INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS kr_percent_meta (
+  key_result_id INTEGER PRIMARY KEY REFERENCES key_results(id) ON DELETE CASCADE,
+  start_value DOUBLE PRECISION NOT NULL,
+  target_value DOUBLE PRECISION NOT NULL,
+  current_value DOUBLE PRECISION NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS kr_percent_checkpoints (
+  id SERIAL PRIMARY KEY,
+  key_result_id INTEGER NOT NULL REFERENCES key_results(id) ON DELETE CASCADE,
+  metric_value DOUBLE PRECISION NOT NULL,
+  kr_percent INTEGER NOT NULL CHECK (kr_percent BETWEEN 0 AND 100)
+);
+
+CREATE TABLE IF NOT EXISTS kr_boolean_meta (
+  key_result_id INTEGER PRIMARY KEY REFERENCES key_results(id) ON DELETE CASCADE,
+  is_done BOOLEAN NOT NULL DEFAULT FALSE
+);
