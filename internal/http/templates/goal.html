@@ -131,7 +131,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form method="post" action="/goals/{{.Goal.ID}}/key-results" class="kr-form">
+        <form method="post" action="/goals/{{.Goal.ID}}/key-results" class="kr-form autosave-form">
+          <div class="autosave-status" data-autosave-status>
+            <span class="autosave-dot"></span>
+            <span class="autosave-text">Нет несохранённых изменений</span>
+          </div>
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Название</label>
@@ -261,7 +265,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form method="post" action="/key-results/{{.ID}}/update" class="kr-form">
+        <form method="post" action="/key-results/{{.ID}}/update" class="kr-form autosave-form">
+          <div class="autosave-status" data-autosave-status>
+            <span class="autosave-dot"></span>
+            <span class="autosave-text">Нет несохранённых изменений</span>
+          </div>
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Название</label>

@@ -90,7 +90,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form method="post" action="/teams/{{.Team.ID}}/okr">
+        <form method="post" action="/teams/{{.Team.ID}}/okr" class="autosave-form">
+          <div class="autosave-status" data-autosave-status>
+            <span class="autosave-dot"></span>
+            <span class="autosave-text">Нет несохранённых изменений</span>
+          </div>
           <input type="hidden" name="year" value="{{.Year}}">
           <input type="hidden" name="quarter" value="{{.Quarter}}">
           <div class="row g-3">
@@ -155,7 +159,11 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form method="post" action="/goals/{{.ID}}/update">
+        <form method="post" action="/goals/{{.ID}}/update" class="autosave-form">
+          <div class="autosave-status" data-autosave-status>
+            <span class="autosave-dot"></span>
+            <span class="autosave-text">Нет несохранённых изменений</span>
+          </div>
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Название</label>
@@ -220,7 +228,11 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <form method="post" action="/key-results/{{.ID}}/update" class="kr-form">
+          <form method="post" action="/key-results/{{.ID}}/update" class="kr-form autosave-form">
+            <div class="autosave-status" data-autosave-status>
+              <span class="autosave-dot"></span>
+              <span class="autosave-text">Нет несохранённых изменений</span>
+            </div>
             <div class="row g-3">
               <div class="col-12">
                 <label class="form-label">Название</label>

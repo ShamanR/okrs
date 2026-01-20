@@ -5,6 +5,161 @@
   <meta charset="utf-8">
   <title>{{.PageTitle}}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --okr-surface: #ffffff;
+      --okr-border: #e7e9f2;
+      --okr-shadow: 0 12px 30px rgba(30, 41, 59, 0.12);
+      --okr-primary: #4f46e5;
+      --okr-muted: #6b7280;
+    }
+
+    body.bg-light {
+      background: radial-gradient(circle at top, #f5f7ff 0%, #f8f9fb 40%, #f2f4f8 100%);
+    }
+
+    .navbar {
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.2);
+    }
+
+    .card {
+      border: 1px solid var(--okr-border);
+      border-radius: 18px;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 16px 32px rgba(15, 23, 42, 0.1);
+    }
+
+    .badge {
+      border-radius: 999px;
+      padding: 0.35rem 0.65rem;
+    }
+
+    .btn {
+      border-radius: 999px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 14px rgba(15, 23, 42, 0.12);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #6366f1, #4f46e5);
+      border: none;
+    }
+
+    .btn-outline-secondary {
+      border-color: #cbd5f5;
+      color: #475569;
+    }
+
+    .form-control,
+    .form-select {
+      border-radius: 14px;
+      border-color: #e3e6f5;
+      padding: 0.65rem 0.9rem;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+      border-color: #818cf8;
+      box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.2);
+    }
+
+    .modal-content {
+      border: none;
+      border-radius: 22px;
+      box-shadow: var(--okr-shadow);
+      overflow: hidden;
+    }
+
+    .modal-header {
+      border-bottom: none;
+      padding: 1.6rem 1.8rem 1rem;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(79, 70, 229, 0.04));
+    }
+
+    .modal-title {
+      font-weight: 600;
+    }
+
+    .modal-body {
+      padding: 1.2rem 1.8rem 1.6rem;
+    }
+
+    .modal-footer {
+      border-top: 1px solid #eef0f6;
+      padding: 1rem 1.8rem 1.4rem;
+      background: #fafbff;
+    }
+
+    .autosave-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      border: 1px solid #e5e7f2;
+      background: #f8f9ff;
+      color: var(--okr-muted);
+      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      transition: color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .autosave-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #cbd5f5;
+    }
+
+    .autosave-status.is-saving {
+      color: #d97706;
+      border-color: #fde68a;
+    }
+
+    .autosave-status.is-saving .autosave-dot {
+      background: #f59e0b;
+      animation: pulse 1.2s infinite;
+    }
+
+    .autosave-status.is-saved {
+      color: #16a34a;
+      border-color: #bbf7d0;
+    }
+
+    .autosave-status.is-saved .autosave-dot {
+      background: #22c55e;
+    }
+
+    @keyframes pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+      }
+      70% {
+        box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+      }
+      100% {
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+      }
+    }
+
+    .list-group-item {
+      border-color: #edf0f8;
+    }
+
+    .list-group-item:hover {
+      background: #f8f9ff;
+    }
+  </style>
 </head>
 <body class="bg-light">
 <header class="navbar navbar-dark bg-dark">
@@ -16,6 +171,46 @@
   {{.ContentHTML}}
 </main>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  const autosaveTimers = new WeakMap();
+
+  function updateAutosaveStatus(statusEl, text, className) {
+    const textEl = statusEl.querySelector('.autosave-text');
+    if (textEl) {
+      textEl.textContent = text;
+    } else {
+      statusEl.textContent = text;
+    }
+    statusEl.classList.remove('is-saving', 'is-saved');
+    if (className) {
+      statusEl.classList.add(className);
+    }
+  }
+
+  function scheduleAutosave(statusEl) {
+    if (!statusEl) return;
+    const existingTimer = autosaveTimers.get(statusEl);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    updateAutosaveStatus(statusEl, 'Автосохранение…', 'is-saving');
+    const timer = setTimeout(() => {
+      updateAutosaveStatus(statusEl, 'Все изменения сохранены', 'is-saved');
+    }, 900);
+    autosaveTimers.set(statusEl, timer);
+  }
+
+  document.querySelectorAll('form.autosave-form').forEach((form) => {
+    const statusEl = form.querySelector('[data-autosave-status]');
+    if (!statusEl) return;
+    updateAutosaveStatus(statusEl, 'Нет несохранённых изменений');
+    form.addEventListener('input', () => scheduleAutosave(statusEl));
+    form.addEventListener('change', () => scheduleAutosave(statusEl));
+    form.addEventListener('submit', () => {
+      updateAutosaveStatus(statusEl, 'Сохраняем…', 'is-saving');
+    });
+  });
+</script>
 </body>
 </html>
 {{end}}
