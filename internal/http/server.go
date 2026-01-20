@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"okrs/internal/domain"
 	"okrs/internal/http/handlers/api"
 	"okrs/internal/http/handlers/common"
 	"okrs/internal/http/handlers/goals"
@@ -28,7 +29,15 @@ type Server struct {
 }
 
 func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*Server, error) {
-	tmpl, err := template.New("").ParseFS(templatesFS, "templates/*.html")
+	tmpl, err := template.New("").Funcs(template.FuncMap{
+		"stageAt": func(stages []domain.KRProjectStage, index int) *domain.KRProjectStage {
+			if index < 0 || index >= len(stages) {
+				return nil
+			}
+			stage := stages[index]
+			return &stage
+		},
+	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
 	}
@@ -55,6 +64,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
 	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
+	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Get("/goals/year", goalsHandler.HandleYearGoals)
 
 	r.Post("/key-results/{krID}/stages", krHandler.HandleAddStage)
@@ -64,6 +74,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
 	r.Post("/key-results/{krID}/delete", krHandler.HandleDeleteKeyResult)
+	r.Post("/key-results/{krID}/update", krHandler.HandleUpdateKeyResult)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/teams", apiHandler.HandleAPITeams)

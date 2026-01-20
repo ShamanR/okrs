@@ -76,6 +76,17 @@ type GoalWithTeam struct {
 	TeamName string
 }
 
+type GoalUpdateInput struct {
+	ID          int64
+	Title       string
+	Description string
+	Priority    domain.Priority
+	Weight      int
+	WorkType    domain.WorkType
+	FocusType   domain.FocusType
+	OwnerText   string
+}
+
 func (s *Store) ListGoalsByYear(ctx context.Context, year int) ([]GoalWithTeam, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT g.id, g.team_id, g.year, g.quarter, g.title, g.description, g.priority, g.weight, g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
@@ -98,6 +109,16 @@ func (s *Store) ListGoalsByYear(ctx context.Context, year int) ([]GoalWithTeam, 
 		results = append(results, GoalWithTeam{Goal: goal, TeamName: teamName})
 	}
 	return results, rows.Err()
+}
+
+func (s *Store) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE goals
+		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, focus_type=$6, owner_text=$7, updated_at=NOW()
+		WHERE id=$8`,
+		input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.ID,
+	)
+	return err
 }
 
 func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string) error {

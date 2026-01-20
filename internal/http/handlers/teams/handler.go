@@ -25,6 +25,7 @@ type teamRow struct {
 	Name            string
 	QuarterProgress int
 	GoalsCount      int
+	Goals           []domain.Goal
 }
 
 type teamsPage struct {
@@ -72,7 +73,7 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			goals[i].Progress = common.CalculateGoalProgress(goals[i])
 		}
 		quarterProgress := okr.QuarterProgress(goals)
-		rows = append(rows, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: quarterProgress, GoalsCount: len(goals)})
+		rows = append(rows, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: quarterProgress, GoalsCount: len(goals), Goals: goals})
 	}
 
 	page := teamsPage{

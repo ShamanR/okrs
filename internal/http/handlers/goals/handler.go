@@ -124,6 +124,20 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if kind == domain.KRKindProject {
+		stages, err := parseProjectStages(r)
+		if err != nil {
+			h.renderGoalWithError(w, r, goalID, err.Error())
+			return
+		}
+		for i := range stages {
+			stages[i].KeyResultID = krID
+		}
+		if err := h.deps.Store.ReplaceProjectStages(ctx, krID, stages); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
 
 	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
 }
@@ -141,6 +155,46 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+}
+
+func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	priority := domain.Priority(r.FormValue("priority"))
+	workType := domain.WorkType(r.FormValue("work_type"))
+	focusType := domain.FocusType(r.FormValue("focus_type"))
+	weight := common.ParseIntField(r.FormValue("weight"))
+	if errMsg := common.ValidateGoalInput(priority, workType, focusType, weight); errMsg != "" {
+		h.renderGoalWithError(w, r, goalID, errMsg)
+		return
+	}
+	if err := h.deps.Store.UpdateGoal(ctx, store.GoalUpdateInput{
+		ID:          goalID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Priority:    priority,
+		Weight:      weight,
+		WorkType:    workType,
+		FocusType:   focusType,
+		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
+	}); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -184,6 +238,35 @@ func buildYearOptions(selected int) []int {
 		values = append(values, start+i)
 	}
 	return values
+}
+
+func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
+	stages := make([]store.ProjectStageInput, 0, 4)
+	totalWeight := 0
+	for i := 1; i <= 4; i++ {
+		title := common.TrimmedFormValue(r, fmt.Sprintf("step_title_%d", i))
+		if title == "" {
+			continue
+		}
+		weight := common.ParseIntField(r.FormValue(fmt.Sprintf("step_weight_%d", i)))
+		if weight <= 0 || weight > 100 {
+			return nil, fmt.Errorf("Вес шага должен быть 1..100")
+		}
+		totalWeight += weight
+		stages = append(stages, store.ProjectStageInput{
+			Title:     title,
+			Weight:    weight,
+			IsDone:    r.FormValue(fmt.Sprintf("step_done_%d", i)) == "true",
+			SortOrder: i,
+		})
+	}
+	if len(stages) == 0 {
+		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
+	}
+	if totalWeight != 100 {
+		return nil, fmt.Errorf("Сумма весов шагов должна быть равна 100")
+	}
+	return stages, nil
 }
 
 func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, goalID int64, message string) {

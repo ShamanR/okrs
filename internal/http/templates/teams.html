@@ -26,7 +26,8 @@
     <tr>
       <th>Команда</th>
       <th>Прогресс квартала</th>
-      <th>Цели</th>
+      <th>Цели (вес / прогресс)</th>
+      <th>Действия</th>
     </tr>
   </thead>
   <tbody>
@@ -42,12 +43,23 @@
         </div>
       </td>
       <td>
-        <div class="d-flex align-items-center justify-content-between gap-2">
-          <span>{{.GoalsCount}}</span>
-          <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
-            <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
-          </form>
-        </div>
+        {{if .Goals}}
+          <ul class="list-unstyled mb-0">
+            {{range .Goals}}
+              <li class="mb-1">
+                <span class="fw-semibold">{{.Title}}</span>
+                <span class="text-muted">— Вес {{.Weight}}, {{.Progress}}%</span>
+              </li>
+            {{end}}
+          </ul>
+        {{else}}
+          <span class="text-muted">Нет целей</span>
+        {{end}}
+      </td>
+      <td class="text-end">
+        <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
+          <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+        </form>
       </td>
     </tr>
     {{end}}

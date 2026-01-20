@@ -20,6 +20,14 @@ func (s *Store) CreateKeyResult(ctx context.Context, input KeyResultInput) (int6
 	return id, err
 }
 
+type KeyResultUpdateInput struct {
+	ID          int64
+	Title       string
+	Description string
+	Weight      int
+	Kind        domain.KRKind
+}
+
 func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domain.KeyResult, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, created_at, updated_at
@@ -128,6 +136,33 @@ func (s *Store) ListProjectStages(ctx context.Context, krID int64) ([]domain.KRP
 		stages = append(stages, stage)
 	}
 	return stages, rows.Err()
+}
+
+func (s *Store) ReplaceProjectStages(ctx context.Context, krID int64, stages []ProjectStageInput) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM kr_project_stages WHERE key_result_id=$1`, krID)
+	if err != nil {
+		return err
+	}
+	for _, stage := range stages {
+		if _, err := s.DB.Exec(ctx, `
+			INSERT INTO kr_project_stages (key_result_id, title, weight, is_done, sort_order)
+			VALUES ($1,$2,$3,$4,$5)`,
+			krID, stage.Title, stage.Weight, stage.IsDone, stage.SortOrder,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE key_results
+		SET title=$1, description=$2, weight=$3, kind=$4, updated_at=NOW()
+		WHERE id=$5`,
+		input.Title, input.Description, input.Weight, input.Kind, input.ID,
+	)
+	return err
 }
 
 func (s *Store) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) error {
