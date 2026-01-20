@@ -1,0 +1,68 @@
+{{define "teams-content"}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Команды</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/goals/year?year={{.CurrentYear}}">Цели за год</a>
+    <a class="btn btn-primary btn-sm" href="/teams/new">Новая команда</a>
+  </div>
+</div>
+<form method="get" class="card card-body mb-4">
+  <div class="row g-3 align-items-end">
+    <div class="col-sm-6 col-md-4">
+      <label class="form-label">Квартал</label>
+      <select name="quarter" class="form-select">
+        {{range .QuarterOptions}}
+          <option value="{{.Year}}-{{.Quarter}}" {{if .Selected}}selected{{end}}>{{.Year}} Q{{.Quarter}}</option>
+        {{end}}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-primary">Показать</button>
+    </div>
+  </div>
+</form>
+<table class="table table-striped align-middle">
+  <thead>
+    <tr>
+      <th>Команда</th>
+      <th>Прогресс квартала</th>
+      <th>Цели (вес / прогресс)</th>
+      <th>Действия</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{range .Teams}}
+    <tr>
+      <td><a class="link-primary" href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">{{.Name}}</a></td>
+      <td>
+        <div class="d-flex align-items-center gap-2">
+          <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.QuarterProgress}}" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar" style="width: {{.QuarterProgress}}%"></div>
+          </div>
+          <span class="fw-semibold">{{.QuarterProgress}}%</span>
+        </div>
+      </td>
+      <td>
+        {{if .Goals}}
+          <ul class="list-unstyled mb-0">
+            {{range .Goals}}
+              <li class="mb-1">
+                <span class="fw-semibold">{{.Title}}</span>
+                <span class="text-muted">— Вес {{.Weight}}, {{.Progress}}%</span>
+              </li>
+            {{end}}
+          </ul>
+        {{else}}
+          <span class="text-muted">Нет целей</span>
+        {{end}}
+      </td>
+      <td class="text-end">
+        <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
+          <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+        </form>
+      </td>
+    </tr>
+    {{end}}
+  </tbody>
+</table>
+{{end}}

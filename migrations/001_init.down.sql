@@ -1,0 +1,10 @@
+DROP TABLE IF EXISTS kr_boolean_meta;
+DROP TABLE IF EXISTS kr_percent_checkpoints;
+DROP TABLE IF EXISTS kr_percent_meta;
+DROP TABLE IF EXISTS kr_project_stages;
+DROP TABLE IF EXISTS key_result_comments;
+DROP TABLE IF EXISTS key_results;
+DROP TABLE IF EXISTS goal_comments;
+DROP INDEX IF EXISTS goals_team_quarter_idx;
+DROP TABLE IF EXISTS goals;
+DROP TABLE IF EXISTS teams;

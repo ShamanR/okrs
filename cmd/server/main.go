@@ -1,0 +1,103 @@
+package main
+
+import (
+	"context"
+	"database/sql"
+	"flag"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"time"
+
+	httpserver "okrs/internal/http"
+	"okrs/internal/store"
+
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/jackc/pgx/v5/stdlib"
+)
+
+func main() {
+	var seed bool
+	flag.BoolVar(&seed, "seed", false, "seed demo data")
+	flag.Parse()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	port := envOrDefault("PORT", "8080")
+	zoneName := envOrDefault("TZ", "Asia/Bangkok")
+	zone, err := time.LoadLocation(zoneName)
+	if err != nil {
+		logger.Error("invalid timezone", slog.String("tz", zoneName))
+		os.Exit(1)
+	}
+
+	databaseURL := envOrDefault("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable")
+
+	pool, err := pgxpool.New(context.Background(), databaseURL)
+	if err != nil {
+		logger.Error("failed to connect db", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	if err := runMigrations(databaseURL); err != nil {
+		logger.Error("failed to migrate", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	store := store.New(pool)
+	if seed {
+		current := store.CurrentQuarter(time.Now().In(zone))
+		if err := store.SeedDemo(context.Background(), current.Year, current.Quarter); err != nil {
+			logger.Error("failed to seed", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		logger.Info("seed data created")
+	}
+
+	server, err := httpserver.NewServer(store, logger, zone)
+	if err != nil {
+		logger.Error("failed to start", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
+	addr := fmt.Sprintf(":%s", port)
+	logger.Info("listening", slog.String("addr", addr))
+	if err := http.ListenAndServe(addr, server.Routes()); err != nil {
+		logger.Error("server stopped", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+}
+
+func envOrDefault(key, def string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return def
+	}
+	return value
+}
+
+func runMigrations(databaseURL string) error {
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	driver, err := postgres.WithInstance(db, &postgres.Config{})
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://migrations", "postgres", driver)
+	if err != nil {
+		return err
+	}
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
+}
