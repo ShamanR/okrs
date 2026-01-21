@@ -237,6 +237,30 @@ func TeamTypeLabel(t domain.TeamType) string {
 	}
 }
 
+func ValidTeamQuarterStatus(status domain.TeamQuarterStatus) bool {
+	switch status {
+	case domain.TeamQuarterStatusNoGoals, domain.TeamQuarterStatusForming, domain.TeamQuarterStatusInProgress, domain.TeamQuarterStatusClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
+	switch status {
+	case domain.TeamQuarterStatusNoGoals:
+		return "Нет целей"
+	case domain.TeamQuarterStatusForming:
+		return "Формирование"
+	case domain.TeamQuarterStatusInProgress:
+		return "В процессе"
+	case domain.TeamQuarterStatusClosed:
+		return "Закрыто"
+	default:
+		return "Нет целей"
+	}
+}
+
 func ValidKRKind(k domain.KRKind) bool {
 	switch k {
 	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindBoolean:

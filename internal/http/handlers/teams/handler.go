@@ -28,6 +28,7 @@ type teamRow struct {
 	Name            string
 	TypeLabel       string
 	Indent          int
+	StatusLabel     string
 	QuarterProgress int
 	GoalsCount      int
 	Goals           []domain.Goal
@@ -75,12 +76,21 @@ type teamFormPage struct {
 	ParentTeams     []teamParentOption
 }
 
+type teamStatusOption struct {
+	Value    string
+	Label    string
+	Selected bool
+}
+
 type teamOKRPage struct {
 	Team            domain.Team
 	TeamTypeLabel   string
 	Year            int
 	Quarter         int
 	Goals           []domain.Goal
+	QuarterStatus   domain.TeamQuarterStatus
+	StatusOptions   []teamStatusOption
+	IsClosed        bool
 	QuarterProgress int
 	GoalsCount      int
 	GoalsWeight     int
@@ -334,6 +344,30 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
+func (h *Handler) HandleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	year, quarter := common.ParseQuarter(r, h.deps.Zone)
+	status := domain.TeamQuarterStatus(r.FormValue("status"))
+	if !common.ValidTeamQuarterStatus(status) {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid team quarter status"))
+		return
+	}
+	if err := h.deps.Store.SetTeamQuarterStatus(ctx, teamID, year, quarter, status); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
+}
+
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
@@ -368,6 +402,11 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	var totalWeight int
 	for i := range goals {
 		goals[i].Progress = common.CalculateGoalProgress(goals[i])
@@ -379,6 +418,9 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		Year:            year,
 		Quarter:         quarter,
 		Goals:           goals,
+		QuarterStatus:   status,
+		StatusOptions:   buildTeamStatusOptions(status),
+		IsClosed:        status == domain.TeamQuarterStatusClosed,
 		QuarterProgress: okr.QuarterProgress(goals),
 		GoalsCount:      len(goals),
 		GoalsWeight:     totalWeight,
@@ -400,6 +442,15 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year, quarter := common.ParseQuarter(r, h.deps.Zone)
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if status == domain.TeamQuarterStatusClosed {
+		h.renderTeamOKRWithError(w, r, teamID, year, quarter, "Квартал закрыт, изменения недоступны")
+		return
+	}
 	weight := common.ParseIntField(r.FormValue("weight"))
 	priority := domain.Priority(r.FormValue("priority"))
 	workType := domain.WorkType(r.FormValue("work_type"))
@@ -442,6 +493,11 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), teamID, year, quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	var totalWeight int
 	for i := range goals {
 		goals[i].Progress = common.CalculateGoalProgress(goals[i])
@@ -453,6 +509,9 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		Year:            year,
 		Quarter:         quarter,
 		Goals:           goals,
+		QuarterStatus:   status,
+		StatusOptions:   buildTeamStatusOptions(status),
+		IsClosed:        status == domain.TeamQuarterStatusClosed,
 		QuarterProgress: okr.QuarterProgress(goals),
 		GoalsCount:      len(goals),
 		GoalsWeight:     totalWeight,
@@ -468,6 +527,10 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 	if err != nil {
 		return err
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, team.ID, year, quarter)
+	if err != nil {
+		return err
+	}
 	for i := range goals {
 		goals[i].Progress = common.CalculateGoalProgress(goals[i])
 	}
@@ -477,6 +540,7 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 		Name:            team.Name,
 		TypeLabel:       common.TeamTypeLabel(team.Type),
 		Indent:          level * 24,
+		StatusLabel:     common.TeamQuarterStatusLabel(status),
 		QuarterProgress: quarterProgress,
 		GoalsCount:      len(goals),
 		Goals:           goals,
@@ -544,6 +608,15 @@ func buildParentTeamOptions(teams []domain.Team, selectedParentID *int64, exclud
 		options = append(options, teamParentOption{Value: value, Label: label, Selected: selected})
 	}
 	return options
+}
+
+func buildTeamStatusOptions(selected domain.TeamQuarterStatus) []teamStatusOption {
+	return []teamStatusOption{
+		{Value: string(domain.TeamQuarterStatusNoGoals), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusNoGoals), Selected: selected == domain.TeamQuarterStatusNoGoals},
+		{Value: string(domain.TeamQuarterStatusForming), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusForming), Selected: selected == domain.TeamQuarterStatusForming},
+		{Value: string(domain.TeamQuarterStatusInProgress), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusInProgress), Selected: selected == domain.TeamQuarterStatusInProgress},
+		{Value: string(domain.TeamQuarterStatusClosed), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusClosed), Selected: selected == domain.TeamQuarterStatusClosed},
+	}
 }
 
 func collectDescendants(teams []domain.Team, rootID int64) map[int64]bool {

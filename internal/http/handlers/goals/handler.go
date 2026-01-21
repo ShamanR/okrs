@@ -37,6 +37,11 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, team.ID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 
 	goal.Progress = common.CalculateGoalProgress(goal)
 
@@ -44,10 +49,11 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		Team            domain.Team
 		TeamTypeLabel   string
 		Goal            domain.Goal
+		IsClosed        bool
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
@@ -155,6 +161,15 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if status == domain.TeamQuarterStatusClosed {
+		h.renderGoalWithError(w, r, goalID, "Квартал закрыт, изменения недоступны")
+		return
+	}
 	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -171,6 +186,20 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if status == domain.TeamQuarterStatusClosed {
+		h.renderGoalWithError(w, r, goalID, "Квартал закрыт, изменения недоступны")
 		return
 	}
 	priority := domain.Priority(r.FormValue("priority"))
@@ -191,11 +220,6 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		FocusType:   focusType,
 		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
 	}); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -295,14 +319,20 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), team.ID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	goal.Progress = common.CalculateGoalProgress(goal)
 	page := struct {
 		Team            domain.Team
 		TeamTypeLabel   string
 		Goal            domain.Goal
+		IsClosed        bool
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }

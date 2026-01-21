@@ -35,6 +35,7 @@
       <th>Команда</th>
       <th>Прогресс квартала</th>
       <th>Цели (вес / прогресс)</th>
+      <th>Статус</th>
       <th>Действия</th>
     </tr>
   </thead>
@@ -68,6 +69,9 @@
         {{else}}
           <span class="text-muted">Нет целей</span>
         {{end}}
+      </td>
+      <td>
+        <span class="badge text-bg-light border">{{.StatusLabel}}</span>
       </td>
       <td class="text-end">
         <div class="d-inline-flex gap-2">

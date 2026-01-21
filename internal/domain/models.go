@@ -43,6 +43,15 @@ const (
 	TeamTypeTeam    TeamType = "team"
 )
 
+type TeamQuarterStatus string
+
+const (
+	TeamQuarterStatusNoGoals    TeamQuarterStatus = "no_goals"
+	TeamQuarterStatusForming    TeamQuarterStatus = "forming"
+	TeamQuarterStatusInProgress TeamQuarterStatus = "in_progress"
+	TeamQuarterStatusClosed     TeamQuarterStatus = "closed"
+)
+
 type Team struct {
 	ID        int64
 	Name      string
