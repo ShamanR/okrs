@@ -3,6 +3,7 @@ package keyresults
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
@@ -348,23 +349,58 @@ func errInvalidPercent() error {
 func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 	stages := make([]store.ProjectStageInput, 0, 4)
 	totalWeight := 0
-	for i := 1; i <= 4; i++ {
-		title := common.TrimmedFormValue(r, fmt.Sprintf("step_title_%d", i))
-		if title == "" {
+	titles := r.Form["step_title[]"]
+	weights := r.Form["step_weight[]"]
+	dones := r.Form["step_done[]"]
+	sortOrder := 1
+
+	for i, title := range titles {
+		trimmed := strings.TrimSpace(title)
+		if trimmed == "" {
 			continue
 		}
-		weight := common.ParseIntField(r.FormValue(fmt.Sprintf("step_weight_%d", i)))
+		weightValue := ""
+		if i < len(weights) {
+			weightValue = weights[i]
+		}
+		weight := common.ParseIntField(weightValue)
 		if weight <= 0 || weight > 100 {
 			return nil, fmt.Errorf("Вес шага должен быть 1..100")
 		}
 		totalWeight += weight
+		isDone := false
+		if i < len(dones) {
+			isDone = dones[i] == "true"
+		}
 		stages = append(stages, store.ProjectStageInput{
-			Title:     title,
+			Title:     trimmed,
 			Weight:    weight,
-			IsDone:    r.FormValue(fmt.Sprintf("step_done_%d", i)) == "true",
-			SortOrder: i,
+			IsDone:    isDone,
+			SortOrder: sortOrder,
 		})
+		sortOrder++
 	}
+
+	if len(stages) == 0 {
+		for i := 1; i <= 4; i++ {
+			title := common.TrimmedFormValue(r, fmt.Sprintf("step_title_%d", i))
+			if title == "" {
+				continue
+			}
+			weight := common.ParseIntField(r.FormValue(fmt.Sprintf("step_weight_%d", i)))
+			if weight <= 0 || weight > 100 {
+				return nil, fmt.Errorf("Вес шага должен быть 1..100")
+			}
+			totalWeight += weight
+			stages = append(stages, store.ProjectStageInput{
+				Title:     title,
+				Weight:    weight,
+				IsDone:    r.FormValue(fmt.Sprintf("step_done_%d", i)) == "true",
+				SortOrder: i,
+			})
+		}
+	}
+
 	if len(stages) == 0 {
 		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
 	}

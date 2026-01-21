@@ -222,7 +222,7 @@
               <h6>Шаги проекта</h6>
               <div class="vstack gap-2" data-project-steps>
                 <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label">Название шага</label>
                     <input class="form-control" name="step_title[]">
                   </div>
@@ -230,19 +230,22 @@
                     <label class="form-label">Вес</label>
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label">Done</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
                     </select>
+                  </div>
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                   </div>
                 </div>
               </div>
               <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
               <template data-project-step-template>
                 <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label">Название шага</label>
                     <input class="form-control" name="step_title[]">
                   </div>
@@ -250,12 +253,15 @@
                     <label class="form-label">Вес</label>
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label">Done</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
                     </select>
+                  </div>
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                   </div>
                 </div>
               </template>
@@ -349,11 +355,11 @@
             </div>
             <div class="col-12 kr-fields kr-project d-none">
               <h6>Шаги проекта</h6>
-              <div class="vstack gap-2" data-project-steps>
+                <div class="vstack gap-2" data-project-steps>
                 {{if .Project}}
                   {{range $index, $stage := .Project.Stages}}
                     <div class="row g-2 align-items-end project-step">
-                      <div class="col-md-6">
+                      <div class="col-md-5">
                         <label class="form-label">Название шага</label>
                         <input class="form-control" name="step_title[]" value="{{$stage.Title}}">
                       </div>
@@ -361,18 +367,21 @@
                         <label class="form-label">Вес</label>
                         <input class="form-control" type="number" name="step_weight[]" min="0" max="100" value="{{$stage.Weight}}">
                       </div>
-                      <div class="col-md-3">
+                      <div class="col-md-2">
                         <label class="form-label">Done</label>
                         <select class="form-select" name="step_done[]">
                           <option value="false" {{if not $stage.IsDone}}selected{{end}}>Нет</option>
                           <option value="true" {{if $stage.IsDone}}selected{{end}}>Да</option>
                         </select>
                       </div>
+                      <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
+                      </div>
                     </div>
                   {{end}}
                 {{else}}
                   <div class="row g-2 align-items-end project-step">
-                    <div class="col-md-6">
+                    <div class="col-md-5">
                       <label class="form-label">Название шага</label>
                       <input class="form-control" name="step_title[]">
                     </div>
@@ -380,12 +389,15 @@
                       <label class="form-label">Вес</label>
                       <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                       <label class="form-label">Done</label>
                       <select class="form-select" name="step_done[]">
                         <option value="false">Нет</option>
                         <option value="true">Да</option>
                       </select>
+                    </div>
+                    <div class="col-md-2">
+                      <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                     </div>
                   </div>
                 {{end}}
@@ -393,7 +405,7 @@
               <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
               <template data-project-step-template>
                 <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label">Название шага</label>
                     <input class="form-control" name="step_title[]">
                   </div>
@@ -401,12 +413,15 @@
                     <label class="form-label">Вес</label>
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label">Done</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
                     </select>
+                  </div>
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                   </div>
                 </div>
               </template>
@@ -473,6 +488,14 @@
     addButton.addEventListener('click', () => {
       const clone = template.content.cloneNode(true);
       stepsWrap.appendChild(clone);
+    });
+    stepsWrap.addEventListener('click', (event) => {
+      const removeButton = event.target.closest('[data-remove-project-step]');
+      if (!removeButton) return;
+      const step = removeButton.closest('.project-step');
+      if (step) {
+        step.remove();
+      }
     });
   }
 
