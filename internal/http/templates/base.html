@@ -159,6 +159,16 @@
     .list-group-item:hover {
       background: #f8f9ff;
     }
+
+    .table-transparent {
+      --bs-table-bg: transparent;
+      --bs-table-striped-bg: transparent;
+      --bs-table-active-bg: transparent;
+    }
+
+    .table-transparent > :not(caption) > * > * {
+      background-color: transparent;
+    }
   </style>
 </head>
 <body class="bg-light">
