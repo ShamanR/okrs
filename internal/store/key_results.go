@@ -111,11 +111,21 @@ func (s *Store) AddProjectStage(ctx context.Context, input ProjectStageInput) er
 		VALUES ($1,$2,$3,$4,$5)`,
 		input.KeyResultID, input.Title, input.Weight, input.IsDone, input.SortOrder,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
 func (s *Store) UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error {
 	_, err := s.DB.Exec(ctx, `UPDATE kr_project_stages SET is_done=$1 WHERE id=$2`, done, stageID)
+	if err != nil {
+		return err
+	}
+	_, err = s.DB.Exec(ctx, `
+		UPDATE key_results
+		SET updated_at=NOW()
+		WHERE id=(SELECT key_result_id FROM kr_project_stages WHERE id=$1)`, stageID)
 	return err
 }
 
@@ -152,7 +162,7 @@ func (s *Store) ReplaceProjectStages(ctx context.Context, krID int64, stages []P
 			return err
 		}
 	}
-	return nil
+	return s.touchKeyResultUpdatedAt(ctx, krID)
 }
 
 func (s *Store) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput) error {
@@ -175,12 +185,18 @@ func (s *Store) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) e
 			current_value=EXCLUDED.current_value`,
 		input.KeyResultID, input.StartValue, input.TargetValue, input.CurrentValue,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
 func (s *Store) UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error {
 	_, err := s.DB.Exec(ctx, `UPDATE kr_percent_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, krID)
 }
 
 func (s *Store) AddPercentCheckpoint(ctx context.Context, input PercentCheckpointInput) error {
@@ -189,7 +205,10 @@ func (s *Store) AddPercentCheckpoint(ctx context.Context, input PercentCheckpoin
 		VALUES ($1,$2,$3)`,
 		input.KeyResultID, input.MetricValue, input.KRPercent,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
 func (s *Store) GetPercentMeta(ctx context.Context, krID int64) (*domain.KRPercent, []domain.KRPercentCheckpoint, error) {
@@ -231,7 +250,10 @@ func (s *Store) UpsertBooleanMeta(ctx context.Context, krID int64, done bool) er
 		ON CONFLICT (key_result_id) DO UPDATE SET is_done=EXCLUDED.is_done`,
 		krID, done,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, krID)
 }
 
 func (s *Store) GetBooleanMeta(ctx context.Context, krID int64) (*domain.KRBoolean, error) {
@@ -292,4 +314,9 @@ func (s *Store) MoveKeyResult(ctx context.Context, krID int64, direction int) er
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (s *Store) touchKeyResultUpdatedAt(ctx context.Context, krID int64) error {
+	_, err := s.DB.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1`, krID)
+	return err
 }

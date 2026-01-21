@@ -116,6 +116,10 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
 	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
@@ -134,6 +138,10 @@ func (h *Handler) HandleToggleStage(w http.ResponseWriter, r *http.Request) {
 	done := r.FormValue("done") == "true"
 	if err := h.deps.Store.UpdateProjectStageDone(ctx, stageID, done); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
 	goalID, _ := common.FindGoalIDByStage(ctx, h.deps.Store, stageID)
@@ -187,6 +195,10 @@ func (h *Handler) HandleUpdatePercentCurrent(w http.ResponseWriter, r *http.Requ
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
 	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
@@ -212,6 +224,10 @@ func (h *Handler) HandleAddCheckpoint(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
 	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
@@ -230,6 +246,10 @@ func (h *Handler) HandleUpdateBoolean(w http.ResponseWriter, r *http.Request) {
 	done := r.FormValue("done") == "true"
 	if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
 	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
@@ -253,6 +273,10 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
 	}
 	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)

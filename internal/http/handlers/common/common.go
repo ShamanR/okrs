@@ -253,7 +253,7 @@ func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
 	case domain.TeamQuarterStatusForming:
 		return "Формирование"
 	case domain.TeamQuarterStatusInProgress:
-		return "В процессе"
+		return "inprogress"
 	case domain.TeamQuarterStatusClosed:
 		return "Закрыто"
 	default:
