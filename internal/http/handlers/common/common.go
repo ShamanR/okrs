@@ -162,6 +162,11 @@ func CalculateKRProgress(kr domain.KeyResult) int {
 			return 0
 		}
 		return okr.PercentProgress(kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue, kr.Percent.Checkpoints)
+	case domain.KRKindLinear:
+		if kr.Linear == nil {
+			return 0
+		}
+		return okr.LinearProgress(kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
 	case domain.KRKindBoolean:
 		if kr.Boolean == nil {
 			return 0
@@ -239,7 +244,7 @@ func TeamTypeLabel(t domain.TeamType) string {
 
 func ValidTeamQuarterStatus(status domain.TeamQuarterStatus) bool {
 	switch status {
-	case domain.TeamQuarterStatusNoGoals, domain.TeamQuarterStatusForming, domain.TeamQuarterStatusInProgress, domain.TeamQuarterStatusClosed:
+	case domain.TeamQuarterStatusNoGoals, domain.TeamQuarterStatusForming, domain.TeamQuarterStatusInProgress, domain.TeamQuarterStatusValidated, domain.TeamQuarterStatusClosed:
 		return true
 	default:
 		return false
@@ -251,11 +256,13 @@ func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
 	case domain.TeamQuarterStatusNoGoals:
 		return "Нет целей"
 	case domain.TeamQuarterStatusForming:
-		return "Формирование"
+		return "Черновик целей"
 	case domain.TeamQuarterStatusInProgress:
-		return "inprogress"
+		return "Готовы к валидации"
+	case domain.TeamQuarterStatusValidated:
+		return "Провалидировано"
 	case domain.TeamQuarterStatusClosed:
-		return "Закрыто"
+		return "Цели закрыты"
 	default:
 		return "Нет целей"
 	}
@@ -263,7 +270,7 @@ func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
 
 func ValidKRKind(k domain.KRKind) bool {
 	switch k {
-	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindBoolean:
+	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindLinear, domain.KRKindBoolean:
 		return true
 	default:
 		return false

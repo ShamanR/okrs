@@ -133,6 +133,20 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if kind == domain.KRKindLinear {
+		start := common.ParseFloatField(r.FormValue("linear_start"))
+		target := common.ParseFloatField(r.FormValue("linear_target"))
+		current := common.ParseFloatField(r.FormValue("linear_current"))
+		if start == target {
+			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
+			return
+		}
+		if err := h.deps.Store.UpsertLinearMeta(ctx, store.LinearMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
+
 	if kind == domain.KRKindBoolean {
 		done := r.FormValue("boolean_done") == "true"
 		if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {
@@ -181,6 +195,41 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+}
+
+func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveGoal(w, r, -1)
+}
+
+func (h *Handler) HandleMoveGoalDown(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveGoal(w, r, 1)
+}
+
+func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, direction int) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.MoveGoal(ctx, goalID, direction); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)

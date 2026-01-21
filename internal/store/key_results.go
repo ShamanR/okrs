@@ -66,6 +66,14 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 				meta.Checkpoints = checkpoints
 				kr.Percent = meta
 			}
+		case domain.KRKindLinear:
+			meta, err := s.GetLinearMeta(ctx, kr.ID)
+			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+				return nil, err
+			}
+			if meta != nil {
+				kr.Linear = meta
+			}
 		case domain.KRKindBoolean:
 			meta, err := s.GetBooleanMeta(ctx, kr.ID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -199,6 +207,30 @@ func (s *Store) UpdatePercentCurrent(ctx context.Context, krID int64, current fl
 	return s.touchKeyResultUpdatedAt(ctx, krID)
 }
 
+func (s *Store) UpsertLinearMeta(ctx context.Context, input LinearMetaInput) error {
+	_, err := s.DB.Exec(ctx, `
+		INSERT INTO kr_linear_meta (key_result_id, start_value, target_value, current_value)
+		VALUES ($1,$2,$3,$4)
+		ON CONFLICT (key_result_id) DO UPDATE SET
+			start_value=EXCLUDED.start_value,
+			target_value=EXCLUDED.target_value,
+			current_value=EXCLUDED.current_value`,
+		input.KeyResultID, input.StartValue, input.TargetValue, input.CurrentValue,
+	)
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+}
+
+func (s *Store) UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error {
+	_, err := s.DB.Exec(ctx, `UPDATE kr_linear_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
+	if err != nil {
+		return err
+	}
+	return s.touchKeyResultUpdatedAt(ctx, krID)
+}
+
 func (s *Store) AddPercentCheckpoint(ctx context.Context, input PercentCheckpointInput) error {
 	_, err := s.DB.Exec(ctx, `
 		INSERT INTO kr_percent_checkpoints (key_result_id, metric_value, kr_percent)
@@ -222,6 +254,15 @@ func (s *Store) GetPercentMeta(ctx context.Context, krID int64) (*domain.KRPerce
 		return nil, nil, err
 	}
 	return &meta, checkpoints, nil
+}
+
+func (s *Store) GetLinearMeta(ctx context.Context, krID int64) (*domain.KRLinear, error) {
+	var meta domain.KRLinear
+	row := s.DB.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_linear_meta WHERE key_result_id=$1`, krID)
+	if err := row.Scan(&meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+		return nil, err
+	}
+	return &meta, nil
 }
 
 func (s *Store) ListPercentCheckpoints(ctx context.Context, krID int64) ([]domain.KRPercentCheckpoint, error) {

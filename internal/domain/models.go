@@ -32,6 +32,7 @@ type KRKind string
 const (
 	KRKindProject KRKind = "PROJECT"
 	KRKindPercent KRKind = "PERCENT"
+	KRKindLinear  KRKind = "LINEAR"
 	KRKindBoolean KRKind = "BOOLEAN"
 )
 
@@ -49,6 +50,7 @@ const (
 	TeamQuarterStatusNoGoals    TeamQuarterStatus = "no_goals"
 	TeamQuarterStatusForming    TeamQuarterStatus = "forming"
 	TeamQuarterStatusInProgress TeamQuarterStatus = "in_progress"
+	TeamQuarterStatusValidated  TeamQuarterStatus = "validated"
 	TeamQuarterStatusClosed     TeamQuarterStatus = "closed"
 )
 
@@ -98,6 +100,7 @@ type KeyResult struct {
 	SortOrder   int
 	Project     *KRProject
 	Percent     *KRPercent
+	Linear      *KRLinear
 	Boolean     *KRBoolean
 	Comments    []KeyResultComment
 	CreatedAt   time.Time
@@ -129,6 +132,12 @@ type KRPercent struct {
 	TargetValue  float64
 	CurrentValue float64
 	Checkpoints  []KRPercentCheckpoint
+}
+
+type KRLinear struct {
+	StartValue   float64
+	TargetValue  float64
+	CurrentValue float64
 }
 
 type KRPercentCheckpoint struct {

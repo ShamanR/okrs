@@ -174,8 +174,10 @@
               <select class="form-select kr-kind-select" name="kind">
                 <option value="PROJECT">PROJECT</option>
                 <option value="PERCENT">PERCENT</option>
+                <option value="LINEAR">LINEAR</option>
                 <option value="BOOLEAN">BOOLEAN</option>
               </select>
+              <div class="form-text kr-kind-help"></div>
             </div>
             <div class="col-12 kr-fields kr-percent d-none">
               <div class="row g-3">
@@ -193,6 +195,22 @@
                 </div>
               </div>
             </div>
+            <div class="col-12 kr-fields kr-linear d-none">
+              <div class="row g-3">
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Start</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_start">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Target</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_target">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Current</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_current">
+                </div>
+              </div>
+            </div>
             <div class="col-12 kr-fields kr-boolean d-none">
               <label class="form-label">Boolean KR</label>
               <select class="form-select" name="boolean_done">
@@ -204,7 +222,7 @@
               <h6>Шаги проекта</h6>
               <div class="vstack gap-2" data-project-steps>
                 <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label">Название шага</label>
                     <input class="form-control" name="step_title[]">
                   </div>
@@ -212,19 +230,22 @@
                     <label class="form-label">Вес</label>
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label">Done</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
                     </select>
+                  </div>
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                   </div>
                 </div>
               </div>
               <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
               <template data-project-step-template>
                 <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label">Название шага</label>
                     <input class="form-control" name="step_title[]">
                   </div>
@@ -232,12 +253,15 @@
                     <label class="form-label">Вес</label>
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label">Done</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
                     </select>
+                  </div>
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                   </div>
                 </div>
               </template>
@@ -285,8 +309,10 @@
               <select class="form-select kr-kind-select" name="kind" data-current="{{.Kind}}">
                 <option value="PROJECT" {{if eq .Kind "PROJECT"}}selected{{end}}>PROJECT</option>
                 <option value="PERCENT" {{if eq .Kind "PERCENT"}}selected{{end}}>PERCENT</option>
+                <option value="LINEAR" {{if eq .Kind "LINEAR"}}selected{{end}}>LINEAR</option>
                 <option value="BOOLEAN" {{if eq .Kind "BOOLEAN"}}selected{{end}}>BOOLEAN</option>
               </select>
+              <div class="form-text kr-kind-help"></div>
             </div>
             <div class="col-12 kr-fields kr-percent d-none">
               <div class="row g-3">
@@ -304,6 +330,22 @@
                 </div>
               </div>
             </div>
+            <div class="col-12 kr-fields kr-linear d-none">
+              <div class="row g-3">
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Start</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_start" value="{{if .Linear}}{{.Linear.StartValue}}{{end}}">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Target</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_target" value="{{if .Linear}}{{.Linear.TargetValue}}{{end}}">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Current</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_current" value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}">
+                </div>
+              </div>
+            </div>
             <div class="col-12 kr-fields kr-boolean d-none">
               <label class="form-label">Boolean KR</label>
               <select class="form-select" name="boolean_done">
@@ -313,11 +355,11 @@
             </div>
             <div class="col-12 kr-fields kr-project d-none">
               <h6>Шаги проекта</h6>
-              <div class="vstack gap-2" data-project-steps>
+                <div class="vstack gap-2" data-project-steps>
                 {{if .Project}}
                   {{range $index, $stage := .Project.Stages}}
                     <div class="row g-2 align-items-end project-step">
-                      <div class="col-md-6">
+                      <div class="col-md-5">
                         <label class="form-label">Название шага</label>
                         <input class="form-control" name="step_title[]" value="{{$stage.Title}}">
                       </div>
@@ -325,18 +367,21 @@
                         <label class="form-label">Вес</label>
                         <input class="form-control" type="number" name="step_weight[]" min="0" max="100" value="{{$stage.Weight}}">
                       </div>
-                      <div class="col-md-3">
+                      <div class="col-md-2">
                         <label class="form-label">Done</label>
                         <select class="form-select" name="step_done[]">
                           <option value="false" {{if not $stage.IsDone}}selected{{end}}>Нет</option>
                           <option value="true" {{if $stage.IsDone}}selected{{end}}>Да</option>
                         </select>
                       </div>
+                      <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
+                      </div>
                     </div>
                   {{end}}
                 {{else}}
                   <div class="row g-2 align-items-end project-step">
-                    <div class="col-md-6">
+                    <div class="col-md-5">
                       <label class="form-label">Название шага</label>
                       <input class="form-control" name="step_title[]">
                     </div>
@@ -344,12 +389,15 @@
                       <label class="form-label">Вес</label>
                       <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                       <label class="form-label">Done</label>
                       <select class="form-select" name="step_done[]">
                         <option value="false">Нет</option>
                         <option value="true">Да</option>
                       </select>
+                    </div>
+                    <div class="col-md-2">
+                      <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                     </div>
                   </div>
                 {{end}}
@@ -357,7 +405,7 @@
               <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
               <template data-project-step-template>
                 <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-6">
+                  <div class="col-md-5">
                     <label class="form-label">Название шага</label>
                     <input class="form-control" name="step_title[]">
                   </div>
@@ -365,12 +413,15 @@
                     <label class="form-label">Вес</label>
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
-                  <div class="col-md-3">
+                  <div class="col-md-2">
                     <label class="form-label">Done</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
                     </select>
+                  </div>
+                  <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
                   </div>
                 </div>
               </template>
@@ -388,6 +439,13 @@
 {{end}}
 
 <script>
+  const krKindHelpText = {
+    BOOLEAN: 'Boolean: бинарный тип. Когда результат либо есть, либо нет. Не имеет промежуточного состояния',
+    PERCENT: 'Percent: процентный тип. Когда результат считается от процентной метрики. К примеру процент успешных запросов',
+    LINEAR: 'LINEAR: линейный тип. Пример: нарастить DAU с 100 человек до 500 человек',
+    PROJECT: 'Project: проектный тип, с перечнем обязательных шагов и их весов в keyResult',
+  };
+
   function toggleKrFields(container) {
     const select = container.querySelector('.kr-kind-select');
     if (!select) return;
@@ -396,17 +454,29 @@
       block.classList.add('d-none');
     });
     const percent = container.querySelector('.kr-percent');
+    const linear = container.querySelector('.kr-linear');
     const boolean = container.querySelector('.kr-boolean');
     const project = container.querySelector('.kr-project');
     if (value === 'PERCENT' && percent) percent.classList.remove('d-none');
+    if (value === 'LINEAR' && linear) linear.classList.remove('d-none');
     if (value === 'BOOLEAN' && boolean) boolean.classList.remove('d-none');
     if (value === 'PROJECT' && project) project.classList.remove('d-none');
   }
+
+  function updateKrHelp(container) {
+    const select = container.querySelector('.kr-kind-select');
+    const help = container.querySelector('.kr-kind-help');
+    if (!select || !help) return;
+    help.textContent = krKindHelpText[select.value] || '';
+  }
+
   document.querySelectorAll('.kr-form').forEach((form) => {
     const select = form.querySelector('.kr-kind-select');
     if (select) {
       toggleKrFields(form);
+      updateKrHelp(form);
       select.addEventListener('change', () => toggleKrFields(form));
+      select.addEventListener('change', () => updateKrHelp(form));
     }
   });
 
@@ -418,6 +488,14 @@
     addButton.addEventListener('click', () => {
       const clone = template.content.cloneNode(true);
       stepsWrap.appendChild(clone);
+    });
+    stepsWrap.addEventListener('click', (event) => {
+      const removeButton = event.target.closest('[data-remove-project-step]');
+      if (!removeButton) return;
+      const step = removeButton.closest('.project-step');
+      if (step) {
+        step.remove();
+      }
     });
   }
 

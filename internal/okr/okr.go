@@ -98,6 +98,13 @@ func PercentProgress(start, target, current float64, checkpoints []domain.KRPerc
 	return 0
 }
 
+func LinearProgress(start, target, current float64) int {
+	if start == target {
+		return 0
+	}
+	return clampPercent(linearPercent(start, target, current))
+}
+
 type point struct {
 	Value   float64
 	Percent int

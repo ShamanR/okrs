@@ -81,6 +81,14 @@
       <div class="d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
+        <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
+        </form>
+        <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
+        </form>
         <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
           <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
         </form>
@@ -138,6 +146,21 @@
                         <div class="col-sm-6">
                           <label class="form-label">Текущее значение</label>
                           <input class="form-control" type="number" step="0.01" name="current" value="{{if .Percent}}{{.Percent.CurrentValue}}{{end}}" {{if $.IsClosed}}disabled{{end}}>
+                        </div>
+                        <div class="col-sm-6">
+                          <button type="submit" class="btn btn-primary btn-sm" {{if $.IsClosed}}disabled{{end}}>Сохранить</button>
+                        </div>
+                      </form>
+                    </div>
+                  {{end}}
+                  {{if eq .Kind "LINEAR"}}
+                    <div class="border rounded p-3">
+                      <div class="small text-muted mb-2">Start: {{if .Linear}}{{.Linear.StartValue}}{{end}} → Target: {{if .Linear}}{{.Linear.TargetValue}}{{end}}</div>
+                      <form method="post" action="/key-results/{{.ID}}/linear" class="row g-2 align-items-end">
+                        <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                        <div class="col-sm-6">
+                          <label class="form-label">Текущее значение</label>
+                          <input class="form-control" type="number" step="0.01" name="current" value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}" {{if $.IsClosed}}disabled{{end}}>
                         </div>
                         <div class="col-sm-6">
                           <button type="submit" class="btn btn-primary btn-sm" {{if $.IsClosed}}disabled{{end}}>Сохранить</button>
@@ -389,8 +412,10 @@
                 <select class="form-select kr-kind-select" name="kind" data-current="{{.Kind}}">
                   <option value="PROJECT" {{if eq .Kind "PROJECT"}}selected{{end}}>PROJECT</option>
                   <option value="PERCENT" {{if eq .Kind "PERCENT"}}selected{{end}}>PERCENT</option>
+                  <option value="LINEAR" {{if eq .Kind "LINEAR"}}selected{{end}}>LINEAR</option>
                   <option value="BOOLEAN" {{if eq .Kind "BOOLEAN"}}selected{{end}}>BOOLEAN</option>
                 </select>
+                <div class="form-text kr-kind-help"></div>
               </div>
               <div class="col-12 kr-fields kr-percent d-none">
                 <div class="row g-3">
@@ -408,6 +433,22 @@
                   </div>
                 </div>
               </div>
+              <div class="col-12 kr-fields kr-linear d-none">
+                <div class="row g-3">
+                  <div class="col-sm-4">
+                    <label class="form-label">Linear Start</label>
+                    <input class="form-control" type="number" step="0.01" name="linear_start" value="{{if .Linear}}{{.Linear.StartValue}}{{end}}">
+                  </div>
+                  <div class="col-sm-4">
+                    <label class="form-label">Linear Target</label>
+                    <input class="form-control" type="number" step="0.01" name="linear_target" value="{{if .Linear}}{{.Linear.TargetValue}}{{end}}">
+                  </div>
+                  <div class="col-sm-4">
+                    <label class="form-label">Linear Current</label>
+                    <input class="form-control" type="number" step="0.01" name="linear_current" value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}">
+                  </div>
+                </div>
+              </div>
               <div class="col-12 kr-fields kr-boolean d-none">
                 <label class="form-label">Boolean KR</label>
                 <select class="form-select" name="boolean_done">
@@ -417,68 +458,76 @@
               </div>
               <div class="col-12 kr-fields kr-project d-none">
                 <h6>Шаги проекта</h6>
-                <div class="row g-2">
-                  <div class="col-md-6">
-                    <label class="form-label">Шаг 1</label>
-                    <input class="form-control" name="step_title_1" value="{{with .Project}}{{with stageAt .Stages 0}}{{.Title}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight_1" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 0}}{{.Weight}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Done</label>
-                    <select class="form-select" name="step_done_1">
-                      <option value="false">Нет</option>
-                      <option value="true" {{with .Project}}{{with stageAt .Stages 0}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Шаг 2</label>
-                    <input class="form-control" name="step_title_2" value="{{with .Project}}{{with stageAt .Stages 1}}{{.Title}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight_2" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 1}}{{.Weight}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Done</label>
-                    <select class="form-select" name="step_done_2">
-                      <option value="false">Нет</option>
-                      <option value="true" {{with .Project}}{{with stageAt .Stages 1}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Шаг 3</label>
-                    <input class="form-control" name="step_title_3" value="{{with .Project}}{{with stageAt .Stages 2}}{{.Title}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight_3" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 2}}{{.Weight}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Done</label>
-                    <select class="form-select" name="step_done_3">
-                      <option value="false">Нет</option>
-                      <option value="true" {{with .Project}}{{with stageAt .Stages 2}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">Шаг 4</label>
-                    <input class="form-control" name="step_title_4" value="{{with .Project}}{{with stageAt .Stages 3}}{{.Title}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight_4" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 3}}{{.Weight}}{{end}}{{end}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Done</label>
-                    <select class="form-select" name="step_done_4">
-                      <option value="false">Нет</option>
-                      <option value="true" {{with .Project}}{{with stageAt .Stages 3}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                    </select>
-                  </div>
+                <div class="vstack gap-2" data-project-steps>
+                  {{if .Project}}
+                    {{range $index, $stage := .Project.Stages}}
+                      <div class="row g-2 align-items-end project-step">
+                        <div class="col-md-5">
+                          <label class="form-label">Название шага</label>
+                          <input class="form-control" name="step_title[]" value="{{$stage.Title}}">
+                        </div>
+                        <div class="col-md-3">
+                          <label class="form-label">Вес</label>
+                          <input class="form-control" type="number" name="step_weight[]" min="0" max="100" value="{{$stage.Weight}}">
+                        </div>
+                        <div class="col-md-2">
+                          <label class="form-label">Done</label>
+                          <select class="form-select" name="step_done[]">
+                            <option value="false" {{if not $stage.IsDone}}selected{{end}}>Нет</option>
+                            <option value="true" {{if $stage.IsDone}}selected{{end}}>Да</option>
+                          </select>
+                        </div>
+                        <div class="col-md-2">
+                          <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
+                        </div>
+                      </div>
+                    {{end}}
+                  {{else}}
+                    <div class="row g-2 align-items-end project-step">
+                      <div class="col-md-5">
+                        <label class="form-label">Название шага</label>
+                        <input class="form-control" name="step_title[]">
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label">Вес</label>
+                        <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
+                      </div>
+                      <div class="col-md-2">
+                        <label class="form-label">Done</label>
+                        <select class="form-select" name="step_done[]">
+                          <option value="false">Нет</option>
+                          <option value="true">Да</option>
+                        </select>
+                      </div>
+                      <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
+                      </div>
+                    </div>
+                  {{end}}
                 </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
+                <template data-project-step-template>
+                  <div class="row g-2 align-items-end project-step">
+                    <div class="col-md-5">
+                      <label class="form-label">Название шага</label>
+                      <input class="form-control" name="step_title[]">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label">Вес</label>
+                      <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
+                    </div>
+                    <div class="col-md-2">
+                      <label class="form-label">Done</label>
+                      <select class="form-select" name="step_done[]">
+                        <option value="false">Нет</option>
+                        <option value="true">Да</option>
+                      </select>
+                    </div>
+                    <div class="col-md-2">
+                      <button type="button" class="btn btn-outline-danger btn-sm w-100" data-remove-project-step>Удалить</button>
+                    </div>
+                  </div>
+                </template>
               </div>
             </div>
             <div class="modal-footer">
@@ -494,6 +543,13 @@
 {{end}}
 
 <script>
+  const krKindHelpText = {
+    BOOLEAN: 'Boolean: бинарный тип. Когда результат либо есть, либо нет. Не имеет промежуточного состояния',
+    PERCENT: 'Percent: процентный тип. Когда результат считается от процентной метрики. К примеру процент успешных запросов',
+    LINEAR: 'LINEAR: линейный тип. Пример: нарастить DAU с 100 человек до 500 человек',
+    PROJECT: 'Project: проектный тип, с перечнем обязательных шагов и их весов в keyResult',
+  };
+
   function toggleKrFields(container) {
     const select = container.querySelector('.kr-kind-select');
     if (!select) return;
@@ -502,18 +558,53 @@
       block.classList.add('d-none');
     });
     const percent = container.querySelector('.kr-percent');
+    const linear = container.querySelector('.kr-linear');
     const boolean = container.querySelector('.kr-boolean');
     const project = container.querySelector('.kr-project');
     if (value === 'PERCENT' && percent) percent.classList.remove('d-none');
+    if (value === 'LINEAR' && linear) linear.classList.remove('d-none');
     if (value === 'BOOLEAN' && boolean) boolean.classList.remove('d-none');
     if (value === 'PROJECT' && project) project.classList.remove('d-none');
   }
+
+  function updateKrHelp(container) {
+    const select = container.querySelector('.kr-kind-select');
+    const help = container.querySelector('.kr-kind-help');
+    if (!select || !help) return;
+    help.textContent = krKindHelpText[select.value] || '';
+  }
+
   document.querySelectorAll('.kr-form').forEach((form) => {
     const select = form.querySelector('.kr-kind-select');
     if (select) {
       toggleKrFields(form);
+      updateKrHelp(form);
       select.addEventListener('change', () => toggleKrFields(form));
+      select.addEventListener('change', () => updateKrHelp(form));
     }
+  });
+
+  function setupProjectSteps(container) {
+    const addButton = container.querySelector('[data-add-project-step]');
+    const stepsWrap = container.querySelector('[data-project-steps]');
+    const template = container.querySelector('[data-project-step-template]');
+    if (!addButton || !stepsWrap || !template) return;
+    addButton.addEventListener('click', () => {
+      const clone = template.content.cloneNode(true);
+      stepsWrap.appendChild(clone);
+    });
+    stepsWrap.addEventListener('click', (event) => {
+      const removeButton = event.target.closest('[data-remove-project-step]');
+      if (!removeButton) return;
+      const step = removeButton.closest('.project-step');
+      if (step) {
+        step.remove();
+      }
+    });
+  }
+
+  document.querySelectorAll('.kr-form').forEach((form) => {
+    setupProjectSteps(form);
   });
 </script>
 {{end}}

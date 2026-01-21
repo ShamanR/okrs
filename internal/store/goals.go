@@ -2,15 +2,18 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"okrs/internal/domain"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
 	var id int64
 	err := s.DB.QueryRow(ctx, `
-		INSERT INTO goals (team_id, year, quarter, title, description, priority, weight, work_type, focus_type, owner_text)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+		INSERT INTO goals (team_id, year, quarter, title, description, priority, weight, work_type, focus_type, owner_text, sort_order)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM goals WHERE team_id=$1 AND year=$2 AND quarter=$3))
 		RETURNING id`,
 		input.TeamID, input.Year, input.Quarter, input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText,
 	).Scan(&id)
@@ -21,7 +24,7 @@ func (s *Store) ListGoalsByTeamQuarter(ctx context.Context, teamID int64, year, 
 	rows, err := s.DB.Query(ctx, `
 		SELECT id, team_id, year, quarter, title, description, priority, weight, work_type, focus_type, owner_text, created_at, updated_at
 		FROM goals WHERE team_id=$1 AND year=$2 AND quarter=$3
-		ORDER BY priority, weight DESC`, teamID, year, quarter)
+		ORDER BY sort_order, id`, teamID, year, quarter)
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +50,54 @@ func (s *Store) ListGoalsByTeamQuarter(ctx context.Context, teamID int64, year, 
 		goals[i].KeyResults = krs
 	}
 	return goals, nil
+}
+
+func (s *Store) MoveGoal(ctx context.Context, goalID int64, direction int) error {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var teamID int64
+	var year int
+	var quarter int
+	var currentOrder int
+	row := tx.QueryRow(ctx, `SELECT team_id, year, quarter, sort_order FROM goals WHERE id=$1 FOR UPDATE`, goalID)
+	if err := row.Scan(&teamID, &year, &quarter, &currentOrder); err != nil {
+		return err
+	}
+
+	var neighborID int64
+	var neighborOrder int
+	if direction < 0 {
+		row = tx.QueryRow(ctx, `
+			SELECT id, sort_order FROM goals
+			WHERE team_id=$1 AND year=$2 AND quarter=$3 AND sort_order < $4
+			ORDER BY sort_order DESC LIMIT 1
+			FOR UPDATE`, teamID, year, quarter, currentOrder)
+	} else {
+		row = tx.QueryRow(ctx, `
+			SELECT id, sort_order FROM goals
+			WHERE team_id=$1 AND year=$2 AND quarter=$3 AND sort_order > $4
+			ORDER BY sort_order ASC LIMIT 1
+			FOR UPDATE`, teamID, year, quarter, currentOrder)
+	}
+	if err := row.Scan(&neighborID, &neighborOrder); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return tx.Commit(ctx)
+		}
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE goals SET sort_order=$1 WHERE id=$2`, neighborOrder, goalID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE goals SET sort_order=$1 WHERE id=$2`, currentOrder, neighborID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (s *Store) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {

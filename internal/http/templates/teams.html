@@ -29,26 +29,26 @@
     </div>
   </div>
 </form>
-<table class="table table-striped align-middle">
+<table class="table table-striped align-middle teams-table">
   <thead>
     <tr>
-      <th>Команда</th>
-      <th>Прогресс квартала</th>
-      <th>Цели (вес / прогресс)</th>
-      <th>Статус</th>
-      <th>Действия</th>
+      <th class="teams-col-team">Команда</th>
+      <th class="teams-col-progress">Прогресс квартала</th>
+      <th class="teams-col-goals">Цели (вес / прогресс)</th>
+      <th class="teams-col-status">Статус</th>
+      <th class="teams-col-actions">Действия</th>
     </tr>
   </thead>
   <tbody>
     {{range .Teams}}
     <tr>
-      <td>
+      <td class="teams-col-team">
         <div class="d-flex align-items-center gap-2" style="padding-left: {{.Indent}}px;">
           <span class="badge text-bg-secondary">{{.TypeLabel}}</span>
           <a class="link-primary" href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">{{.Name}}</a>
         </div>
       </td>
-      <td>
+      <td class="teams-col-progress">
         <div class="d-flex align-items-center gap-2">
           <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.QuarterProgress}}" aria-valuemin="0" aria-valuemax="100">
             <div class="progress-bar" style="width: {{.QuarterProgress}}%"></div>
@@ -56,7 +56,7 @@
           <span class="fw-semibold">{{.QuarterProgress}}%</span>
         </div>
       </td>
-      <td>
+      <td class="teams-col-goals">
         {{if .Goals}}
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0 table-transparent">
@@ -82,10 +82,10 @@
           <span class="text-muted">Нет целей</span>
         {{end}}
       </td>
-      <td>
+      <td class="teams-col-status">
         <span class="badge text-bg-light border">{{.StatusLabel}}</span>
       </td>
-      <td class="text-end">
+      <td class="teams-col-actions text-end">
         <div class="d-inline-flex gap-2">
           <a class="btn btn-outline-secondary btn-sm" href="/teams/{{.ID}}/edit">Редактировать</a>
           <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
