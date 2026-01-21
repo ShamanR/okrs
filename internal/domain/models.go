@@ -50,6 +50,7 @@ const (
 	TeamQuarterStatusNoGoals    TeamQuarterStatus = "no_goals"
 	TeamQuarterStatusForming    TeamQuarterStatus = "forming"
 	TeamQuarterStatusInProgress TeamQuarterStatus = "in_progress"
+	TeamQuarterStatusValidated  TeamQuarterStatus = "validated"
 	TeamQuarterStatusClosed     TeamQuarterStatus = "closed"
 )
 

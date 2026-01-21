@@ -550,6 +550,12 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	if status == domain.TeamQuarterStatusNoGoals {
+		if err := h.deps.Store.SetTeamQuarterStatus(ctx, teamID, year, quarter, domain.TeamQuarterStatusForming); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
 
 	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
 }
@@ -695,6 +701,7 @@ func buildTeamStatusOptions(selected domain.TeamQuarterStatus) []teamStatusOptio
 		{Value: string(domain.TeamQuarterStatusNoGoals), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusNoGoals), Selected: selected == domain.TeamQuarterStatusNoGoals},
 		{Value: string(domain.TeamQuarterStatusForming), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusForming), Selected: selected == domain.TeamQuarterStatusForming},
 		{Value: string(domain.TeamQuarterStatusInProgress), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusInProgress), Selected: selected == domain.TeamQuarterStatusInProgress},
+		{Value: string(domain.TeamQuarterStatusValidated), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusValidated), Selected: selected == domain.TeamQuarterStatusValidated},
 		{Value: string(domain.TeamQuarterStatusClosed), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusClosed), Selected: selected == domain.TeamQuarterStatusClosed},
 	}
 }
