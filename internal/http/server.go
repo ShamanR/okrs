@@ -56,6 +56,8 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/teams", teamsHandler.HandleTeams)
 	r.Get("/teams/new", teamsHandler.HandleNewTeam)
 	r.Post("/teams", teamsHandler.HandleCreateTeam)
+	r.Get("/teams/{teamID}/edit", teamsHandler.HandleEditTeam)
+	r.Post("/teams/{teamID}/update", teamsHandler.HandleUpdateTeam)
 	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
 	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)

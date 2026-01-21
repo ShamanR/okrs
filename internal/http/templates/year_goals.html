@@ -33,7 +33,10 @@
   <tbody>
     {{range .Goals}}
     <tr>
-      <td>{{.TeamName}}</td>
+      <td>
+        <span class="badge text-bg-secondary">{{.TeamTypeLabel}}</span>
+        {{.TeamName}}
+      </td>
       <td>Q{{.Goal.Quarter}}</td>
       <td>{{.Goal.Title}}</td>
       <td>{{.Goal.Weight}}</td>

@@ -12,7 +12,7 @@ func (s *Store) SeedDemo(ctx context.Context, year, quarter int) error {
 	teamIDs := make([]int64, 0, len(teams))
 	for _, name := range teams {
 		var id int64
-		err := s.DB.QueryRow(ctx, `INSERT INTO teams (name) VALUES ($1) ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING id`, name).Scan(&id)
+		err := s.DB.QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ($1,$2) ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
 		if err != nil {
 			return err
 		}

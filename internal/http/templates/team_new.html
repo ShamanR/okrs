@@ -1,8 +1,8 @@
-{{define "team-new-content"}}
+{{define "team-form-content"}}
 <nav class="mb-4" aria-label="breadcrumb">
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
-    <li class="breadcrumb-item active" aria-current="page">Новая команда</li>
+    <li class="breadcrumb-item active" aria-current="page">{{.BreadcrumbTitle}}</li>
   </ol>
 </nav>
 
@@ -10,15 +10,31 @@
   <div class="col-lg-6">
     <div class="card">
       <div class="card-body">
-        <h1 class="h4">Создать команду</h1>
+        <h1 class="h4">{{.Title}}</h1>
         {{if .FormError}}<div class="alert alert-danger py-2">{{.FormError}}</div>{{end}}
-        <form method="post" action="/teams">
+        <form method="post" action="{{.FormAction}}">
           <div class="mb-3">
             <label class="form-label">Название команды</label>
-            <input class="form-control" name="name" required>
+            <input class="form-control" name="name" value="{{.TeamName}}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Тип команды</label>
+            <select class="form-select" name="team_type" required>
+              {{range .TeamTypes}}
+                <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+              {{end}}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Родительская команда</label>
+            <select class="form-select" name="parent_id">
+              {{range .ParentTeams}}
+                <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+              {{end}}
+            </select>
           </div>
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Создать</button>
+            <button type="submit" class="btn btn-primary">{{.SubmitLabel}}</button>
             <a class="btn btn-outline-secondary" href="/teams">Отмена</a>
           </div>
         </form>
@@ -29,7 +45,7 @@
     <div class="card">
       <div class="card-body">
         <h2 class="h5">Быстрые ссылки</h2>
-        <p class="text-muted">После создания команды можно перейти к OKR текущего квартала.</p>
+        <p class="text-muted">После сохранения команды можно перейти к OKR текущего квартала.</p>
         <a class="btn btn-outline-primary" href="/teams">Вернуться к списку</a>
       </div>
     </div>

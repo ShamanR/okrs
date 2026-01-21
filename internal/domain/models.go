@@ -35,9 +35,19 @@ const (
 	KRKindBoolean KRKind = "BOOLEAN"
 )
 
+type TeamType string
+
+const (
+	TeamTypeCluster TeamType = "cluster"
+	TeamTypeUnit    TeamType = "unit"
+	TeamTypeTeam    TeamType = "team"
+)
+
 type Team struct {
 	ID        int64
 	Name      string
+	Type      TeamType
+	ParentID  *int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

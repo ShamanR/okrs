@@ -16,6 +16,14 @@
         {{end}}
       </select>
     </div>
+    <div class="col-sm-6 col-md-4">
+      <label class="form-label">Иерархия</label>
+      <select name="team" class="form-select">
+        {{range .TeamFilters}}
+          <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+        {{end}}
+      </select>
+    </div>
     <div class="col-auto">
       <button type="submit" class="btn btn-primary">Показать</button>
     </div>
@@ -33,7 +41,12 @@
   <tbody>
     {{range .Teams}}
     <tr>
-      <td><a class="link-primary" href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">{{.Name}}</a></td>
+      <td>
+        <div class="d-flex align-items-center gap-2" style="padding-left: {{.Indent}}px;">
+          <span class="badge text-bg-secondary">{{.TypeLabel}}</span>
+          <a class="link-primary" href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">{{.Name}}</a>
+        </div>
+      </td>
       <td>
         <div class="d-flex align-items-center gap-2">
           <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.QuarterProgress}}" aria-valuemin="0" aria-valuemax="100">
@@ -57,9 +70,12 @@
         {{end}}
       </td>
       <td class="text-end">
-        <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
-          <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
-        </form>
+        <div class="d-inline-flex gap-2">
+          <a class="btn btn-outline-secondary btn-sm" href="/teams/{{.ID}}/edit">Редактировать</a>
+          <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+          </form>
+        </div>
       </td>
     </tr>
     {{end}}

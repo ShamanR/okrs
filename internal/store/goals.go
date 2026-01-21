@@ -74,6 +74,7 @@ func (s *Store) DeleteGoal(ctx context.Context, id int64) error {
 type GoalWithTeam struct {
 	Goal     domain.Goal
 	TeamName string
+	TeamType domain.TeamType
 }
 
 type GoalUpdateInput struct {
@@ -90,7 +91,7 @@ type GoalUpdateInput struct {
 func (s *Store) ListGoalsByYear(ctx context.Context, year int) ([]GoalWithTeam, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT g.id, g.team_id, g.year, g.quarter, g.title, g.description, g.priority, g.weight, g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
-		       t.name
+		       t.name, t.team_type
 		FROM goals g
 		JOIN teams t ON t.id = g.team_id
 		WHERE g.year=$1
@@ -103,10 +104,11 @@ func (s *Store) ListGoalsByYear(ctx context.Context, year int) ([]GoalWithTeam, 
 	for rows.Next() {
 		var goal domain.Goal
 		var teamName string
-		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.Year, &goal.Quarter, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt, &teamName); err != nil {
+		var teamType domain.TeamType
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.Year, &goal.Quarter, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt, &teamName, &teamType); err != nil {
 			return nil, err
 		}
-		results = append(results, GoalWithTeam{Goal: goal, TeamName: teamName})
+		results = append(results, GoalWithTeam{Goal: goal, TeamName: teamName, TeamType: teamType})
 	}
 	return results, rows.Err()
 }

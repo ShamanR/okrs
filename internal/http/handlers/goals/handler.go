@@ -42,11 +42,12 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 
 	page := struct {
 		Team            domain.Team
+		TeamTypeLabel   string
 		Goal            domain.Goal
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, Goal: goal, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
@@ -203,10 +204,16 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 
 type yearGoalsPage struct {
 	Year            int
-	Goals           []store.GoalWithTeam
+	Goals           []yearGoalRow
 	YearValues      []int
 	PageTitle       string
 	ContentTemplate string
+}
+
+type yearGoalRow struct {
+	Goal          domain.Goal
+	TeamName      string
+	TeamTypeLabel string
 }
 
 func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
@@ -220,10 +227,18 @@ func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	rows := make([]yearGoalRow, 0, len(goals))
+	for _, goal := range goals {
+		rows = append(rows, yearGoalRow{
+			Goal:          goal.Goal,
+			TeamName:      goal.TeamName,
+			TeamTypeLabel: common.TeamTypeLabel(goal.TeamType),
+		})
+	}
 	values := buildYearOptions(year)
 	page := yearGoalsPage{
 		Year:            year,
-		Goals:           goals,
+		Goals:           rows,
 		YearValues:      values,
 		PageTitle:       "Цели за год",
 		ContentTemplate: "year-goals-content",
@@ -283,10 +298,11 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 	goal.Progress = common.CalculateGoalProgress(goal)
 	page := struct {
 		Team            domain.Team
+		TeamTypeLabel   string
 		Goal            domain.Goal
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, Goal: goal, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
