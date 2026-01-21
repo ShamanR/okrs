@@ -71,11 +71,19 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 	}
 	text := common.TrimmedFormValue(r, "text")
 	if text == "" {
+		if returnURL := r.FormValue("return"); returnURL != "" {
+			http.Redirect(w, r, returnURL, http.StatusSeeOther)
+			return
+		}
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
 		return
 	}
 	if err := h.deps.Store.AddGoalComment(ctx, goalID, text); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
