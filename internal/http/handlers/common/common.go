@@ -162,6 +162,11 @@ func CalculateKRProgress(kr domain.KeyResult) int {
 			return 0
 		}
 		return okr.PercentProgress(kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue, kr.Percent.Checkpoints)
+	case domain.KRKindLinear:
+		if kr.Linear == nil {
+			return 0
+		}
+		return okr.LinearProgress(kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
 	case domain.KRKindBoolean:
 		if kr.Boolean == nil {
 			return 0
@@ -263,7 +268,7 @@ func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
 
 func ValidKRKind(k domain.KRKind) bool {
 	switch k {
-	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindBoolean:
+	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindLinear, domain.KRKindBoolean:
 		return true
 	default:
 		return false

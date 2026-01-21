@@ -133,6 +133,20 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if kind == domain.KRKindLinear {
+		start := common.ParseFloatField(r.FormValue("linear_start"))
+		target := common.ParseFloatField(r.FormValue("linear_target"))
+		current := common.ParseFloatField(r.FormValue("linear_current"))
+		if start == target {
+			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
+			return
+		}
+		if err := h.deps.Store.UpsertLinearMeta(ctx, store.LinearMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
+
 	if kind == domain.KRKindBoolean {
 		done := r.FormValue("boolean_done") == "true"
 		if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {

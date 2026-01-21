@@ -55,3 +55,10 @@ type PercentCheckpointInput struct {
 	MetricValue float64
 	KRPercent   int
 }
+
+type LinearMetaInput struct {
+	KeyResultID  int64
+	StartValue   float64
+	TargetValue  float64
+	CurrentValue float64
+}

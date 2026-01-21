@@ -89,6 +89,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/stages", krHandler.HandleAddStage)
 	r.Post("/stages/{stageID}/toggle", krHandler.HandleToggleStage)
 	r.Post("/key-results/{krID}/percent", krHandler.HandleUpdatePercentCurrent)
+	r.Post("/key-results/{krID}/linear", krHandler.HandleUpdateLinearCurrent)
 	r.Post("/key-results/{krID}/checkpoints", krHandler.HandleAddCheckpoint)
 	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)

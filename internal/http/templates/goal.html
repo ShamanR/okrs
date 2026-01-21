@@ -174,8 +174,10 @@
               <select class="form-select kr-kind-select" name="kind">
                 <option value="PROJECT">PROJECT</option>
                 <option value="PERCENT">PERCENT</option>
+                <option value="LINEAR">LINEAR</option>
                 <option value="BOOLEAN">BOOLEAN</option>
               </select>
+              <div class="form-text kr-kind-help"></div>
             </div>
             <div class="col-12 kr-fields kr-percent d-none">
               <div class="row g-3">
@@ -190,6 +192,22 @@
                 <div class="col-sm-4">
                   <label class="form-label">Percent Current</label>
                   <input class="form-control" type="number" step="0.01" name="percent_current">
+                </div>
+              </div>
+            </div>
+            <div class="col-12 kr-fields kr-linear d-none">
+              <div class="row g-3">
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Start</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_start">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Target</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_target">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Current</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_current">
                 </div>
               </div>
             </div>
@@ -285,8 +303,10 @@
               <select class="form-select kr-kind-select" name="kind" data-current="{{.Kind}}">
                 <option value="PROJECT" {{if eq .Kind "PROJECT"}}selected{{end}}>PROJECT</option>
                 <option value="PERCENT" {{if eq .Kind "PERCENT"}}selected{{end}}>PERCENT</option>
+                <option value="LINEAR" {{if eq .Kind "LINEAR"}}selected{{end}}>LINEAR</option>
                 <option value="BOOLEAN" {{if eq .Kind "BOOLEAN"}}selected{{end}}>BOOLEAN</option>
               </select>
+              <div class="form-text kr-kind-help"></div>
             </div>
             <div class="col-12 kr-fields kr-percent d-none">
               <div class="row g-3">
@@ -301,6 +321,22 @@
                 <div class="col-sm-4">
                   <label class="form-label">Percent Current</label>
                   <input class="form-control" type="number" step="0.01" name="percent_current" value="{{if .Percent}}{{.Percent.CurrentValue}}{{end}}">
+                </div>
+              </div>
+            </div>
+            <div class="col-12 kr-fields kr-linear d-none">
+              <div class="row g-3">
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Start</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_start" value="{{if .Linear}}{{.Linear.StartValue}}{{end}}">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Target</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_target" value="{{if .Linear}}{{.Linear.TargetValue}}{{end}}">
+                </div>
+                <div class="col-sm-4">
+                  <label class="form-label">Linear Current</label>
+                  <input class="form-control" type="number" step="0.01" name="linear_current" value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}">
                 </div>
               </div>
             </div>
@@ -388,6 +424,13 @@
 {{end}}
 
 <script>
+  const krKindHelpText = {
+    BOOLEAN: 'Boolean: бинарный тип. Когда результат либо есть, либо нет. Не имеет промежуточного состояния',
+    PERCENT: 'Percent: процентный тип. Когда результат считается от процентной метрики. К примеру процент успешных запросов',
+    LINEAR: 'LINEAR: линейный тип. Пример: нарастить DAU с 100 человек до 500 человек',
+    PROJECT: 'Project: проектный тип, с перечнем обязательных шагов и их весов в keyResult',
+  };
+
   function toggleKrFields(container) {
     const select = container.querySelector('.kr-kind-select');
     if (!select) return;
@@ -396,17 +439,29 @@
       block.classList.add('d-none');
     });
     const percent = container.querySelector('.kr-percent');
+    const linear = container.querySelector('.kr-linear');
     const boolean = container.querySelector('.kr-boolean');
     const project = container.querySelector('.kr-project');
     if (value === 'PERCENT' && percent) percent.classList.remove('d-none');
+    if (value === 'LINEAR' && linear) linear.classList.remove('d-none');
     if (value === 'BOOLEAN' && boolean) boolean.classList.remove('d-none');
     if (value === 'PROJECT' && project) project.classList.remove('d-none');
   }
+
+  function updateKrHelp(container) {
+    const select = container.querySelector('.kr-kind-select');
+    const help = container.querySelector('.kr-kind-help');
+    if (!select || !help) return;
+    help.textContent = krKindHelpText[select.value] || '';
+  }
+
   document.querySelectorAll('.kr-form').forEach((form) => {
     const select = form.querySelector('.kr-kind-select');
     if (select) {
       toggleKrFields(form);
+      updateKrHelp(form);
       select.addEventListener('change', () => toggleKrFields(form));
+      select.addEventListener('change', () => updateKrHelp(form));
     }
   });
 

@@ -95,6 +95,18 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
+	case domain.KRKindLinear:
+		start := common.ParseFloatField(r.FormValue("linear_start"))
+		target := common.ParseFloatField(r.FormValue("linear_target"))
+		current := common.ParseFloatField(r.FormValue("linear_current"))
+		if start == target {
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
+			return
+		}
+		if err := h.deps.Store.UpsertLinearMeta(ctx, store.LinearMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
 	case domain.KRKindBoolean:
 		done := r.FormValue("boolean_done") == "true"
 		if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {
@@ -192,6 +204,30 @@ func (h *Handler) HandleUpdatePercentCurrent(w http.ResponseWriter, r *http.Requ
 	}
 	current := common.ParseFloatField(r.FormValue("current"))
 	if err := h.deps.Store.UpdatePercentCurrent(ctx, krID, current); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
+}
+
+func (h *Handler) HandleUpdateLinearCurrent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	current := common.ParseFloatField(r.FormValue("current"))
+	if err := h.deps.Store.UpdateLinearCurrent(ctx, krID, current); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
