@@ -402,6 +402,14 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	for i := range goals {
+		comments, err := h.deps.Store.ListGoalComments(ctx, goals[i].ID)
+		if err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		goals[i].Comments = comments
+	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -492,6 +500,14 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
+	}
+	for i := range goals {
+		comments, err := h.deps.Store.ListGoalComments(r.Context(), goals[i].ID)
+		if err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		goals[i].Comments = comments
 	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), teamID, year, quarter)
 	if err != nil {
