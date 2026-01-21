@@ -110,7 +110,7 @@
                 <td class="text-end">
                   <div class="d-flex flex-wrap gap-2 justify-content-end">
                     <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#krProgress-{{.ID}}" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>
-                      Прогресс
+                      Обновить прогресс
                     </button>
                     <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
                       <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
