@@ -215,6 +215,52 @@ func ValidFocusType(t domain.FocusType) bool {
 	}
 }
 
+func ValidTeamType(t domain.TeamType) bool {
+	switch t {
+	case domain.TeamTypeCluster, domain.TeamTypeUnit, domain.TeamTypeTeam:
+		return true
+	default:
+		return false
+	}
+}
+
+func TeamTypeLabel(t domain.TeamType) string {
+	switch t {
+	case domain.TeamTypeCluster:
+		return "Кластер"
+	case domain.TeamTypeUnit:
+		return "Юнит"
+	case domain.TeamTypeTeam:
+		return "Команда"
+	default:
+		return "Команда"
+	}
+}
+
+func ValidTeamQuarterStatus(status domain.TeamQuarterStatus) bool {
+	switch status {
+	case domain.TeamQuarterStatusNoGoals, domain.TeamQuarterStatusForming, domain.TeamQuarterStatusInProgress, domain.TeamQuarterStatusClosed:
+		return true
+	default:
+		return false
+	}
+}
+
+func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
+	switch status {
+	case domain.TeamQuarterStatusNoGoals:
+		return "Нет целей"
+	case domain.TeamQuarterStatusForming:
+		return "Формирование"
+	case domain.TeamQuarterStatusInProgress:
+		return "В процессе"
+	case domain.TeamQuarterStatusClosed:
+		return "Закрыто"
+	default:
+		return "Нет целей"
+	}
+}
+
 func ValidKRKind(k domain.KRKind) bool {
 	switch k {
 	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindBoolean:

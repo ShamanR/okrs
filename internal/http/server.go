@@ -4,6 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"log/slog"
+	"math"
 	"net/http"
 	"time"
 
@@ -37,6 +38,21 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 			stage := stages[index]
 			return &stage
 		},
+		"priorityBadgeClass": func(priority domain.Priority) string {
+			switch priority {
+			case domain.PriorityP0:
+				return "text-bg-danger"
+			case domain.PriorityP1, domain.PriorityP2:
+				return "text-bg-success"
+			case domain.PriorityP3:
+				return "text-bg-secondary"
+			default:
+				return "text-bg-secondary"
+			}
+		},
+		"objectiveStatus": func(weight, progress int) int {
+			return int(math.Round(float64(weight*progress) / 100.0))
+		},
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -56,9 +72,12 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/teams", teamsHandler.HandleTeams)
 	r.Get("/teams/new", teamsHandler.HandleNewTeam)
 	r.Post("/teams", teamsHandler.HandleCreateTeam)
+	r.Get("/teams/{teamID}/edit", teamsHandler.HandleEditTeam)
+	r.Post("/teams/{teamID}/update", teamsHandler.HandleUpdateTeam)
 	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
 	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)
+	r.Post("/teams/{teamID}/okr/status", teamsHandler.HandleUpdateTeamQuarterStatus)
 
 	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
@@ -73,6 +92,8 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/checkpoints", krHandler.HandleAddCheckpoint)
 	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
+	r.Post("/key-results/{krID}/move-up", krHandler.HandleMoveKeyResultUp)
+	r.Post("/key-results/{krID}/move-down", krHandler.HandleMoveKeyResultDown)
 	r.Post("/key-results/{krID}/delete", krHandler.HandleDeleteKeyResult)
 	r.Post("/key-results/{krID}/update", krHandler.HandleUpdateKeyResult)
 

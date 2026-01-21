@@ -3,6 +3,7 @@ package goals
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"okrs/internal/domain"
@@ -37,16 +38,23 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, team.ID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 
 	goal.Progress = common.CalculateGoalProgress(goal)
 
 	page := struct {
 		Team            domain.Team
+		TeamTypeLabel   string
 		Goal            domain.Goal
+		IsClosed        bool
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, Goal: goal, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
@@ -154,6 +162,15 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if status == domain.TeamQuarterStatusClosed {
+		h.renderGoalWithError(w, r, goalID, "Квартал закрыт, изменения недоступны")
+		return
+	}
 	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -170,6 +187,20 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if status == domain.TeamQuarterStatusClosed {
+		h.renderGoalWithError(w, r, goalID, "Квартал закрыт, изменения недоступны")
 		return
 	}
 	priority := domain.Priority(r.FormValue("priority"))
@@ -193,20 +224,21 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
 	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
 }
 
 type yearGoalsPage struct {
 	Year            int
-	Goals           []store.GoalWithTeam
+	Goals           []yearGoalRow
 	YearValues      []int
 	PageTitle       string
 	ContentTemplate string
+}
+
+type yearGoalRow struct {
+	Goal          domain.Goal
+	TeamName      string
+	TeamTypeLabel string
 }
 
 func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
@@ -220,10 +252,18 @@ func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	rows := make([]yearGoalRow, 0, len(goals))
+	for _, goal := range goals {
+		rows = append(rows, yearGoalRow{
+			Goal:          goal.Goal,
+			TeamName:      goal.TeamName,
+			TeamTypeLabel: common.TeamTypeLabel(goal.TeamType),
+		})
+	}
 	values := buildYearOptions(year)
 	page := yearGoalsPage{
 		Year:            year,
-		Goals:           goals,
+		Goals:           rows,
 		YearValues:      values,
 		PageTitle:       "Цели за год",
 		ContentTemplate: "year-goals-content",
@@ -243,22 +283,35 @@ func buildYearOptions(selected int) []int {
 func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 	stages := make([]store.ProjectStageInput, 0, 4)
 	totalWeight := 0
-	for i := 1; i <= 4; i++ {
-		title := common.TrimmedFormValue(r, fmt.Sprintf("step_title_%d", i))
-		if title == "" {
+	titles := r.Form["step_title[]"]
+	weights := r.Form["step_weight[]"]
+	dones := r.Form["step_done[]"]
+	sortOrder := 1
+	for i, title := range titles {
+		trimmed := strings.TrimSpace(title)
+		if trimmed == "" {
 			continue
 		}
-		weight := common.ParseIntField(r.FormValue(fmt.Sprintf("step_weight_%d", i)))
+		weightValue := ""
+		if i < len(weights) {
+			weightValue = weights[i]
+		}
+		weight := common.ParseIntField(weightValue)
 		if weight <= 0 || weight > 100 {
 			return nil, fmt.Errorf("Вес шага должен быть 1..100")
 		}
 		totalWeight += weight
+		isDone := false
+		if i < len(dones) {
+			isDone = dones[i] == "true"
+		}
 		stages = append(stages, store.ProjectStageInput{
-			Title:     title,
+			Title:     trimmed,
 			Weight:    weight,
-			IsDone:    r.FormValue(fmt.Sprintf("step_done_%d", i)) == "true",
-			SortOrder: i,
+			IsDone:    isDone,
+			SortOrder: sortOrder,
 		})
+		sortOrder++
 	}
 	if len(stages) == 0 {
 		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
@@ -280,13 +333,20 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), team.ID, goal.Year, goal.Quarter)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	goal.Progress = common.CalculateGoalProgress(goal)
 	page := struct {
 		Team            domain.Team
+		TeamTypeLabel   string
 		Goal            domain.Goal
+		IsClosed        bool
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, Goal: goal, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }

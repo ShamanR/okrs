@@ -35,9 +35,28 @@ const (
 	KRKindBoolean KRKind = "BOOLEAN"
 )
 
+type TeamType string
+
+const (
+	TeamTypeCluster TeamType = "cluster"
+	TeamTypeUnit    TeamType = "unit"
+	TeamTypeTeam    TeamType = "team"
+)
+
+type TeamQuarterStatus string
+
+const (
+	TeamQuarterStatusNoGoals    TeamQuarterStatus = "no_goals"
+	TeamQuarterStatusForming    TeamQuarterStatus = "forming"
+	TeamQuarterStatusInProgress TeamQuarterStatus = "in_progress"
+	TeamQuarterStatusClosed     TeamQuarterStatus = "closed"
+)
+
 type Team struct {
 	ID        int64
 	Name      string
+	Type      TeamType
+	ParentID  *int64
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -76,6 +95,7 @@ type KeyResult struct {
 	Weight      int
 	Kind        KRKind
 	Progress    int
+	SortOrder   int
 	Project     *KRProject
 	Percent     *KRPercent
 	Boolean     *KRBoolean

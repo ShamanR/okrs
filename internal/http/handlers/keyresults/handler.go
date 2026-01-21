@@ -140,6 +140,37 @@ func (h *Handler) HandleToggleStage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
+func (h *Handler) HandleMoveKeyResultUp(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveKeyResult(w, r, -1)
+}
+
+func (h *Handler) HandleMoveKeyResultDown(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveKeyResult(w, r, 1)
+}
+
+func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, direction int) {
+	ctx := r.Context()
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.MoveKeyResult(ctx, krID, direction); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
+}
+
 func (h *Handler) HandleUpdatePercentCurrent(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))

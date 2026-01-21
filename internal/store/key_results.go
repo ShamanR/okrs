@@ -12,8 +12,8 @@ import (
 func (s *Store) CreateKeyResult(ctx context.Context, input KeyResultInput) (int64, error) {
 	var id int64
 	err := s.DB.QueryRow(ctx, `
-		INSERT INTO key_results (goal_id, title, description, weight, kind)
-		VALUES ($1,$2,$3,$4,$5)
+		INSERT INTO key_results (goal_id, title, description, weight, kind, sort_order)
+		VALUES ($1,$2,$3,$4,$5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1))
 		RETURNING id`,
 		input.GoalID, input.Title, input.Description, input.Weight, input.Kind,
 	).Scan(&id)
@@ -30,8 +30,8 @@ type KeyResultUpdateInput struct {
 
 func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domain.KeyResult, error) {
 	rows, err := s.DB.Query(ctx, `
-		SELECT id, goal_id, title, description, weight, kind, created_at, updated_at
-		FROM key_results WHERE goal_id=$1 ORDER BY weight DESC`, goalID)
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		FROM key_results WHERE goal_id=$1 ORDER BY sort_order, id`, goalID)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 	var krs []domain.KeyResult
 	for rows.Next() {
 		var kr domain.KeyResult
-		if err := rows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+		if err := rows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
 			return nil, err
 		}
 		krs = append(krs, kr)
@@ -246,4 +246,50 @@ func (s *Store) GetBooleanMeta(ctx context.Context, krID int64) (*domain.KRBoole
 func (s *Store) DeleteKeyResult(ctx context.Context, id int64) error {
 	_, err := s.DB.Exec(ctx, `DELETE FROM key_results WHERE id=$1`, id)
 	return err
+}
+
+func (s *Store) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var goalID int64
+	var currentOrder int
+	row := tx.QueryRow(ctx, `SELECT goal_id, sort_order FROM key_results WHERE id=$1 FOR UPDATE`, krID)
+	if err := row.Scan(&goalID, &currentOrder); err != nil {
+		return err
+	}
+
+	var neighborID int64
+	var neighborOrder int
+	if direction < 0 {
+		row = tx.QueryRow(ctx, `
+			SELECT id, sort_order FROM key_results
+			WHERE goal_id=$1 AND sort_order < $2
+			ORDER BY sort_order DESC LIMIT 1
+			FOR UPDATE`, goalID, currentOrder)
+	} else {
+		row = tx.QueryRow(ctx, `
+			SELECT id, sort_order FROM key_results
+			WHERE goal_id=$1 AND sort_order > $2
+			ORDER BY sort_order ASC LIMIT 1
+			FOR UPDATE`, goalID, currentOrder)
+	}
+	if err := row.Scan(&neighborID, &neighborOrder); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return tx.Commit(ctx)
+		}
+		return err
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE key_results SET sort_order=$1 WHERE id=$2`, neighborOrder, krID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE key_results SET sort_order=$1 WHERE id=$2`, currentOrder, neighborID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
