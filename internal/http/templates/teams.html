@@ -58,14 +58,26 @@
       </td>
       <td>
         {{if .Goals}}
-          <ul class="list-unstyled mb-0">
-            {{range .Goals}}
-              <li class="mb-1">
-                <span class="fw-semibold">{{objectiveStatus .Weight .Progress}}/{{.Weight}}</span>
-                <span class="text-muted">— {{.Title}}</span>
-              </li>
-            {{end}}
-          </ul>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">Вес</th>
+                  <th scope="col">Название цели</th>
+                  <th scope="col">Фактический %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{range .Goals}}
+                <tr>
+                  <td><span class="badge text-bg-light border">{{.Weight}}</span></td>
+                  <td class="text-break">{{.Title}}</td>
+                  <td><span class="badge text-bg-light border">{{.Progress}}%</span></td>
+                </tr>
+                {{end}}
+              </tbody>
+            </table>
+          </div>
         {{else}}
           <span class="text-muted">Нет целей</span>
         {{end}}
