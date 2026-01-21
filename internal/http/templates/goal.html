@@ -16,7 +16,7 @@
   <div class="card-body">
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
       <h2 class="h4 mb-0">{{.Goal.Title}}</h2>
-      <span class="badge text-bg-secondary">{{.Goal.Priority}}</span>
+      <span class="badge {{priorityBadgeClass .Goal.Priority}}">{{.Goal.Priority}}</span>
       <span class="badge text-bg-light border">Вес {{.Goal.Weight}}</span>
       <span class="badge text-bg-light border">Прогресс {{.Goal.Progress}}%</span>
     </div>

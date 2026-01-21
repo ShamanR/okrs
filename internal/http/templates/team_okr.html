@@ -52,7 +52,7 @@
     <div class="card-body">
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <h3 class="h5 mb-0">{{.Title}}</h3>
-        <span class="badge text-bg-secondary">{{.Priority}}</span>
+        <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}</span>
         <span class="badge text-bg-light border">Прогресс {{.Progress}}%</span>
       </div>

@@ -37,6 +37,18 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 			stage := stages[index]
 			return &stage
 		},
+		"priorityBadgeClass": func(priority domain.Priority) string {
+			switch priority {
+			case domain.PriorityP0:
+				return "text-bg-danger"
+			case domain.PriorityP1, domain.PriorityP2:
+				return "text-bg-success"
+			case domain.PriorityP3:
+				return "text-bg-secondary"
+			default:
+				return "text-bg-secondary"
+			}
+		},
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
