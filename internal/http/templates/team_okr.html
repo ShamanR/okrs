@@ -81,6 +81,14 @@
       <div class="d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
+        <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
+        </form>
+        <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
+        </form>
         <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
           <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
         </form>

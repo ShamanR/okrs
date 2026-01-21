@@ -200,6 +200,41 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
 }
 
+func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveGoal(w, r, -1)
+}
+
+func (h *Handler) HandleMoveGoalDown(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveGoal(w, r, 1)
+}
+
+func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, direction int) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.MoveGoal(ctx, goalID, direction); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+}
+
 func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))

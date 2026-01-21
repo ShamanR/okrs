@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
+	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
@@ -101,12 +103,9 @@ type teamOKRPage struct {
 
 func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
+	year, quarter, quarterValue := resolveQuarterFilter(r, h.deps.Zone)
 	options := common.BuildQuarterOptions(year, quarter, h.deps.Zone)
-	selectedFilter := r.URL.Query().Get("team")
-	if selectedFilter == "" {
-		selectedFilter = "ALL"
-	}
+	selectedFilter := resolveTeamFilter(r)
 	var selectedTeamID *int64
 	if selectedFilter != "ALL" {
 		id, err := strconv.ParseInt(selectedFilter, 10, 64)
@@ -122,6 +121,12 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 	}
 
 	teamsByID, childrenMap, rootTeams := buildTeamHierarchy(teams)
+	if selectedTeamID != nil {
+		if _, ok := teamsByID[*selectedTeamID]; !ok {
+			selectedTeamID = nil
+			selectedFilter = "ALL"
+		}
+	}
 	filterOptions := buildTeamFilterOptions(rootTeams, selectedFilter)
 	filteredRoots := rootTeams
 	if selectedTeamID != nil {
@@ -148,7 +153,66 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 		PageTitle:       "Команды",
 		ContentTemplate: "teams-content",
 	}
+	persistTeamsFilters(w, quarterValue, selectedFilter)
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
+func resolveQuarterFilter(r *http.Request, zone *time.Location) (int, int, string) {
+	quarterValue := r.URL.Query().Get("quarter")
+	if quarterValue != "" {
+		if year, quarter, ok := parseQuarterValue(quarterValue); ok {
+			return year, quarter, quarterValue
+		}
+	}
+	if cookie, err := r.Cookie("teams_quarter"); err == nil {
+		if year, quarter, ok := parseQuarterValue(cookie.Value); ok {
+			return year, quarter, cookie.Value
+		}
+	}
+	year, quarter := common.ParseQuarter(r, zone)
+	return year, quarter, fmt.Sprintf("%d-%d", year, quarter)
+}
+
+func resolveTeamFilter(r *http.Request) string {
+	selectedFilter := r.URL.Query().Get("team")
+	if selectedFilter != "" {
+		return selectedFilter
+	}
+	if cookie, err := r.Cookie("teams_filter"); err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
+	return "ALL"
+}
+
+func parseQuarterValue(value string) (int, int, bool) {
+	parts := strings.Split(value, "-")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	year, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, 0, false
+	}
+	quarter, err := strconv.Atoi(parts[1])
+	if err != nil || quarter < 1 || quarter > 4 {
+		return 0, 0, false
+	}
+	return year, quarter, true
+}
+
+func persistTeamsFilters(w http.ResponseWriter, quarterValue, selectedFilter string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:   "teams_quarter",
+		Value:  quarterValue,
+		Path:   "/",
+		MaxAge: 60 * 60 * 24 * 180,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:   "teams_filter",
+		Value:  selectedFilter,
+		Path:   "/",
+		MaxAge: 60 * 60 * 24 * 180,
+	})
 }
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {

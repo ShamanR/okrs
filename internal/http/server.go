@@ -82,6 +82,8 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
 	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
+	r.Post("/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
+	r.Post("/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Get("/goals/year", goalsHandler.HandleYearGoals)
