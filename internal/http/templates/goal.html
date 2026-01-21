@@ -76,6 +76,14 @@
         <span class="badge text-bg-secondary">{{.Kind}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}</span>
         <span class="badge text-bg-light border">Прогресс {{.Progress}}%</span>
+        <form method="post" action="/key-results/{{.ID}}/move-up" class="ms-auto">
+          <input type="hidden" name="return" value="/goals/{{$.Goal.ID}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm">↑</button>
+        </form>
+        <form method="post" action="/key-results/{{.ID}}/move-down" class="m-0">
+          <input type="hidden" name="return" value="/goals/{{$.Goal.ID}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm">↓</button>
+        </form>
       </div>
       <p class="text-muted">{{.Description}}</p>
       <form method="post" action="/key-results/{{.ID}}/delete" class="mb-3">

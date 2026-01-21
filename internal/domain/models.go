@@ -95,6 +95,7 @@ type KeyResult struct {
 	Weight      int
 	Kind        KRKind
 	Progress    int
+	SortOrder   int
 	Project     *KRProject
 	Percent     *KRPercent
 	Boolean     *KRBoolean

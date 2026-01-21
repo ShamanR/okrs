@@ -94,7 +94,15 @@
             <span class="fw-semibold">{{.Title}}</span>
             <span class="badge text-bg-light border">Вес {{.Weight}}</span>
             <span class="badge text-bg-light border">Прогресс {{.Progress}}%</span>
-            <button class="btn btn-outline-secondary btn-sm ms-auto" data-bs-toggle="modal" data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
+            <form method="post" action="/key-results/{{.ID}}/move-up" class="ms-auto">
+              <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+              <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
+            </form>
+            <form method="post" action="/key-results/{{.ID}}/move-down" class="m-0">
+              <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+              <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
+            </form>
+            <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
           </li>
           {{end}}
         </ul>
