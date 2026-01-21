@@ -4,6 +4,7 @@ import (
 	"embed"
 	"html/template"
 	"log/slog"
+	"math"
 	"net/http"
 	"time"
 
@@ -48,6 +49,9 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 			default:
 				return "text-bg-secondary"
 			}
+		},
+		"objectiveStatus": func(weight, progress int) int {
+			return int(math.Round(float64(weight*progress) / 100.0))
 		},
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {

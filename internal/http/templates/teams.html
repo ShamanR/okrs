@@ -60,10 +60,16 @@
         {{if .Goals}}
           <ul class="list-unstyled mb-0">
             {{range .Goals}}
-              <li class="mb-1">
-                <span class="fw-semibold">{{.Title}}</span>
-                <span class="text-muted">— Вес {{.Weight}}, {{.Progress}}%</span>
-              </li>
+              {{if .KeyResults}}
+                {{range .KeyResults}}
+                  <li class="mb-1">
+                    <span class="fw-semibold">{{objectiveStatus .Weight .Progress}}/{{.Weight}}</span>
+                    <span class="text-muted">— {{.Title}}</span>
+                  </li>
+                {{end}}
+              {{else}}
+                <li class="mb-1 text-muted">Нет KR</li>
+              {{end}}
             {{end}}
           </ul>
         {{else}}
