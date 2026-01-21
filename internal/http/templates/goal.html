@@ -194,68 +194,45 @@
             </div>
             <div class="col-12 kr-fields kr-project d-none">
               <h6>Шаги проекта</h6>
-              <div class="row g-2">
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 1</label>
-                  <input class="form-control" name="step_title_1">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_1" min="0" max="100">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_1">
-                    <option value="false">Нет</option>
-                    <option value="true">Да</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 2</label>
-                  <input class="form-control" name="step_title_2">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_2" min="0" max="100">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_2">
-                    <option value="false">Нет</option>
-                    <option value="true">Да</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 3</label>
-                  <input class="form-control" name="step_title_3">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_3" min="0" max="100">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_3">
-                    <option value="false">Нет</option>
-                    <option value="true">Да</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 4</label>
-                  <input class="form-control" name="step_title_4">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_4" min="0" max="100">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_4">
-                    <option value="false">Нет</option>
-                    <option value="true">Да</option>
-                  </select>
+              <div class="vstack gap-2" data-project-steps>
+                <div class="row g-2 align-items-end project-step">
+                  <div class="col-md-6">
+                    <label class="form-label">Название шага</label>
+                    <input class="form-control" name="step_title[]">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Вес</label>
+                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Done</label>
+                    <select class="form-select" name="step_done[]">
+                      <option value="false">Нет</option>
+                      <option value="true">Да</option>
+                    </select>
+                  </div>
                 </div>
               </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
+              <template data-project-step-template>
+                <div class="row g-2 align-items-end project-step">
+                  <div class="col-md-6">
+                    <label class="form-label">Название шага</label>
+                    <input class="form-control" name="step_title[]">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Вес</label>
+                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Done</label>
+                    <select class="form-select" name="step_done[]">
+                      <option value="false">Нет</option>
+                      <option value="true">Да</option>
+                    </select>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
           <div class="modal-footer">
@@ -328,68 +305,67 @@
             </div>
             <div class="col-12 kr-fields kr-project d-none">
               <h6>Шаги проекта</h6>
-              <div class="row g-2">
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 1</label>
-                  <input class="form-control" name="step_title_1" value="{{with .Project}}{{with stageAt .Stages 0}}{{.Title}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_1" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 0}}{{.Weight}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_1">
-                    <option value="false">Нет</option>
-                    <option value="true" {{with .Project}}{{with stageAt .Stages 0}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 2</label>
-                  <input class="form-control" name="step_title_2" value="{{with .Project}}{{with stageAt .Stages 1}}{{.Title}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_2" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 1}}{{.Weight}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_2">
-                    <option value="false">Нет</option>
-                    <option value="true" {{with .Project}}{{with stageAt .Stages 1}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 3</label>
-                  <input class="form-control" name="step_title_3" value="{{with .Project}}{{with stageAt .Stages 2}}{{.Title}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_3" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 2}}{{.Weight}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_3">
-                    <option value="false">Нет</option>
-                    <option value="true" {{with .Project}}{{with stageAt .Stages 2}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label">Шаг 4</label>
-                  <input class="form-control" name="step_title_4" value="{{with .Project}}{{with stageAt .Stages 3}}{{.Title}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Вес</label>
-                  <input class="form-control" type="number" name="step_weight_4" min="0" max="100" value="{{with .Project}}{{with stageAt .Stages 3}}{{.Weight}}{{end}}{{end}}">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Done</label>
-                  <select class="form-select" name="step_done_4">
-                    <option value="false">Нет</option>
-                    <option value="true" {{with .Project}}{{with stageAt .Stages 3}}{{if .IsDone}}selected{{end}}{{end}}{{end}}>Да</option>
-                  </select>
-                </div>
+              <div class="vstack gap-2" data-project-steps>
+                {{if .Project}}
+                  {{range $index, $stage := .Project.Stages}}
+                    <div class="row g-2 align-items-end project-step">
+                      <div class="col-md-6">
+                        <label class="form-label">Название шага</label>
+                        <input class="form-control" name="step_title[]" value="{{$stage.Title}}">
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label">Вес</label>
+                        <input class="form-control" type="number" name="step_weight[]" min="0" max="100" value="{{$stage.Weight}}">
+                      </div>
+                      <div class="col-md-3">
+                        <label class="form-label">Done</label>
+                        <select class="form-select" name="step_done[]">
+                          <option value="false" {{if not $stage.IsDone}}selected{{end}}>Нет</option>
+                          <option value="true" {{if $stage.IsDone}}selected{{end}}>Да</option>
+                        </select>
+                      </div>
+                    </div>
+                  {{end}}
+                {{else}}
+                  <div class="row g-2 align-items-end project-step">
+                    <div class="col-md-6">
+                      <label class="form-label">Название шага</label>
+                      <input class="form-control" name="step_title[]">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label">Вес</label>
+                      <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
+                    </div>
+                    <div class="col-md-3">
+                      <label class="form-label">Done</label>
+                      <select class="form-select" name="step_done[]">
+                        <option value="false">Нет</option>
+                        <option value="true">Да</option>
+                      </select>
+                    </div>
+                  </div>
+                {{end}}
               </div>
+              <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить шаг</button>
+              <template data-project-step-template>
+                <div class="row g-2 align-items-end project-step">
+                  <div class="col-md-6">
+                    <label class="form-label">Название шага</label>
+                    <input class="form-control" name="step_title[]">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Вес</label>
+                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Done</label>
+                    <select class="form-select" name="step_done[]">
+                      <option value="false">Нет</option>
+                      <option value="true">Да</option>
+                    </select>
+                  </div>
+                </div>
+              </template>
             </div>
           </div>
           <div class="modal-footer">
@@ -424,6 +400,21 @@
       toggleKrFields(form);
       select.addEventListener('change', () => toggleKrFields(form));
     }
+  });
+
+  function setupProjectSteps(container) {
+    const addButton = container.querySelector('[data-add-project-step]');
+    const stepsWrap = container.querySelector('[data-project-steps]');
+    const template = container.querySelector('[data-project-step-template]');
+    if (!addButton || !stepsWrap || !template) return;
+    addButton.addEventListener('click', () => {
+      const clone = template.content.cloneNode(true);
+      stepsWrap.appendChild(clone);
+    });
+  }
+
+  document.querySelectorAll('.kr-form').forEach((form) => {
+    setupProjectSteps(form);
   });
 </script>
 {{end}}
