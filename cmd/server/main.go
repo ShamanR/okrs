@@ -50,17 +50,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	store := store.New(pool)
+	pgstore := store.New(pool)
 	if seed {
 		current := store.CurrentQuarter(time.Now().In(zone))
-		if err := store.SeedDemo(context.Background(), current.Year, current.Quarter); err != nil {
+		if err := pgstore.SeedDemo(context.Background(), current.Year, current.Quarter); err != nil {
 			logger.Error("failed to seed", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 		logger.Info("seed data created")
 	}
 
-	server, err := httpserver.NewServer(store, logger, zone)
+	server, err := httpserver.NewServer(pgstore, logger, zone)
 	if err != nil {
 		logger.Error("failed to start", slog.String("error", err.Error()))
 		os.Exit(1)
