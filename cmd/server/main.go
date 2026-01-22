@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	httpserver "okrs/internal/http"
@@ -49,17 +50,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	store := store.New(pool)
+	pgstore := store.New(pool)
 	if seed {
 		current := store.CurrentQuarter(time.Now().In(zone))
-		if err := store.SeedDemo(context.Background(), current.Year, current.Quarter); err != nil {
+		if err := pgstore.SeedDemo(context.Background(), current.Year, current.Quarter); err != nil {
 			logger.Error("failed to seed", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
 		logger.Info("seed data created")
 	}
 
-	server, err := httpserver.NewServer(store, logger, zone)
+	server, err := httpserver.NewServer(pgstore, logger, zone)
 	if err != nil {
 		logger.Error("failed to start", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -92,7 +93,11 @@ func runMigrations(databaseURL string) error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://migrations", "postgres", driver)
+	migrationsPath, err := resolveMigrationsPath()
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
 	if err != nil {
 		return err
 	}
@@ -100,4 +105,20 @@ func runMigrations(databaseURL string) error {
 		return err
 	}
 	return nil
+}
+
+func resolveMigrationsPath() (string, error) {
+	baseDir, err := os.Getwd()
+	if err != nil {
+		executable, execErr := os.Executable()
+		if execErr != nil {
+			return "", err
+		}
+		baseDir = filepath.Dir(executable)
+	}
+	absPath, err := filepath.Abs(filepath.Join(baseDir, "migrations"))
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(absPath), nil
 }

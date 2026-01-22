@@ -12,7 +12,7 @@
       <label class="form-label">Квартал</label>
       <select name="quarter" class="form-select">
         {{range .QuarterOptions}}
-          <option value="{{.Year}}-{{.Quarter}}" {{if .Selected}}selected{{end}}>{{.Year}} Q{{.Quarter}}</option>
+        <option value="{{.Year}}-{{.Quarter}}" {{if .Selected}}selected{{end}}>{{.Year}} Q{{.Quarter}}</option>
         {{end}}
       </select>
     </div>
@@ -20,7 +20,7 @@
       <label class="form-label">Иерархия</label>
       <select name="team" class="form-select">
         {{range .TeamFilters}}
-          <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
+        <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
         {{end}}
       </select>
     </div>
@@ -45,12 +45,14 @@
       <td class="teams-col-team">
         <div class="d-flex align-items-center gap-2" style="padding-left: {{.Indent}}px;">
           <span class="badge text-bg-secondary">{{.TypeLabel}}</span>
-          <a class="link-primary" href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">{{.Name}}</a>
+          <a class="link-primary"
+            href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">{{.Name}}</a>
         </div>
       </td>
       <td class="teams-col-progress">
         <div class="d-flex align-items-center gap-2">
-          <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.QuarterProgress}}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.QuarterProgress}}" aria-valuemin="0"
+            aria-valuemax="100">
             <div class="progress-bar" style="width: {{.QuarterProgress}}%"></div>
           </div>
           <span class="fw-semibold">{{.QuarterProgress}}%</span>
@@ -58,33 +60,34 @@
       </td>
       <td class="teams-col-goals">
         {{if .Goals}}
-          <div class="mb-2">
-            <span class="badge {{if ne .GoalsWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne .GoalsWeight 100}}title="Сумма весов целей должна быть равна 100"{{end}}>
-              Сумма целей {{.GoalsWeight}}
-            </span>
-          </div>
-          <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 table-transparent">
-              <thead>
-                <tr>
-                  <th scope="col">Вес</th>
-                  <th scope="col">Название цели</th>
-                  <th scope="col">Фактический %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {{range .Goals}}
-                <tr>
-                  <td><span class="badge text-bg-light border">{{.Weight}}</span></td>
-                  <td class="text-break">{{.Title}}</td>
-                  <td><span class="badge text-bg-light border">{{.Progress}}%</span></td>
-                </tr>
-                {{end}}
-              </tbody>
-            </table>
-          </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0 table-transparent teams-goals-table">
+            <thead>
+              <tr>
+                <th scope="col" class="teams-goals-col-weight">Вес</th>
+                <th scope="col" class="teams-goals-col-title">Название цели</th>
+                <th scope="col" class="teams-goals-col-progress">Факт(%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Goals}}
+              <tr>
+                <td class="teams-goals-col-weight"><span class="badge text-bg-light border">{{.Weight}}</span></td>
+                <td class="teams-goals-col-title text-break">{{.Title}}</td>
+                <td class="teams-goals-col-progress"><span class="badge text-bg-light border">{{.Progress}}%</span></td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        <div class="mt-2">
+          <span class="badge {{if ne .GoalsWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne
+            .GoalsWeight 100}}title="Сумма весов целей должна быть равна 100" {{end}}>
+            Сумма целей {{.GoalsWeight}}
+          </span>
+        </div>
         {{else}}
-          <span class="text-muted">Нет целей</span>
+        <span class="text-muted">Нет целей</span>
         {{end}}
       </td>
       <td class="teams-col-status">
