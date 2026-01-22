@@ -34,6 +34,7 @@ type teamRow struct {
 	QuarterProgress int
 	GoalsCount      int
 	Goals           []domain.Goal
+	GoalsWeight     int
 }
 
 type teamFilterOption struct {
@@ -621,6 +622,10 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 		goals[i].Progress = common.CalculateGoalProgress(goals[i])
 	}
 	quarterProgress := okr.QuarterProgress(goals)
+	totalWeight := 0
+	for _, goal := range goals {
+		totalWeight += goal.Weight
+	}
 	*rows = append(*rows, teamRow{
 		ID:              team.ID,
 		Name:            team.Name,
@@ -630,6 +635,7 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 		QuarterProgress: quarterProgress,
 		GoalsCount:      len(goals),
 		Goals:           goals,
+		GoalsWeight:     totalWeight,
 	})
 	for _, child := range childrenMap[team.ID] {
 		if err := h.appendTeamRows(ctx, rows, child, level+1, year, quarter, childrenMap); err != nil {
