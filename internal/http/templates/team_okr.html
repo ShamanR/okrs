@@ -74,11 +74,24 @@
     <div class="card-body">
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
-        <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
         <span class="badge text-bg-light border">Вес {{.Weight}}</span>
-        <span class="badge text-bg-light border">Прогресс {{.Progress}}%</span>
+        <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
       </div>
       <p class="text-muted mb-2">{{.Description}}</p>
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.Progress}}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar" style="width: {{.Progress}}%"></div>
+        </div>
+        <span class="fw-semibold">{{.Progress}}%</span>
+      </div>
+      {{if .Comments}}
+        {{with index .Comments 0}}
+          <div class="border rounded p-2 mb-3 bg-light">
+            <div class="small text-muted">Последний комментарий · {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+            <div>{{.Text}}</div>
+          </div>
+        {{end}}
+      {{end}}
       <p class="mb-3">Work: {{.WorkType}} | Focus: {{.FocusType}} | Owner: {{.OwnerText}}</p>
       <div class="d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
@@ -101,9 +114,6 @@
         {{ $krWeight := sumKRWeights .KeyResults }}
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <h4 class="h6 mb-0">Key Results</h4>
-          <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight 100}}title="Сумма весов KR должна быть равна 100"{{end}}>
-            Сумма KR {{ $krWeight }}
-          </span>
         </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
@@ -235,6 +245,11 @@
               {{end}}
             </tbody>
           </table>
+        </div>
+        <div class="mt-2 d-flex justify-content-end">
+          <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight 100}}title="Сумма весов KR должна быть равна 100"{{end}}>
+            Сумма KR {{ $krWeight }}
+          </span>
         </div>
       </div>
       {{end}}

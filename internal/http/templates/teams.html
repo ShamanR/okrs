@@ -58,30 +58,30 @@
       </td>
       <td class="teams-col-goals">
         {{if .Goals}}
-          <div class="mb-2">
-            <span class="badge {{if ne .GoalsWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne .GoalsWeight 100}}title="Сумма весов целей должна быть равна 100"{{end}}>
-              Сумма целей {{.GoalsWeight}}
-            </span>
-          </div>
           <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 table-transparent">
+            <table class="table table-sm align-middle mb-0 table-transparent teams-goals-table">
               <thead>
                 <tr>
-                  <th scope="col">Вес</th>
-                  <th scope="col">Название цели</th>
-                  <th scope="col">Фактический %</th>
+                  <th scope="col" class="teams-goals-col-weight">Вес</th>
+                  <th scope="col" class="teams-goals-col-title">Название цели</th>
+                  <th scope="col" class="teams-goals-col-progress">Фактический %</th>
                 </tr>
               </thead>
               <tbody>
                 {{range .Goals}}
                 <tr>
-                  <td><span class="badge text-bg-light border">{{.Weight}}</span></td>
-                  <td class="text-break">{{.Title}}</td>
-                  <td><span class="badge text-bg-light border">{{.Progress}}%</span></td>
+                  <td class="teams-goals-col-weight"><span class="badge text-bg-light border">{{.Weight}}</span></td>
+                  <td class="teams-goals-col-title text-break">{{.Title}}</td>
+                  <td class="teams-goals-col-progress"><span class="badge text-bg-light border">{{.Progress}}%</span></td>
                 </tr>
                 {{end}}
               </tbody>
             </table>
+          </div>
+          <div class="mt-2">
+            <span class="badge {{if ne .GoalsWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne .GoalsWeight 100}}title="Сумма весов целей должна быть равна 100"{{end}}>
+              Сумма целей {{.GoalsWeight}}
+            </span>
           </div>
         {{else}}
           <span class="text-muted">Нет целей</span>
