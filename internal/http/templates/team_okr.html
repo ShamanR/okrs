@@ -84,14 +84,6 @@
         </div>
         <span class="fw-semibold">{{.Progress}}%</span>
       </div>
-      {{if .Comments}}
-        {{with index .Comments 0}}
-          <div class="border rounded p-2 mb-3 bg-light">
-            <div class="small text-muted">Последний комментарий · {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
-            <div>{{.Text}}</div>
-          </div>
-        {{end}}
-      {{end}}
       <p class="mb-3">Work: {{.WorkType}} | Focus: {{.FocusType}} | Owner: {{.OwnerText}}</p>
       <div class="d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
@@ -246,7 +238,7 @@
             </tbody>
           </table>
         </div>
-        <div class="mt-2 d-flex justify-content-end">
+        <div class="mt-2 d-flex justify-content-start">
           <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight 100}}title="Сумма весов KR должна быть равна 100"{{end}}>
             Сумма KR {{ $krWeight }}
           </span>
@@ -258,16 +250,26 @@
           Комментарии цели
         </button>
         <div class="collapse mt-3" id="goalComments-{{.ID}}">
+          {{if .Comments}}
+            {{with index .Comments 0}}
+              <div class="border rounded p-2 mb-3 bg-light">
+                <div class="small text-muted">Последний комментарий · {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+                <div>{{.Text}}</div>
+              </div>
+            {{end}}
+          {{end}}
           <form method="post" action="/goals/{{.ID}}/comments" class="mb-3">
             <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
             <textarea class="form-control mb-2" name="text" rows="2" required {{if $.IsClosed}}disabled{{end}}></textarea>
             <button type="submit" class="btn btn-outline-primary btn-sm" {{if $.IsClosed}}disabled{{end}}>Добавить</button>
           </form>
-          {{range .Comments}}
-            <div class="border rounded p-2 mb-2 bg-light">
-              <div class="small text-muted">{{.CreatedAt.Format "2006-01-02 15:04"}}</div>
-              <div>{{.Text}}</div>
-            </div>
+          {{range $index, $comment := .Comments}}
+            {{if gt $index 0}}
+              <div class="border rounded p-2 mb-2 bg-light">
+                <div class="small text-muted">{{$comment.CreatedAt.Format "2006-01-02 15:04"}}</div>
+                <div>{{$comment.Text}}</div>
+              </div>
+            {{end}}
           {{end}}
         </div>
       </div>
