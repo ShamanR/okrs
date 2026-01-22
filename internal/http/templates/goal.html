@@ -67,6 +67,14 @@
 </div>
 
 <h2 class="h4 mb-3">Key Results</h2>
+{{ $krWeight := sumKRWeights .Goal.KeyResults }}
+{{if .Goal.KeyResults}}
+  <div class="mb-3">
+    <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight 100}}title="Сумма весов KR должна быть равна 100"{{end}}>
+      Сумма KR {{ $krWeight }}
+    </span>
+  </div>
+{{end}}
 <div class="vstack gap-3">
 {{range .Goal.KeyResults}}
   <div class="card">
@@ -93,7 +101,17 @@
 
       {{if eq .Kind "PROJECT"}}
         <div class="border-top pt-3">
-          <h4 class="h6">Этапы проекта</h4>
+          {{if .Project}}
+            {{ $stageWeight := sumStageWeights .Project.Stages }}
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+              <h4 class="h6 mb-0">Этапы проекта</h4>
+              <span class="badge {{if ne $stageWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $stageWeight 100}}title="Сумма весов шагов должна быть равна 100"{{end}}>
+                Сумма шагов {{ $stageWeight }}
+              </span>
+            </div>
+          {{else}}
+            <h4 class="h6">Этапы проекта</h4>
+          {{end}}
           <ul class="list-group">
             {{if .Project}}
               {{range .Project.Stages}}

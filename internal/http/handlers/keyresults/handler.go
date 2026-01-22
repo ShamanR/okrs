@@ -348,7 +348,6 @@ func errInvalidPercent() error {
 
 func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 	stages := make([]store.ProjectStageInput, 0, 4)
-	totalWeight := 0
 	titles := r.Form["step_title[]"]
 	weights := r.Form["step_weight[]"]
 	dones := r.Form["step_done[]"]
@@ -367,7 +366,6 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 		if weight <= 0 || weight > 100 {
 			return nil, fmt.Errorf("Вес шага должен быть 1..100")
 		}
-		totalWeight += weight
 		isDone := false
 		if i < len(dones) {
 			isDone = dones[i] == "true"
@@ -391,7 +389,6 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 			if weight <= 0 || weight > 100 {
 				return nil, fmt.Errorf("Вес шага должен быть 1..100")
 			}
-			totalWeight += weight
 			stages = append(stages, store.ProjectStageInput{
 				Title:     title,
 				Weight:    weight,
@@ -403,9 +400,6 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 
 	if len(stages) == 0 {
 		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
-	}
-	if totalWeight != 100 {
-		return nil, fmt.Errorf("Сумма весов шагов должна быть равна 100")
 	}
 	return stages, nil
 }

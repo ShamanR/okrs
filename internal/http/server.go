@@ -31,6 +31,20 @@ type Server struct {
 
 func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
+		"sumKRWeights": func(keyResults []domain.KeyResult) int {
+			total := 0
+			for _, kr := range keyResults {
+				total += kr.Weight
+			}
+			return total
+		},
+		"sumStageWeights": func(stages []domain.KRProjectStage) int {
+			total := 0
+			for _, stage := range stages {
+				total += stage.Weight
+			}
+			return total
+		},
 		"stageAt": func(stages []domain.KRProjectStage, index int) *domain.KRProjectStage {
 			if index < 0 || index >= len(stages) {
 				return nil

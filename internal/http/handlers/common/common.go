@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -302,12 +301,8 @@ func ParseID(raw string) (int64, error) {
 }
 
 func ValidateStageWeights(existing []domain.KRProjectStage, newWeight int) error {
-	var total int
-	for _, stage := range existing {
-		total += stage.Weight
-	}
-	if newWeight <= 0 || newWeight > 100 || total+newWeight != 100 {
-		return errors.New("Сумма весов этапов должна быть равна 100")
+	if newWeight <= 0 || newWeight > 100 {
+		return errors.New("Вес этапа должен быть 1..100")
 	}
 	return nil
 }
