@@ -215,6 +215,19 @@
       color: #dc3545;
       font-weight: 600;
     }
+
+    .okr-objective-card .okr-info-button {
+      text-decoration: none;
+      color: #0d6efd;
+    }
+
+    .okr-kr-item {
+      background: #fff;
+    }
+
+    .okr-kr-weight {
+      min-width: 72px;
+    }
   </style>
 </head>
 <body class="bg-light">
@@ -264,6 +277,129 @@
     form.addEventListener('change', () => scheduleAutosave(statusEl));
     form.addEventListener('submit', () => {
       updateAutosaveStatus(statusEl, 'Сохраняем…', 'is-saving');
+    });
+  });
+
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+    new bootstrap.Tooltip(el);
+  });
+
+  document.querySelectorAll('[data-popover-content]').forEach((el) => {
+    const contentEl = document.querySelector(el.getAttribute('data-popover-content'));
+    if (!contentEl) return;
+    new bootstrap.Popover(el, {
+      html: true,
+      trigger: 'focus',
+      content: contentEl.innerHTML,
+      container: 'body',
+    });
+  });
+
+  function serializeForm(form) {
+    const data = new FormData(form);
+    const entries = [];
+    for (const [key, value] of data.entries()) {
+      entries.push([key, value]);
+    }
+    return JSON.stringify(entries);
+  }
+
+  function updateSaveState(form) {
+    const saveButton = form.querySelector('[data-kr-save]');
+    if (!saveButton) return;
+    const dirty = serializeForm(form) !== form.dataset.initialState;
+    form.dataset.dirty = dirty ? 'true' : 'false';
+    saveButton.disabled = !dirty || !form.checkValidity();
+  }
+
+  document.querySelectorAll('[data-kr-progress-form]').forEach((form) => {
+    form.dataset.initialState = serializeForm(form);
+    updateSaveState(form);
+    form.addEventListener('input', () => updateSaveState(form));
+    form.addEventListener('change', () => updateSaveState(form));
+  });
+
+  const unsavedModalEl = document.getElementById('krUnsavedChangesModal');
+  const unsavedModal = unsavedModalEl ? new bootstrap.Modal(unsavedModalEl) : null;
+  let pendingPanel = null;
+
+  document.querySelectorAll('[data-kr-panel]').forEach((panel) => {
+    panel.addEventListener('show.bs.collapse', (event) => {
+      const openPanel = document.querySelector('[data-kr-panel].show');
+      if (!openPanel || openPanel === panel) return;
+      const dirtyForm = openPanel.querySelector('[data-kr-progress-form][data-dirty="true"]');
+      if (dirtyForm && unsavedModal) {
+        event.preventDefault();
+        pendingPanel = panel;
+        unsavedModal.show();
+        return;
+      }
+      bootstrap.Collapse.getOrCreateInstance(openPanel, { toggle: false }).hide();
+    });
+    panel.addEventListener('hidden.bs.collapse', () => {
+      const form = panel.querySelector('[data-kr-progress-form]');
+      if (!form) return;
+      form.reset();
+      form.dataset.initialState = serializeForm(form);
+      updateSaveState(form);
+    });
+  });
+
+  document.querySelectorAll('[data-kr-cancel]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const panel = button.closest('[data-kr-panel]');
+      const form = panel ? panel.querySelector('[data-kr-progress-form]') : null;
+      if (!form) return;
+      form.reset();
+      form.dataset.initialState = serializeForm(form);
+      updateSaveState(form);
+    });
+  });
+
+  const discardButton = document.querySelector('[data-kr-discard]');
+  if (discardButton) {
+    discardButton.addEventListener('click', () => {
+      const openPanel = document.querySelector('[data-kr-panel].show');
+      if (openPanel) {
+        const form = openPanel.querySelector('[data-kr-progress-form]');
+        if (form) {
+          form.reset();
+          form.dataset.initialState = serializeForm(form);
+          updateSaveState(form);
+        }
+        bootstrap.Collapse.getOrCreateInstance(openPanel, { toggle: false }).hide();
+      }
+      if (pendingPanel) {
+        const target = pendingPanel;
+        pendingPanel = null;
+        bootstrap.Collapse.getOrCreateInstance(target, { toggle: false }).show();
+      }
+      if (unsavedModal) {
+        unsavedModal.hide();
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-weights-normalize]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const form = button.closest('form');
+      if (!form) return;
+      const inputs = Array.from(form.querySelectorAll('input[type="number"][name^="kr_weight_"]'));
+      if (!inputs.length) return;
+      const values = inputs.map((input) => Math.max(0, Number.parseFloat(input.value) || 0));
+      const total = values.reduce((sum, value) => sum + value, 0);
+      if (total === 0) return;
+      let normalized = values.map((value) => Math.round((value / total) * 100));
+      let diff = 100 - normalized.reduce((sum, value) => sum + value, 0);
+      let index = 0;
+      while (diff !== 0 && normalized.length > 0) {
+        normalized[index] += diff > 0 ? 1 : -1;
+        diff += diff > 0 ? -1 : 1;
+        index = (index + 1) % normalized.length;
+      }
+      inputs.forEach((input, idx) => {
+        input.value = normalized[idx];
+      });
     });
   });
 </script>
