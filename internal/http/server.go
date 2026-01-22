@@ -2,6 +2,7 @@ package http
 
 import (
 	"embed"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"math"
@@ -67,6 +68,66 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 		"objectiveStatus": func(weight, progress int) int {
 			return int(math.Round(float64(weight*progress) / 100.0))
 		},
+		"relativeTime": func(value time.Time) string {
+			return common.RelativeTime(value, time.Now().In(zone))
+		},
+		"absoluteTime": func(value time.Time) string {
+			return common.FormatAbsoluteTime(value, zone)
+		},
+		"krKindLabel": func(kind domain.KRKind) string {
+			switch kind {
+			case domain.KRKindProject:
+				return "Проект"
+			case domain.KRKindPercent:
+				return "Процент"
+			case domain.KRKindLinear:
+				return "Линейный"
+			case domain.KRKindBoolean:
+				return "Булевый"
+			default:
+				return string(kind)
+			}
+		},
+		"workTypeLabel": func(workType domain.WorkType) string {
+			switch workType {
+			case domain.WorkTypeDiscovery:
+				return "Исследование"
+			case domain.WorkTypeDelivery:
+				return "Доставка"
+			default:
+				return string(workType)
+			}
+		},
+		"focusTypeLabel": func(focusType domain.FocusType) string {
+			switch focusType {
+			case domain.FocusProfitability:
+				return "Прибыльность"
+			case domain.FocusStability:
+				return "Стабильность"
+			case domain.FocusSpeedEfficiency:
+				return "Скорость и эффективность"
+			case domain.FocusTechIndependence:
+				return "Технезависимость"
+			default:
+				return string(focusType)
+			}
+		},
+		"krMetricSummary": func(kr domain.KeyResult) string {
+			switch kr.Kind {
+			case domain.KRKindPercent:
+				if kr.Percent == nil {
+					return "—"
+				}
+				return fmt.Sprintf("%.2f → %.2f", kr.Percent.CurrentValue, kr.Percent.TargetValue)
+			case domain.KRKindLinear:
+				if kr.Linear == nil {
+					return "—"
+				}
+				return fmt.Sprintf("%.2f → %.2f", kr.Linear.CurrentValue, kr.Linear.TargetValue)
+			default:
+				return "—"
+			}
+		},
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -99,6 +160,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
 	r.Post("/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
+	r.Post("/goals/{goalID}/weights", goalsHandler.HandleUpdateKRWeights)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Get("/goals/year", goalsHandler.HandleYearGoals)
 
