@@ -176,6 +176,41 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
 }
 
+func (h *Handler) HandleUpdateKeyResultWeights(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	for _, kr := range goal.KeyResults {
+		field := fmt.Sprintf("kr_weight_%d", kr.ID)
+		weight := common.ParseIntField(r.FormValue(field))
+		if weight < 0 || weight > 100 {
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Вес KR должен быть 0..100"))
+			return
+		}
+		if err := h.deps.Store.UpdateKeyResultWeight(ctx, kr.ID, weight); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+}
+
 func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))

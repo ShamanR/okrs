@@ -293,6 +293,42 @@ func (h *Handler) HandleUpdateBoolean(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
+func (h *Handler) HandleUpdateProjectStages(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	stages, err := h.deps.Store.ListProjectStages(ctx, krID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	for _, stage := range stages {
+		field := fmt.Sprintf("stage_done_%d", stage.ID)
+		value := r.FormValue(field)
+		if value == "" {
+			continue
+		}
+		done := value == "true"
+		if err := h.deps.Store.UpdateProjectStageDone(ctx, stage.ID, done); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
+}
+
 func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
