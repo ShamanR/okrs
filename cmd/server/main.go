@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	httpserver "okrs/internal/http"
@@ -92,7 +93,11 @@ func runMigrations(databaseURL string) error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://migrations", "postgres", driver)
+	migrationsPath, err := resolveMigrationsPath()
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
 	if err != nil {
 		return err
 	}
@@ -100,4 +105,20 @@ func runMigrations(databaseURL string) error {
 		return err
 	}
 	return nil
+}
+
+func resolveMigrationsPath() (string, error) {
+	baseDir, err := os.Getwd()
+	if err != nil {
+		executable, execErr := os.Executable()
+		if execErr != nil {
+			return "", err
+		}
+		baseDir = filepath.Dir(executable)
+	}
+	absPath, err := filepath.Abs(filepath.Join(baseDir, "migrations"))
+	if err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(absPath), nil
 }
