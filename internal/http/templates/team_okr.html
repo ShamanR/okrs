@@ -149,7 +149,10 @@
               </div>
               <div class="flex-grow-1">
                 <div class="d-flex flex-wrap align-items-center gap-2">
-                  <div class="fw-semibold text-break">{{.Title}}</div>
+                  <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
+                    data-bs-target="#krEditModal-{{.ID}}">
+                    {{.Title}}
+                  </button>
                   <span class="badge text-bg-light border">{{.Progress}}%</span>
                 </div>
                 <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime .UpdatedAt}}">
@@ -169,10 +172,6 @@
                   <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
                     data-bs-toggle="dropdown" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
                   <ul class="dropdown-menu dropdown-menu-end">
-                    <li>
-                      <button class="dropdown-item" data-bs-toggle="modal"
-                        data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
-                    </li>
                     <li>
                       <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
                         <input type="hidden" name="return"
@@ -421,7 +420,10 @@
               <tr>
                 <td><span class="badge text-bg-light border">{{.Weight}}%</span></td>
                 <td>
-                  <div class="fw-semibold text-break">{{.Title}}</div>
+                  <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
+                    data-bs-target="#krEditModal-{{.ID}}">
+                    {{.Title}}
+                  </button>
                   <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime .UpdatedAt}}">
                     обновлено {{relativeTime .UpdatedAt}}
                   </div>
@@ -445,8 +447,6 @@
                       <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
                         $.IsClosed}}disabled{{end}}>↓</button>
                     </form>
-                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
-                      data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
                     <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
                       <input type="hidden" name="return"
                         value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
