@@ -58,6 +58,11 @@
       </td>
       <td class="teams-col-goals">
         {{if .Goals}}
+          <div class="mb-2">
+            <span class="badge {{if ne .GoalsWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne .GoalsWeight 100}}title="Сумма весов целей должна быть равна 100"{{end}}>
+              Сумма целей {{.GoalsWeight}}
+            </span>
+          </div>
           <div class="table-responsive">
             <table class="table table-sm align-middle mb-0 table-transparent">
               <thead>
