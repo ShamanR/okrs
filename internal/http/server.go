@@ -214,6 +214,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/linear", krHandler.HandleUpdateLinearCurrent)
 	r.Post("/key-results/{krID}/checkpoints", krHandler.HandleAddCheckpoint)
 	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
+	r.Post("/key-results/{krID}/project-stages", krHandler.HandleUpdateProjectStages)
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
 	r.Post("/key-results/{krID}/move-up", krHandler.HandleMoveKeyResultUp)
 	r.Post("/key-results/{krID}/move-down", krHandler.HandleMoveKeyResultDown)

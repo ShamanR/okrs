@@ -173,6 +173,10 @@
                     data-bs-toggle="dropdown" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
                   <ul class="dropdown-menu dropdown-menu-end">
                     <li>
+                      <button class="dropdown-item" data-bs-toggle="modal"
+                        data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
+                    </li>
+                    <li>
                       <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
                         <input type="hidden" name="return"
                           value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
@@ -271,7 +275,10 @@
                 </form>
                 {{end}}
                 {{if eq .Kind "PROJECT"}}
-                <div class="border rounded p-3 bg-white">
+                <form method="post" action="/key-results/{{.ID}}/project-stages"
+                  class="border rounded p-3 bg-white kr-progress-form" data-kr-progress-form>
+                  <input type="hidden" name="return"
+                    value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
                   {{if .Project}}
                   {{ $stageWeight := sumStageWeights .Project.Stages }}
                   <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
@@ -290,26 +297,26 @@
                     <li class="list-group-item d-flex flex-wrap align-items-center gap-2">
                       <span class="flex-grow-1 text-break">{{.Title}}</span>
                       <span class="badge text-bg-light border">{{.Weight}}%</span>
-                      <span class="badge {{if .IsDone}}text-bg-success{{else}}text-bg-secondary{{end}}">{{if
-                        .IsDone}}Сделано{{else}}В работе{{end}}</span>
-                      <form method="post" action="/stages/{{.ID}}/toggle"
-                        class="ms-auto d-flex flex-wrap align-items-center gap-2">
-                        <input type="hidden" name="return"
-                          value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-                        <select class="form-select form-select-sm" name="done" {{if $.IsClosed}}disabled{{end}}>
-                          <option value="false" {{if not .IsDone}}selected{{end}}>Нет</option>
-                          <option value="true" {{if .IsDone}}selected{{end}}>Да</option>
-                        </select>
-                        <button type="submit" class="btn btn-primary btn-sm" {{if
-                          $.IsClosed}}disabled{{end}}>Сохранить</button>
-                      </form>
+                      <input type="hidden" name="stage_id" value="{{.ID}}">
+                      <select class="form-select form-select-sm ms-auto" name="stage_done_{{.ID}}"
+                        {{if $.IsClosed}}disabled{{end}}>
+                        <option value="false" {{if not .IsDone}}selected{{end}}>Нет</option>
+                        <option value="true" {{if .IsDone}}selected{{end}}>Да</option>
+                      </select>
                     </li>
                     {{end}}
                     {{else}}
                     <li class="list-group-item text-muted">Шаги не заданы</li>
                     {{end}}
                   </ul>
-                </div>
+                  <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm" data-kr-save {{if $.IsClosed}}disabled{{end}}>
+                      Сохранить
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-kr-cancel
+                      data-bs-toggle="collapse" data-bs-target="#krProgress-{{.ID}}">Отмена</button>
+                  </div>
+                </form>
                 {{end}}
               </div>
             </div>
@@ -447,6 +454,8 @@
                       <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
                         $.IsClosed}}disabled{{end}}>↓</button>
                     </form>
+                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
+                      data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
                     <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
                       <input type="hidden" name="return"
                         value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
