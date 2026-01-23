@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"okrs/internal/domain"
@@ -68,64 +69,107 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 		"objectiveStatus": func(weight, progress int) int {
 			return int(math.Round(float64(weight*progress) / 100.0))
 		},
-		"relativeTime": func(value time.Time) string {
-			return common.RelativeTime(value, time.Now().In(zone))
+		"relativeTime": func(t time.Time) string {
+			if t.IsZero() {
+				return "нет данных"
+			}
+			now := time.Now()
+			if now.Before(t) {
+				return "только что"
+			}
+			diff := now.Sub(t)
+			if diff < time.Minute {
+				return "только что"
+			}
+			if diff < time.Hour {
+				minutes := int(diff.Minutes())
+				return fmt.Sprintf("%d %s назад", minutes, pluralizeRu(minutes, "минуту", "минуты", "минут"))
+			}
+			if diff < 24*time.Hour {
+				hours := int(diff.Hours())
+				return fmt.Sprintf("%d %s назад", hours, pluralizeRu(hours, "час", "часа", "часов"))
+			}
+			days := int(diff.Hours() / 24)
+			return fmt.Sprintf("%d %s назад", days, pluralizeRu(days, "день", "дня", "дней"))
 		},
-		"absoluteTime": func(value time.Time) string {
-			return common.FormatAbsoluteTime(value, zone)
+		"absoluteTime": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.Format("02.01.2006 15:04")
 		},
-		"krKindLabel": func(kind domain.KRKind) string {
-			switch kind {
-			case domain.KRKindProject:
-				return "Проект"
-			case domain.KRKindPercent:
-				return "Процент"
-			case domain.KRKindLinear:
-				return "Линейный"
-			case domain.KRKindBoolean:
-				return "Булевый"
+		"goalStatusLabel": func(goal domain.Goal, year, quarter int) string {
+			if len(goal.KeyResults) == 0 {
+				return "Нет данных"
+			}
+			totalWeight := 0
+			latestUpdate := goal.UpdatedAt
+			for _, kr := range goal.KeyResults {
+				totalWeight += kr.Weight
+				if kr.UpdatedAt.After(latestUpdate) {
+					latestUpdate = kr.UpdatedAt
+				}
+			}
+			if totalWeight == 0 {
+				return "Нет данных"
+			}
+			start, end := quarterBounds(year, quarter, zone)
+			planned := plannedProgress(nowInZone(zone), start, end)
+			status := progressToStatus(goal.Progress, planned)
+			if time.Since(latestUpdate) > 21*24*time.Hour && status == "В норме" {
+				return "Риск"
+			}
+			return status
+		},
+		"goalStatusClass": func(label string) string {
+			switch strings.ToLower(label) {
+			case strings.ToLower("В норме"):
+				return "text-bg-success"
+			case strings.ToLower("Риск"):
+				return "text-bg-warning"
+			case strings.ToLower("Отставание"):
+				return "text-bg-danger"
 			default:
-				return string(kind)
+				return "text-bg-secondary"
 			}
 		},
-		"workTypeLabel": func(workType domain.WorkType) string {
-			switch workType {
-			case domain.WorkTypeDiscovery:
-				return "Исследование"
-			case domain.WorkTypeDelivery:
-				return "Доставка"
-			default:
-				return string(workType)
-			}
+		"plannedProgress": func(year, quarter int) int {
+			start, end := quarterBounds(year, quarter, zone)
+			return plannedProgress(nowInZone(zone), start, end)
 		},
-		"focusTypeLabel": func(focusType domain.FocusType) string {
-			switch focusType {
-			case domain.FocusProfitability:
-				return "Прибыльность"
-			case domain.FocusStability:
-				return "Стабильность"
-			case domain.FocusSpeedEfficiency:
-				return "Скорость и эффективность"
-			case domain.FocusTechIndependence:
-				return "Технезависимость"
-			default:
-				return string(focusType)
+		"krContribution": func(weight, progress, totalWeight int) float64 {
+			if totalWeight == 0 {
+				return 0
 			}
+			return float64(weight*progress) / float64(totalWeight)
 		},
 		"krMetricSummary": func(kr domain.KeyResult) string {
 			switch kr.Kind {
 			case domain.KRKindPercent:
-				if kr.Percent == nil {
-					return "—"
+				if kr.Percent != nil {
+					return fmt.Sprintf("Число: Start %.2f → Target %.2f (текущее %.2f)", kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue)
 				}
-				return fmt.Sprintf("%.2f → %.2f", kr.Percent.CurrentValue, kr.Percent.TargetValue)
+				return "Число: Start → Target"
 			case domain.KRKindLinear:
-				if kr.Linear == nil {
-					return "—"
+				if kr.Linear != nil {
+					return fmt.Sprintf("Число: Start %.2f → Target %.2f (текущее %.2f)", kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
 				}
-				return fmt.Sprintf("%.2f → %.2f", kr.Linear.CurrentValue, kr.Linear.TargetValue)
+				return "Число: Start → Target"
+			case domain.KRKindBoolean:
+				if kr.Boolean != nil {
+					if kr.Boolean.IsDone {
+						return "Бинарный: Выполнено — Да"
+					}
+					return "Бинарный: Выполнено — Нет"
+				}
+				return "Бинарный: Выполнено — Нет"
+			case domain.KRKindProject:
+				if kr.Project != nil {
+					return fmt.Sprintf("Проект: этапов %d", len(kr.Project.Stages))
+				}
+				return "Проект: этапы не заданы"
 			default:
-				return "—"
+				return ""
 			}
 		},
 	}).ParseFS(templatesFS, "templates/*.html")
@@ -157,10 +201,10 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
 	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
+	r.Post("/goals/{goalID}/key-results/weights", goalsHandler.HandleUpdateKeyResultWeights)
 	r.Post("/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
 	r.Post("/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
-	r.Post("/goals/{goalID}/weights", goalsHandler.HandleUpdateKRWeights)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Get("/goals/year", goalsHandler.HandleYearGoals)
 
@@ -170,6 +214,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/linear", krHandler.HandleUpdateLinearCurrent)
 	r.Post("/key-results/{krID}/checkpoints", krHandler.HandleAddCheckpoint)
 	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
+	r.Post("/key-results/{krID}/project-stages", krHandler.HandleUpdateProjectStages)
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
 	r.Post("/key-results/{krID}/move-up", krHandler.HandleMoveKeyResultUp)
 	r.Post("/key-results/{krID}/move-down", krHandler.HandleMoveKeyResultDown)
@@ -183,4 +228,66 @@ func (s *Server) Routes() http.Handler {
 	})
 
 	return r
+}
+
+func pluralizeRu(value int, singular, few, many string) string {
+	if value%100 >= 11 && value%100 <= 14 {
+		return many
+	}
+	switch value % 10 {
+	case 1:
+		return singular
+	case 2, 3, 4:
+		return few
+	default:
+		return many
+	}
+}
+
+func quarterBounds(year, quarter int, zone *time.Location) (time.Time, time.Time) {
+	if quarter < 1 || quarter > 4 {
+		quarter = 1
+	}
+	startMonth := time.Month((quarter-1)*3 + 1)
+	start := time.Date(year, startMonth, 1, 0, 0, 0, 0, zone)
+	end := start.AddDate(0, 3, 0)
+	return start, end
+}
+
+func nowInZone(zone *time.Location) time.Time {
+	if zone != nil {
+		return time.Now().In(zone)
+	}
+	return time.Now()
+}
+
+func plannedProgress(now, start, end time.Time) int {
+	if end.Before(start) {
+		return 0
+	}
+	if now.Before(start) {
+		return 0
+	}
+	if now.After(end) {
+		return 100
+	}
+	total := end.Sub(start).Seconds()
+	elapsed := now.Sub(start).Seconds()
+	if total <= 0 {
+		return 0
+	}
+	return int(math.Round((elapsed / total) * 100))
+}
+
+func progressToStatus(progress, planned int) string {
+	switch {
+	case planned == 0 && progress == 0:
+		return "Нет данных"
+	case progress >= planned-10:
+		return "В норме"
+	case progress >= planned-25:
+		return "Риск"
+	default:
+		return "Отставание"
+	}
 }

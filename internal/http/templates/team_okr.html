@@ -73,6 +73,302 @@
 <div class="vstack gap-3">
   {{range .Goals}}
   <div class="card">
+    {{if $.ObjectiveBlockV2}}
+    <div class="card-body okr-objective-card">
+      {{$goal := .}}
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
+        <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
+        <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
+      </div>
+      <p class="text-muted mb-2">{{.Description}}</p>
+      <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+        <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.Progress}}" aria-valuemin="0"
+          aria-valuemax="100">
+          <div class="progress-bar" style="width: {{.Progress}}%"></div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="fw-semibold">{{.Progress}}%</span>
+          <span class="text-muted small">Взвешенно по KR</span>
+          <button type="button" class="btn btn-link btn-sm p-0 okr-info-button" data-popover-content="#goal-progress-{{.ID}}">
+            <span aria-hidden="true">ℹ️</span>
+            <span class="visually-hidden">Как считается прогресс</span>
+          </button>
+        </div>
+        {{ $statusLabel := goalStatusLabel . $.Year $.Quarter }}
+        <span class="badge {{goalStatusClass $statusLabel}}">{{ $statusLabel }}</span>
+      </div>
+      <div class="small text-muted mb-3">
+        Плановый прогресс на сегодня: {{plannedProgress $.Year $.Quarter}}%
+      </div>
+      <div id="goal-progress-{{.ID}}" class="d-none">
+        <div class="small text-muted mb-2">Формула: Σ(w*p) / Σ(w)</div>
+        {{ $krTotalWeight := sumKRWeights .KeyResults }}
+        <ul class="list-unstyled mb-0">
+          {{range .KeyResults}}
+          <li class="d-flex justify-content-between gap-2 mb-1">
+            <span class="text-truncate">{{.Title}}</span>
+            <span class="text-muted">{{.Weight}}% × {{.Progress}}% = {{printf "%.1f" (krContribution .Weight .Progress $krTotalWeight)}} п.п.</span>
+          </li>
+          {{end}}
+        </ul>
+      </div>
+      <p class="mb-3">Направление: {{.WorkType}} · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krCreateModal-{{.ID}}"
+          {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
+          {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
+        <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
+        </form>
+        <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
+        </form>
+        <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
+          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
+        </form>
+      </div>
+      {{if .KeyResults}}
+      <div class="mt-3">
+        {{ $krWeight := sumKRWeights .KeyResults }}
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <h4 class="h6 mb-0">Ключевые результаты</h4>
+          <span class="small text-muted">Вес, %</span>
+        </div>
+        <div class="vstack gap-2">
+          {{range .KeyResults}}
+          <div class="okr-kr-item border rounded p-3">
+            <div class="d-flex flex-wrap align-items-start gap-3">
+              <div class="text-center okr-kr-weight">
+                <div class="text-muted small">Вес, %</div>
+                <span class="badge text-bg-light border">{{.Weight}}%</span>
+              </div>
+              <div class="flex-grow-1">
+                <div class="d-flex flex-wrap align-items-center gap-2">
+                  <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
+                    data-bs-target="#krEditModal-{{.ID}}">
+                    {{.Title}}
+                  </button>
+                  <span class="badge text-bg-light border">{{.Progress}}%</span>
+                </div>
+                <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime .UpdatedAt}}">
+                  обновлено {{relativeTime .UpdatedAt}}
+                </div>
+                {{ $summary := krMetricSummary . }}
+                {{if $summary}}
+                <div class="small text-muted">{{ $summary }}</div>
+                {{end}}
+              </div>
+              <div class="ms-auto d-flex flex-wrap gap-2">
+                <button class="btn btn-primary btn-sm" data-kr-toggle data-bs-toggle="collapse"
+                  data-bs-target="#krProgress-{{.ID}}" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>
+                  Обновить прогресс
+                </button>
+                <div class="dropdown">
+                  <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                    data-bs-toggle="dropdown" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
+                        <input type="hidden" name="return"
+                          value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                        <button type="submit" class="dropdown-item" {{if $.IsClosed}}disabled{{end}}>Вверх</button>
+                      </form>
+                    </li>
+                    <li>
+                      <form method="post" action="/key-results/{{.ID}}/move-down" class="m-0">
+                        <input type="hidden" name="return"
+                          value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                        <button type="submit" class="dropdown-item" {{if $.IsClosed}}disabled{{end}}>Вниз</button>
+                      </form>
+                    </li>
+                    <li>
+                      <hr class="dropdown-divider">
+                    </li>
+                    <li>
+                      <button class="dropdown-item text-danger" data-bs-toggle="modal"
+                        data-bs-target="#krDeleteModal-{{.ID}}">Удалить KR</button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div class="collapse mt-3" id="krProgress-{{.ID}}" data-kr-panel>
+              <div class="border rounded p-3 bg-light">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                  <h5 class="h6 mb-0">Замер прогресса</h5>
+                  {{ $summary := krMetricSummary . }}
+                  {{if $summary}}
+                  <span class="small text-muted">{{ $summary }}</span>
+                  {{end}}
+                </div>
+                {{if eq .Kind "PERCENT"}}
+                <div class="small text-muted mb-2">Start: {{if .Percent}}{{.Percent.StartValue}}{{end}} → Target:
+                  {{if .Percent}}{{.Percent.TargetValue}}{{end}}</div>
+                <form method="post" action="/key-results/{{.ID}}/percent"
+                  class="row g-2 align-items-end kr-progress-form" data-kr-progress-form>
+                  <input type="hidden" name="return"
+                    value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                  <div class="col-sm-6">
+                    <label class="form-label">Текущее значение</label>
+                    <input class="form-control" type="number" step="0.01" name="current"
+                      value="{{if .Percent}}{{.Percent.CurrentValue}}{{end}}" {{if $.IsClosed}}disabled{{end}} required>
+                  </div>
+                  <div class="col-sm-6 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm" data-kr-save {{if $.IsClosed}}disabled{{end}}>
+                      Сохранить
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-kr-cancel
+                      data-bs-toggle="collapse" data-bs-target="#krProgress-{{.ID}}">Отмена</button>
+                  </div>
+                </form>
+                {{end}}
+                {{if eq .Kind "LINEAR"}}
+                <div class="small text-muted mb-2">Start: {{if .Linear}}{{.Linear.StartValue}}{{end}} → Target:
+                  {{if .Linear}}{{.Linear.TargetValue}}{{end}}</div>
+                <form method="post" action="/key-results/{{.ID}}/linear"
+                  class="row g-2 align-items-end kr-progress-form" data-kr-progress-form>
+                  <input type="hidden" name="return"
+                    value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                  <div class="col-sm-6">
+                    <label class="form-label">Текущее значение</label>
+                    <input class="form-control" type="number" step="0.01" name="current"
+                      value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}" {{if $.IsClosed}}disabled{{end}} required>
+                  </div>
+                  <div class="col-sm-6 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm" data-kr-save {{if $.IsClosed}}disabled{{end}}>
+                      Сохранить
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-kr-cancel
+                      data-bs-toggle="collapse" data-bs-target="#krProgress-{{.ID}}">Отмена</button>
+                  </div>
+                </form>
+                {{end}}
+                {{if eq .Kind "BOOLEAN"}}
+                <form method="post" action="/key-results/{{.ID}}/boolean"
+                  class="row g-2 align-items-end kr-progress-form" data-kr-progress-form>
+                  <input type="hidden" name="return"
+                    value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                  <div class="col-sm-6">
+                    <label class="form-label">Выполнено</label>
+                    <select class="form-select" name="done" {{if $.IsClosed}}disabled{{end}} required>
+                      <option value="false" {{if .Boolean}}{{if not .Boolean.IsDone}}selected{{end}}{{end}}>Нет
+                      </option>
+                      <option value="true" {{if .Boolean}}{{if .Boolean.IsDone}}selected{{end}}{{end}}>Да</option>
+                    </select>
+                  </div>
+                  <div class="col-sm-6 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm" data-kr-save {{if $.IsClosed}}disabled{{end}}>
+                      Сохранить
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-kr-cancel
+                      data-bs-toggle="collapse" data-bs-target="#krProgress-{{.ID}}">Отмена</button>
+                  </div>
+                </form>
+                {{end}}
+                {{if eq .Kind "PROJECT"}}
+                <form method="post" action="/key-results/{{.ID}}/project-stages"
+                  class="border rounded p-3 bg-white kr-progress-form" data-kr-progress-form>
+                  <input type="hidden" name="return"
+                    value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                  {{if .Project}}
+                  {{ $stageWeight := sumStageWeights .Project.Stages }}
+                  <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <h5 class="h6 mb-0">Этапы проекта</h5>
+                    <span class="badge {{if ne $stageWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}"
+                      {{if ne $stageWeight 100}}title="Сумма весов шагов должна быть равна 100" {{end}}>
+                      Сумма шагов {{ $stageWeight }}
+                    </span>
+                  </div>
+                  {{else}}
+                  <h5 class="h6">Этапы проекта</h5>
+                  {{end}}
+                  <ul class="list-group">
+                    {{if .Project}}
+                    {{range .Project.Stages}}
+                    <li class="list-group-item d-flex flex-wrap align-items-center gap-2">
+                      <span class="flex-grow-1 text-break">{{.Title}}</span>
+                      <span class="badge text-bg-light border">{{.Weight}}%</span>
+                      <input type="hidden" name="stage_id" value="{{.ID}}">
+                      <select class="form-select form-select-sm ms-auto" name="stage_done_{{.ID}}"
+                        {{if $.IsClosed}}disabled{{end}}>
+                        <option value="false" {{if not .IsDone}}selected{{end}}>Нет</option>
+                        <option value="true" {{if .IsDone}}selected{{end}}>Да</option>
+                      </select>
+                    </li>
+                    {{end}}
+                    {{else}}
+                    <li class="list-group-item text-muted">Шаги не заданы</li>
+                    {{end}}
+                  </ul>
+                  <div class="d-flex gap-2 mt-3">
+                    <button type="submit" class="btn btn-primary btn-sm" data-kr-save {{if $.IsClosed}}disabled{{end}}>
+                      Сохранить
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-kr-cancel
+                      data-bs-toggle="collapse" data-bs-target="#krProgress-{{.ID}}">Отмена</button>
+                  </div>
+                </form>
+                {{end}}
+              </div>
+            </div>
+          </div>
+          {{end}}
+        </div>
+        <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
+          <span class="badge {{if ne $krWeight 100}}text-bg-warning{{else}}text-bg-light border{{end}}">
+            Сумма весов: {{ $krWeight }}%
+          </span>
+          {{if ne $krWeight 100}}
+          <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal"
+            data-bs-target="#krWeightsModal-{{.ID}}">Исправить</button>
+          {{else}}
+          <span class="small text-muted">✅ Весовые коэффициенты в норме</span>
+          {{end}}
+        </div>
+      </div>
+      {{end}}
+      {{if .Comments}}
+      {{with index .Comments 0}}
+      <div class="small text-muted mt-3">
+        Последний комментарий: <span class="text-truncate d-inline-block align-bottom"
+          style="max-width: 420px;">{{.Text}}</span>
+        · <a href="#goalComments-{{$goal.ID}}" data-bs-toggle="collapse" role="button">Открыть обсуждение</a>
+      </div>
+      {{end}}
+      {{end}}
+      <div class="mt-3">
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="collapse" data-bs-target="#goalComments-{{.ID}}"
+          aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>
+          Комментарии цели
+        </button>
+        <div class="collapse mt-3" id="goalComments-{{.ID}}">
+          <form method="post" action="/goals/{{.ID}}/comments" class="mb-3">
+            <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+            <textarea class="form-control mb-2" name="text" rows="2" required {{if
+              $.IsClosed}}disabled{{end}}
+              placeholder="Что изменилось / Что блокирует / Следующий шаг"></textarea>
+            <button type="submit" class="btn btn-outline-primary btn-sm" {{if
+              $.IsClosed}}disabled{{end}}>Добавить</button>
+          </form>
+          {{range $index, $comment := .Comments}}
+          {{if gt $index 0}}
+          <div class="border rounded p-2 mb-2 bg-light">
+            <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime $comment.CreatedAt}}">
+              {{relativeTime $comment.CreatedAt}}
+            </div>
+            <div>{{$comment.Text}}</div>
+          </div>
+          {{end}}
+          {{end}}
+        </div>
+      </div>
+    </div>
+    {{else}}
     <div class="card-body">
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
@@ -87,7 +383,7 @@
         </div>
         <span class="fw-semibold">{{.Progress}}%</span>
       </div>
-      <p class="mb-3">Work: {{.WorkType}} | Focus: {{.FocusType}} | Owner: {{.OwnerText}}</p>
+      <p class="mb-3">Направление: {{.WorkType}} | Фокус: {{.FocusType}} | Владелец: {{.OwnerText}}</p>
       <div class="d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krCreateModal-{{.ID}}"
@@ -110,13 +406,13 @@
       <div class="mt-3">
         {{ $krWeight := sumKRWeights .KeyResults }}
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-          <h4 class="h6 mb-0">Key Results</h4>
+          <h4 class="h6 mb-0">Ключевые результаты</h4>
         </div>
         <div class="table-responsive">
           <table class="table table-sm align-middle mb-0">
             <thead>
               <tr>
-                <th scope="col">Вес(%)</th>
+                <th scope="col">Вес, %</th>
                 <th scope="col">Название</th>
                 <th scope="col">Фактический %</th>
                 <th scope="col" class="text-end">Действия</th>
@@ -127,8 +423,13 @@
               <tr>
                 <td><span class="badge text-bg-light border">{{.Weight}}%</span></td>
                 <td>
-                  <div class="fw-semibold text-break">{{.Title}}</div>
-                  <div class="small text-muted">Обновлено {{.UpdatedAt.Format "2006-01-02 15:04"}}</div>
+                  <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
+                    data-bs-target="#krEditModal-{{.ID}}">
+                    {{.Title}}
+                  </button>
+                  <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime .UpdatedAt}}">
+                    обновлено {{relativeTime .UpdatedAt}}
+                  </div>
                 </td>
                 <td><span class="badge text-bg-light border">{{.Progress}}%</span></td>
                 <td class="text-end">
@@ -149,8 +450,6 @@
                       <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
                         $.IsClosed}}disabled{{end}}>↓</button>
                     </form>
-                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
-                      data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
                     <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
                       <input type="hidden" name="return"
                         value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
@@ -241,7 +540,7 @@
                         <span class="flex-grow-1 text-break">{{.Title}}</span>
                         <span class="badge text-bg-light border">{{.Weight}}%</span>
                         <span class="badge {{if .IsDone}}text-bg-success{{else}}text-bg-secondary{{end}}">{{if
-                          .IsDone}}Done{{else}}In progress{{end}}</span>
+                          .IsDone}}Сделано{{else}}В работе{{end}}</span>
                         <form method="post" action="/stages/{{.ID}}/toggle"
                           class="ms-auto d-flex flex-wrap align-items-center gap-2">
                           <input type="hidden" name="return"
@@ -278,7 +577,9 @@
       {{if .Comments}}
       {{with index .Comments 0}}
       <div class="border rounded p-2 mb-3 bg-light">
-        <div class="small text-muted">Последний комментарий · {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+        <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime .CreatedAt}}">
+          Последний комментарий · {{relativeTime .CreatedAt}}
+        </div>
         <div>{{.Text}}</div>
       </div>
       {{end}}
@@ -292,14 +593,16 @@
           <form method="post" action="/goals/{{.ID}}/comments" class="mb-3">
             <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
             <textarea class="form-control mb-2" name="text" rows="2" required {{if
-              $.IsClosed}}disabled{{end}}></textarea>
+              $.IsClosed}}disabled{{end}} placeholder="Что изменилось / Что блокирует / Следующий шаг"></textarea>
             <button type="submit" class="btn btn-outline-primary btn-sm" {{if
               $.IsClosed}}disabled{{end}}>Добавить</button>
           </form>
           {{range $index, $comment := .Comments}}
           {{if gt $index 0}}
           <div class="border rounded p-2 mb-2 bg-light">
-            <div class="small text-muted">{{$comment.CreatedAt.Format "2006-01-02 15:04"}}</div>
+            <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime $comment.CreatedAt}}">
+              {{relativeTime $comment.CreatedAt}}
+            </div>
             <div>{{$comment.Text}}</div>
           </div>
           {{end}}
@@ -307,6 +610,7 @@
         </div>
       </div>
     </div>
+    {{end}}
   </div>
   {{end}}
 </div>
@@ -349,14 +653,14 @@
               <input class="form-control" type="number" name="weight" min="0" max="100" value="50" required>
             </div>
             <div class="col-sm-4">
-              <label class="form-label">Work type</label>
+              <label class="form-label">Направление</label>
               <select class="form-select" name="work_type">
                 <option value="Discovery">Discovery</option>
                 <option value="Delivery" selected>Delivery</option>
               </select>
             </div>
             <div class="col-sm-6">
-              <label class="form-label">Focus type</label>
+              <label class="form-label">Фокус</label>
               <select class="form-select" name="focus_type">
                 <option value="PROFITABILITY">Прибыльность</option>
                 <option value="STABILITY" selected>Стабильность</option>
@@ -416,14 +720,14 @@
               <input class="form-control" type="number" name="weight" min="0" max="100" value="{{.Weight}}" required>
             </div>
             <div class="col-sm-4">
-              <label class="form-label">Work type</label>
+              <label class="form-label">Направление</label>
               <select class="form-select" name="work_type">
                 <option value="Discovery" {{if eq .WorkType "Discovery" }}selected{{end}}>Discovery</option>
                 <option value="Delivery" {{if eq .WorkType "Delivery" }}selected{{end}}>Delivery</option>
               </select>
             </div>
             <div class="col-sm-6">
-              <label class="form-label">Focus type</label>
+              <label class="form-label">Фокус</label>
               <select class="form-select" name="focus_type">
                 <option value="PROFITABILITY" {{if eq .FocusType "PROFITABILITY" }}selected{{end}}>Прибыльность</option>
                 <option value="STABILITY" {{if eq .FocusType "STABILITY" }}selected{{end}}>Стабильность</option>
@@ -454,7 +758,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Новый Key Result</h5>
+        <h5 class="modal-title">Новый ключевой результат</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -480,25 +784,25 @@
             <div class="col-sm-4">
               <label class="form-label">Тип</label>
               <select class="form-select kr-kind-select" name="kind">
-                <option value="PROJECT">PROJECT</option>
-                <option value="PERCENT">PERCENT</option>
-                <option value="LINEAR">LINEAR</option>
-                <option value="BOOLEAN">BOOLEAN</option>
+                <option value="PROJECT">Проектный</option>
+                <option value="PERCENT">Процентный</option>
+                <option value="LINEAR">Линейный</option>
+                <option value="BOOLEAN">Бинарный</option>
               </select>
               <div class="form-text kr-kind-help"></div>
             </div>
             <div class="col-12 kr-fields kr-percent d-none">
               <div class="row g-3">
                 <div class="col-sm-4">
-                  <label class="form-label">Percent Start</label>
+                  <label class="form-label">Старт</label>
                   <input class="form-control" type="number" step="0.01" name="percent_start">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Percent Target</label>
+                  <label class="form-label">Цель</label>
                   <input class="form-control" type="number" step="0.01" name="percent_target">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Percent Current</label>
+                  <label class="form-label">Текущее</label>
                   <input class="form-control" type="number" step="0.01" name="percent_current">
                 </div>
               </div>
@@ -506,21 +810,21 @@
             <div class="col-12 kr-fields kr-linear d-none">
               <div class="row g-3">
                 <div class="col-sm-4">
-                  <label class="form-label">Linear Start</label>
+                  <label class="form-label">Старт</label>
                   <input class="form-control" type="number" step="0.01" name="linear_start">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Linear Target</label>
+                  <label class="form-label">Цель</label>
                   <input class="form-control" type="number" step="0.01" name="linear_target">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Linear Current</label>
+                  <label class="form-label">Текущее</label>
                   <input class="form-control" type="number" step="0.01" name="linear_current">
                 </div>
               </div>
             </div>
             <div class="col-12 kr-fields kr-boolean d-none">
-              <label class="form-label">Boolean KR</label>
+              <label class="form-label">Бинарный KR</label>
               <select class="form-select" name="boolean_done">
                 <option value="false">Нет</option>
                 <option value="true">Да</option>
@@ -539,7 +843,7 @@
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label">Done</label>
+                  <label class="form-label">Готово</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
@@ -564,7 +868,7 @@
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label">Done</label>
+                    <label class="form-label">Готово</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
@@ -595,7 +899,7 @@
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Редактировать KR</h5>
+        <h5 class="modal-title">Редактировать ключевой результат</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -621,27 +925,27 @@
             <div class="col-sm-4">
               <label class="form-label">Тип</label>
               <select class="form-select kr-kind-select" name="kind" data-current="{{.Kind}}">
-                <option value="PROJECT" {{if eq .Kind "PROJECT" }}selected{{end}}>PROJECT</option>
-                <option value="PERCENT" {{if eq .Kind "PERCENT" }}selected{{end}}>PERCENT</option>
-                <option value="LINEAR" {{if eq .Kind "LINEAR" }}selected{{end}}>LINEAR</option>
-                <option value="BOOLEAN" {{if eq .Kind "BOOLEAN" }}selected{{end}}>BOOLEAN</option>
+                <option value="PROJECT" {{if eq .Kind "PROJECT" }}selected{{end}}>Проектный</option>
+                <option value="PERCENT" {{if eq .Kind "PERCENT" }}selected{{end}}>Процентный</option>
+                <option value="LINEAR" {{if eq .Kind "LINEAR" }}selected{{end}}>Линейный</option>
+                <option value="BOOLEAN" {{if eq .Kind "BOOLEAN" }}selected{{end}}>Бинарный</option>
               </select>
               <div class="form-text kr-kind-help"></div>
             </div>
             <div class="col-12 kr-fields kr-percent d-none">
               <div class="row g-3">
                 <div class="col-sm-4">
-                  <label class="form-label">Percent Start</label>
+                  <label class="form-label">Старт</label>
                   <input class="form-control" type="number" step="0.01" name="percent_start"
                     value="{{if .Percent}}{{.Percent.StartValue}}{{end}}">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Percent Target</label>
+                  <label class="form-label">Цель</label>
                   <input class="form-control" type="number" step="0.01" name="percent_target"
                     value="{{if .Percent}}{{.Percent.TargetValue}}{{end}}">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Percent Current</label>
+                  <label class="form-label">Текущее</label>
                   <input class="form-control" type="number" step="0.01" name="percent_current"
                     value="{{if .Percent}}{{.Percent.CurrentValue}}{{end}}">
                 </div>
@@ -650,24 +954,24 @@
             <div class="col-12 kr-fields kr-linear d-none">
               <div class="row g-3">
                 <div class="col-sm-4">
-                  <label class="form-label">Linear Start</label>
+                  <label class="form-label">Старт</label>
                   <input class="form-control" type="number" step="0.01" name="linear_start"
                     value="{{if .Linear}}{{.Linear.StartValue}}{{end}}">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Linear Target</label>
+                  <label class="form-label">Цель</label>
                   <input class="form-control" type="number" step="0.01" name="linear_target"
                     value="{{if .Linear}}{{.Linear.TargetValue}}{{end}}">
                 </div>
                 <div class="col-sm-4">
-                  <label class="form-label">Linear Current</label>
+                  <label class="form-label">Текущее</label>
                   <input class="form-control" type="number" step="0.01" name="linear_current"
                     value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}">
                 </div>
               </div>
             </div>
             <div class="col-12 kr-fields kr-boolean d-none">
-              <label class="form-label">Boolean KR</label>
+              <label class="form-label">Бинарный KR</label>
               <select class="form-select" name="boolean_done">
                 <option value="false" {{if .Boolean}}{{if not .Boolean.IsDone}}selected{{end}}{{end}}>Нет</option>
                 <option value="true" {{if .Boolean}}{{if .Boolean.IsDone}}selected{{end}}{{end}}>Да</option>
@@ -689,7 +993,7 @@
                       value="{{$stage.Weight}}">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label">Done</label>
+                    <label class="form-label">Готово</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false" {{if not $stage.IsDone}}selected{{end}}>Нет</option>
                       <option value="true" {{if $stage.IsDone}}selected{{end}}>Да</option>
@@ -712,7 +1016,7 @@
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label">Done</label>
+                    <label class="form-label">Готово</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
@@ -738,7 +1042,7 @@
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
                   <div class="col-md-2">
-                    <label class="form-label">Done</label>
+                    <label class="form-label">Готово</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
@@ -764,12 +1068,101 @@
 {{end}}
 {{end}}
 
+{{range .Goals}}
+{{range .KeyResults}}
+<div class="modal fade" id="krDeleteModal-{{.ID}}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Удалить KR</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Удалить KR «{{.Title}}»? Это действие нельзя отменить.
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
+          <input type="hidden" name="return"
+            value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <button type="submit" class="btn btn-danger" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{end}}
+
+{{range .Goals}}
+<div class="modal fade" id="krWeightsModal-{{.ID}}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Исправить веса KR</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" action="/goals/{{.ID}}/key-results/weights" data-kr-weights-form>
+          <input type="hidden" name="return"
+            value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <div class="vstack gap-3">
+            {{range .KeyResults}}
+            <div class="row align-items-center">
+              <div class="col-sm-7">
+                <div class="fw-semibold text-break">{{.Title}}</div>
+                <div class="small text-muted">Текущий прогресс: {{.Progress}}%</div>
+              </div>
+              <div class="col-sm-5">
+                <label class="form-label">Вес, %</label>
+                <input class="form-control" type="number" name="kr_weight_{{.ID}}" min="0" max="100"
+                  value="{{.Weight}}" required>
+              </div>
+            </div>
+            {{end}}
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-3">
+            <button type="button" class="btn btn-outline-secondary btn-sm" data-weights-normalize>
+              Нормализовать до 100%
+            </button>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+              <button type="submit" class="btn btn-primary" {{if $.IsClosed}}disabled{{end}}>Сохранить</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{if .ObjectiveBlockV2}}
+<div class="modal fade" id="krUnsavedChangesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Несохранённые изменения</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        Есть несохранённые изменения. Закрыть без сохранения?
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+        <button type="button" class="btn btn-danger" data-kr-discard>Закрыть</button>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+
 <script>
   const krKindHelpText = {
-    BOOLEAN: 'Boolean: бинарный тип. Когда результат либо есть, либо нет. Не имеет промежуточного состояния',
-    PERCENT: 'Percent: процентный тип. Когда результат считается от процентной метрики. К примеру процент успешных запросов',
-    LINEAR: 'LINEAR: линейный тип. Пример: нарастить DAU с 100 человек до 500 человек',
-    PROJECT: 'Project: проектный тип, с перечнем обязательных шагов и их весов в keyResult',
+    BOOLEAN: 'Бинарный: результат либо есть, либо нет. Не имеет промежуточного состояния.',
+    PERCENT: 'Процентный: результат считается от процентной метрики. Например, доля успешных запросов.',
+    LINEAR: 'Линейный: нарастить показатель от старта к цели (например, DAU с 100 до 500).',
+    PROJECT: 'Проектный: перечень обязательных шагов и их весов в KR.',
   };
 
   function toggleKrFields(container) {

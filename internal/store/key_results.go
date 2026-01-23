@@ -183,6 +183,16 @@ func (s *Store) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput)
 	return err
 }
 
+func (s *Store) UpdateKeyResultWeight(ctx context.Context, krID int64, weight int) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE key_results
+		SET weight=$1, updated_at=NOW()
+		WHERE id=$2`,
+		weight, krID,
+	)
+	return err
+}
+
 func (s *Store) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) error {
 	_, err := s.DB.Exec(ctx, `
 		INSERT INTO kr_percent_meta (key_result_id, start_value, target_value, current_value)

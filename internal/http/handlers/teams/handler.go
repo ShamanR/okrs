@@ -86,20 +86,21 @@ type teamStatusOption struct {
 }
 
 type teamOKRPage struct {
-	Team            domain.Team
-	TeamTypeLabel   string
-	Year            int
-	Quarter         int
-	Goals           []domain.Goal
-	QuarterStatus   domain.TeamQuarterStatus
-	StatusOptions   []teamStatusOption
-	IsClosed        bool
-	QuarterProgress int
-	GoalsCount      int
-	GoalsWeight     int
-	FormError       string
-	PageTitle       string
-	ContentTemplate string
+	Team             domain.Team
+	TeamTypeLabel    string
+	Year             int
+	Quarter          int
+	Goals            []domain.Goal
+	QuarterStatus    domain.TeamQuarterStatus
+	StatusOptions    []teamStatusOption
+	IsClosed         bool
+	QuarterProgress  int
+	GoalsCount       int
+	GoalsWeight      int
+	FormError        string
+	ObjectiveBlockV2 bool
+	PageTitle        string
+	ContentTemplate  string
 }
 
 func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
@@ -486,19 +487,20 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		totalWeight += goals[i].Weight
 	}
 	page := teamOKRPage{
-		Team:            team,
-		TeamTypeLabel:   common.TeamTypeLabel(team.Type),
-		Year:            year,
-		Quarter:         quarter,
-		Goals:           goals,
-		QuarterStatus:   status,
-		StatusOptions:   buildTeamStatusOptions(status),
-		IsClosed:        status == domain.TeamQuarterStatusClosed,
-		QuarterProgress: okr.QuarterProgress(goals),
-		GoalsCount:      len(goals),
-		GoalsWeight:     totalWeight,
-		PageTitle:       "OKR команды",
-		ContentTemplate: "team-okr-content",
+		Team:             team,
+		TeamTypeLabel:    common.TeamTypeLabel(team.Type),
+		Year:             year,
+		Quarter:          quarter,
+		Goals:            goals,
+		QuarterStatus:    status,
+		StatusOptions:    buildTeamStatusOptions(status),
+		IsClosed:         status == domain.TeamQuarterStatusClosed,
+		QuarterProgress:  okr.QuarterProgress(goals),
+		GoalsCount:       len(goals),
+		GoalsWeight:      totalWeight,
+		PageTitle:        "OKR команды",
+		ContentTemplate:  "team-okr-content",
+		ObjectiveBlockV2: common.FeatureEnabled("okr_objective_block_ui_v2"),
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
@@ -591,20 +593,21 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		totalWeight += goals[i].Weight
 	}
 	page := teamOKRPage{
-		Team:            team,
-		TeamTypeLabel:   common.TeamTypeLabel(team.Type),
-		Year:            year,
-		Quarter:         quarter,
-		Goals:           goals,
-		QuarterStatus:   status,
-		StatusOptions:   buildTeamStatusOptions(status),
-		IsClosed:        status == domain.TeamQuarterStatusClosed,
-		QuarterProgress: okr.QuarterProgress(goals),
-		GoalsCount:      len(goals),
-		GoalsWeight:     totalWeight,
-		FormError:       message,
-		PageTitle:       "OKR команды",
-		ContentTemplate: "team-okr-content",
+		Team:             team,
+		TeamTypeLabel:    common.TeamTypeLabel(team.Type),
+		Year:             year,
+		Quarter:          quarter,
+		Goals:            goals,
+		QuarterStatus:    status,
+		StatusOptions:    buildTeamStatusOptions(status),
+		IsClosed:         status == domain.TeamQuarterStatusClosed,
+		QuarterProgress:  okr.QuarterProgress(goals),
+		GoalsCount:       len(goals),
+		GoalsWeight:      totalWeight,
+		FormError:        message,
+		PageTitle:        "OKR команды",
+		ContentTemplate:  "team-okr-content",
+		ObjectiveBlockV2: common.FeatureEnabled("okr_objective_block_ui_v2"),
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
