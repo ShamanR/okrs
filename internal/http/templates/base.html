@@ -332,12 +332,42 @@
   document.querySelectorAll('[data-popover-content]').forEach((el) => {
     const contentEl = document.querySelector(el.getAttribute('data-popover-content'));
     if (!contentEl) return;
-    new bootstrap.Popover(el, {
+    const trigger = el.getAttribute('data-popover-trigger') || 'focus';
+    const popover = new bootstrap.Popover(el, {
       html: true,
-      trigger: el.getAttribute('data-popover-trigger') || 'focus',
+      trigger: trigger === 'hoverable' ? 'manual' : trigger,
       content: contentEl.innerHTML,
       container: 'body',
     });
+
+    if (trigger === 'hoverable') {
+      let hideTimer;
+      const clearHideTimer = () => {
+        if (hideTimer) {
+          clearTimeout(hideTimer);
+          hideTimer = null;
+        }
+      };
+      const scheduleHide = () => {
+        clearHideTimer();
+        hideTimer = setTimeout(() => {
+          popover.hide();
+        }, 120);
+      };
+      el.addEventListener('mouseenter', () => {
+        clearHideTimer();
+        popover.show();
+      });
+      el.addEventListener('mouseleave', scheduleHide);
+      el.addEventListener('shown.bs.popover', () => {
+        const popoverId = el.getAttribute('aria-describedby');
+        if (!popoverId) return;
+        const popoverEl = document.getElementById(popoverId);
+        if (!popoverEl) return;
+        popoverEl.addEventListener('mouseenter', clearHideTimer);
+        popoverEl.addEventListener('mouseleave', scheduleHide);
+      });
+    }
   });
 
   function serializeForm(form) {

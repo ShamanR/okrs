@@ -85,7 +85,7 @@
         {{ $shareTeams := index $.GoalShares .ID }}
         {{if gt (len $shareTeams) 1}}
         <button type="button" class="btn btn-link p-0 share-goal-button"
-          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hover focus"
+          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hoverable"
           aria-label="Shared goal">
           <i class="bi bi-share"></i>
         </button>
@@ -417,7 +417,7 @@
         {{ $shareTeams := index $.GoalShares .ID }}
         {{if gt (len $shareTeams) 1}}
         <button type="button" class="btn btn-link p-0 share-goal-button"
-          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hover focus"
+          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hoverable"
           aria-label="Shared goal">
           <i class="bi bi-share"></i>
         </button>
