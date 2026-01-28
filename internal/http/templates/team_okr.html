@@ -828,6 +828,7 @@
 
 {{/* Модальные окна шаринга целей. */}}
 {{range .Goals}}
+{{ $goal := . }}
 <div class="modal fade" id="goalShareModal-{{.ID}}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -843,9 +844,9 @@
             {{range $targets}}
             <div class="form-check">
               <input class="form-check-input" type="checkbox" name="team_ids" value="{{.ID}}"
-                id="share-team-{{$.ID}}-{{.ID}}" {{if .Selected}}checked{{end}} {{if .Disabled}}disabled{{end}}
+                id="share-team-{{ $goal.ID }}-{{.ID}}" {{if .Selected}}checked{{end}} {{if .Disabled}}disabled{{end}}
                 {{if .Disabled}}title="Команда с валидированным или закрытым кварталом"{{end}}>
-              <label class="form-check-label hierarchy-label" for="share-team-{{$.ID}}-{{.ID}}">{{.Label}}</label>
+              <label class="form-check-label hierarchy-label" for="share-team-{{ $goal.ID }}-{{.ID}}">{{.Label}}</label>
             </div>
             {{end}}
           </div>
