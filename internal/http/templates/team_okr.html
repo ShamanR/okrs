@@ -90,7 +90,8 @@
         <div class="d-flex align-items-center gap-2">
           <span class="fw-semibold">{{.Progress}}%</span>
           <span class="text-muted small">Взвешенно по KR</span>
-          <button type="button" class="btn btn-link btn-sm p-0 okr-info-button" data-popover-content="#goal-progress-{{.ID}}">
+          <button type="button" class="btn btn-link btn-sm p-0 okr-info-button"
+            data-popover-content="#goal-progress-{{.ID}}">
             <span aria-hidden="true">ℹ️</span>
             <span class="visually-hidden">Как считается прогресс</span>
           </button>
@@ -108,12 +109,13 @@
           {{range .KeyResults}}
           <li class="d-flex justify-content-between gap-2 mb-1">
             <span class="text-truncate">{{.Title}}</span>
-            <span class="text-muted">{{.Weight}}% × {{.Progress}}% = {{printf "%.1f" (krContribution .Weight .Progress $krTotalWeight)}} п.п.</span>
+            <span class="text-muted">{{.Weight}}% × {{.Progress}}% = {{printf "%.1f" (krContribution .Weight .Progress
+              $krTotalWeight)}} п.п.</span>
           </li>
           {{end}}
         </ul>
       </div>
-      <p class="mb-3">Направление: {{.WorkType}} · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
+      <p class="mb-3"><span class="badge">{{.WorkType}}</span> · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
       <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krCreateModal-{{.ID}}"
@@ -172,6 +174,10 @@
                   <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
                     data-bs-toggle="dropdown" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
                   <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <button class="dropdown-item" data-bs-toggle="modal"
+                        data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
+                    </li>
                     <li>
                       <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
                         <input type="hidden" name="return"
@@ -279,8 +285,8 @@
                   {{ $stageWeight := sumStageWeights .Project.Stages }}
                   <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                     <h5 class="h6 mb-0">Этапы проекта</h5>
-                    <span class="badge {{if ne $stageWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}"
-                      {{if ne $stageWeight 100}}title="Сумма весов шагов должна быть равна 100" {{end}}>
+                    <span class="badge {{if ne $stageWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if
+                      ne $stageWeight 100}}title="Сумма весов шагов должна быть равна 100" {{end}}>
                       Сумма шагов {{ $stageWeight }}
                     </span>
                   </div>
@@ -294,8 +300,8 @@
                       <span class="flex-grow-1 text-break">{{.Title}}</span>
                       <span class="badge text-bg-light border">{{.Weight}}%</span>
                       <input type="hidden" name="stage_id" value="{{.ID}}">
-                      <select class="form-select form-select-sm ms-auto" name="stage_done_{{.ID}}"
-                        {{if $.IsClosed}}disabled{{end}}>
+                      <select class="form-select form-select-sm ms-auto" name="stage_done_{{.ID}}" {{if
+                        $.IsClosed}}disabled{{end}}>
                         <option value="false" {{if not .IsDone}}selected{{end}}>Нет</option>
                         <option value="true" {{if .IsDone}}selected{{end}}>Да</option>
                       </select>
@@ -349,8 +355,7 @@
         <div class="collapse mt-3" id="goalComments-{{.ID}}">
           <form method="post" action="/goals/{{.ID}}/comments" class="mb-3">
             <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-            <textarea class="form-control mb-2" name="text" rows="2" required {{if
-              $.IsClosed}}disabled{{end}}
+            <textarea class="form-control mb-2" name="text" rows="2" required {{if $.IsClosed}}disabled{{end}}
               placeholder="Что изменилось / Что блокирует / Следующий шаг"></textarea>
             <button type="submit" class="btn btn-outline-primary btn-sm" {{if
               $.IsClosed}}disabled{{end}}>Добавить</button>
@@ -374,6 +379,8 @@
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
+        <span class="badge text-bg-primary border">{{.WorkType}}</span>
+        <span class="badge text-bg-secondary border">{{.FocusType}}</span>
       </div>
       <p class="text-muted mb-2">{{.Description}}</p>
       <div class="d-flex align-items-center gap-2 mb-3">
@@ -383,8 +390,9 @@
         </div>
         <span class="fw-semibold">{{.Progress}}%</span>
       </div>
-      <p class="mb-3">Направление: {{.WorkType}} | Фокус: {{.FocusType}} | Владелец: {{.OwnerText}}</p>
-      <div class="d-flex gap-2">
+      <p class="mb-3">Владелец цели: <u>{{.OwnerText}}</u>
+      </p>
+      <div class=" d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krCreateModal-{{.ID}}"
           {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
@@ -450,6 +458,8 @@
                       <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
                         $.IsClosed}}disabled{{end}}>↓</button>
                     </form>
+                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
+                      data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
                     <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
                       <input type="hidden" name="return"
                         value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
@@ -592,8 +602,8 @@
         <div class="collapse mt-3" id="goalComments-{{.ID}}">
           <form method="post" action="/goals/{{.ID}}/comments" class="mb-3">
             <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-            <textarea class="form-control mb-2" name="text" rows="2" required {{if
-              $.IsClosed}}disabled{{end}} placeholder="Что изменилось / Что блокирует / Следующий шаг"></textarea>
+            <textarea class="form-control mb-2" name="text" rows="2" required {{if $.IsClosed}}disabled{{end}}
+              placeholder="Что изменилось / Что блокирует / Следующий шаг"></textarea>
             <button type="submit" class="btn btn-outline-primary btn-sm" {{if
               $.IsClosed}}disabled{{end}}>Добавить</button>
           </form>
@@ -843,7 +853,7 @@
                     <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
                   </div>
                   <div class="col-md-2">
-                  <label class="form-label">Готово</label>
+                    <label class="form-label">Готово</label>
                     <select class="form-select" name="step_done[]">
                       <option value="false">Нет</option>
                       <option value="true">Да</option>
@@ -1083,8 +1093,7 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
         <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
-          <input type="hidden" name="return"
-            value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
           <button type="submit" class="btn btn-danger" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
         </form>
       </div>
@@ -1104,8 +1113,7 @@
       </div>
       <div class="modal-body">
         <form method="post" action="/goals/{{.ID}}/key-results/weights" data-kr-weights-form>
-          <input type="hidden" name="return"
-            value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
           <div class="vstack gap-3">
             {{range .KeyResults}}
             <div class="row align-items-center">
@@ -1115,8 +1123,8 @@
               </div>
               <div class="col-sm-5">
                 <label class="form-label">Вес, %</label>
-                <input class="form-control" type="number" name="kr_weight_{{.ID}}" min="0" max="100"
-                  value="{{.Weight}}" required>
+                <input class="form-control" type="number" name="kr_weight_{{.ID}}" min="0" max="100" value="{{.Weight}}"
+                  required>
               </div>
             </div>
             {{end}}
