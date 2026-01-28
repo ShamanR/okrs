@@ -221,6 +221,31 @@
       color: #0d6efd;
     }
 
+    .okr-goal-description {
+      position: relative;
+      white-space: pre-line;
+    }
+
+    .okr-goal-description.is-clamped {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      padding-right: 1.5rem;
+    }
+
+    .okr-description-toggle {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      border: none;
+      background: #fff;
+      color: var(--okr-primary);
+      padding: 0 0.25rem;
+      font-size: 0.85rem;
+      line-height: 1.2;
+    }
+
     .okr-kr-item {
       background: #fff;
     }
@@ -405,6 +430,23 @@
       inputs.forEach((input, idx) => {
         input.value = normalized[idx];
       });
+    });
+  });
+
+  document.querySelectorAll('[data-goal-description]').forEach((description) => {
+    const toggle = description.querySelector('[data-goal-description-toggle]');
+    if (!toggle) return;
+    description.classList.add('is-clamped');
+    const isOverflowing = description.scrollHeight > description.clientHeight + 1;
+    if (!isOverflowing) {
+      description.classList.remove('is-clamped');
+      toggle.hidden = true;
+      return;
+    }
+    toggle.hidden = false;
+    toggle.addEventListener('click', () => {
+      description.classList.remove('is-clamped');
+      toggle.hidden = true;
     });
   });
 </script>

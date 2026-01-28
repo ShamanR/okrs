@@ -71,6 +71,7 @@
 
 <h2 class="h4 mb-3">Цели</h2>
 <div class="vstack gap-3">
+  {{/* Список карточек целей квартала. */}}
   {{range .Goals}}
   <div class="card">
     {{if $.ObjectiveBlockV2}}
@@ -81,7 +82,11 @@
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
       </div>
-      <p class="text-muted mb-2">{{.Description}}</p>
+      <p class="text-muted mb-2 okr-goal-description" data-goal-description>
+        {{.Description}}
+        <button type="button" class="okr-description-toggle" data-goal-description-toggle hidden
+          aria-label="Показать полностью">...</button>
+      </p>
       <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
         <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.Progress}}" aria-valuemin="0"
           aria-valuemax="100">
@@ -118,8 +123,8 @@
       <p class="mb-3"><span class="badge">{{.WorkType}}</span> · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
       <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
-        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krCreateModal-{{.ID}}"
-          {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
+          data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
           {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
         <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
@@ -152,7 +157,7 @@
               <div class="flex-grow-1">
                 <div class="d-flex flex-wrap align-items-center gap-2">
                   <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
-                    data-bs-target="#krEditModal-{{.ID}}">
+                    data-bs-target="#krModal" data-kr-modal="edit" data-kr-id="{{.ID}}">
                     {{.Title}}
                   </button>
                   <span class="badge text-bg-light border">{{.Progress}}%</span>
@@ -175,8 +180,8 @@
                     data-bs-toggle="dropdown" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
                   <ul class="dropdown-menu dropdown-menu-end">
                     <li>
-                      <button class="dropdown-item" data-bs-toggle="modal"
-                        data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
+                      <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#krModal"
+                        data-kr-modal="edit" data-kr-id="{{.ID}}">Редактировать KR</button>
                     </li>
                     <li>
                       <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
@@ -394,8 +399,8 @@
       </p>
       <div class=" d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
-        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krCreateModal-{{.ID}}"
-          {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
+          data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
           {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
         <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
@@ -432,7 +437,7 @@
                 <td><span class="badge text-bg-light border">{{.Weight}}%</span></td>
                 <td>
                   <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
-                    data-bs-target="#krEditModal-{{.ID}}">
+                    data-bs-target="#krModal" data-kr-modal="edit" data-kr-id="{{.ID}}">
                     {{.Title}}
                   </button>
                   <div class="small text-muted" data-bs-toggle="tooltip" title="{{absoluteTime .UpdatedAt}}">
@@ -458,8 +463,8 @@
                       <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
                         $.IsClosed}}disabled{{end}}>↓</button>
                     </form>
-                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
-                      data-bs-target="#krEditModal-{{.ID}}">Редактировать KR</button>
+                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
+                      data-kr-modal="edit" data-kr-id="{{.ID}}">Редактировать KR</button>
                     <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
                       <input type="hidden" name="return"
                         value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
@@ -693,6 +698,7 @@
   </div>
 </div>
 
+{{/* Модальные окна редактирования целей. */}}
 {{range .Goals}}
 <div class="modal fade" id="goalEditModal-{{.ID}}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -763,21 +769,21 @@
 </div>
 {{end}}
 
-{{range .Goals}}
-<div class="modal fade" id="krCreateModal-{{.ID}}" tabindex="-1" aria-hidden="true">
+{{/* Универсальное модальное окно для создания и редактирования KR. */}}
+<div class="modal fade" id="krModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Новый ключевой результат</h5>
+        <h5 class="modal-title" data-kr-modal-title>Новый ключевой результат</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <form method="post" action="/goals/{{.ID}}/key-results" class="kr-form autosave-form">
+        <form method="post" action="" class="kr-form autosave-form" data-kr-modal-form>
           <div class="autosave-status" data-autosave-status>
             <span class="autosave-dot"></span>
             <span class="autosave-text">Нет несохранённых изменений</span>
           </div>
-          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <input type="hidden" name="return" value="/teams/{{.Team.ID}}/okr?year={{.Year}}&quarter={{.Quarter}}">
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Название</label>
@@ -842,29 +848,7 @@
             </div>
             <div class="col-12 kr-fields kr-project d-none">
               <h6>Шаги проекта</h6>
-              <div class="vstack gap-2" data-project-steps>
-                <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-5">
-                    <label class="form-label">Название шага</label>
-                    <input class="form-control" name="step_title[]">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
-                  </div>
-                  <div class="col-md-2">
-                    <label class="form-label">Готово</label>
-                    <select class="form-select" name="step_done[]">
-                      <option value="false">Нет</option>
-                      <option value="true">Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-danger btn-sm w-100"
-                      data-remove-project-step>Удалить</button>
-                  </div>
-                </div>
-              </div>
+              <div class="vstack gap-2" data-project-steps></div>
               <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить
                 шаг</button>
               <template data-project-step-template>
@@ -894,190 +878,39 @@
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
-            <button type="submit" class="btn btn-primary" {{if $.IsClosed}}disabled{{end}}>Сохранить</button>
+            <button type="submit" class="btn btn-primary" {{if .IsClosed}}disabled{{end}}>Сохранить</button>
           </div>
         </form>
       </div>
     </div>
   </div>
 </div>
-{{end}}
 
+{{/* Данные для заполнения модального окна редактирования KR. */}}
 {{range .Goals}}
 {{range .KeyResults}}
-<div class="modal fade" id="krEditModal-{{.ID}}" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Редактировать ключевой результат</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <form method="post" action="/key-results/{{.ID}}/update" class="kr-form autosave-form">
-          <div class="autosave-status" data-autosave-status>
-            <span class="autosave-dot"></span>
-            <span class="autosave-text">Нет несохранённых изменений</span>
-          </div>
-          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <div class="row g-3">
-            <div class="col-12">
-              <label class="form-label">Название</label>
-              <input class="form-control" name="title" value="{{.Title}}" required>
-            </div>
-            <div class="col-12">
-              <label class="form-label">Описание</label>
-              <textarea class="form-control" name="description" rows="2">{{.Description}}</textarea>
-            </div>
-            <div class="col-sm-4">
-              <label class="form-label">Вес (0-100)</label>
-              <input class="form-control" type="number" name="weight" min="0" max="100" value="{{.Weight}}">
-            </div>
-            <div class="col-sm-4">
-              <label class="form-label">Тип</label>
-              <select class="form-select kr-kind-select" name="kind" data-current="{{.Kind}}">
-                <option value="PROJECT" {{if eq .Kind "PROJECT" }}selected{{end}}>Проектный</option>
-                <option value="PERCENT" {{if eq .Kind "PERCENT" }}selected{{end}}>Процентный</option>
-                <option value="LINEAR" {{if eq .Kind "LINEAR" }}selected{{end}}>Линейный</option>
-                <option value="BOOLEAN" {{if eq .Kind "BOOLEAN" }}selected{{end}}>Бинарный</option>
-              </select>
-              <div class="form-text kr-kind-help"></div>
-            </div>
-            <div class="col-12 kr-fields kr-percent d-none">
-              <div class="row g-3">
-                <div class="col-sm-4">
-                  <label class="form-label">Старт</label>
-                  <input class="form-control" type="number" step="0.01" name="percent_start"
-                    value="{{if .Percent}}{{.Percent.StartValue}}{{end}}">
-                </div>
-                <div class="col-sm-4">
-                  <label class="form-label">Цель</label>
-                  <input class="form-control" type="number" step="0.01" name="percent_target"
-                    value="{{if .Percent}}{{.Percent.TargetValue}}{{end}}">
-                </div>
-                <div class="col-sm-4">
-                  <label class="form-label">Текущее</label>
-                  <input class="form-control" type="number" step="0.01" name="percent_current"
-                    value="{{if .Percent}}{{.Percent.CurrentValue}}{{end}}">
-                </div>
-              </div>
-            </div>
-            <div class="col-12 kr-fields kr-linear d-none">
-              <div class="row g-3">
-                <div class="col-sm-4">
-                  <label class="form-label">Старт</label>
-                  <input class="form-control" type="number" step="0.01" name="linear_start"
-                    value="{{if .Linear}}{{.Linear.StartValue}}{{end}}">
-                </div>
-                <div class="col-sm-4">
-                  <label class="form-label">Цель</label>
-                  <input class="form-control" type="number" step="0.01" name="linear_target"
-                    value="{{if .Linear}}{{.Linear.TargetValue}}{{end}}">
-                </div>
-                <div class="col-sm-4">
-                  <label class="form-label">Текущее</label>
-                  <input class="form-control" type="number" step="0.01" name="linear_current"
-                    value="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}">
-                </div>
-              </div>
-            </div>
-            <div class="col-12 kr-fields kr-boolean d-none">
-              <label class="form-label">Бинарный KR</label>
-              <select class="form-select" name="boolean_done">
-                <option value="false" {{if .Boolean}}{{if not .Boolean.IsDone}}selected{{end}}{{end}}>Нет</option>
-                <option value="true" {{if .Boolean}}{{if .Boolean.IsDone}}selected{{end}}{{end}}>Да</option>
-              </select>
-            </div>
-            <div class="col-12 kr-fields kr-project d-none">
-              <h6>Шаги проекта</h6>
-              <div class="vstack gap-2" data-project-steps>
-                {{if .Project}}
-                {{range $index, $stage := .Project.Stages}}
-                <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-5">
-                    <label class="form-label">Название шага</label>
-                    <input class="form-control" name="step_title[]" value="{{$stage.Title}}">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100"
-                      value="{{$stage.Weight}}">
-                  </div>
-                  <div class="col-md-2">
-                    <label class="form-label">Готово</label>
-                    <select class="form-select" name="step_done[]">
-                      <option value="false" {{if not $stage.IsDone}}selected{{end}}>Нет</option>
-                      <option value="true" {{if $stage.IsDone}}selected{{end}}>Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-danger btn-sm w-100"
-                      data-remove-project-step>Удалить</button>
-                  </div>
-                </div>
-                {{end}}
-                {{else}}
-                <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-5">
-                    <label class="form-label">Название шага</label>
-                    <input class="form-control" name="step_title[]">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
-                  </div>
-                  <div class="col-md-2">
-                    <label class="form-label">Готово</label>
-                    <select class="form-select" name="step_done[]">
-                      <option value="false">Нет</option>
-                      <option value="true">Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-danger btn-sm w-100"
-                      data-remove-project-step>Удалить</button>
-                  </div>
-                </div>
-                {{end}}
-              </div>
-              <button type="button" class="btn btn-outline-secondary btn-sm mt-2" data-add-project-step>+ Добавить
-                шаг</button>
-              <template data-project-step-template>
-                <div class="row g-2 align-items-end project-step">
-                  <div class="col-md-5">
-                    <label class="form-label">Название шага</label>
-                    <input class="form-control" name="step_title[]">
-                  </div>
-                  <div class="col-md-3">
-                    <label class="form-label">Вес</label>
-                    <input class="form-control" type="number" name="step_weight[]" min="0" max="100">
-                  </div>
-                  <div class="col-md-2">
-                    <label class="form-label">Готово</label>
-                    <select class="form-select" name="step_done[]">
-                      <option value="false">Нет</option>
-                      <option value="true">Да</option>
-                    </select>
-                  </div>
-                  <div class="col-md-2">
-                    <button type="button" class="btn btn-outline-danger btn-sm w-100"
-                      data-remove-project-step>Удалить</button>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
-            <button type="submit" class="btn btn-primary">Сохранить</button>
-          </div>
-        </form>
-      </div>
-    </div>
+<div class="d-none" data-kr-source data-kr-id="{{.ID}}" data-kr-title="{{.Title}}"
+  data-kr-description="{{.Description}}" data-kr-weight="{{.Weight}}" data-kr-kind="{{.Kind}}"
+  data-kr-percent-start="{{if .Percent}}{{.Percent.StartValue}}{{end}}"
+  data-kr-percent-target="{{if .Percent}}{{.Percent.TargetValue}}{{end}}"
+  data-kr-percent-current="{{if .Percent}}{{.Percent.CurrentValue}}{{end}}"
+  data-kr-linear-start="{{if .Linear}}{{.Linear.StartValue}}{{end}}"
+  data-kr-linear-target="{{if .Linear}}{{.Linear.TargetValue}}{{end}}"
+  data-kr-linear-current="{{if .Linear}}{{.Linear.CurrentValue}}{{end}}"
+  data-kr-boolean-done="{{if .Boolean}}{{.Boolean.IsDone}}{{end}}">
+  <div data-kr-steps>
+    {{if .Project}}
+    {{range $index, $stage := .Project.Stages}}
+    <div data-kr-step data-step-title="{{$stage.Title}}" data-step-weight="{{$stage.Weight}}"
+      data-step-done="{{$stage.IsDone}}"></div>
+    {{end}}
+    {{end}}
   </div>
 </div>
 {{end}}
 {{end}}
 
+{{/* Модальные окна подтверждения удаления ключевых результатов. */}}
 {{range .Goals}}
 {{range .KeyResults}}
 <div class="modal fade" id="krDeleteModal-{{.ID}}" tabindex="-1" aria-hidden="true">
@@ -1103,6 +936,7 @@
 {{end}}
 {{end}}
 
+{{/* Модальные окна корректировки весов KR внутри каждой цели. */}}
 {{range .Goals}}
 <div class="modal fade" id="krWeightsModal-{{.ID}}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -1197,6 +1031,62 @@
     help.textContent = krKindHelpText[select.value] || '';
   }
 
+  function fillProjectSteps(container, steps) {
+    const stepsWrap = container.querySelector('[data-project-steps]');
+    const template = container.querySelector('[data-project-step-template]');
+    if (!stepsWrap || !template) return;
+    stepsWrap.innerHTML = '';
+    if (!steps || steps.length === 0) {
+      stepsWrap.appendChild(template.content.cloneNode(true));
+      return;
+    }
+    steps.forEach((step) => {
+      const clone = template.content.cloneNode(true);
+      const stepNode = clone.querySelector('.project-step');
+      if (!stepNode) return;
+      const titleInput = stepNode.querySelector('input[name="step_title[]"]');
+      const weightInput = stepNode.querySelector('input[name="step_weight[]"]');
+      const doneSelect = stepNode.querySelector('select[name="step_done[]"]');
+      if (titleInput) titleInput.value = step.title || '';
+      if (weightInput) weightInput.value = step.weight || '';
+      if (doneSelect) doneSelect.value = step.done ? 'true' : 'false';
+      stepsWrap.appendChild(clone);
+    });
+  }
+
+  function resetKrForm(form) {
+    form.reset();
+    const kindSelect = form.querySelector('.kr-kind-select');
+    if (kindSelect && !kindSelect.value) {
+      kindSelect.value = 'PROJECT';
+    }
+    toggleKrFields(form);
+    updateKrHelp(form);
+    fillProjectSteps(form, []);
+  }
+
+  function populateKrForm(form, data) {
+    if (!form || !data) return;
+    const setValue = (selector, value) => {
+      const field = form.querySelector(selector);
+      if (field) field.value = value ?? '';
+    };
+    setValue('[name="title"]', data.title);
+    setValue('[name="description"]', data.description);
+    setValue('[name="weight"]', data.weight);
+    setValue('[name="kind"]', data.kind);
+    setValue('[name="percent_start"]', data.percentStart);
+    setValue('[name="percent_target"]', data.percentTarget);
+    setValue('[name="percent_current"]', data.percentCurrent);
+    setValue('[name="linear_start"]', data.linearStart);
+    setValue('[name="linear_target"]', data.linearTarget);
+    setValue('[name="linear_current"]', data.linearCurrent);
+    setValue('[name="boolean_done"]', data.booleanDone ? 'true' : 'false');
+    toggleKrFields(form);
+    updateKrHelp(form);
+    fillProjectSteps(form, data.steps || []);
+  }
+
   document.querySelectorAll('.kr-form').forEach((form) => {
     const select = form.querySelector('.kr-kind-select');
     if (select) {
@@ -1229,5 +1119,52 @@
   document.querySelectorAll('.kr-form').forEach((form) => {
     setupProjectSteps(form);
   });
+
+  const krModal = document.getElementById('krModal');
+  if (krModal) {
+    const form = krModal.querySelector('[data-kr-modal-form]');
+    const title = krModal.querySelector('[data-kr-modal-title]');
+    krModal.addEventListener('show.bs.modal', (event) => {
+      const trigger = event.relatedTarget;
+      if (!trigger || !form) return;
+      const returnInput = form.querySelector('[name="return"]');
+      if (returnInput) {
+        returnInput.value = `${window.location.pathname}${window.location.search}`;
+      }
+      const mode = trigger.getAttribute('data-kr-modal');
+      if (mode === 'create') {
+        const goalId = trigger.getAttribute('data-goal-id');
+        form.action = `/goals/${goalId}/key-results`;
+        if (title) title.textContent = 'Новый ключевой результат';
+        resetKrForm(form);
+      }
+      if (mode === 'edit') {
+        const krId = trigger.getAttribute('data-kr-id');
+        const source = document.querySelector(`[data-kr-source][data-kr-id="${krId}"]`);
+        if (!source) return;
+        form.action = `/key-results/${krId}/update`;
+        if (title) title.textContent = 'Редактировать ключевой результат';
+        const steps = Array.from(source.querySelectorAll('[data-kr-step]')).map((step) => ({
+          title: step.getAttribute('data-step-title') || '',
+          weight: step.getAttribute('data-step-weight') || '',
+          done: step.getAttribute('data-step-done') === 'true',
+        }));
+        populateKrForm(form, {
+          title: source.getAttribute('data-kr-title'),
+          description: source.getAttribute('data-kr-description'),
+          weight: source.getAttribute('data-kr-weight'),
+          kind: source.getAttribute('data-kr-kind'),
+          percentStart: source.getAttribute('data-kr-percent-start'),
+          percentTarget: source.getAttribute('data-kr-percent-target'),
+          percentCurrent: source.getAttribute('data-kr-percent-current'),
+          linearStart: source.getAttribute('data-kr-linear-start'),
+          linearTarget: source.getAttribute('data-kr-linear-target'),
+          linearCurrent: source.getAttribute('data-kr-linear-current'),
+          booleanDone: source.getAttribute('data-kr-boolean-done') === 'true',
+          steps,
+        });
+      }
+    });
+  }
 </script>
 {{end}}
