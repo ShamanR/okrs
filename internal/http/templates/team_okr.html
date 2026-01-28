@@ -71,6 +71,7 @@
 
 <h2 class="h4 mb-3">Цели</h2>
 <div class="vstack gap-3">
+  {{/* Список карточек целей квартала. */}}
   {{range .Goals}}
   <div class="card">
     {{if $.ObjectiveBlockV2}}
@@ -697,6 +698,7 @@
   </div>
 </div>
 
+{{/* Модальные окна редактирования целей. */}}
 {{range .Goals}}
 <div class="modal fade" id="goalEditModal-{{.ID}}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -767,6 +769,7 @@
 </div>
 {{end}}
 
+{{/* Модальные окна создания ключевых результатов для каждой цели. */}}
 {{range .Goals}}
 <div class="modal fade" id="krCreateModal-{{.ID}}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
@@ -907,6 +910,7 @@
 </div>
 {{end}}
 
+{{/* Модальные окна редактирования ключевых результатов. */}}
 {{range .Goals}}
 {{range .KeyResults}}
 <div class="modal fade" id="krEditModal-{{.ID}}" tabindex="-1" aria-hidden="true">
@@ -1082,6 +1086,7 @@
 {{end}}
 {{end}}
 
+{{/* Модальные окна подтверждения удаления ключевых результатов. */}}
 {{range .Goals}}
 {{range .KeyResults}}
 <div class="modal fade" id="krDeleteModal-{{.ID}}" tabindex="-1" aria-hidden="true">
@@ -1107,6 +1112,7 @@
 {{end}}
 {{end}}
 
+{{/* Модальные окна корректировки весов KR внутри каждой цели. */}}
 {{range .Goals}}
 <div class="modal fade" id="krWeightsModal-{{.ID}}" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
