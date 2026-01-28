@@ -81,7 +81,11 @@
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
       </div>
-      <p class="text-muted mb-2">{{.Description}}</p>
+      <p class="text-muted mb-2 okr-goal-description" data-goal-description>
+        {{.Description}}
+        <button type="button" class="okr-description-toggle" data-goal-description-toggle hidden
+          aria-label="Показать полностью">...</button>
+      </p>
       <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
         <div class="progress flex-grow-1" role="progressbar" aria-valuenow="{{.Progress}}" aria-valuemin="0"
           aria-valuemax="100">
