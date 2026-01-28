@@ -3,7 +3,6 @@ package goals
 import (
 	"fmt"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -509,69 +508,6 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-type goalShareOption struct {
-	ID       int64
-	Label    string
-	Selected bool
-	Weight   int
-}
-
-type goalSharePage struct {
-	Goal            domain.Goal
-	Owner           domain.Team
-	OwnerTypeLabel  string
-	Options         []goalShareOption
-	ReturnURL       string
-	PageTitle       string
-	ContentTemplate string
-}
-
-func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	owner, err := h.deps.Store.GetTeam(ctx, goal.TeamID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	teams, err := h.deps.Store.ListTeams(ctx)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	shares, err := h.deps.Store.ListGoalShares(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	sharesByTeam := make(map[int64]store.GoalShare, len(shares))
-	for _, share := range shares {
-		sharesByTeam[share.TeamID] = share
-	}
-	_, childrenMap, rootTeams := buildTeamHierarchy(teams)
-	options := buildGoalShareOptions(rootTeams, childrenMap, sharesByTeam, goal.TeamID, goal.Weight)
-	returnURL := r.URL.Query().Get("return")
-	page := goalSharePage{
-		Goal:            goal,
-		Owner:           owner,
-		OwnerTypeLabel:  common.TeamTypeLabel(owner.Type),
-		Options:         options,
-		ReturnURL:       returnURL,
-		PageTitle:       "Шаринг цели",
-		ContentTemplate: "goal-share-content",
-	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
-}
-
 func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
@@ -606,23 +542,48 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		selectedSet[teamID] = struct{}{}
 		selectedIDs = append(selectedIDs, teamID)
 	}
+	sharesList, err := h.deps.Store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	shareWeights := make(map[int64]int, len(sharesList))
+	for _, share := range sharesList {
+		shareWeights[share.TeamID] = share.Weight
+	}
 	ownerID := goal.TeamID
 	if _, ok := selectedSet[ownerID]; !ok {
 		ownerID = selectedIDs[0]
 	}
 	shares := make([]store.GoalShareInput, 0, len(selectedIDs))
 	for _, teamID := range selectedIDs {
-		weight := common.ParseIntField(r.FormValue(fmt.Sprintf("weight_%d", teamID)))
-		if weight < 0 || weight > 100 {
-			common.RenderError(w, h.deps.Logger, fmt.Errorf("Вес должен быть 0..100"))
+		status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, goal.Year, goal.Quarter)
+		if err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		if status == domain.TeamQuarterStatusValidated || status == domain.TeamQuarterStatusClosed {
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым кварталом"))
 			return
 		}
 		if teamID == ownerID {
-			if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, ownerID, weight); err != nil {
+			ownerWeight := goal.Weight
+			if ownerID != goal.TeamID {
+				if existingWeight, ok := shareWeights[ownerID]; ok {
+					ownerWeight = existingWeight
+				} else {
+					ownerWeight = 0
+				}
+			}
+			if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, ownerID, ownerWeight); err != nil {
 				common.RenderError(w, h.deps.Logger, err)
 				return
 			}
 			continue
+		}
+		weight := 0
+		if existingWeight, ok := shareWeights[teamID]; ok {
+			weight = existingWeight
 		}
 		shares = append(shares, store.GoalShareInput{TeamID: teamID, Weight: weight})
 	}
@@ -650,61 +611,4 @@ func parseOptionalTeamID(value string, fallback int64) int64 {
 
 func redirectToTeam(w http.ResponseWriter, r *http.Request, teamID int64, year, quarter int) {
 	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
-}
-
-func buildTeamHierarchy(teams []domain.Team) (map[int64]domain.Team, map[int64][]domain.Team, []domain.Team) {
-	teamsByID := make(map[int64]domain.Team, len(teams))
-	childrenMap := make(map[int64][]domain.Team)
-	for _, team := range teams {
-		teamsByID[team.ID] = team
-		parentKey := int64(0)
-		if team.ParentID != nil {
-			parentKey = *team.ParentID
-		}
-		childrenMap[parentKey] = append(childrenMap[parentKey], team)
-	}
-	for key := range childrenMap {
-		sort.Slice(childrenMap[key], func(i, j int) bool {
-			return childrenMap[key][i].Name < childrenMap[key][j].Name
-		})
-	}
-	rootTeams := childrenMap[0]
-	return teamsByID, childrenMap, rootTeams
-}
-
-func buildGoalShareOptions(rootTeams []domain.Team, childrenMap map[int64][]domain.Team, shares map[int64]store.GoalShare, ownerID int64, goalWeight int) []goalShareOption {
-	options := make([]goalShareOption, 0, len(rootTeams))
-	for _, team := range rootTeams {
-		appendGoalShareOption(&options, team, childrenMap, shares, ownerID, goalWeight, 0)
-	}
-	return options
-}
-
-func appendGoalShareOption(options *[]goalShareOption, team domain.Team, childrenMap map[int64][]domain.Team, shares map[int64]store.GoalShare, ownerID int64, goalWeight int, level int) {
-	label := fmt.Sprintf("%s%s %s", teamHierarchyPrefix(level), common.TeamTypeLabel(team.Type), team.Name)
-	share, ok := shares[team.ID]
-	weight := goalWeight
-	if ok {
-		weight = share.Weight
-	}
-	if team.ID == ownerID {
-		weight = goalWeight
-	}
-	option := goalShareOption{
-		ID:       team.ID,
-		Label:    label,
-		Selected: ok || team.ID == ownerID,
-		Weight:   weight,
-	}
-	*options = append(*options, option)
-	for _, child := range childrenMap[team.ID] {
-		appendGoalShareOption(options, child, childrenMap, shares, ownerID, goalWeight, level+1)
-	}
-}
-
-func teamHierarchyPrefix(level int) string {
-	if level == 0 {
-		return ""
-	}
-	return fmt.Sprintf("%s|-- ", strings.Repeat("  ", level-1))
 }

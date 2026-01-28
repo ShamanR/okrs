@@ -144,9 +144,8 @@
       <p class="mb-3"><span class="badge">{{.WorkType}}</span> · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
       <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}?team={{$.Team.ID}}">Открыть</a>
-        <a class="btn btn-outline-primary btn-sm {{if $.IsClosed}}disabled{{end}}"
-          href="/goals/{{.ID}}/share?return={{printf "/teams/%d/okr?year=%d&quarter=%d" $.Team.ID $.Year $.Quarter | urlquery}}"
-          {{if $.IsClosed}}aria-disabled="true" tabindex="-1"{{end}}>Шарить</a>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
+          data-bs-target="#goalShareModal-{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Шарить</button>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
           data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
@@ -449,9 +448,8 @@
       </p>
       <div class=" d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}?team={{$.Team.ID}}">Открыть</a>
-        <a class="btn btn-outline-primary btn-sm {{if $.IsClosed}}disabled{{end}}"
-          href="/goals/{{.ID}}/share?return={{printf "/teams/%d/okr?year=%d&quarter=%d" $.Team.ID $.Year $.Quarter | urlquery}}"
-          {{if $.IsClosed}}aria-disabled="true" tabindex="-1"{{end}}>Шарить</a>
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal"
+          data-bs-target="#goalShareModal-{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Шарить</button>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
           data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
@@ -820,6 +818,40 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
             <button type="submit" class="btn btn-primary" {{if $.IsClosed}}disabled{{end}}>Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{/* Модальные окна шаринга целей. */}}
+{{range .Goals}}
+<div class="modal fade" id="goalShareModal-{{.ID}}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Шарить цель</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" action="/goals/{{.ID}}/share">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <div class="vstack gap-2">
+            {{ $targets := index $.GoalShareTargets .ID }}
+            {{range $targets}}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="team_ids" value="{{.ID}}"
+                id="share-team-{{$.ID}}-{{.ID}}" {{if .Selected}}checked{{end}} {{if .Disabled}}disabled{{end}}
+                {{if .Disabled}}title="Команда с валидированным или закрытым кварталом"{{end}}>
+              <label class="form-check-label hierarchy-label" for="share-team-{{$.ID}}-{{.ID}}">{{.Label}}</label>
+            </div>
+            {{end}}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
           </div>
         </form>
       </div>

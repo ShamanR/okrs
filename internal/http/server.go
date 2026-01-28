@@ -206,7 +206,6 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
-	r.Get("/goals/{goalID}/share", goalsHandler.HandleShareGoal)
 	r.Post("/goals/{goalID}/share", goalsHandler.HandleUpdateGoalShare)
 	r.Get("/goals/year", goalsHandler.HandleYearGoals)
 
