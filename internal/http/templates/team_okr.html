@@ -125,7 +125,7 @@
       <div class="d-flex gap-2 flex-wrap">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}?team={{$.Team.ID}}">Открыть</a>
         <a class="btn btn-outline-primary btn-sm {{if $.IsClosed}}disabled{{end}}"
-          href="/goals/{{.ID}}/share?return={{printf \"/teams/%d/okr?year=%d&quarter=%d\" $.Team.ID $.Year $.Quarter | urlquery}}"
+          href="/goals/{{.ID}}/share?return={{printf "/teams/%d/okr?year=%d&quarter=%d" $.Team.ID $.Year $.Quarter | urlquery}}"
           {{if $.IsClosed}}aria-disabled="true" tabindex="-1"{{end}}>Шарить</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
           data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
@@ -410,7 +410,7 @@
       <div class=" d-flex gap-2">
         <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}?team={{$.Team.ID}}">Открыть</a>
         <a class="btn btn-outline-primary btn-sm {{if $.IsClosed}}disabled{{end}}"
-          href="/goals/{{.ID}}/share?return={{printf \"/teams/%d/okr?year=%d&quarter=%d\" $.Team.ID $.Year $.Quarter | urlquery}}"
+          href="/goals/{{.ID}}/share?return={{printf "/teams/%d/okr?year=%d&quarter=%d" $.Team.ID $.Year $.Quarter | urlquery}}"
           {{if $.IsClosed}}aria-disabled="true" tabindex="-1"{{end}}>Шарить</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
           data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
