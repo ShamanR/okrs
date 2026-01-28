@@ -129,7 +129,7 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 			selectedFilter = "ALL"
 		}
 	}
-	filterOptions := buildTeamFilterOptions(rootTeams, selectedFilter)
+	filterOptions := buildTeamFilterOptions(rootTeams, childrenMap, selectedFilter)
 	filteredRoots := rootTeams
 	if selectedTeamID != nil {
 		if team, ok := teamsByID[*selectedTeamID]; ok {
@@ -668,14 +668,28 @@ func buildTeamHierarchy(teams []domain.Team) (map[int64]domain.Team, map[int64][
 	return teamsByID, childrenMap, rootTeams
 }
 
-func buildTeamFilterOptions(rootTeams []domain.Team, selected string) []teamFilterOption {
+func buildTeamFilterOptions(rootTeams []domain.Team, childrenMap map[int64][]domain.Team, selected string) []teamFilterOption {
 	options := []teamFilterOption{{Value: "ALL", Label: "Все команды", Selected: selected == "ALL"}}
 	for _, team := range rootTeams {
-		value := fmt.Sprintf("%d", team.ID)
-		label := fmt.Sprintf("%s %s", common.TeamTypeLabel(team.Type), team.Name)
-		options = append(options, teamFilterOption{Value: value, Label: label, Selected: selected == value})
+		appendTeamFilterOption(&options, team, childrenMap, 0, selected)
 	}
 	return options
+}
+
+func appendTeamFilterOption(options *[]teamFilterOption, team domain.Team, childrenMap map[int64][]domain.Team, level int, selected string) {
+	value := fmt.Sprintf("%d", team.ID)
+	label := fmt.Sprintf("%s%s %s", teamHierarchyPrefix(level), common.TeamTypeLabel(team.Type), team.Name)
+	*options = append(*options, teamFilterOption{Value: value, Label: label, Selected: selected == value})
+	for _, child := range childrenMap[team.ID] {
+		appendTeamFilterOption(options, child, childrenMap, level+1, selected)
+	}
+}
+
+func teamHierarchyPrefix(level int) string {
+	if level == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s|-- ", strings.Repeat("  ", level-1))
 }
 
 func buildTeamTypeOptions(selected domain.TeamType) []teamTypeOption {

@@ -80,6 +80,7 @@
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
+        {{if ne .TeamID $.Team.ID}}<span class="badge text-bg-info">Общая</span>{{end}}
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
       </div>
       <p class="text-muted mb-2 okr-goal-description" data-goal-description>
@@ -122,21 +123,29 @@
       </div>
       <p class="mb-3"><span class="badge">{{.WorkType}}</span> · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
       <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
+        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}?team={{$.Team.ID}}">Открыть</a>
+        <a class="btn btn-outline-primary btn-sm {{if $.IsClosed}}disabled{{end}}"
+          href="/goals/{{.ID}}/share?return={{printf \"/teams/%d/okr?year=%d&quarter=%d\" $.Team.ID $.Year $.Quarter | urlquery}}"
+          {{if $.IsClosed}}aria-disabled="true" tabindex="-1"{{end}}>Шарить</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
           data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
           {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
         <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
           <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>↑</button>
         </form>
         <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
           <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>↓</button>
         </form>
         <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
-          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>
+            {{if ne .TeamID $.Team.ID}}Убрать{{else}}Удалить{{end}}
+          </button>
         </form>
       </div>
       {{if .KeyResults}}
@@ -383,6 +392,7 @@
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
+        {{if ne .TeamID $.Team.ID}}<span class="badge text-bg-info">Общая</span>{{end}}
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
         <span class="badge text-bg-primary border">{{.WorkType}}</span>
         <span class="badge text-bg-secondary border">{{.FocusType}}</span>
@@ -398,21 +408,29 @@
       <p class="mb-3">Владелец цели: <u>{{.OwnerText}}</u>
       </p>
       <div class=" d-flex gap-2">
-        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
+        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}?team={{$.Team.ID}}">Открыть</a>
+        <a class="btn btn-outline-primary btn-sm {{if $.IsClosed}}disabled{{end}}"
+          href="/goals/{{.ID}}/share?return={{printf \"/teams/%d/okr?year=%d&quarter=%d\" $.Team.ID $.Year $.Quarter | urlquery}}"
+          {{if $.IsClosed}}aria-disabled="true" tabindex="-1"{{end}}>Шарить</a>
         <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
           data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
         <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
           {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
         <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
           <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>↑</button>
         </form>
         <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
           <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>↓</button>
         </form>
         <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
-          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>
+            {{if ne .TeamID $.Team.ID}}Убрать{{else}}Удалить{{end}}
+          </button>
         </form>
       </div>
       {{if .KeyResults}}
@@ -713,6 +731,7 @@
             <span class="autosave-dot"></span>
             <span class="autosave-text">Нет несохранённых изменений</span>
           </div>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Название</label>

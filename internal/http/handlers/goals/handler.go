@@ -3,6 +3,7 @@ package goals
 import (
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,7 +34,18 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	team, err := h.deps.Store.GetTeam(ctx, goal.TeamID)
+	teamID := goal.TeamID
+	if value := r.URL.Query().Get("team"); value != "" {
+		if parsed, err := common.ParseID(value); err == nil {
+			if parsed != goal.TeamID {
+				if share, err := h.deps.Store.GetGoalShare(ctx, goalID, parsed); err == nil {
+					goal.Weight = share.Weight
+					teamID = parsed
+				}
+			}
+		}
+	}
+	team, err := h.deps.Store.GetTeam(ctx, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -218,9 +230,22 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	goal, err := h.deps.Store.GetGoal(ctx, goalID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	if teamID != goal.TeamID {
+		if err := h.deps.Store.DeleteGoalShare(ctx, goalID, teamID); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
 		return
 	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
@@ -263,6 +288,15 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	if teamID != goal.TeamID {
+		if returnURL := r.FormValue("return"); returnURL != "" {
+			http.Redirect(w, r, returnURL, http.StatusSeeOther)
+			return
+		}
+		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		return
+	}
 	if err := h.deps.Store.MoveGoal(ctx, goalID, direction); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -290,7 +324,8 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, goal.Year, goal.Quarter)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -307,12 +342,11 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		h.renderGoalWithError(w, r, goalID, errMsg)
 		return
 	}
-	if err := h.deps.Store.UpdateGoal(ctx, store.GoalUpdateInput{
+	if err := h.deps.Store.UpdateGoalFields(ctx, store.GoalFieldsUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
 		Priority:    priority,
-		Weight:      weight,
 		WorkType:    workType,
 		FocusType:   focusType,
 		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
@@ -320,7 +354,11 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+	if err := h.deps.Store.UpdateGoalTeamWeight(ctx, goalID, teamID, weight); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
 }
 
 type yearGoalsPage struct {
@@ -419,7 +457,18 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	team, err := h.deps.Store.GetTeam(r.Context(), goal.TeamID)
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	if teamID == goal.TeamID {
+		if value := r.URL.Query().Get("team"); value != "" {
+			teamID = parseOptionalTeamID(value, goal.TeamID)
+		}
+	}
+	if teamID != goal.TeamID {
+		if share, err := h.deps.Store.GetGoalShare(r.Context(), goalID, teamID); err == nil {
+			goal.Weight = share.Weight
+		}
+	}
+	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -440,4 +489,182 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		ContentTemplate string
 	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
+type goalShareOption struct {
+	ID       int64
+	Label    string
+	Selected bool
+	Weight   int
+	Disabled bool
+}
+
+type goalSharePage struct {
+	Goal            domain.Goal
+	Owner           domain.Team
+	OwnerTypeLabel  string
+	Options         []goalShareOption
+	ReturnURL       string
+	PageTitle       string
+	ContentTemplate string
+}
+
+func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	owner, err := h.deps.Store.GetTeam(ctx, goal.TeamID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	teams, err := h.deps.Store.ListTeams(ctx)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	shares, err := h.deps.Store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	sharesByTeam := make(map[int64]store.GoalShare, len(shares))
+	for _, share := range shares {
+		sharesByTeam[share.TeamID] = share
+	}
+	_, childrenMap, rootTeams := buildTeamHierarchy(teams)
+	options := buildGoalShareOptions(rootTeams, childrenMap, sharesByTeam, goal.TeamID, goal.Weight)
+	returnURL := r.URL.Query().Get("return")
+	page := goalSharePage{
+		Goal:            goal,
+		Owner:           owner,
+		OwnerTypeLabel:  common.TeamTypeLabel(owner.Type),
+		Options:         options,
+		ReturnURL:       returnURL,
+		PageTitle:       "Шаринг цели",
+		ContentTemplate: "goal-share-content",
+	}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
+func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	selected := r.Form["team_ids"]
+	shares := make([]store.GoalShareInput, 0, len(selected))
+	for _, value := range selected {
+		teamID, err := common.ParseID(value)
+		if err != nil {
+			continue
+		}
+		if teamID == goal.TeamID {
+			continue
+		}
+		weight := common.ParseIntField(r.FormValue(fmt.Sprintf("weight_%d", teamID)))
+		if weight < 0 || weight > 100 {
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Вес должен быть 0..100"))
+			return
+		}
+		shares = append(shares, store.GoalShareInput{TeamID: teamID, Weight: weight})
+	}
+	if err := h.deps.Store.ReplaceGoalShares(ctx, goalID, shares); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+}
+
+func parseOptionalTeamID(value string, fallback int64) int64 {
+	if value == "" {
+		return fallback
+	}
+	parsed, err := common.ParseID(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func redirectToTeam(w http.ResponseWriter, r *http.Request, teamID int64, year, quarter int) {
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
+}
+
+func buildTeamHierarchy(teams []domain.Team) (map[int64]domain.Team, map[int64][]domain.Team, []domain.Team) {
+	teamsByID := make(map[int64]domain.Team, len(teams))
+	childrenMap := make(map[int64][]domain.Team)
+	for _, team := range teams {
+		teamsByID[team.ID] = team
+		parentKey := int64(0)
+		if team.ParentID != nil {
+			parentKey = *team.ParentID
+		}
+		childrenMap[parentKey] = append(childrenMap[parentKey], team)
+	}
+	for key := range childrenMap {
+		sort.Slice(childrenMap[key], func(i, j int) bool {
+			return childrenMap[key][i].Name < childrenMap[key][j].Name
+		})
+	}
+	rootTeams := childrenMap[0]
+	return teamsByID, childrenMap, rootTeams
+}
+
+func buildGoalShareOptions(rootTeams []domain.Team, childrenMap map[int64][]domain.Team, shares map[int64]store.GoalShare, ownerID int64, goalWeight int) []goalShareOption {
+	options := make([]goalShareOption, 0, len(rootTeams))
+	for _, team := range rootTeams {
+		appendGoalShareOption(&options, team, childrenMap, shares, ownerID, goalWeight, 0)
+	}
+	return options
+}
+
+func appendGoalShareOption(options *[]goalShareOption, team domain.Team, childrenMap map[int64][]domain.Team, shares map[int64]store.GoalShare, ownerID int64, goalWeight int, level int) {
+	label := fmt.Sprintf("%s%s %s", teamHierarchyPrefix(level), common.TeamTypeLabel(team.Type), team.Name)
+	share, ok := shares[team.ID]
+	weight := goalWeight
+	if ok {
+		weight = share.Weight
+	}
+	option := goalShareOption{
+		ID:       team.ID,
+		Label:    label,
+		Selected: ok,
+		Weight:   weight,
+		Disabled: team.ID == ownerID,
+	}
+	*options = append(*options, option)
+	for _, child := range childrenMap[team.ID] {
+		appendGoalShareOption(options, child, childrenMap, shares, ownerID, goalWeight, level+1)
+	}
+}
+
+func teamHierarchyPrefix(level int) string {
+	if level == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%s|-- ", strings.Repeat("  ", level-1))
 }

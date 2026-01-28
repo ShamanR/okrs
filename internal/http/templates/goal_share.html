@@ -1,0 +1,55 @@
+{{define "goal-share-content"}}
+<nav class="mb-4" aria-label="breadcrumb">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
+    <li class="breadcrumb-item">
+      <a href="/teams/{{.Owner.ID}}/okr?year={{.Goal.Year}}&quarter={{.Goal.Quarter}}">
+        <span class="badge text-bg-secondary">{{.OwnerTypeLabel}}</span>
+        {{.Owner.Name}}
+      </a>
+    </li>
+    <li class="breadcrumb-item active" aria-current="page">Шаринг цели</li>
+  </ol>
+</nav>
+
+<div class="card mb-4">
+  <div class="card-body">
+    <h1 class="h4 mb-1">Поделиться целью</h1>
+    <p class="text-muted mb-2">{{.Goal.Title}} · {{.Goal.Year}} Q{{.Goal.Quarter}}</p>
+    <p class="mb-0">Выберите команды, которым нужна общая цель. Описание, KR и прогресс будут общими, вес можно задать отдельно.</p>
+  </div>
+</div>
+
+<form method="post" action="/goals/{{.Goal.ID}}/share">
+  {{if .ReturnURL}}
+  <input type="hidden" name="return" value="{{.ReturnURL}}">
+  {{end}}
+  <div class="card">
+    <div class="card-body">
+      <div class="vstack gap-3">
+        {{range .Options}}
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+          <div class="form-check">
+            <input class="form-check-input" type="checkbox" name="team_ids" value="{{.ID}}" id="share-team-{{.ID}}" {{if .Selected}}checked{{end}} {{if .Disabled}}disabled{{end}}>
+            <label class="form-check-label hierarchy-label" for="share-team-{{.ID}}">{{.Label}}</label>
+            {{if .Disabled}}<span class="badge text-bg-light border ms-2">Владелец</span>{{end}}
+          </div>
+          <div class="ms-auto">
+            <label class="form-label small mb-0" for="weight-{{.ID}}">Вес цели</label>
+            <input class="form-control form-control-sm" type="number" min="0" max="100" name="weight_{{.ID}}" id="weight-{{.ID}}" value="{{.Weight}}" {{if .Disabled}}disabled{{end}}>
+          </div>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    <div class="card-footer d-flex justify-content-end gap-2">
+      {{if .ReturnURL}}
+      <a class="btn btn-outline-secondary" href="{{.ReturnURL}}">Отмена</a>
+      {{else}}
+      <a class="btn btn-outline-secondary" href="/teams/{{.Owner.ID}}/okr?year={{.Goal.Year}}&quarter={{.Goal.Quarter}}">Отмена</a>
+      {{end}}
+      <button type="submit" class="btn btn-primary">Сохранить</button>
+    </div>
+  </div>
+</form>
+{{end}}
