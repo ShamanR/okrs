@@ -200,6 +200,16 @@ func (s *Store) UpdateGoalFields(ctx context.Context, input GoalFieldsUpdateInpu
 	return err
 }
 
+func (s *Store) UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE goals
+		SET team_id=$1, weight=$2, updated_at=NOW()
+		WHERE id=$3`,
+		teamID, weight, goalID,
+	)
+	return err
+}
+
 func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string) error {
 	_, err := s.DB.Exec(ctx, `INSERT INTO goal_comments (goal_id, text) VALUES ($1,$2)`, goalID, text)
 	return err

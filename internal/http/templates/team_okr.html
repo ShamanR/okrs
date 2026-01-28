@@ -164,7 +164,7 @@
         <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
           <input type="hidden" name="team_id" value="{{$.Team.ID}}">
           <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>
-            {{if ne .TeamID $.Team.ID}}Убрать{{else}}Удалить{{end}}
+            {{if or (ne .TeamID $.Team.ID) (gt (len $shareTeams) 1)}}Убрать{{else}}Удалить{{end}}
           </button>
         </form>
       </div>
@@ -469,7 +469,7 @@
         <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
           <input type="hidden" name="team_id" value="{{$.Team.ID}}">
           <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>
-            {{if ne .TeamID $.Team.ID}}Убрать{{else}}Удалить{{end}}
+            {{if or (ne .TeamID $.Team.ID) (gt (len $shareTeams) 1)}}Убрать{{else}}Удалить{{end}}
           </button>
         </form>
       </div>

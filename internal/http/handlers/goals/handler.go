@@ -248,6 +248,24 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
 		return
 	}
+	shares, err := h.deps.Store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if len(shares) > 0 {
+		newOwner := shares[0]
+		if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		if err := h.deps.Store.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		return
+	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -496,7 +514,6 @@ type goalShareOption struct {
 	Label    string
 	Selected bool
 	Weight   int
-	Disabled bool
 }
 
 type goalSharePage struct {
@@ -572,19 +589,40 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	selected := r.Form["team_ids"]
-	shares := make([]store.GoalShareInput, 0, len(selected))
+	if len(selected) == 0 {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
+		return
+	}
+	selectedIDs := make([]int64, 0, len(selected))
+	selectedSet := make(map[int64]struct{}, len(selected))
 	for _, value := range selected {
 		teamID, err := common.ParseID(value)
 		if err != nil {
 			continue
 		}
-		if teamID == goal.TeamID {
+		if _, exists := selectedSet[teamID]; exists {
 			continue
 		}
+		selectedSet[teamID] = struct{}{}
+		selectedIDs = append(selectedIDs, teamID)
+	}
+	ownerID := goal.TeamID
+	if _, ok := selectedSet[ownerID]; !ok {
+		ownerID = selectedIDs[0]
+	}
+	shares := make([]store.GoalShareInput, 0, len(selectedIDs))
+	for _, teamID := range selectedIDs {
 		weight := common.ParseIntField(r.FormValue(fmt.Sprintf("weight_%d", teamID)))
 		if weight < 0 || weight > 100 {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Вес должен быть 0..100"))
 			return
+		}
+		if teamID == ownerID {
+			if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, ownerID, weight); err != nil {
+				common.RenderError(w, h.deps.Logger, err)
+				return
+			}
+			continue
 		}
 		shares = append(shares, store.GoalShareInput{TeamID: teamID, Weight: weight})
 	}
@@ -596,7 +634,7 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", ownerID, goal.Year, goal.Quarter), http.StatusSeeOther)
 }
 
 func parseOptionalTeamID(value string, fallback int64) int64 {
@@ -649,12 +687,14 @@ func appendGoalShareOption(options *[]goalShareOption, team domain.Team, childre
 	if ok {
 		weight = share.Weight
 	}
+	if team.ID == ownerID {
+		weight = goalWeight
+	}
 	option := goalShareOption{
 		ID:       team.ID,
 		Label:    label,
-		Selected: ok,
+		Selected: ok || team.ID == ownerID,
 		Weight:   weight,
-		Disabled: team.ID == ownerID,
 	}
 	*options = append(*options, option)
 	for _, child := range childrenMap[team.ID] {
