@@ -73,7 +73,31 @@
               {{range .Goals}}
               <tr>
                 <td class="teams-goals-col-weight"><span class="badge text-bg-light border">{{.Weight}}</span></td>
-                <td class="teams-goals-col-title text-break">{{.Title}}</td>
+                <td class="teams-goals-col-title text-break">
+                  <div class="d-flex align-items-center gap-2">
+                    <span>{{.Title}}</span>
+                    {{if gt (len .ShareTeams) 1}}
+                    <button type="button" class="btn btn-link p-0 share-goal-button"
+                      data-popover-content="#team-goal-share-{{.ID}}" data-popover-trigger="hoverable"
+                      aria-label="Shared goal">
+                      <i class="bi bi-share"></i>
+                    </button>
+                    <div id="team-goal-share-{{.ID}}" class="d-none">
+                      <div class="small fw-semibold mb-1">Команды с целью</div>
+                      <ul class="list-unstyled mb-0">
+                        {{range .ShareTeams}}
+                        <li>
+                          <a class="text-decoration-none"
+                            href="/teams/{{.ID}}/okr?year={{$.SelectedYear}}&quarter={{$.SelectedQuarter}}">
+                            <span class="text-muted">{{.TypeLabel}}</span> {{.Name}}
+                          </a>
+                        </li>
+                        {{end}}
+                      </ul>
+                    </div>
+                    {{end}}
+                  </div>
+                </td>
                 <td class="teams-goals-col-progress"><span class="badge text-bg-light border">{{.Progress}}%</span></td>
               </tr>
               {{end}}

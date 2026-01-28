@@ -31,7 +31,10 @@
     <p class="mb-0">Work: {{.Goal.WorkType}} | Focus: {{.Goal.FocusType}} | Owner: {{.Goal.OwnerText}}</p>
     <div class="mt-3">
       <form method="post" action="/goals/{{.Goal.ID}}/delete" class="m-0">
-        <button type="submit" class="btn btn-outline-danger btn-sm" {{if .IsClosed}}disabled{{end}}>Удалить цель</button>
+        <input type="hidden" name="team_id" value="{{.Team.ID}}">
+        <button type="submit" class="btn btn-outline-danger btn-sm" {{if .IsClosed}}disabled{{end}}>
+          {{if ne .Goal.TeamID .Team.ID}}Убрать цель{{else}}Удалить цель{{end}}
+        </button>
       </form>
     </div>
   </div>

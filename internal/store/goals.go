@@ -22,9 +22,14 @@ func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) 
 
 func (s *Store) ListGoalsByTeamQuarter(ctx context.Context, teamID int64, year, quarter int) ([]domain.Goal, error) {
 	rows, err := s.DB.Query(ctx, `
-		SELECT id, team_id, year, quarter, title, description, priority, weight, work_type, focus_type, owner_text, created_at, updated_at
-		FROM goals WHERE team_id=$1 AND year=$2 AND quarter=$3
-		ORDER BY sort_order, id`, teamID, year, quarter)
+		SELECT g.id, g.team_id, g.year, g.quarter, g.title, g.description, g.priority,
+		       COALESCE(gs.weight, g.weight) AS weight,
+		       g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
+		       COALESCE(gs.sort_order, g.sort_order) AS team_sort_order
+		FROM goals g
+		LEFT JOIN goal_shares gs ON gs.goal_id = g.id AND gs.team_id = $1
+		WHERE g.year=$2 AND g.quarter=$3 AND (g.team_id=$1 OR gs.team_id IS NOT NULL)
+		ORDER BY team_sort_order, g.id`, teamID, year, quarter)
 	if err != nil {
 		return nil, err
 	}
@@ -33,7 +38,8 @@ func (s *Store) ListGoalsByTeamQuarter(ctx context.Context, teamID int64, year, 
 	goals := make([]domain.Goal, 0)
 	for rows.Next() {
 		var goal domain.Goal
-		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.Year, &goal.Quarter, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+		var sortOrder int
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.Year, &goal.Quarter, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt, &sortOrder); err != nil {
 			return nil, err
 		}
 		goals = append(goals, goal)
@@ -139,6 +145,16 @@ type GoalUpdateInput struct {
 	OwnerText   string
 }
 
+type GoalFieldsUpdateInput struct {
+	ID          int64
+	Title       string
+	Description string
+	Priority    domain.Priority
+	WorkType    domain.WorkType
+	FocusType   domain.FocusType
+	OwnerText   string
+}
+
 func (s *Store) ListGoalsByYear(ctx context.Context, year int) ([]GoalWithTeam, error) {
 	rows, err := s.DB.Query(ctx, `
 		SELECT g.id, g.team_id, g.year, g.quarter, g.title, g.description, g.priority, g.weight, g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
@@ -170,6 +186,26 @@ func (s *Store) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {
 		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, focus_type=$6, owner_text=$7, updated_at=NOW()
 		WHERE id=$8`,
 		input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.ID,
+	)
+	return err
+}
+
+func (s *Store) UpdateGoalFields(ctx context.Context, input GoalFieldsUpdateInput) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE goals
+		SET title=$1, description=$2, priority=$3, work_type=$4, focus_type=$5, owner_text=$6, updated_at=NOW()
+		WHERE id=$7`,
+		input.Title, input.Description, input.Priority, input.WorkType, input.FocusType, input.OwnerText, input.ID,
+	)
+	return err
+}
+
+func (s *Store) UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE goals
+		SET team_id=$1, weight=$2, updated_at=NOW()
+		WHERE id=$3`,
+		teamID, weight, goalID,
 	)
 	return err
 }

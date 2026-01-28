@@ -33,7 +33,18 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	team, err := h.deps.Store.GetTeam(ctx, goal.TeamID)
+	teamID := goal.TeamID
+	if value := r.URL.Query().Get("team"); value != "" {
+		if parsed, err := common.ParseID(value); err == nil {
+			if parsed != goal.TeamID {
+				if share, err := h.deps.Store.GetGoalShare(ctx, goalID, parsed); err == nil {
+					goal.Weight = share.Weight
+					teamID = parsed
+				}
+			}
+		}
+	}
+	team, err := h.deps.Store.GetTeam(ctx, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -218,9 +229,40 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	goal, err := h.deps.Store.GetGoal(ctx, goalID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	if teamID != goal.TeamID {
+		if err := h.deps.Store.DeleteGoalShare(ctx, goalID, teamID); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		return
+	}
+	shares, err := h.deps.Store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if len(shares) > 0 {
+		newOwner := shares[0]
+		if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		if err := h.deps.Store.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
 		return
 	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
@@ -263,6 +305,15 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	if teamID != goal.TeamID {
+		if returnURL := r.FormValue("return"); returnURL != "" {
+			http.Redirect(w, r, returnURL, http.StatusSeeOther)
+			return
+		}
+		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		return
+	}
 	if err := h.deps.Store.MoveGoal(ctx, goalID, direction); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -290,7 +341,8 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, goal.Year, goal.Quarter)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -307,12 +359,11 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		h.renderGoalWithError(w, r, goalID, errMsg)
 		return
 	}
-	if err := h.deps.Store.UpdateGoal(ctx, store.GoalUpdateInput{
+	if err := h.deps.Store.UpdateGoalFields(ctx, store.GoalFieldsUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
 		Priority:    priority,
-		Weight:      weight,
 		WorkType:    workType,
 		FocusType:   focusType,
 		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
@@ -320,7 +371,11 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+	if err := h.deps.Store.UpdateGoalTeamWeight(ctx, goalID, teamID, weight); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
 }
 
 type yearGoalsPage struct {
@@ -419,7 +474,18 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	team, err := h.deps.Store.GetTeam(r.Context(), goal.TeamID)
+	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
+	if teamID == goal.TeamID {
+		if value := r.URL.Query().Get("team"); value != "" {
+			teamID = parseOptionalTeamID(value, goal.TeamID)
+		}
+	}
+	if teamID != goal.TeamID {
+		if share, err := h.deps.Store.GetGoalShare(r.Context(), goalID, teamID); err == nil {
+			goal.Weight = share.Weight
+		}
+	}
+	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -440,4 +506,109 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		ContentTemplate string
 	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
+func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	selected := r.Form["team_ids"]
+	if len(selected) == 0 {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
+		return
+	}
+	selectedIDs := make([]int64, 0, len(selected))
+	selectedSet := make(map[int64]struct{}, len(selected))
+	for _, value := range selected {
+		teamID, err := common.ParseID(value)
+		if err != nil {
+			continue
+		}
+		if _, exists := selectedSet[teamID]; exists {
+			continue
+		}
+		selectedSet[teamID] = struct{}{}
+		selectedIDs = append(selectedIDs, teamID)
+	}
+	sharesList, err := h.deps.Store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	shareWeights := make(map[int64]int, len(sharesList))
+	for _, share := range sharesList {
+		shareWeights[share.TeamID] = share.Weight
+	}
+	ownerID := goal.TeamID
+	if _, ok := selectedSet[ownerID]; !ok {
+		ownerID = selectedIDs[0]
+	}
+	shares := make([]store.GoalShareInput, 0, len(selectedIDs))
+	for _, teamID := range selectedIDs {
+		status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, goal.Year, goal.Quarter)
+		if err != nil {
+			common.RenderError(w, h.deps.Logger, err)
+			return
+		}
+		if status == domain.TeamQuarterStatusValidated || status == domain.TeamQuarterStatusClosed {
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым кварталом"))
+			return
+		}
+		if teamID == ownerID {
+			ownerWeight := goal.Weight
+			if ownerID != goal.TeamID {
+				if existingWeight, ok := shareWeights[ownerID]; ok {
+					ownerWeight = existingWeight
+				} else {
+					ownerWeight = 0
+				}
+			}
+			if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, ownerID, ownerWeight); err != nil {
+				common.RenderError(w, h.deps.Logger, err)
+				return
+			}
+			continue
+		}
+		weight := 0
+		if existingWeight, ok := shareWeights[teamID]; ok {
+			weight = existingWeight
+		}
+		shares = append(shares, store.GoalShareInput{TeamID: teamID, Weight: weight})
+	}
+	if err := h.deps.Store.ReplaceGoalShares(ctx, goalID, shares); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if returnURL := r.FormValue("return"); returnURL != "" {
+		http.Redirect(w, r, returnURL, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", ownerID, goal.Year, goal.Quarter), http.StatusSeeOther)
+}
+
+func parseOptionalTeamID(value string, fallback int64) int64 {
+	if value == "" {
+		return fallback
+	}
+	parsed, err := common.ParseID(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
+func redirectToTeam(w http.ResponseWriter, r *http.Request, teamID int64, year, quarter int) {
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
 }
