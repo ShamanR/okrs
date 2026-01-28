@@ -82,6 +82,26 @@
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
         {{if ne .TeamID $.Team.ID}}<span class="badge text-bg-info">Общая</span>{{end}}
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
+        {{ $shareTeams := index $.GoalShares .ID }}
+        {{if gt (len $shareTeams) 1}}
+        <button type="button" class="btn btn-link p-0 share-goal-button"
+          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hover focus"
+          aria-label="Shared goal">
+          <i class="bi bi-share"></i>
+        </button>
+        <div id="okr-goal-share-{{.ID}}" class="d-none">
+          <div class="small fw-semibold mb-1">Команды с целью</div>
+          <ul class="list-unstyled mb-0">
+            {{range $shareTeams}}
+            <li>
+              <a class="text-decoration-none" href="/teams/{{.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <span class="text-muted">{{.TypeLabel}}</span> {{.Name}}
+              </a>
+            </li>
+            {{end}}
+          </ul>
+        </div>
+        {{end}}
       </div>
       <p class="text-muted mb-2 okr-goal-description" data-goal-description>
         {{.Description}}
@@ -394,6 +414,26 @@
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
         {{if ne .TeamID $.Team.ID}}<span class="badge text-bg-info">Общая</span>{{end}}
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
+        {{ $shareTeams := index $.GoalShares .ID }}
+        {{if gt (len $shareTeams) 1}}
+        <button type="button" class="btn btn-link p-0 share-goal-button"
+          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hover focus"
+          aria-label="Shared goal">
+          <i class="bi bi-share"></i>
+        </button>
+        <div id="okr-goal-share-{{.ID}}" class="d-none">
+          <div class="small fw-semibold mb-1">Команды с целью</div>
+          <ul class="list-unstyled mb-0">
+            {{range $shareTeams}}
+            <li>
+              <a class="text-decoration-none" href="/teams/{{.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <span class="text-muted">{{.TypeLabel}}</span> {{.Name}}
+              </a>
+            </li>
+            {{end}}
+          </ul>
+        </div>
+        {{end}}
         <span class="badge text-bg-primary border">{{.WorkType}}</span>
         <span class="badge text-bg-secondary border">{{.FocusType}}</span>
       </div>

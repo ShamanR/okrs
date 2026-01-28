@@ -33,8 +33,22 @@ type teamRow struct {
 	StatusLabel     string
 	QuarterProgress int
 	GoalsCount      int
-	Goals           []domain.Goal
+	Goals           []teamGoalRow
 	GoalsWeight     int
+}
+
+type goalShareTeam struct {
+	ID        int64
+	Name      string
+	TypeLabel string
+}
+
+type teamGoalRow struct {
+	ID         int64
+	Title      string
+	Weight     int
+	Progress   int
+	ShareTeams []goalShareTeam
 }
 
 type teamFilterOption struct {
@@ -91,6 +105,7 @@ type teamOKRPage struct {
 	Year             int
 	Quarter          int
 	Goals            []domain.Goal
+	GoalShares       map[int64][]goalShareTeam
 	QuarterStatus    domain.TeamQuarterStatus
 	StatusOptions    []teamStatusOption
 	IsClosed         bool
@@ -139,7 +154,7 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 
 	rows := make([]teamRow, 0, len(teams))
 	for _, team := range filteredRoots {
-		if err := h.appendTeamRows(ctx, &rows, team, 0, year, quarter, childrenMap); err != nil {
+		if err := h.appendTeamRows(ctx, &rows, team, 0, year, quarter, childrenMap, teamsByID); err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
@@ -476,6 +491,20 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		}
 		goals[i].Comments = comments
 	}
+	teams, err := h.deps.Store.ListTeams(ctx)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	teamsByID := make(map[int64]domain.Team, len(teams))
+	for _, teamItem := range teams {
+		teamsByID[teamItem.ID] = teamItem
+	}
+	goalShares, err := h.buildGoalSharesMap(ctx, goals, teamsByID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -492,6 +521,7 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		Year:             year,
 		Quarter:          quarter,
 		Goals:            goals,
+		GoalShares:       goalShares,
 		QuarterStatus:    status,
 		StatusOptions:    buildTeamStatusOptions(status),
 		IsClosed:         status == domain.TeamQuarterStatusClosed,
@@ -582,6 +612,20 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		}
 		goals[i].Comments = comments
 	}
+	teams, err := h.deps.Store.ListTeams(r.Context())
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	teamsByID := make(map[int64]domain.Team, len(teams))
+	for _, teamItem := range teams {
+		teamsByID[teamItem.ID] = teamItem
+	}
+	goalShares, err := h.buildGoalSharesMap(r.Context(), goals, teamsByID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), teamID, year, quarter)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -598,6 +642,7 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		Year:             year,
 		Quarter:          quarter,
 		Goals:            goals,
+		GoalShares:       goalShares,
 		QuarterStatus:    status,
 		StatusOptions:    buildTeamStatusOptions(status),
 		IsClosed:         status == domain.TeamQuarterStatusClosed,
@@ -612,7 +657,7 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team domain.Team, level int, year, quarter int, childrenMap map[int64][]domain.Team) error {
+func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team domain.Team, level int, year, quarter int, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
 	goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, team.ID, year, quarter)
 	if err != nil {
 		return err
@@ -621,8 +666,20 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 	if err != nil {
 		return err
 	}
+	goalRows := make([]teamGoalRow, 0, len(goals))
 	for i := range goals {
 		goals[i].Progress = common.CalculateGoalProgress(goals[i])
+		shareTeams, err := h.buildGoalShareTeams(ctx, goals[i], teamsByID)
+		if err != nil {
+			return err
+		}
+		goalRows = append(goalRows, teamGoalRow{
+			ID:         goals[i].ID,
+			Title:      goals[i].Title,
+			Weight:     goals[i].Weight,
+			Progress:   goals[i].Progress,
+			ShareTeams: shareTeams,
+		})
 	}
 	quarterProgress := okr.QuarterProgress(goals)
 	totalWeight := 0
@@ -637,15 +694,55 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 		StatusLabel:     common.TeamQuarterStatusLabel(status),
 		QuarterProgress: quarterProgress,
 		GoalsCount:      len(goals),
-		Goals:           goals,
+		Goals:           goalRows,
 		GoalsWeight:     totalWeight,
 	})
 	for _, child := range childrenMap[team.ID] {
-		if err := h.appendTeamRows(ctx, rows, child, level+1, year, quarter, childrenMap); err != nil {
+		if err := h.appendTeamRows(ctx, rows, child, level+1, year, quarter, childrenMap, teamsByID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {
+	shares, err := h.deps.Store.ListGoalShares(ctx, goal.ID)
+	if err != nil {
+		return nil, err
+	}
+	teamIDs := make(map[int64]struct{}, len(shares)+1)
+	teamIDs[goal.TeamID] = struct{}{}
+	for _, share := range shares {
+		teamIDs[share.TeamID] = struct{}{}
+	}
+	teams := make([]goalShareTeam, 0, len(teamIDs))
+	for teamID := range teamIDs {
+		team, ok := teamsByID[teamID]
+		if !ok {
+			continue
+		}
+		teams = append(teams, goalShareTeam{
+			ID:        team.ID,
+			Name:      team.Name,
+			TypeLabel: common.TeamTypeLabel(team.Type),
+		})
+	}
+	sort.Slice(teams, func(i, j int) bool {
+		return teams[i].Name < teams[j].Name
+	})
+	return teams, nil
+}
+
+func (h *Handler) buildGoalSharesMap(ctx context.Context, goals []domain.Goal, teamsByID map[int64]domain.Team) (map[int64][]goalShareTeam, error) {
+	result := make(map[int64][]goalShareTeam, len(goals))
+	for _, goal := range goals {
+		teams, err := h.buildGoalShareTeams(ctx, goal, teamsByID)
+		if err != nil {
+			return nil, err
+		}
+		result[goal.ID] = teams
+	}
+	return result, nil
 }
 
 func buildTeamHierarchy(teams []domain.Team) (map[int64]domain.Team, map[int64][]domain.Team, []domain.Team) {
