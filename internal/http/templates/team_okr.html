@@ -1127,6 +1127,10 @@
     krModal.addEventListener('show.bs.modal', (event) => {
       const trigger = event.relatedTarget;
       if (!trigger || !form) return;
+      const returnInput = form.querySelector('[name="return"]');
+      if (returnInput) {
+        returnInput.value = `${window.location.pathname}${window.location.search}`;
+      }
       const mode = trigger.getAttribute('data-kr-modal');
       if (mode === 'create') {
         const goalId = trigger.getAttribute('data-goal-id');
