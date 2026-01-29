@@ -30,6 +30,8 @@ type Store interface {
 	UpdateGoal(ctx context.Context, input store.GoalUpdateInput) error
 	CreateKeyResult(ctx context.Context, input store.KeyResultInput) (int64, error)
 	UpdateKeyResult(ctx context.Context, input store.KeyResultUpdateInput) error
+	MoveGoal(ctx context.Context, goalID int64, direction int) error
+	MoveKeyResult(ctx context.Context, krID int64, direction int) error
 	UpsertPercentMeta(ctx context.Context, input store.PercentMetaInput) error
 	UpsertLinearMeta(ctx context.Context, input store.LinearMetaInput) error
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
@@ -282,6 +284,14 @@ type KeyResultMetaInput struct {
 
 func (s *Service) UpdateGoal(ctx context.Context, input store.GoalUpdateInput) error {
 	return s.store.UpdateGoal(ctx, input)
+}
+
+func (s *Service) MoveGoal(ctx context.Context, goalID int64, direction int) error {
+	return s.store.MoveGoal(ctx, goalID, direction)
+}
+
+func (s *Service) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
+	return s.store.MoveKeyResult(ctx, krID, direction)
 }
 
 func (s *Service) CreateKeyResultWithMeta(ctx context.Context, input store.KeyResultInput, meta KeyResultMetaInput) (int64, error) {

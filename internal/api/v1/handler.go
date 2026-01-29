@@ -40,12 +40,16 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/goals/{goalID}/comments", h.handleAddGoalComment)
 	r.Post("/goals/{goalID}", h.handleUpdateGoal)
 	r.Post("/goals/{goalID}/key-results", h.handleCreateKeyResult)
+	r.Post("/goals/{goalID}/move-up", h.handleMoveGoalUp)
+	r.Post("/goals/{goalID}/move-down", h.handleMoveGoalDown)
 
 	r.Post("/krs/{krID}/progress/percent", h.handleUpdatePercentProgress)
 	r.Post("/krs/{krID}/progress/boolean", h.handleUpdateBooleanProgress)
 	r.Post("/krs/{krID}/progress/project", h.handleUpdateProjectProgress)
 	r.Post("/krs/{krID}/comments", h.handleAddKRComment)
 	r.Post("/krs/{krID}", h.handleUpdateKeyResult)
+	r.Post("/krs/{krID}/move-up", h.handleMoveKeyResultUp)
+	r.Post("/krs/{krID}/move-down", h.handleMoveKeyResultDown)
 	r.Post("/teams/{teamID}/status", h.handleUpdateTeamQuarterStatus)
 
 	return r
@@ -375,6 +379,56 @@ func (h *Handler) handleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.R
 	}
 	if err := h.service.UpdateTeamQuarterStatus(r.Context(), teamID, year, quarter, status); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleMoveGoalUp(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveGoal(w, r, -1)
+}
+
+func (h *Handler) handleMoveGoalDown(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveGoal(w, r, 1)
+}
+
+func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, direction int) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	if err := h.service.MoveGoal(r.Context(), goalID, direction); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to move goal", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleMoveKeyResultUp(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveKeyResult(w, r, -1)
+}
+
+func (h *Handler) handleMoveKeyResultDown(w http.ResponseWriter, r *http.Request) {
+	h.handleMoveKeyResult(w, r, 1)
+}
+
+func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, direction int) {
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
+		return
+	}
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	if err := h.service.MoveKeyResult(r.Context(), krID, direction); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to move key result", nil)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})

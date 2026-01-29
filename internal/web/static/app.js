@@ -626,8 +626,8 @@
       menu.appendChild(buildMenuButton('Редактировать', () => openGoalModal(goal)));
       menu.appendChild(buildMenuButton('Шарить', () => openShareGoalModal(goal)));
     }
-    menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-up`, buildReturnFields()));
-    menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-down`, buildReturnFields()));
+    menu.appendChild(buildMenuButton('Переместить вверх', () => moveGoal(goal.id, 'move-up')));
+    menu.appendChild(buildMenuButton('Переместить вниз', () => moveGoal(goal.id, 'move-down')));
     if (!isQuarterLocked()) {
       menu.appendChild(buildMenuForm(`/goals/${goal.id}/delete`, buildReturnFields(), true));
     }
@@ -652,8 +652,8 @@
     if (!isQuarterLocked()) {
       menu.appendChild(buildMenuButton('Редактировать', () => openKRModal(kr)));
     }
-    menu.appendChild(buildMenuForm(`/key-results/${kr.id}/move-up`, buildReturnFields()));
-    menu.appendChild(buildMenuForm(`/key-results/${kr.id}/move-down`, buildReturnFields()));
+    menu.appendChild(buildMenuButton('Переместить вверх', () => moveKeyResult(kr.id, 'move-up')));
+    menu.appendChild(buildMenuButton('Переместить вниз', () => moveKeyResult(kr.id, 'move-down')));
     if (!isQuarterLocked()) {
       menu.appendChild(buildMenuForm(`/key-results/${kr.id}/delete`, buildReturnFields(), true));
     }
@@ -792,6 +792,24 @@
     const response = await fetch(url, { method: 'POST', body });
     if (!response.ok) {
       throw new Error('Request failed');
+    }
+  };
+
+  const moveGoal = async (goalID, direction) => {
+    try {
+      await postFormData(`/api/v1/goals/${goalID}/${direction}`, {});
+      await reloadTeamOKR();
+    } catch (error) {
+      // noop
+    }
+  };
+
+  const moveKeyResult = async (krID, direction) => {
+    try {
+      await postFormData(`/api/v1/krs/${krID}/${direction}`, {});
+      await reloadTeamOKR();
+    } catch (error) {
+      // noop
     }
   };
 
