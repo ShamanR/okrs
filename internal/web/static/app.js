@@ -304,7 +304,13 @@
 
     const body = document.createElement('tbody');
     goal.key_results.forEach((kr) => {
-      const { row, detailRow } = renderKRRow(kr);
+      const enrichedKR = {
+        ...kr,
+        goal_priority: goal.priority,
+        goal_work_type: goal.work_type,
+        goal_focus_type: goal.focus_type,
+      };
+      const { row, detailRow } = renderKRRow(enrichedKR);
       body.appendChild(row);
       body.appendChild(detailRow);
     });
@@ -1109,6 +1115,21 @@
   };
 
   const openKRModalWithAction = (kr, action, titleText) => {
+    const goalMeta = `
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Приоритет цели</label>
+          <input class="form-control" value="${escapeHTML(kr.goal_priority || '')}" disabled />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Тип работы</label>
+          <input class="form-control" value="${escapeHTML(kr.goal_work_type || '')}" disabled />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Фокус</label>
+          <input class="form-control" value="${escapeHTML(kr.goal_focus_type || '')}" disabled />
+        </div>
+      </div>`;
     const kindOptions = ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'];
     const normalizedKind = (kr.kind || kr.measure?.kind || 'PERCENT').toUpperCase();
     const selectedKind = kindOptions.includes(normalizedKind) ? normalizedKind : 'PERCENT';
@@ -1199,6 +1220,7 @@
             ${buildSelect('kind', kindOptions, selectedKind)}
           </div>
         </div>
+        ${goalMeta}
         ${percentSection}
         ${linearSection}
         ${booleanSection}
