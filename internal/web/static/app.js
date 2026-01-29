@@ -83,11 +83,15 @@
 
   const loadPeriods = async () => {
     const cached = readPeriodsCache();
-    if (cached) return cached;
-    const payload = await fetchJSON('/api/v1/periods');
-    const items = payload.items || [];
-    writePeriodsCache(items);
-    return items;
+    try {
+      const payload = await fetchJSON('/api/v1/periods');
+      const items = payload.items || [];
+      writePeriodsCache(items);
+      return items;
+    } catch (error) {
+      if (cached) return cached;
+      throw error;
+    }
   };
 
   const renderPeriodSelect = (select, periods, selectedID) => {
