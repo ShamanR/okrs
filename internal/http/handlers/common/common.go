@@ -16,11 +16,13 @@ import (
 
 	"okrs/internal/domain"
 	"okrs/internal/okr"
+	"okrs/internal/service"
 	"okrs/internal/store"
 )
 
 type Dependencies struct {
 	Store     *store.Store
+	Service   *service.Service
 	Logger    *slog.Logger
 	Templates *template.Template
 	Zone      *time.Location

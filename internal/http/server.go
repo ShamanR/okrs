@@ -10,12 +10,14 @@ import (
 	"strings"
 	"time"
 
+	apiv1 "okrs/internal/api/v1"
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/api"
 	"okrs/internal/http/handlers/common"
 	"okrs/internal/http/handlers/goals"
 	"okrs/internal/http/handlers/keyresults"
 	"okrs/internal/http/handlers/teams"
+	"okrs/internal/service"
 	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"
@@ -25,10 +27,11 @@ import (
 var templatesFS embed.FS
 
 type Server struct {
-	store  *store.Store
-	logger *slog.Logger
-	tmpl   *template.Template
-	zone   *time.Location
+	store   *store.Store
+	logger  *slog.Logger
+	tmpl    *template.Template
+	zone    *time.Location
+	service *service.Service
 }
 
 func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*Server, error) {
@@ -176,17 +179,20 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 	if err != nil {
 		return nil, err
 	}
-	return &Server{store: store, logger: logger, tmpl: tmpl, zone: zone}, nil
+	return &Server{store: store, logger: logger, tmpl: tmpl, zone: zone, service: service.New(store)}, nil
 }
 
 func (s *Server) Routes() http.Handler {
-	deps := common.Dependencies{Store: s.store, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
+	deps := common.Dependencies{Store: s.store, Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	teamsHandler := teams.New(deps)
 	goalsHandler := goals.New(deps)
 	krHandler := keyresults.New(deps)
 	apiHandler := api.New(deps)
+	apiV1Handler := apiv1.NewHandler(s.service)
 
 	r := chi.NewRouter()
+
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
 
 	r.Get("/teams", teamsHandler.HandleTeams)
 	r.Get("/teams/new", teamsHandler.HandleNewTeam)
@@ -227,6 +233,8 @@ func (s *Server) Routes() http.Handler {
 		r.Get("/teams/{teamID}/goals", apiHandler.HandleAPITeamGoals)
 		r.Get("/goals/{goalID}", apiHandler.HandleAPIGoal)
 	})
+
+	r.Mount("/api/v1", apiV1Handler.Routes())
 
 	return r
 }

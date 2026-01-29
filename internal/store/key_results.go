@@ -241,6 +241,21 @@ func (s *Store) UpdateLinearCurrent(ctx context.Context, krID int64, current flo
 	return s.touchKeyResultUpdatedAt(ctx, krID)
 }
 
+func (s *Store) UpdateBoolean(ctx context.Context, krID int64, done bool) error {
+	return s.UpsertBooleanMeta(ctx, krID, done)
+}
+
+func (s *Store) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
+	var kr domain.KeyResult
+	row := s.DB.QueryRow(ctx, `
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		FROM key_results WHERE id=$1`, id)
+	if err := row.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+		return domain.KeyResult{}, err
+	}
+	return kr, nil
+}
+
 func (s *Store) AddPercentCheckpoint(ctx context.Context, input PercentCheckpointInput) error {
 	_, err := s.DB.Exec(ctx, `
 		INSERT INTO kr_percent_checkpoints (key_result_id, metric_value, kr_percent)

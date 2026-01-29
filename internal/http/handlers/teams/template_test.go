@@ -13,12 +13,10 @@ func TestTeamOKRTemplateHasDataAttributes(t *testing.T) {
 	}
 	content := string(data)
 	required := []string{
-		"data-goal-card",
-		"data-goal-id",
-		"data-kr-item",
-		"data-kr-id",
-		"data-goal-move=",
-		"data-kr-move=",
+		"data-page=\"team-okr\"",
+		"data-team-id",
+		"data-okr-summary",
+		"data-okr-goals",
 	}
 	for _, token := range required {
 		if !strings.Contains(content, token) {
