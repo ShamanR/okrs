@@ -5,6 +5,9 @@
   };
 
   const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
+  const goalPriorityOptions = ['P0', 'P1', 'P2', 'P3'];
+  const goalWorkOptions = ['Discovery', 'Delivery'];
+  const goalFocusOptions = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
 
   const fetchJSON = async (url, options = {}) => {
     const response = await fetch(url, options);
@@ -62,9 +65,12 @@
     });
   };
 
-  const renderOKRPage = (data, summaryEl, goalsEl) => {
+  const renderOKRPage = (data, summaryEl, goalsEl, actionsEl) => {
     state.teamOKR = data;
     renderSummary(data, summaryEl);
+    if (actionsEl) {
+      renderOKRActions(data, actionsEl);
+    }
     goalsEl.innerHTML = '';
     if (!data.goals || data.goals.length === 0) {
       const empty = document.createElement('div');
@@ -483,6 +489,21 @@
     summaryEl.append(title, progressRow, counts, weight, status);
   };
 
+  const renderOKRActions = (data, actionsEl) => {
+    actionsEl.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = 'd-flex flex-wrap gap-2';
+
+    const addGoalButton = document.createElement('button');
+    addGoalButton.type = 'button';
+    addGoalButton.className = 'btn btn-primary';
+    addGoalButton.textContent = 'Добавить цель';
+    addGoalButton.addEventListener('click', () => openGoalCreateModal(data));
+
+    wrapper.appendChild(addGoalButton);
+    actionsEl.appendChild(wrapper);
+  };
+
   const renderGoalMenu = (goal) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'dropdown ms-auto';
@@ -713,9 +734,13 @@
     return modalEl;
   };
 
-  const openGoalModal = (goal) => {
+  const openGoalModal = (goal, options = {}) => {
+    const action = options.action || `/api/v1/goals/${goal.id}`;
+    const titleText = options.titleText || 'Редактировать цель';
+    const submitLabel = options.submitLabel || 'Сохранить';
+    const includeQuarter = options.includeQuarter === true;
     const body = `
-      <form method="post" action="/api/v1/goals/${goal.id}" class="vstack gap-3" data-goal-edit-form>
+      <form method="post" action="${action}" class="vstack gap-3" data-goal-edit-form>
         <div>
           <label class="form-label">Название</label>
           <input class="form-control" name="title" value="${escapeHTML(goal.title)}" />
@@ -727,7 +752,7 @@
         <div class="row g-3">
           <div class="col-md-4">
             <label class="form-label">Приоритет</label>
-            ${buildSelect('priority', ['P0', 'P1', 'P2', 'P3'], goal.priority)}
+            ${buildSelect('priority', goalPriorityOptions, goal.priority)}
           </div>
           <div class="col-md-4">
             <label class="form-label">Вес</label>
@@ -735,28 +760,51 @@
           </div>
           <div class="col-md-4">
             <label class="form-label">Работа</label>
-            ${buildSelect('work_type', ['Discovery', 'Delivery'], goal.work_type)}
+            ${buildSelect('work_type', goalWorkOptions, goal.work_type)}
           </div>
         </div>
         <div class="row g-3">
           <div class="col-md-6">
             <label class="form-label">Фокус</label>
-            ${buildSelect('focus_type', ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'], goal.focus_type)}
+            ${buildSelect('focus_type', goalFocusOptions, goal.focus_type)}
           </div>
           <div class="col-md-6">
             <label class="form-label">Владелец</label>
             <input class="form-control" name="owner_text" value="${escapeHTML(goal.owner_text || '')}" />
           </div>
         </div>
-        <button class="btn btn-primary" type="submit">Сохранить</button>
+        ${includeQuarter ? `<input type="hidden" name="year" value="${goal.year ?? ''}" />` : ''}
+        ${includeQuarter ? `<input type="hidden" name="quarter" value="${goal.quarter ?? ''}" />` : ''}
+        <button class="btn btn-primary" type="submit">${submitLabel}</button>
       </form>`;
-    const modalEl = openModal(`Редактировать цель`, body);
+    const modalEl = openModal(titleText, body);
     const form = modalEl.querySelector('[data-goal-edit-form]');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       await submitFormXHR(form);
       await reloadTeamOKR();
       bootstrap.Modal.getInstance(modalEl)?.hide();
+    });
+  };
+
+  const openGoalCreateModal = (data) => {
+    const emptyGoal = {
+      id: 0,
+      title: '',
+      description: '',
+      priority: goalPriorityOptions[2] || goalPriorityOptions[0],
+      weight: 0,
+      work_type: goalWorkOptions[0],
+      focus_type: goalFocusOptions[0],
+      owner_text: '',
+      year: data.year,
+      quarter: data.quarter,
+    };
+    openGoalModal(emptyGoal, {
+      action: `/teams/${data.team.id}/okr`,
+      titleText: 'Добавить цель',
+      submitLabel: 'Создать',
+      includeQuarter: true,
     });
   };
 
@@ -815,6 +863,8 @@
 
   const openKRModalWithAction = (kr, action, titleText) => {
     const kindOptions = ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'];
+    const normalizedKind = (kr.kind || kr.measure?.kind || 'PERCENT').toUpperCase();
+    const selectedKind = kindOptions.includes(normalizedKind) ? normalizedKind : 'PERCENT';
     const percentSection = `
       <div data-kind-section="PERCENT" class="vstack gap-2">
         <div class="row g-3">
@@ -899,7 +949,7 @@
           </div>
           <div class="col-md-6">
             <label class="form-label">Тип</label>
-            ${buildSelect('kind', kindOptions, kr.kind)}
+            ${buildSelect('kind', kindOptions, selectedKind)}
           </div>
         </div>
         ${percentSection}
@@ -1207,6 +1257,7 @@
     const page = document.querySelector('[data-page="team-okr"]');
     if (!page) return;
     const summaryEl = page.querySelector('[data-okr-summary]');
+    const actionsEl = page.querySelector('[data-okr-actions]');
     const goalsEl = page.querySelector('[data-okr-goals]');
     const teamID = page.dataset.teamId;
     const year = page.dataset.year;
@@ -1216,7 +1267,7 @@
       const url = new URL(`/api/v1/teams/${teamID}/okrs`, window.location.origin);
       url.searchParams.set('quarter', `${year}-${quarter}`);
       const payload = await fetchJSON(url.toString());
-      renderOKRPage(payload, summaryEl, goalsEl);
+      renderOKRPage(payload, summaryEl, goalsEl, actionsEl);
     };
 
     reloadTeamOKR = load;

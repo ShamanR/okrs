@@ -20,6 +20,8 @@ type Handler struct {
 	service *service.Service
 }
 
+const maxMultipartMemory = 32 << 20
+
 func NewHandler(service *service.Service) *Handler {
 	return &Handler{service: service}
 }
@@ -250,7 +252,7 @@ func (h *Handler) handleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
@@ -284,7 +286,7 @@ func (h *Handler) handleCreateKeyResult(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
@@ -323,7 +325,7 @@ func (h *Handler) handleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
@@ -361,7 +363,7 @@ func (h *Handler) handleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}

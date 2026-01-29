@@ -204,7 +204,7 @@ func persistTeamsFilters(w http.ResponseWriter, quarterValue, selectedFilter str
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -298,7 +298,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -402,7 +402,7 @@ func (h *Handler) HandleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.R
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -464,7 +464,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
