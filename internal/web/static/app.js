@@ -1115,19 +1115,23 @@
   };
 
   const openKRModalWithAction = (kr, action, titleText) => {
+    const goalMetaSource = state.teamOKR?.goals?.find((goal) => goal.id === kr.goal_id);
+    const goalPriority = kr.goal_priority || goalMetaSource?.priority || '';
+    const goalWorkType = kr.goal_work_type || goalMetaSource?.work_type || '';
+    const goalFocusType = kr.goal_focus_type || goalMetaSource?.focus_type || '';
     const goalMeta = `
       <div class="row g-3">
         <div class="col-md-4">
           <label class="form-label">Приоритет цели</label>
-          <input class="form-control" value="${escapeHTML(kr.goal_priority || '')}" disabled />
+          <input class="form-control" value="${escapeHTML(goalPriority)}" disabled />
         </div>
         <div class="col-md-4">
           <label class="form-label">Тип работы</label>
-          <input class="form-control" value="${escapeHTML(kr.goal_work_type || '')}" disabled />
+          <input class="form-control" value="${escapeHTML(goalWorkType)}" disabled />
         </div>
         <div class="col-md-4">
           <label class="form-label">Фокус</label>
-          <input class="form-control" value="${escapeHTML(kr.goal_focus_type || '')}" disabled />
+          <input class="form-control" value="${escapeHTML(goalFocusType)}" disabled />
         </div>
       </div>`;
     const kindOptions = ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'];
