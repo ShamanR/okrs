@@ -701,6 +701,7 @@
     form.method = 'post';
     form.action = action;
     form.className = 'm-0';
+    form.enctype = 'multipart/form-data';
     if (confirmDelete) {
       form.addEventListener('submit', (event) => {
         if (!window.confirm('Удалить запись?')) {
@@ -986,7 +987,22 @@
   const openShareGoalModal = async (goal) => {
     const hierarchy = state.hierarchy || (await fetchJSON('/api/v1/hierarchy')).items || [];
     state.hierarchy = hierarchy;
-    const options = flattenHierarchyOptions(hierarchy);
+    const existingTeams = goal.share_teams || [];
+    const existingTeamIds = new Set(existingTeams.map((team) => team.id));
+    const buildOptions = (tree, level = 0) => {
+      let html = '';
+      tree.forEach((node) => {
+        if (!existingTeamIds.has(node.id)) {
+          const prefix = '&nbsp;'.repeat(level * 2);
+          html += `<option value="${node.id}">${prefix}${node.type_label} ${escapeHTML(node.name)}</option>`;
+        }
+        if (node.children && node.children.length) {
+          html += buildOptions(node.children, level + 1);
+        }
+      });
+      return html;
+    };
+    const options = buildOptions(hierarchy);
     const buildRow = () => `
       <div class="row g-2 align-items-end" data-share-row>
         <div class="col-md-7">
@@ -995,13 +1011,20 @@
             ${options}
           </select>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Вес</label>
-          <input class="form-control" name="weight" type="number" value="0" />
-        </div>
       </div>`;
+    const sharedList = existingTeams.length
+      ? `<div class="vstack gap-1">
+          <div class="small text-muted">Уже шарят цель</div>
+          <ul class="list-unstyled mb-0">
+            ${existingTeams
+              .map((team) => `<li><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</li>`)
+              .join('')}
+          </ul>
+        </div>`
+      : '';
     const body = `
       <form class="vstack gap-3" data-share-goal-form>
+        ${sharedList}
         <div data-share-list class="vstack gap-2">
           ${buildRow()}
         </div>
@@ -1021,10 +1044,9 @@
       const targets = rows
         .map((row) => {
           const teamId = Number(row.querySelector('select[name="team_id"]').value);
-          const weight = Number(row.querySelector('input[name="weight"]').value);
-          return { team_id: teamId, weight };
+          return { team_id: teamId, weight: 0 };
         })
-        .filter((target) => target.team_id);
+        .filter((target) => target.team_id && !existingTeamIds.has(target.team_id));
       if (targets.length === 0) return;
       await fetchJSON(`/api/v1/goals/${goal.id}/share`, {
         method: 'POST',
