@@ -268,6 +268,16 @@
       cursor: pointer;
     }
 
+    .goal-title {
+      text-decoration: none;
+      color: inherit;
+      font-weight: 600;
+    }
+
+    .goal-title:hover {
+      text-decoration: underline;
+    }
+
     .hierarchy-label {
       white-space: pre;
       font-family: var(--bs-font-monospace);
@@ -373,6 +383,34 @@
       });
     }
   });
+
+  function updateMoveControls() {
+    const goalCards = Array.from(document.querySelectorAll('[data-goal-card]'));
+    goalCards.forEach((card, index) => {
+      const isFirst = index === 0;
+      const isLast = index === goalCards.length - 1;
+      card.querySelectorAll('[data-goal-move="up"]').forEach((btn) => {
+        if (isFirst) btn.disabled = true;
+      });
+      card.querySelectorAll('[data-goal-move="down"]').forEach((btn) => {
+        if (isLast) btn.disabled = true;
+      });
+
+      const krItems = Array.from(card.querySelectorAll('[data-kr-item]'));
+      krItems.forEach((krItem, krIndex) => {
+        const krIsFirst = krIndex === 0;
+        const krIsLast = krIndex === krItems.length - 1;
+        krItem.querySelectorAll('[data-kr-move="up"]').forEach((btn) => {
+          if (krIsFirst) btn.disabled = true;
+        });
+        krItem.querySelectorAll('[data-kr-move="down"]').forEach((btn) => {
+          if (krIsLast) btn.disabled = true;
+        });
+      });
+    });
+  }
+
+  updateMoveControls();
 
   function serializeForm(form) {
     const data = new FormData(form);
