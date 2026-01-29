@@ -746,6 +746,17 @@
     }
   };
 
+  const postFormData = async (url, data) => {
+    const body = new FormData();
+    Object.entries(data).forEach(([key, value]) => {
+      body.append(key, value);
+    });
+    const response = await fetch(url, { method: 'POST', body });
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+  };
+
   const submitFormXHR = async (form) => {
     const response = await fetch(form.action, { method: 'POST', body: new FormData(form) });
     if (!response.ok) {
@@ -757,7 +768,7 @@
   const updateQuarterStatus = async (status) => {
     if (!state.teamOKR) return;
     try {
-      await postForm(`/api/v1/teams/${state.teamOKR.team.id}/status`, {
+      await postFormData(`/api/v1/teams/${state.teamOKR.team.id}/status`, {
         year: state.teamOKR.year,
         quarter: state.teamOKR.quarter,
         status,
