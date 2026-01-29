@@ -1300,14 +1300,17 @@
       weightBadge.textContent = goal.weight;
       weight.appendChild(weightBadge);
 
+      const priority = document.createElement('td');
+      priority.className = 'teams-goals-col-priority';
+      const priorityBadge = document.createElement('span');
+      priorityBadge.className = `badge ${priorityBadgeClass(goal.priority)}`;
+      priorityBadge.textContent = goal.priority;
+      priority.appendChild(priorityBadge);
+
       const title = document.createElement('td');
       title.className = 'teams-goals-col-title text-break';
       const titleWrapper = document.createElement('div');
       titleWrapper.className = 'd-flex align-items-center gap-2';
-      const priority = document.createElement('span');
-      priority.className = `badge ${priorityBadgeClass(goal.priority)}`;
-      priority.textContent = goal.priority;
-      titleWrapper.appendChild(priority);
       if (goal.share_teams && goal.share_teams.length > 1) {
         titleWrapper.appendChild(renderSharedGoalBadge(goal, { year, quarter, showBadge: false }));
       }
@@ -1323,20 +1326,22 @@
       progressBadge.textContent = `${goal.progress}%`;
       progress.appendChild(progressBadge);
 
-      row.append(weight, title, progress);
+      row.append(weight, priority, title, progress);
       tbody.appendChild(row);
     });
 
     table.appendChild(tbody);
     cell.appendChild(table);
 
-    const weightSummary = document.createElement('div');
-    weightSummary.className = 'mt-2';
-    const weightBadge = document.createElement('span');
-    weightBadge.className = `badge ${team.goals_weight !== 100 ? 'text-bg-danger' : 'text-bg-light border'}`;
-    weightBadge.textContent = `Сумма целей ${team.goals_weight}`;
-    weightSummary.appendChild(weightBadge);
-    cell.appendChild(weightSummary);
+    if (team.goals_weight !== 100) {
+      const weightSummary = document.createElement('div');
+      weightSummary.className = 'mt-2';
+      const weightBadge = document.createElement('span');
+      weightBadge.className = 'badge text-bg-danger';
+      weightBadge.textContent = `Сумма целей ${team.goals_weight}`;
+      weightSummary.appendChild(weightBadge);
+      cell.appendChild(weightSummary);
+    }
 
     return cell;
   };
