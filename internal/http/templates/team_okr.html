@@ -80,7 +80,10 @@
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
-        {{if ne .TeamID $.Team.ID}}<span class="badge text-bg-info">Общая</span>{{end}}
+        {{if ne .TeamID $.Team.ID}}
+        <span class="badge text-bg-info share-goal-badge" data-popover-content="#okr-goal-share-{{.ID}}"
+          data-popover-trigger="hoverable">Общая</span>
+        {{end}}
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
         {{ $shareTeams := index $.GoalShares .ID }}
         {{if gt (len $shareTeams) 1}}
@@ -411,7 +414,10 @@
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
-        {{if ne .TeamID $.Team.ID}}<span class="badge text-bg-info">Общая</span>{{end}}
+        {{if ne .TeamID $.Team.ID}}
+        <span class="badge text-bg-info share-goal-badge" data-popover-content="#okr-goal-share-{{.ID}}"
+          data-popover-trigger="hoverable">Общая</span>
+        {{end}}
         <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
         {{ $shareTeams := index $.GoalShares .ID }}
         {{if gt (len $shareTeams) 1}}
