@@ -8,6 +8,42 @@
   const goalPriorityOptions = ['P0', 'P1', 'P2', 'P3'];
   const goalWorkOptions = ['Discovery', 'Delivery'];
   const goalFocusOptions = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
+  const lockedQuarterStatuses = ['validated', 'closed'];
+
+  const isQuarterLocked = () => lockedQuarterStatuses.includes(state.teamOKR?.quarter_status);
+
+  const pluralize = (count, forms) => {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    if (mod10 === 1 && mod100 !== 11) return forms[0];
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
+    return forms[2];
+  };
+
+  const formatRelativeUpdate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const now = new Date();
+    const diffMs = now - date;
+    const dayMs = 1000 * 60 * 60 * 24;
+    const days = Math.floor(diffMs / dayMs);
+    if (days <= 0) return 'сегодня';
+    if (days < 7) return `${days} ${pluralize(days, ['день', 'дня', 'дней'])} назад`;
+    if (days < 30) {
+      const weeks = Math.max(1, Math.floor(days / 7));
+      return `${weeks} ${pluralize(weeks, ['неделю', 'недели', 'недель'])} назад`;
+    }
+    const months = Math.max(1, Math.floor(days / 30));
+    return `${months} ${pluralize(months, ['месяц', 'месяца', 'месяцев'])} назад`;
+  };
+
+  const formatAbsoluteDate = (value) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
+  };
 
   const fetchJSON = async (url, options = {}) => {
     const response = await fetch(url, options);
@@ -107,11 +143,21 @@
     krWeightBadge.className = `badge ${krWeightSum !== 100 ? 'text-bg-danger' : 'text-bg-light border'}`;
     krWeightBadge.textContent = `Σ KR ${krWeightSum}`;
 
-    const title = document.createElement('button');
-    title.type = 'button';
-    title.className = 'btn btn-link p-0 fw-semibold';
-    title.textContent = goal.title;
-    title.addEventListener('click', () => openGoalModal(goal));
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'd-flex flex-column';
+    if (isQuarterLocked()) {
+      const title = document.createElement('span');
+      title.className = 'fw-semibold';
+      title.textContent = goal.title;
+      titleWrap.appendChild(title);
+    } else {
+      const title = document.createElement('button');
+      title.type = 'button';
+      title.className = 'btn btn-link p-0 fw-semibold';
+      title.textContent = goal.title;
+      title.addEventListener('click', () => openGoalModal(goal));
+      titleWrap.appendChild(title);
+    }
 
     const menu = renderGoalMenu(goal);
 
@@ -119,7 +165,7 @@
     if (goal.share_teams && goal.share_teams.length > 1) {
       header.appendChild(renderSharedGoalBadge(goal));
     }
-    header.append(title, menu);
+    header.append(titleWrap, menu);
 
     const description = document.createElement('p');
     description.className = 'text-muted mb-2';
@@ -163,15 +209,16 @@
 
     const krWrap = renderKRTable(goal);
 
-    const addKRButton = document.createElement('button');
-    addKRButton.type = 'button';
-    addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
-    addKRButton.textContent = 'Добавить KR';
-    addKRButton.addEventListener('click', () => openKRCreateModal(goal));
-
     const actions = document.createElement('div');
     actions.className = 'mt-3';
-    actions.appendChild(addKRButton);
+    if (!isQuarterLocked()) {
+      const addKRButton = document.createElement('button');
+      addKRButton.type = 'button';
+      addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
+      addKRButton.textContent = 'Добавить KR';
+      addKRButton.addEventListener('click', () => openKRCreateModal(goal));
+      actions.appendChild(addKRButton);
+    }
 
     body.append(header, description, progressWrap, meta, krWrap, actions);
     card.appendChild(body);
@@ -222,12 +269,30 @@
     weightCell.appendChild(weight);
 
     const titleCell = document.createElement('td');
-    const title = document.createElement('button');
-    title.type = 'button';
-    title.className = 'btn btn-link p-0 fw-semibold';
-    title.textContent = kr.title;
-    title.addEventListener('click', () => openKRModal(kr));
-    titleCell.appendChild(title);
+    const titleWrap = document.createElement('div');
+    titleWrap.className = 'd-flex flex-column align-items-start';
+    if (isQuarterLocked()) {
+      const title = document.createElement('span');
+      title.className = 'fw-semibold';
+      title.textContent = kr.title;
+      titleWrap.appendChild(title);
+    } else {
+      const title = document.createElement('button');
+      title.type = 'button';
+      title.className = 'btn btn-link p-0 fw-semibold';
+      title.textContent = kr.title;
+      title.addEventListener('click', () => openKRModal(kr));
+      titleWrap.appendChild(title);
+    }
+    const updatedText = formatRelativeUpdate(kr.updated_at);
+    if (updatedText) {
+      const updatedAt = document.createElement('span');
+      updatedAt.className = 'text-muted small';
+      updatedAt.textContent = updatedText;
+      updatedAt.title = formatAbsoluteDate(kr.updated_at);
+      titleWrap.appendChild(updatedAt);
+    }
+    titleCell.appendChild(titleWrap);
 
     const progressCell = document.createElement('td');
     const progress = document.createElement('span');
@@ -272,6 +337,11 @@
   const renderMeasurePanel = (kr) => {
     const panel = document.createElement('div');
     panel.className = 'border rounded p-3 bg-light';
+
+    const description = document.createElement('div');
+    description.className = 'text-muted small mb-2';
+    description.textContent = kr.description || 'Описание не указано.';
+    panel.appendChild(description);
 
     const form = document.createElement('form');
     form.className = 'd-flex flex-column gap-2';
@@ -494,13 +564,14 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'd-flex flex-wrap gap-2';
 
-    const addGoalButton = document.createElement('button');
-    addGoalButton.type = 'button';
-    addGoalButton.className = 'btn btn-primary';
-    addGoalButton.textContent = 'Добавить цель';
-    addGoalButton.addEventListener('click', () => openGoalCreateModal(data));
-
-    wrapper.appendChild(addGoalButton);
+    if (!isQuarterLocked()) {
+      const addGoalButton = document.createElement('button');
+      addGoalButton.type = 'button';
+      addGoalButton.className = 'btn btn-primary';
+      addGoalButton.textContent = 'Добавить цель';
+      addGoalButton.addEventListener('click', () => openGoalCreateModal(data));
+      wrapper.appendChild(addGoalButton);
+    }
     actionsEl.appendChild(wrapper);
   };
 
@@ -517,11 +588,15 @@
     const menu = document.createElement('ul');
     menu.className = 'dropdown-menu dropdown-menu-end';
 
-    menu.appendChild(buildMenuButton('Редактировать', () => openGoalModal(goal)));
-    menu.appendChild(buildMenuButton('Шарить', () => openShareGoalModal(goal)));
+    if (!isQuarterLocked()) {
+      menu.appendChild(buildMenuButton('Редактировать', () => openGoalModal(goal)));
+      menu.appendChild(buildMenuButton('Шарить', () => openShareGoalModal(goal)));
+    }
     menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-up`, buildReturnFields()));
     menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-down`, buildReturnFields()));
-    menu.appendChild(buildMenuForm(`/goals/${goal.id}/delete`, buildReturnFields(), true));
+    if (!isQuarterLocked()) {
+      menu.appendChild(buildMenuForm(`/goals/${goal.id}/delete`, buildReturnFields(), true));
+    }
 
     wrapper.append(button, menu);
     return wrapper;
@@ -540,10 +615,14 @@
     const menu = document.createElement('ul');
     menu.className = 'dropdown-menu dropdown-menu-end';
 
-    menu.appendChild(buildMenuButton('Редактировать', () => openKRModal(kr)));
+    if (!isQuarterLocked()) {
+      menu.appendChild(buildMenuButton('Редактировать', () => openKRModal(kr)));
+    }
     menu.appendChild(buildMenuForm(`/key-results/${kr.id}/move-up`, buildReturnFields()));
     menu.appendChild(buildMenuForm(`/key-results/${kr.id}/move-down`, buildReturnFields()));
-    menu.appendChild(buildMenuForm(`/key-results/${kr.id}/delete`, buildReturnFields(), true));
+    if (!isQuarterLocked()) {
+      menu.appendChild(buildMenuForm(`/key-results/${kr.id}/delete`, buildReturnFields(), true));
+    }
 
     wrapper.append(button, menu);
     return wrapper;
