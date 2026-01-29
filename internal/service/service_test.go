@@ -15,6 +15,8 @@ type fakeStore struct {
 	booleanUpdates map[int64]bool
 	projectStages  map[int64][]domain.KRProjectStage
 	stageUpdates   map[int64]bool
+	movedGoals     map[int64]int
+	movedKRs       map[int64]int
 }
 
 func newFakeStore() *fakeStore {
@@ -25,6 +27,8 @@ func newFakeStore() *fakeStore {
 		booleanUpdates: make(map[int64]bool),
 		projectStages:  make(map[int64][]domain.KRProjectStage),
 		stageUpdates:   make(map[int64]bool),
+		movedGoals:     make(map[int64]int),
+		movedKRs:       make(map[int64]int),
 	}
 }
 
@@ -80,6 +84,38 @@ func (f *fakeStore) AddKeyResultComment(context.Context, int64, string) error {
 func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error) {
 	return domain.Goal{}, nil
 }
+func (f *fakeStore) UpdateGoal(context.Context, store.GoalUpdateInput) error {
+	return nil
+}
+func (f *fakeStore) CreateKeyResult(context.Context, store.KeyResultInput) (int64, error) {
+	return 0, nil
+}
+func (f *fakeStore) UpdateKeyResult(context.Context, store.KeyResultUpdateInput) error {
+	return nil
+}
+func (f *fakeStore) MoveGoal(_ context.Context, goalID int64, direction int) error {
+	f.movedGoals[goalID] = direction
+	return nil
+}
+func (f *fakeStore) MoveKeyResult(_ context.Context, krID int64, direction int) error {
+	f.movedKRs[krID] = direction
+	return nil
+}
+func (f *fakeStore) UpsertPercentMeta(context.Context, store.PercentMetaInput) error {
+	return nil
+}
+func (f *fakeStore) UpsertLinearMeta(context.Context, store.LinearMetaInput) error {
+	return nil
+}
+func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error {
+	return nil
+}
+func (f *fakeStore) ReplaceProjectStages(context.Context, int64, []store.ProjectStageInput) error {
+	return nil
+}
+func (f *fakeStore) SetTeamQuarterStatus(context.Context, int64, int, int, domain.TeamQuarterStatus) error {
+	return nil
+}
 
 func TestUpdateKRProgressPercent(t *testing.T) {
 	store := newFakeStore()
@@ -126,5 +162,29 @@ func TestUpdateKRProgressProject(t *testing.T) {
 	}
 	if !store.stageUpdates[100] {
 		t.Fatalf("expected stage update")
+	}
+}
+
+func TestMoveGoal(t *testing.T) {
+	store := newFakeStore()
+	service := New(store)
+
+	if err := service.MoveGoal(context.Background(), 10, -1); err != nil {
+		t.Fatalf("move goal: %v", err)
+	}
+	if store.movedGoals[10] != -1 {
+		t.Fatalf("expected goal move direction")
+	}
+}
+
+func TestMoveKeyResult(t *testing.T) {
+	store := newFakeStore()
+	service := New(store)
+
+	if err := service.MoveKeyResult(context.Background(), 20, 1); err != nil {
+		t.Fatalf("move kr: %v", err)
+	}
+	if store.movedKRs[20] != 1 {
+		t.Fatalf("expected key result move direction")
 	}
 }

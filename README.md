@@ -41,7 +41,7 @@ go test ./...
 
 Базовый URL: `/api/v1`  
 Content-Type: `application/json; charset=utf-8`  
-Некоторые мутации принимают form-данные (`application/x-www-form-urlencoded`).  
+Некоторые мутации принимают `multipart/form-data` (через `FormData`).  
 Ошибки:
 
 ```json
@@ -94,9 +94,11 @@ Content-Type: `application/json; charset=utf-8`
   ```
 - `POST /api/v1/goals/{goalID}` (form)
   ```text
-  title=...&description=...&priority=high|medium|low&weight=50&
-  work_type=product|tech|business|support&focus_type=okr|initiative&owner_text=...
+  title=...&description=...&priority=P0|P1|P2|P3&weight=50&
+  work_type=Discovery|Delivery&focus_type=PROFITABILITY|STABILITY|SPEED_EFFICIENCY|TECH_INDEPENDENCE&
+  owner_text=...&team_id=123
   ```
+  - `team_id` опционален: если цель расшарена, вес обновится только для указанной команды.
 - `POST /api/v1/goals/{goalID}/key-results` (form)
   ```text
   title=...&description=...&weight=25&kind=percent|linear|boolean|project
@@ -110,15 +112,20 @@ Content-Type: `application/json; charset=utf-8`
   title=...&description=...&weight=25&kind=percent|linear|boolean|project
   ```
   - поля meta те же, что и при создании KR
+- `POST /api/v1/goals/{goalID}/move-up` (form)
+- `POST /api/v1/goals/{goalID}/move-down` (form)
+- `POST /api/v1/krs/{id}/move-up` (form)
+- `POST /api/v1/krs/{id}/move-down` (form)
 - `POST /api/v1/teams/{teamID}/status?quarter=2024-3` (form)
   ```text
-  status=draft|active|done
+  status=no_goals|forming|in_progress|validated|closed
   ```
 
 ## UX обновления
 
 - На странице OKR действия целей и KR перенесены в меню «⋯», а название цели открывает модальное редактирование.
 - Кнопка добавления KR находится под списком KR рядом с суммой весов.
+- При статусах квартала `validated` и `closed` редактирование целей и KR недоступно (доступны только порядок и обновление прогресса).
 
 ## Прогресс вычисляется
 
