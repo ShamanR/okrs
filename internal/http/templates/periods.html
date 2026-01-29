@@ -32,13 +32,19 @@
                   <td>{{.EndDate.Format "2006-01-02"}}</td>
                   <td>{{.SortOrder}}</td>
                   <td class="text-end">
-                    <div class="btn-group">
-                      <form method="post" action="/periods/{{.ID}}/move-up">
-                        <button class="btn btn-outline-secondary btn-sm" type="submit">↑</button>
+                    <div class="d-flex justify-content-end gap-2 flex-wrap">
+                      <a class="btn btn-outline-primary btn-sm" href="/periods/{{.ID}}/edit">Редактировать</a>
+                      <form method="post" action="/periods/{{.ID}}/delete" onsubmit="return confirm('Удалить период?');">
+                        <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
                       </form>
-                      <form method="post" action="/periods/{{.ID}}/move-down">
-                        <button class="btn btn-outline-secondary btn-sm" type="submit">↓</button>
-                      </form>
+                      <div class="btn-group">
+                        <form method="post" action="/periods/{{.ID}}/move-up">
+                          <button class="btn btn-outline-secondary btn-sm" type="submit">↑</button>
+                        </form>
+                        <form method="post" action="/periods/{{.ID}}/move-down">
+                          <button class="btn btn-outline-secondary btn-sm" type="submit">↓</button>
+                        </form>
+                      </div>
                     </div>
                   </td>
                 </tr>

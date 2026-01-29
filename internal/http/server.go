@@ -208,6 +208,9 @@ func (s *Server) Routes() http.Handler {
 
 	r.Get("/periods", periodsHandler.HandlePeriods)
 	r.Post("/periods", periodsHandler.HandleCreatePeriod)
+	r.Get("/periods/{periodID}/edit", periodsHandler.HandleEditPeriod)
+	r.Post("/periods/{periodID}/update", periodsHandler.HandleUpdatePeriod)
+	r.Post("/periods/{periodID}/delete", periodsHandler.HandleDeletePeriod)
 	r.Post("/periods/{periodID}/move-up", periodsHandler.HandleMovePeriodUp)
 	r.Post("/periods/{periodID}/move-down", periodsHandler.HandleMovePeriodDown)
 

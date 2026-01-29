@@ -108,3 +108,16 @@ func (s *Store) MovePeriod(ctx context.Context, periodID int64, direction int) e
 
 	return tx.Commit(ctx)
 }
+
+func (s *Store) UpdatePeriod(ctx context.Context, periodID int64, input PeriodInput) error {
+	_, err := s.DB.Exec(ctx, `
+		UPDATE periods
+		SET name=$1, start_date=$2, end_date=$3, updated_at=NOW()
+		WHERE id=$4`, input.Name, input.StartDate, input.EndDate, periodID)
+	return err
+}
+
+func (s *Store) DeletePeriod(ctx context.Context, periodID int64) error {
+	_, err := s.DB.Exec(ctx, `DELETE FROM periods WHERE id=$1`, periodID)
+	return err
+}

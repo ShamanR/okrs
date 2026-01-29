@@ -43,6 +43,30 @@ func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
+func (h *Handler) HandleEditPeriod(w http.ResponseWriter, r *http.Request) {
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	period, err := h.deps.Store.GetPeriod(r.Context(), periodID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	page := struct {
+		Period          domain.Period
+		FormError       string
+		PageTitle       string
+		ContentTemplate string
+	}{
+		Period:          period,
+		PageTitle:       "Редактировать период",
+		ContentTemplate: "period-edit-content",
+	}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
 func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -74,6 +98,61 @@ func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
 		StartDate: startDate,
 		EndDate:   endDate,
 	}); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, "/periods", http.StatusSeeOther)
+}
+
+func (h *Handler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	name := common.TrimmedFormValue(r, "name")
+	startDateRaw := common.TrimmedFormValue(r, "start_date")
+	endDateRaw := common.TrimmedFormValue(r, "end_date")
+	if name == "" || startDateRaw == "" || endDateRaw == "" {
+		h.renderPeriodEditWithError(w, r, periodID, "Все поля обязательны")
+		return
+	}
+	startDate, err := time.Parse("2006-01-02", startDateRaw)
+	if err != nil {
+		h.renderPeriodEditWithError(w, r, periodID, "Некорректная дата начала")
+		return
+	}
+	endDate, err := time.Parse("2006-01-02", endDateRaw)
+	if err != nil {
+		h.renderPeriodEditWithError(w, r, periodID, "Некорректная дата окончания")
+		return
+	}
+	if endDate.Before(startDate) {
+		h.renderPeriodEditWithError(w, r, periodID, "Дата окончания должна быть позже даты начала")
+		return
+	}
+	if err := h.deps.Store.UpdatePeriod(r.Context(), periodID, store.PeriodInput{
+		Name:      name,
+		StartDate: startDate,
+		EndDate:   endDate,
+	}); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, "/periods", http.StatusSeeOther)
+}
+
+func (h *Handler) HandleDeletePeriod(w http.ResponseWriter, r *http.Request) {
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Store.DeletePeriod(r.Context(), periodID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -112,6 +191,26 @@ func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request,
 		FormError:       message,
 		PageTitle:       "Периоды",
 		ContentTemplate: "periods-content",
+	}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
+func (h *Handler) renderPeriodEditWithError(w http.ResponseWriter, r *http.Request, periodID int64, message string) {
+	period, err := h.deps.Store.GetPeriod(r.Context(), periodID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	page := struct {
+		Period          domain.Period
+		FormError       string
+		PageTitle       string
+		ContentTemplate string
+	}{
+		Period:          period,
+		FormError:       message,
+		PageTitle:       "Редактировать период",
+		ContentTemplate: "period-edit-content",
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
