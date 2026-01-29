@@ -1437,12 +1437,40 @@
       if (!targetSelector) return;
       const contentEl = document.querySelector(targetSelector);
       if (!contentEl) return;
-      bootstrap.Popover.getOrCreateInstance(el, {
-        trigger: el.getAttribute('data-popover-trigger') === 'hoverable' ? 'hover' : 'click',
+      const isHoverable = el.getAttribute('data-popover-trigger') === 'hoverable';
+      const popover = bootstrap.Popover.getOrCreateInstance(el, {
+        trigger: isHoverable ? 'manual' : 'click',
         content: contentEl.innerHTML,
         html: true,
         placement: 'bottom',
         customClass: 'okr-popover',
+      });
+      if (!isHoverable) return;
+
+      let hideTimeout;
+      const scheduleHide = () => {
+        hideTimeout = window.setTimeout(() => popover.hide(), 150);
+      };
+      const cancelHide = () => {
+        if (hideTimeout) {
+          window.clearTimeout(hideTimeout);
+          hideTimeout = null;
+        }
+      };
+
+      el.addEventListener('mouseenter', () => {
+        cancelHide();
+        popover.show();
+      });
+      el.addEventListener('mouseleave', () => {
+        scheduleHide();
+      });
+
+      el.addEventListener('shown.bs.popover', () => {
+        const tip = popover.getTipElement();
+        if (!tip) return;
+        tip.addEventListener('mouseenter', cancelHide);
+        tip.addEventListener('mouseleave', scheduleHide);
       });
     });
   };
