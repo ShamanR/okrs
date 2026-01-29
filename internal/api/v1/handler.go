@@ -263,23 +263,43 @@ func (h *Handler) handleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	priority := domain.Priority(r.FormValue("priority"))
 	workType := domain.WorkType(r.FormValue("work_type"))
 	focusType := domain.FocusType(r.FormValue("focus_type"))
+	teamID, err := parseOptionalID(r.FormValue("team_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team_id", map[string]string{"team_id": "invalid"})
+		return
+	}
 	weight := common.ParseIntField(r.FormValue("weight"))
 	if validationErr := common.ValidateGoalInput(priority, workType, focusType, weight); validationErr != "" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", validationErr, nil)
 		return
+	}
+	goalWeight := weight
+	if teamID != nil {
+		goal, err := h.service.GetGoal(r.Context(), goalID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+			return
+		}
+		goalWeight = goal.Weight
 	}
 	if err := h.service.UpdateGoal(r.Context(), store.GoalUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
 		Priority:    priority,
-		Weight:      weight,
+		Weight:      goalWeight,
 		WorkType:    workType,
 		FocusType:   focusType,
 		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update goal", nil)
 		return
+	}
+	if teamID != nil {
+		if err := h.service.UpdateGoalWeight(r.Context(), goalID, *teamID, weight); err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update weight", nil)
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

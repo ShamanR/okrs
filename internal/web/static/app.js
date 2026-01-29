@@ -366,17 +366,39 @@
     }
 
     if (kr.measure.kind === 'PERCENT' || kr.measure.kind === 'LINEAR') {
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.step = 'any';
-      input.className = 'form-control';
       const meta = kr.measure.percent || kr.measure.linear;
-      input.value = meta?.current_value ?? 0;
-      const label = document.createElement('label');
-      label.className = 'form-label';
-      label.textContent = 'Текущее значение';
-      label.appendChild(input);
-      form.appendChild(label);
+      const row = document.createElement('div');
+      row.className = 'row g-2';
+
+      const currentCol = document.createElement('div');
+      currentCol.className = 'col-5';
+      const currentLabel = document.createElement('label');
+      currentLabel.className = 'form-label';
+      currentLabel.textContent = 'Текущее значение';
+      const currentInput = document.createElement('input');
+      currentInput.type = 'number';
+      currentInput.step = 'any';
+      currentInput.className = 'form-control';
+      currentInput.value = meta?.current_value ?? 0;
+      currentLabel.appendChild(currentInput);
+      currentCol.appendChild(currentLabel);
+
+      const targetCol = document.createElement('div');
+      targetCol.className = 'col-7';
+      const targetLabel = document.createElement('label');
+      targetLabel.className = 'form-label';
+      targetLabel.textContent = 'Целевое значение';
+      const targetInput = document.createElement('input');
+      targetInput.type = 'number';
+      targetInput.step = 'any';
+      targetInput.className = 'form-control';
+      targetInput.value = meta?.target_value ?? 0;
+      targetInput.disabled = true;
+      targetLabel.appendChild(targetInput);
+      targetCol.appendChild(targetLabel);
+
+      row.append(currentCol, targetCol);
+      form.appendChild(row);
 
       const button = document.createElement('button');
       button.type = 'submit';
@@ -392,7 +414,7 @@
           await fetchJSON(`/api/v1/krs/${kr.id}/progress/percent`, {
             method: 'POST',
             headers: jsonHeaders,
-            body: JSON.stringify({ current_value: parseFloat(input.value) }),
+            body: JSON.stringify({ current_value: parseFloat(currentInput.value) }),
           });
           const comment = commentInput.value.trim();
           if (comment) {
@@ -885,6 +907,7 @@
     const titleText = options.titleText || 'Редактировать цель';
     const submitLabel = options.submitLabel || 'Сохранить';
     const includeQuarter = options.includeQuarter === true;
+    const isSharedGoal = goal.share_teams && goal.share_teams.length > 1;
     const body = `
       <form method="post" action="${action}" class="vstack gap-3" data-goal-edit-form>
         <div>
@@ -921,6 +944,7 @@
         </div>
         ${includeQuarter ? `<input type="hidden" name="year" value="${goal.year ?? ''}" />` : ''}
         ${includeQuarter ? `<input type="hidden" name="quarter" value="${goal.quarter ?? ''}" />` : ''}
+        ${isSharedGoal && state.teamOKR ? `<input type="hidden" name="team_id" value="${state.teamOKR.team.id}" />` : ''}
         <button class="btn btn-primary" type="submit">${submitLabel}</button>
       </form>`;
     const modalEl = openModal(titleText, body);
