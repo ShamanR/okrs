@@ -44,7 +44,7 @@ func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
