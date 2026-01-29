@@ -1,6 +1,7 @@
 (() => {
   const state = {
     hierarchy: null,
+    teamOKR: null,
   };
 
   const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -62,6 +63,7 @@
   };
 
   const renderOKRPage = (data, summaryEl, goalsEl) => {
+    state.teamOKR = data;
     renderSummary(data, summaryEl);
     goalsEl.innerHTML = '';
     if (!data.goals || data.goals.length === 0) {
@@ -86,17 +88,22 @@
     header.className = 'd-flex flex-wrap align-items-center gap-2 mb-2';
 
     const priority = document.createElement('span');
-    priority.className = 'badge text-bg-secondary';
+    priority.className = `badge ${priorityBadgeClass(goal.priority)}`;
     priority.textContent = goal.priority;
 
     const weight = document.createElement('span');
     weight.className = 'badge text-bg-light border';
     weight.textContent = `Вес ${goal.weight}%`;
 
-    const title = document.createElement('strong');
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.className = 'btn btn-link p-0 fw-semibold';
     title.textContent = goal.title;
+    title.addEventListener('click', () => openGoalModal(goal));
 
-    header.append(priority, weight, title);
+    const menu = renderGoalMenu(goal);
+
+    header.append(priority, weight, title, menu);
 
     const description = document.createElement('p');
     description.className = 'text-muted mb-2';
@@ -122,9 +129,21 @@
 
     progressWrap.append(progressBar, progressValue);
 
-    const meta = document.createElement('p');
-    meta.className = 'mb-3';
-    meta.textContent = `Фокус: ${goal.focus_type} · Владелец: ${goal.owner_text}`;
+    const meta = document.createElement('div');
+    meta.className = 'd-flex flex-wrap align-items-center gap-2 mb-3';
+
+    const workBadge = document.createElement('span');
+    workBadge.className = 'badge text-bg-light border';
+    workBadge.textContent = goal.work_type;
+
+    const focusBadge = document.createElement('span');
+    focusBadge.className = 'badge text-bg-light border';
+    focusBadge.textContent = goal.focus_type;
+
+    const owner = document.createElement('span');
+    owner.innerHTML = `Владелец: <span class="text-decoration-underline">${goal.owner_text}</span>`;
+
+    meta.append(workBadge, focusBadge, owner);
 
     const krWrap = document.createElement('div');
     krWrap.className = 'vstack gap-2';
@@ -140,7 +159,17 @@
       krWrap.appendChild(empty);
     }
 
-    body.append(header, description, progressWrap, meta, krWrap);
+    const addKRButton = document.createElement('button');
+    addKRButton.type = 'button';
+    addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
+    addKRButton.textContent = 'Добавить KR';
+    addKRButton.addEventListener('click', () => openKRCreateModal(goal));
+
+    const actions = document.createElement('div');
+    actions.className = 'mt-3';
+    actions.appendChild(addKRButton);
+
+    body.append(header, description, progressWrap, meta, krWrap, actions);
     card.appendChild(body);
     return card;
   };
@@ -152,19 +181,28 @@
     const header = document.createElement('div');
     header.className = 'd-flex flex-wrap align-items-center gap-2';
 
-    const title = document.createElement('strong');
+    const title = document.createElement('button');
+    title.type = 'button';
+    title.className = 'btn btn-link p-0 fw-semibold';
     title.textContent = kr.title;
+    title.addEventListener('click', () => openKRModal(kr));
+
+    const weight = document.createElement('span');
+    weight.className = 'badge text-bg-light border';
+    weight.textContent = `Вес ${kr.weight}%`;
 
     const progress = document.createElement('span');
     progress.className = 'badge text-bg-light border';
     progress.textContent = `${kr.progress}%`;
+
+    const menu = renderKRMenu(kr);
 
     const updateButton = document.createElement('button');
     updateButton.type = 'button';
     updateButton.className = 'btn btn-outline-primary btn-sm ms-auto';
     updateButton.textContent = 'Обновить прогресс';
 
-    header.append(title, progress, updateButton);
+    header.append(title, weight, progress, menu, updateButton);
 
     const panel = renderMeasurePanel(kr);
     panel.classList.add('mt-3');
@@ -174,7 +212,9 @@
       panel.hidden = !panel.hidden;
     });
 
-    wrapper.append(header, panel);
+    const comments = renderKRComments(kr);
+
+    wrapper.append(header, panel, comments);
     return wrapper;
   };
 
@@ -372,6 +412,277 @@
     status.innerHTML = `<h3 class="h6 mb-2">Статус квартала</h3><span class="badge text-bg-light border">${data.status_label}</span>`;
 
     summaryEl.append(title, progressRow, counts, weight, status);
+  };
+
+  const renderGoalMenu = (goal) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dropdown ms-auto';
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
+    button.type = 'button';
+    button.dataset.bsToggle = 'dropdown';
+    button.setAttribute('aria-expanded', 'false');
+    button.textContent = '⋯';
+
+    const menu = document.createElement('ul');
+    menu.className = 'dropdown-menu dropdown-menu-end';
+
+    menu.appendChild(buildMenuButton('Редактировать', () => openGoalModal(goal)));
+    menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-up`, buildReturnFields()));
+    menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-down`, buildReturnFields()));
+    menu.appendChild(buildMenuForm(`/goals/${goal.id}/delete`, buildReturnFields(), true));
+
+    wrapper.append(button, menu);
+    return wrapper;
+  };
+
+  const renderKRMenu = (kr) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'dropdown';
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
+    button.type = 'button';
+    button.dataset.bsToggle = 'dropdown';
+    button.setAttribute('aria-expanded', 'false');
+    button.textContent = '⋯';
+
+    const menu = document.createElement('ul');
+    menu.className = 'dropdown-menu dropdown-menu-end';
+
+    menu.appendChild(buildMenuButton('Редактировать', () => openKRModal(kr)));
+    menu.appendChild(buildMenuForm(`/key-results/${kr.id}/move-up`, buildReturnFields()));
+    menu.appendChild(buildMenuForm(`/key-results/${kr.id}/move-down`, buildReturnFields()));
+    menu.appendChild(buildMenuForm(`/key-results/${kr.id}/delete`, buildReturnFields(), true));
+
+    wrapper.append(button, menu);
+    return wrapper;
+  };
+
+  const buildMenuButton = (label, onClick) => {
+    const item = document.createElement('li');
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dropdown-item';
+    button.textContent = label;
+    button.addEventListener('click', onClick);
+    item.appendChild(button);
+    return item;
+  };
+
+  const buildMenuForm = (action, hiddenFields, confirmDelete = false) => {
+    const item = document.createElement('li');
+    const form = document.createElement('form');
+    form.method = 'post';
+    form.action = action;
+    form.className = 'm-0';
+    if (confirmDelete) {
+      form.addEventListener('submit', (event) => {
+        if (!window.confirm('Удалить запись?')) {
+          event.preventDefault();
+        }
+      });
+    }
+    hiddenFields.forEach(({ name, value }) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = name;
+      input.value = value;
+      form.appendChild(input);
+    });
+    const button = document.createElement('button');
+    button.type = 'submit';
+    button.className = `dropdown-item ${confirmDelete ? 'text-danger' : ''}`;
+    button.textContent = confirmDelete ? 'Удалить' : action.includes('move-up') ? 'Переместить вверх' : 'Переместить вниз';
+    form.appendChild(button);
+    item.appendChild(form);
+    return item;
+  };
+
+  const buildReturnFields = () => {
+    if (!state.teamOKR) return [];
+    return [
+      { name: 'return', value: `/teams/${state.teamOKR.team.id}/okr?year=${state.teamOKR.year}&quarter=${state.teamOKR.quarter}` },
+      { name: 'team_id', value: state.teamOKR.team.id },
+    ];
+  };
+
+  const renderKRComments = (kr) => {
+    const container = document.createElement('div');
+    container.className = 'mt-2';
+    if (!kr.comments || kr.comments.length === 0) {
+      return container;
+    }
+    const title = document.createElement('div');
+    title.className = 'small text-muted';
+    title.textContent = 'Комментарии';
+    const list = document.createElement('ul');
+    list.className = 'list-unstyled mb-0';
+    kr.comments.forEach((comment) => {
+      const item = document.createElement('li');
+      item.className = 'small';
+      item.textContent = comment.text;
+      list.appendChild(item);
+    });
+    container.append(title, list);
+    return container;
+  };
+
+  const priorityBadgeClass = (priority) => {
+    switch (priority) {
+      case 'P0':
+        return 'text-bg-danger';
+      case 'P1':
+      case 'P2':
+        return 'text-bg-success';
+      case 'P3':
+        return 'text-bg-secondary';
+      default:
+        return 'text-bg-secondary';
+    }
+  };
+
+  const ensureModal = () => {
+    let modalEl = document.getElementById('okr-modal');
+    if (!modalEl) {
+      modalEl = document.createElement('div');
+      modalEl.className = 'modal fade';
+      modalEl.id = 'okr-modal';
+      modalEl.tabIndex = -1;
+      modalEl.innerHTML = `
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title"></h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body"></div>
+          </div>
+        </div>`;
+      document.body.appendChild(modalEl);
+    }
+    return modalEl;
+  };
+
+  const openModal = (title, bodyHTML) => {
+    const modalEl = ensureModal();
+    modalEl.querySelector('.modal-title').textContent = title;
+    modalEl.querySelector('.modal-body').innerHTML = bodyHTML;
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+  };
+
+  const openGoalModal = (goal) => {
+    const body = `
+      <form method="post" action="/goals/${goal.id}/update" class="vstack gap-3">
+        <div>
+          <label class="form-label">Название</label>
+          <input class="form-control" name="title" value="${escapeHTML(goal.title)}" />
+        </div>
+        <div>
+          <label class="form-label">Описание</label>
+          <textarea class="form-control" name="description">${escapeHTML(goal.description || '')}</textarea>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Приоритет</label>
+            ${buildSelect('priority', ['P0', 'P1', 'P2', 'P3'], goal.priority)}
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Вес</label>
+            <input class="form-control" name="weight" type="number" value="${goal.weight}" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Работа</label>
+            ${buildSelect('work_type', ['Discovery', 'Delivery'], goal.work_type)}
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Фокус</label>
+            ${buildSelect('focus_type', ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'], goal.focus_type)}
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Владелец</label>
+            <input class="form-control" name="owner_text" value="${escapeHTML(goal.owner_text || '')}" />
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">Сохранить</button>
+      </form>`;
+    openModal(`Редактировать цель`, body);
+  };
+
+  const openKRModal = (kr) => {
+    const body = `
+      <form method="post" action="/key-results/${kr.id}/update" class="vstack gap-3">
+        <div>
+          <label class="form-label">Название</label>
+          <input class="form-control" name="title" value="${escapeHTML(kr.title)}" />
+        </div>
+        <div>
+          <label class="form-label">Описание</label>
+          <textarea class="form-control" name="description">${escapeHTML(kr.description || '')}</textarea>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Вес</label>
+            <input class="form-control" name="weight" type="number" value="${kr.weight}" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Тип</label>
+            ${buildSelect('kind', ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'], kr.kind)}
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">Сохранить</button>
+      </form>`;
+    openModal(`Редактировать KR`, body);
+  };
+
+  const openKRCreateModal = (goal) => {
+    const body = `
+      <form method="post" action="/goals/${goal.id}/key-results" class="vstack gap-3">
+        <div>
+          <label class="form-label">Название</label>
+          <input class="form-control" name="title" />
+        </div>
+        <div>
+          <label class="form-label">Описание</label>
+          <textarea class="form-control" name="description"></textarea>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Вес</label>
+            <input class="form-control" name="weight" type="number" value="0" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Тип</label>
+            ${buildSelect('kind', ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'], 'PERCENT')}
+          </div>
+        </div>
+        <button class="btn btn-primary" type="submit">Добавить</button>
+      </form>`;
+    openModal(`Добавить KR`, body);
+  };
+
+  const buildSelect = (name, options, selected) => {
+    const select = document.createElement('select');
+    select.className = 'form-select';
+    select.name = name;
+    options.forEach((option) => {
+      const opt = document.createElement('option');
+      opt.value = option;
+      opt.textContent = option;
+      if (option === selected) {
+        opt.selected = true;
+      }
+      select.appendChild(opt);
+    });
+    return select.outerHTML;
+  };
+
+  const escapeHTML = (value) => {
+    const div = document.createElement('div');
+    div.textContent = value ?? '';
+    return div.innerHTML;
   };
 
   const renderTeamCell = (team, year, quarter) => {
