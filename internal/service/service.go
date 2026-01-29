@@ -70,6 +70,7 @@ type TeamGoalSummary struct {
 	Weight     int
 	Progress   int
 	ShareTeams []TeamShareInfo
+	Priority   string
 }
 
 type TeamShareInfo struct {
@@ -363,6 +364,7 @@ func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, te
 			Weight:     goals[i].Weight,
 			Progress:   goals[i].Progress,
 			ShareTeams: shareTeams,
+			Priority:   string(goals[i].Priority),
 		})
 	}
 	quarterProgress := okr.QuarterProgress(goals)

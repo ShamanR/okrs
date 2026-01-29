@@ -244,7 +244,7 @@
         <th>Вес</th>
         <th>Название</th>
         <th>Факт (%)</th>
-        <th class="text-end">Действия</th>
+        <th class="text-end"></th>
       </tr>`;
     table.appendChild(head);
 
@@ -1017,8 +1017,8 @@
           <div class="small text-muted">Уже шарят цель</div>
           <ul class="list-unstyled mb-0">
             ${existingTeams
-              .map((team) => `<li><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</li>`)
-              .join('')}
+        .map((team) => `<li><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</li>`)
+        .join('')}
           </ul>
         </div>`
       : '';
@@ -1311,6 +1311,31 @@
 
     const table = document.createElement('table');
     table.className = 'table table-sm align-middle mb-0 table-transparent teams-goals-table';
+    const thead = document.createElement('thead');
+    const theadTR = document.createElement('tr');
+
+    const theadTRW = document.createElement('td')
+    theadTRW.textContent = "Вес"
+    theadTRW.className = 'teams-goals-col-weight';
+    theadTR.append(theadTRW);
+
+    const theadTRP = document.createElement('td')
+    theadTRP.textContent = "Приоритет"
+    theadTRP.className = 'teams-goals-col-priority';
+    theadTR.append(theadTRP)
+
+    const theadTRT = document.createElement('td')
+    theadTRT.textContent = "Название"
+    theadTRT.className = 'teams-goals-col-title';
+    theadTR.append(theadTRT)
+
+    const theadTRPR = document.createElement('td')
+    theadTRPR.textContent = "Прогресс"
+    theadTRPR.className = 'teams-goals-col-progress';
+    theadTR.append(theadTRPR)
+
+    thead.appendChild(theadTR);
+    table.appendChild(thead);
     const tbody = document.createElement('tbody');
 
     team.goals.forEach((goal) => {
@@ -1426,7 +1451,7 @@
     return option;
   };
 
-  let reloadTeamOKR = async () => {};
+  let reloadTeamOKR = async () => { };
 
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="teams"]');
