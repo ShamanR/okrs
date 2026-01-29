@@ -312,7 +312,7 @@
     updateButton.className = 'btn btn-outline-primary btn-sm';
     updateButton.textContent = 'Обновить прогресс';
 
-    actions.append(menu, updateButton);
+    actions.append(updateButton, menu);
     actionsCell.appendChild(actions);
 
     row.append(weightCell, titleCell, progressCell, actionsCell);
@@ -349,6 +349,16 @@
     const status = document.createElement('div');
     status.className = 'text-muted small';
 
+    const commentLabel = document.createElement('label');
+    commentLabel.className = 'form-label';
+    commentLabel.textContent = 'Комментарий';
+    const commentInput = document.createElement('textarea');
+    commentInput.className = 'form-control';
+    commentInput.rows = 2;
+    commentInput.value = getLatestComment(kr)?.text ?? '';
+    commentLabel.appendChild(commentInput);
+    form.appendChild(commentLabel);
+
     if (!kr.measure || !kr.measure.kind) {
       status.textContent = 'Нет метрик для обновления.';
       panel.appendChild(status);
@@ -384,6 +394,14 @@
             headers: jsonHeaders,
             body: JSON.stringify({ current_value: parseFloat(input.value) }),
           });
+          const comment = commentInput.value.trim();
+          if (comment) {
+            await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
+              method: 'POST',
+              headers: jsonHeaders,
+              body: JSON.stringify({ text: comment }),
+            });
+          }
           status.textContent = 'Сохранено.';
           await reloadTeamOKR();
         } catch (error) {
@@ -425,6 +443,14 @@
             headers: jsonHeaders,
             body: JSON.stringify({ done: checkbox.checked }),
           });
+          const comment = commentInput.value.trim();
+          if (comment) {
+            await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
+              method: 'POST',
+              headers: jsonHeaders,
+              body: JSON.stringify({ text: comment }),
+            });
+          }
           status.textContent = 'Сохранено.';
           await reloadTeamOKR();
         } catch (error) {
@@ -474,6 +500,14 @@
             headers: jsonHeaders,
             body: JSON.stringify({ stages: stagesPayload }),
           });
+          const comment = commentInput.value.trim();
+          if (comment) {
+            await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
+              method: 'POST',
+              headers: jsonHeaders,
+              body: JSON.stringify({ text: comment }),
+            });
+          }
           status.textContent = 'Сохранено.';
           await reloadTeamOKR();
         } catch (error) {
@@ -684,7 +718,8 @@
   const renderKRComments = (kr) => {
     const container = document.createElement('div');
     container.className = 'mt-2';
-    if (!kr.comments || kr.comments.length === 0) {
+    const latestComment = getLatestComment(kr);
+    if (!latestComment) {
       return container;
     }
     const title = document.createElement('div');
@@ -692,17 +727,20 @@
     title.textContent = 'Комментарии';
     const list = document.createElement('ul');
     list.className = 'list-unstyled mb-0';
-    kr.comments.forEach((comment) => {
-      const item = document.createElement('li');
-      item.className = 'small';
-      item.textContent = comment.text;
-      list.appendChild(item);
-    });
+    const item = document.createElement('li');
+    item.className = 'small';
+    item.textContent = latestComment.text;
+    list.appendChild(item);
     container.append(title, list);
     return container;
   };
 
   const sumKRWeights = (krs) => krs.reduce((sum, kr) => sum + (kr.weight || 0), 0);
+
+  function getLatestComment(kr) {
+    if (!kr.comments || kr.comments.length === 0) return null;
+    return kr.comments[kr.comments.length - 1];
+  }
 
   const renderSharedGoalBadge = (goal) => {
     const wrapper = document.createElement('div');
