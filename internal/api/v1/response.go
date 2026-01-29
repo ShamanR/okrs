@@ -46,6 +46,7 @@ type teamGoalSummary struct {
 	Weight     int         `json:"weight"`
 	Progress   int         `json:"progress"`
 	ShareTeams []shareTeam `json:"share_teams"`
+	Priority   string      `json:"priority"`
 }
 
 type shareTeam struct {
@@ -211,6 +212,7 @@ func mapTeamsResponse(year, quarter int, teams []service.TeamSummary) teamsRespo
 				Weight:     goal.Weight,
 				Progress:   goal.Progress,
 				ShareTeams: shareTeams,
+				Priority:   goal.Priority,
 			})
 		}
 		items = append(items, teamSummary{

@@ -94,7 +94,7 @@
       const row = document.createElement('tr');
       row.appendChild(renderTeamCell(team, year, quarter));
       row.appendChild(renderQuarterProgressCell(team));
-      row.appendChild(renderGoalsCell(team));
+      row.appendChild(renderGoalsCell(team, year, quarter));
       row.appendChild(renderStatusCell(team));
       row.appendChild(renderActionsCell(team));
       tbody.appendChild(row);
@@ -244,7 +244,7 @@
         <th>Вес</th>
         <th>Название</th>
         <th>Факт (%)</th>
-        <th class="text-end">Действия</th>
+        <th class="text-end"></th>
       </tr>`;
     table.appendChild(head);
 
@@ -701,6 +701,7 @@
     form.method = 'post';
     form.action = action;
     form.className = 'm-0';
+    form.enctype = 'multipart/form-data';
     if (confirmDelete) {
       form.addEventListener('submit', (event) => {
         if (!window.confirm('Удалить запись?')) {
@@ -764,13 +765,18 @@
     return kr.comments[kr.comments.length - 1];
   }
 
-  const renderSharedGoalBadge = (goal) => {
+  const renderSharedGoalBadge = (goal, options = {}) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'd-flex align-items-center gap-1';
-    const badge = document.createElement('span');
-    badge.className = 'badge text-bg-info share-goal-badge';
-    badge.textContent = 'Общая';
-    wrapper.appendChild(badge);
+    const shareYear = options.year ?? state.teamOKR?.year ?? '';
+    const shareQuarter = options.quarter ?? state.teamOKR?.quarter ?? '';
+    const showBadge = options.showBadge !== false;
+    if (showBadge) {
+      const badge = document.createElement('span');
+      badge.className = 'badge text-bg-info share-goal-badge';
+      badge.textContent = 'Общая';
+      wrapper.appendChild(badge);
+    }
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn btn-link p-0 share-goal-button';
@@ -786,7 +792,7 @@
     const list = goal.share_teams
       .map(
         (team) =>
-          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?year=${state.teamOKR?.year ?? ''}&quarter=${state.teamOKR?.quarter ?? ''}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
+          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?year=${shareYear}&quarter=${shareQuarter}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
       )
       .join('');
     popover.innerHTML = `<div class="small fw-semibold mb-1">Команды с целью</div><ul class="list-unstyled mb-0">${list}</ul>`;
@@ -981,7 +987,22 @@
   const openShareGoalModal = async (goal) => {
     const hierarchy = state.hierarchy || (await fetchJSON('/api/v1/hierarchy')).items || [];
     state.hierarchy = hierarchy;
-    const options = flattenHierarchyOptions(hierarchy);
+    const existingTeams = goal.share_teams || [];
+    const existingTeamIds = new Set(existingTeams.map((team) => team.id));
+    const buildOptions = (tree, level = 0) => {
+      let html = '';
+      tree.forEach((node) => {
+        if (!existingTeamIds.has(node.id)) {
+          const prefix = '&nbsp;'.repeat(level * 2);
+          html += `<option value="${node.id}">${prefix}${node.type_label} ${escapeHTML(node.name)}</option>`;
+        }
+        if (node.children && node.children.length) {
+          html += buildOptions(node.children, level + 1);
+        }
+      });
+      return html;
+    };
+    const options = buildOptions(hierarchy);
     const buildRow = () => `
       <div class="row g-2 align-items-end" data-share-row>
         <div class="col-md-7">
@@ -990,13 +1011,20 @@
             ${options}
           </select>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Вес</label>
-          <input class="form-control" name="weight" type="number" value="0" />
-        </div>
       </div>`;
+    const sharedList = existingTeams.length
+      ? `<div class="vstack gap-1">
+          <div class="small text-muted">Уже шарят цель</div>
+          <ul class="list-unstyled mb-0">
+            ${existingTeams
+        .map((team) => `<li><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</li>`)
+        .join('')}
+          </ul>
+        </div>`
+      : '';
     const body = `
       <form class="vstack gap-3" data-share-goal-form>
+        ${sharedList}
         <div data-share-list class="vstack gap-2">
           ${buildRow()}
         </div>
@@ -1016,10 +1044,9 @@
       const targets = rows
         .map((row) => {
           const teamId = Number(row.querySelector('select[name="team_id"]').value);
-          const weight = Number(row.querySelector('input[name="weight"]').value);
-          return { team_id: teamId, weight };
+          return { team_id: teamId, weight: 0 };
         })
-        .filter((target) => target.team_id);
+        .filter((target) => target.team_id && !existingTeamIds.has(target.team_id));
       if (targets.length === 0) return;
       await fetchJSON(`/api/v1/goals/${goal.id}/share`, {
         method: 'POST',
@@ -1271,7 +1298,7 @@
     return cell;
   };
 
-  const renderGoalsCell = (team) => {
+  const renderGoalsCell = (team, year, quarter) => {
     const cell = document.createElement('td');
     cell.className = 'teams-col-goals';
     if (!team.goals || team.goals.length === 0) {
@@ -1284,6 +1311,31 @@
 
     const table = document.createElement('table');
     table.className = 'table table-sm align-middle mb-0 table-transparent teams-goals-table';
+    const thead = document.createElement('thead');
+    const theadTR = document.createElement('tr');
+
+    const theadTRW = document.createElement('td')
+    theadTRW.textContent = "Вес"
+    theadTRW.className = 'teams-goals-col-weight';
+    theadTR.append(theadTRW);
+
+    const theadTRP = document.createElement('td')
+    theadTRP.textContent = "Приоритет"
+    theadTRP.className = 'teams-goals-col-priority';
+    theadTR.append(theadTRP)
+
+    const theadTRT = document.createElement('td')
+    theadTRT.textContent = "Название"
+    theadTRT.className = 'teams-goals-col-title';
+    theadTR.append(theadTRT)
+
+    const theadTRPR = document.createElement('td')
+    theadTRPR.textContent = "Прогресс"
+    theadTRPR.className = 'teams-goals-col-progress';
+    theadTR.append(theadTRPR)
+
+    thead.appendChild(theadTR);
+    table.appendChild(thead);
     const tbody = document.createElement('tbody');
 
     team.goals.forEach((goal) => {
@@ -1295,19 +1347,23 @@
       weightBadge.textContent = goal.weight;
       weight.appendChild(weightBadge);
 
+      const priority = document.createElement('td');
+      priority.className = 'teams-goals-col-priority';
+      const priorityBadge = document.createElement('span');
+      priorityBadge.className = `badge ${priorityBadgeClass(goal.priority)}`;
+      priorityBadge.textContent = goal.priority;
+      priority.appendChild(priorityBadge);
+
       const title = document.createElement('td');
       title.className = 'teams-goals-col-title text-break';
       const titleWrapper = document.createElement('div');
       titleWrapper.className = 'd-flex align-items-center gap-2';
+      if (goal.share_teams && goal.share_teams.length > 1) {
+        titleWrapper.appendChild(renderSharedGoalBadge(goal, { year, quarter, showBadge: false }));
+      }
       const titleText = document.createElement('span');
       titleText.textContent = goal.title;
       titleWrapper.appendChild(titleText);
-      if (goal.share_teams && goal.share_teams.length > 1) {
-        const share = document.createElement('span');
-        share.className = 'text-muted small';
-        share.textContent = `\u2194 ${goal.share_teams.map((team) => team.name).join(', ')}`;
-        titleWrapper.appendChild(share);
-      }
       title.appendChild(titleWrapper);
 
       const progress = document.createElement('td');
@@ -1317,20 +1373,22 @@
       progressBadge.textContent = `${goal.progress}%`;
       progress.appendChild(progressBadge);
 
-      row.append(weight, title, progress);
+      row.append(weight, priority, title, progress);
       tbody.appendChild(row);
     });
 
     table.appendChild(tbody);
     cell.appendChild(table);
 
-    const weightSummary = document.createElement('div');
-    weightSummary.className = 'mt-2';
-    const weightBadge = document.createElement('span');
-    weightBadge.className = `badge ${team.goals_weight !== 100 ? 'text-bg-danger' : 'text-bg-light border'}`;
-    weightBadge.textContent = `Сумма целей ${team.goals_weight}`;
-    weightSummary.appendChild(weightBadge);
-    cell.appendChild(weightSummary);
+    if (team.goals_weight !== 100) {
+      const weightSummary = document.createElement('div');
+      weightSummary.className = 'mt-2';
+      const weightBadge = document.createElement('span');
+      weightBadge.className = 'badge text-bg-danger';
+      weightBadge.textContent = `Сумма целей ${team.goals_weight}`;
+      weightSummary.appendChild(weightBadge);
+      cell.appendChild(weightSummary);
+    }
 
     return cell;
   };
@@ -1349,24 +1407,39 @@
     const cell = document.createElement('td');
     cell.className = 'teams-col-actions text-end';
     const wrapper = document.createElement('div');
-    wrapper.className = 'd-inline-flex gap-2';
+    wrapper.className = 'dropdown d-inline-flex';
 
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
+    button.type = 'button';
+    button.dataset.bsToggle = 'dropdown';
+    button.setAttribute('aria-expanded', 'false');
+    button.textContent = '⋯';
+
+    const menu = document.createElement('ul');
+    menu.className = 'dropdown-menu dropdown-menu-end';
+
+    const editItem = document.createElement('li');
     const edit = document.createElement('a');
-    edit.className = 'btn btn-outline-secondary btn-sm';
+    edit.className = 'dropdown-item';
     edit.href = `/teams/${team.id}/edit`;
-    edit.textContent = 'Редактировать';
+    edit.textContent = 'Изменить команду';
+    editItem.appendChild(edit);
 
+    const deleteItem = document.createElement('li');
     const form = document.createElement('form');
     form.method = 'post';
     form.action = `/teams/${team.id}/delete`;
     form.className = 'm-0';
-    const button = document.createElement('button');
-    button.type = 'submit';
-    button.className = 'btn btn-outline-danger btn-sm';
-    button.textContent = 'Удалить';
-    form.appendChild(button);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'submit';
+    deleteButton.className = 'dropdown-item text-danger';
+    deleteButton.textContent = 'Удалить';
+    form.appendChild(deleteButton);
+    deleteItem.appendChild(form);
 
-    wrapper.append(edit, form);
+    menu.append(editItem, deleteItem);
+    wrapper.append(button, menu);
     cell.appendChild(wrapper);
     return cell;
   };
@@ -1378,7 +1451,7 @@
     return option;
   };
 
-  let reloadTeamOKR = async () => {};
+  let reloadTeamOKR = async () => { };
 
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="teams"]');
@@ -1405,6 +1478,7 @@
       const payload = await fetchJSON(url.toString());
       const [year, quarter] = quarterSelect.value.split('-');
       renderTeamsList(payload, tbody, year, quarter);
+      initPopovers();
     };
 
     const selectedTeam = page.dataset.selectedTeam || 'ALL';
