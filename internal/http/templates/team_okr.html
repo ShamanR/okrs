@@ -73,14 +73,80 @@
 <div class="vstack gap-3">
   {{/* Список карточек целей квартала. */}}
   {{range .Goals}}
-  <div class="card">
+  <div class="card" data-goal-card data-goal-id="{{.ID}}">
     {{if $.ObjectiveBlockV2}}
     <div class="card-body okr-objective-card">
       {{$goal := .}}
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
-        <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
+        {{if ne .TeamID $.Team.ID}}
+        <span class="badge text-bg-info share-goal-badge" data-popover-content="#okr-goal-share-{{.ID}}"
+          data-popover-trigger="hoverable">Общая</span>
+        {{end}}
+        <button type="button" class="btn btn-link p-0 goal-title" data-bs-toggle="modal"
+          data-bs-target="#goalEditModal-{{.ID}}" {{if $.IsClosed}}disabled{{end}}>
+          {{.Title}}
+        </button>
+        {{ $shareTeams := index $.GoalShares .ID }}
+        {{if gt (len $shareTeams) 1}}
+        <button type="button" class="btn btn-link p-0 share-goal-button"
+          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hoverable"
+          aria-label="Shared goal">
+          <i class="bi bi-share"></i>
+        </button>
+        <div id="okr-goal-share-{{.ID}}" class="d-none">
+          <div class="small fw-semibold mb-1">Команды с целью</div>
+          <ul class="list-unstyled mb-0">
+            {{range $shareTeams}}
+            <li>
+              <a class="text-decoration-none" href="/teams/{{.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <span class="text-muted">{{.TypeLabel}}</span> {{.Name}}
+              </a>
+            </li>
+            {{end}}
+          </ul>
+        </div>
+        {{end}}
+        <div class="dropdown ms-auto">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown"
+            aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
+                {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
+            </li>
+            <li>
+              <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#goalShareModal-{{.ID}}"
+                {{if $.IsClosed}}disabled{{end}}>Шарить</button>
+            </li>
+            <li>
+              <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
+                <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+                <button type="submit" class="dropdown-item" data-goal-move="up"
+                  {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>Переместить вверх</button>
+              </form>
+            </li>
+            <li>
+              <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
+                <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+                <button type="submit" class="dropdown-item" data-goal-move="down"
+                  {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>Переместить вниз</button>
+              </form>
+            </li>
+            <li>
+              <form method="post" action="/goals/{{.ID}}/delete" class="m-0"
+                onsubmit="return confirm('{{if or (ne .TeamID $.Team.ID) (gt (len $shareTeams) 1)}}Убрать цель?{{else}}Удалить цель?{{end}}')">
+                <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+                <button type="submit" class="dropdown-item text-danger" {{if $.IsClosed}}disabled{{end}}>
+                  {{if or (ne .TeamID $.Team.ID) (gt (len $shareTeams) 1)}}Убрать{{else}}Удалить{{end}}
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
       </div>
       <p class="text-muted mb-2 okr-goal-description" data-goal-description>
         {{.Description}}
@@ -121,34 +187,16 @@
         </ul>
       </div>
       <p class="mb-3"><span class="badge">{{.WorkType}}</span> · Фокус: {{.FocusType}} · Владелец: {{.OwnerText}}</p>
-      <div class="d-flex gap-2 flex-wrap">
-        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
-        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
-          data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
-        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
-          {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
-        <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
-          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
-        </form>
-        <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
-          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
-        </form>
-        <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
-          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
-        </form>
-      </div>
+      {{ $krWeight := sumKRWeights .KeyResults }}
       {{if .KeyResults}}
       <div class="mt-3">
-        {{ $krWeight := sumKRWeights .KeyResults }}
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <h4 class="h6 mb-0">Ключевые результаты</h4>
           <span class="small text-muted">Вес, %</span>
         </div>
         <div class="vstack gap-2">
           {{range .KeyResults}}
-          <div class="okr-kr-item border rounded p-3">
+          <div class="okr-kr-item border rounded p-3" data-kr-item data-kr-id="{{.ID}}">
             <div class="d-flex flex-wrap align-items-start gap-3">
               <div class="text-center okr-kr-weight">
                 <div class="text-muted small">Вес, %</div>
@@ -187,14 +235,18 @@
                       <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
                         <input type="hidden" name="return"
                           value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-                        <button type="submit" class="dropdown-item" {{if $.IsClosed}}disabled{{end}}>Вверх</button>
+                        <button type="submit" class="dropdown-item" data-kr-move="up" {{if $.IsClosed}}disabled{{end}}>
+                          Переместить вверх
+                        </button>
                       </form>
                     </li>
                     <li>
                       <form method="post" action="/key-results/{{.ID}}/move-down" class="m-0">
                         <input type="hidden" name="return"
                           value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-                        <button type="submit" class="dropdown-item" {{if $.IsClosed}}disabled{{end}}>Вниз</button>
+                        <button type="submit" class="dropdown-item" data-kr-move="down" {{if $.IsClosed}}disabled{{end}}>
+                          Переместить вниз
+                        </button>
                       </form>
                     </li>
                     <li>
@@ -343,6 +395,14 @@
         </div>
       </div>
       {{end}}
+      <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
+          data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
+        <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight
+          100}}title="Сумма весов KR должна быть равна 100" {{end}}>
+          Сумма KR {{ $krWeight }} %
+        </span>
+      </div>
       {{if .Comments}}
       {{with index .Comments 0}}
       <div class="small text-muted mt-3">
@@ -383,9 +443,75 @@
       <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
         <span class="badge {{priorityBadgeClass .Priority}}">{{.Priority}}</span>
         <span class="badge text-bg-light border">Вес {{.Weight}}%</span>
-        <h3 class="h5 mb-0 text-break">{{.Title}}</h3>
+        {{if ne .TeamID $.Team.ID}}
+        <span class="badge text-bg-info share-goal-badge" data-popover-content="#okr-goal-share-{{.ID}}"
+          data-popover-trigger="hoverable">Общая</span>
+        {{end}}
+        <button type="button" class="btn btn-link p-0 goal-title" data-bs-toggle="modal"
+          data-bs-target="#goalEditModal-{{.ID}}" {{if $.IsClosed}}disabled{{end}}>
+          {{.Title}}
+        </button>
+        {{ $shareTeams := index $.GoalShares .ID }}
+        {{if gt (len $shareTeams) 1}}
+        <button type="button" class="btn btn-link p-0 share-goal-button"
+          data-popover-content="#okr-goal-share-{{.ID}}" data-popover-trigger="hoverable"
+          aria-label="Shared goal">
+          <i class="bi bi-share"></i>
+        </button>
+        <div id="okr-goal-share-{{.ID}}" class="d-none">
+          <div class="small fw-semibold mb-1">Команды с целью</div>
+          <ul class="list-unstyled mb-0">
+            {{range $shareTeams}}
+            <li>
+              <a class="text-decoration-none" href="/teams/{{.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <span class="text-muted">{{.TypeLabel}}</span> {{.Name}}
+              </a>
+            </li>
+            {{end}}
+          </ul>
+        </div>
+        {{end}}
         <span class="badge text-bg-primary border">{{.WorkType}}</span>
         <span class="badge text-bg-secondary border">{{.FocusType}}</span>
+        <div class="dropdown ms-auto">
+          <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown"
+            aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li>
+              <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
+                {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
+            </li>
+            <li>
+              <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#goalShareModal-{{.ID}}"
+                {{if $.IsClosed}}disabled{{end}}>Шарить</button>
+            </li>
+            <li>
+              <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
+                <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+                <button type="submit" class="dropdown-item" data-goal-move="up"
+                  {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>Переместить вверх</button>
+              </form>
+            </li>
+            <li>
+              <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
+                <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+                <button type="submit" class="dropdown-item" data-goal-move="down"
+                  {{if or $.IsClosed (ne .TeamID $.Team.ID)}}disabled{{end}}>Переместить вниз</button>
+              </form>
+            </li>
+            <li>
+              <form method="post" action="/goals/{{.ID}}/delete" class="m-0"
+                onsubmit="return confirm('{{if or (ne .TeamID $.Team.ID) (gt (len $shareTeams) 1)}}Убрать цель?{{else}}Удалить цель?{{end}}')">
+                <input type="hidden" name="team_id" value="{{$.Team.ID}}">
+                <button type="submit" class="dropdown-item text-danger" {{if $.IsClosed}}disabled{{end}}>
+                  {{if or (ne .TeamID $.Team.ID) (gt (len $shareTeams) 1)}}Убрать{{else}}Удалить{{end}}
+                </button>
+              </form>
+            </li>
+          </ul>
+        </div>
       </div>
       <p class="text-muted mb-2">{{.Description}}</p>
       <div class="d-flex align-items-center gap-2 mb-3">
@@ -397,27 +523,9 @@
       </div>
       <p class="mb-3">Владелец цели: <u>{{.OwnerText}}</u>
       </p>
-      <div class=" d-flex gap-2">
-        <a class="btn btn-outline-primary btn-sm" href="/goals/{{.ID}}">Открыть</a>
-        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
-          data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
-        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#goalEditModal-{{.ID}}"
-          {{if $.IsClosed}}disabled{{end}}>Редактировать</button>
-        <form method="post" action="/goals/{{.ID}}/move-up" class="m-0">
-          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↑</button>
-        </form>
-        <form method="post" action="/goals/{{.ID}}/move-down" class="m-0">
-          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-          <button type="submit" class="btn btn-outline-secondary btn-sm" {{if $.IsClosed}}disabled{{end}}>↓</button>
-        </form>
-        <form method="post" action="/goals/{{.ID}}/delete" class="m-0">
-          <button type="submit" class="btn btn-outline-danger btn-sm" {{if $.IsClosed}}disabled{{end}}>Удалить</button>
-        </form>
-      </div>
+      {{ $krWeight := sumKRWeights .KeyResults }}
       {{if .KeyResults}}
       <div class="mt-3">
-        {{ $krWeight := sumKRWeights .KeyResults }}
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
           <h4 class="h6 mb-0">Ключевые результаты</h4>
         </div>
@@ -433,7 +541,7 @@
             </thead>
             <tbody>
               {{range .KeyResults}}
-              <tr>
+              <tr data-kr-item data-kr-id="{{.ID}}">
                 <td><span class="badge text-bg-light border">{{.Weight}}%</span></td>
                 <td>
                   <button class="btn btn-link p-0 fw-semibold text-start text-break" data-bs-toggle="modal"
@@ -451,26 +559,45 @@
                       data-bs-target="#krProgress-{{.ID}}" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>
                       Обновить прогресс
                     </button>
-                    <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
-                      <input type="hidden" name="return"
-                        value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-                      <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
-                        $.IsClosed}}disabled{{end}}>↑</button>
-                    </form>
-                    <form method="post" action="/key-results/{{.ID}}/move-down" class="m-0">
-                      <input type="hidden" name="return"
-                        value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-                      <button type="submit" class="btn btn-outline-secondary btn-sm" {{if
-                        $.IsClosed}}disabled{{end}}>↓</button>
-                    </form>
-                    <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
-                      data-kr-modal="edit" data-kr-id="{{.ID}}">Редактировать KR</button>
-                    <form method="post" action="/key-results/{{.ID}}/delete" class="m-0">
-                      <input type="hidden" name="return"
-                        value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
-                      <button type="submit" class="btn btn-outline-danger btn-sm" {{if
-                        $.IsClosed}}disabled{{end}}>Удалить</button>
-                    </form>
+                    <div class="dropdown">
+                      <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button"
+                        data-bs-toggle="dropdown" aria-expanded="false" {{if $.IsClosed}}disabled{{end}}>⋯</button>
+                      <ul class="dropdown-menu dropdown-menu-end">
+                        <li>
+                          <button class="dropdown-item" data-bs-toggle="modal" data-bs-target="#krModal"
+                            data-kr-modal="edit" data-kr-id="{{.ID}}">Редактировать KR</button>
+                        </li>
+                        <li>
+                          <form method="post" action="/key-results/{{.ID}}/move-up" class="m-0">
+                            <input type="hidden" name="return"
+                              value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                            <button type="submit" class="dropdown-item" data-kr-move="up"
+                              {{if $.IsClosed}}disabled{{end}}>Переместить вверх</button>
+                          </form>
+                        </li>
+                        <li>
+                          <form method="post" action="/key-results/{{.ID}}/move-down" class="m-0">
+                            <input type="hidden" name="return"
+                              value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                            <button type="submit" class="dropdown-item" data-kr-move="down"
+                              {{if $.IsClosed}}disabled{{end}}>Переместить вниз</button>
+                          </form>
+                        </li>
+                        <li>
+                          <hr class="dropdown-divider">
+                        </li>
+                        <li>
+                          <form method="post" action="/key-results/{{.ID}}/delete" class="m-0"
+                            onsubmit="return confirm('Удалить KR?')">
+                            <input type="hidden" name="return"
+                              value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+                            <button type="submit" class="dropdown-item text-danger" {{if $.IsClosed}}disabled{{end}}>
+                              Удалить
+                            </button>
+                          </form>
+                        </li>
+                      </ul>
+                    </div>
                   </div>
                 </td>
               </tr>
@@ -581,14 +708,16 @@
             </tbody>
           </table>
         </div>
-        <div class="mt-2 d-flex justify-content-start">
-          <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight
-            100}}title="Сумма весов KR должна быть равна 100" {{end}}>
-            Сумма KR {{ $krWeight }} %
-          </span>
-        </div>
       </div>
       {{end}}
+      <div class="mt-3 d-flex flex-wrap align-items-center gap-2">
+        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#krModal"
+          data-kr-modal="create" data-goal-id="{{.ID}}" {{if $.IsClosed}}disabled{{end}}>Добавить KR</button>
+        <span class="badge {{if ne $krWeight 100}}text-bg-danger{{else}}text-bg-light border{{end}}" {{if ne $krWeight
+          100}}title="Сумма весов KR должна быть равна 100" {{end}}>
+          Сумма KR {{ $krWeight }} %
+        </span>
+      </div>
       {{if .Comments}}
       {{with index .Comments 0}}
       <div class="border rounded p-2 mb-3 bg-light">
@@ -713,6 +842,7 @@
             <span class="autosave-dot"></span>
             <span class="autosave-text">Нет несохранённых изменений</span>
           </div>
+          <input type="hidden" name="team_id" value="{{$.Team.ID}}">
           <div class="row g-3">
             <div class="col-12">
               <label class="form-label">Название</label>
@@ -761,6 +891,41 @@
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
             <button type="submit" class="btn btn-primary" {{if $.IsClosed}}disabled{{end}}>Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+
+{{/* Модальные окна шаринга целей. */}}
+{{range .Goals}}
+{{ $goal := . }}
+<div class="modal fade" id="goalShareModal-{{.ID}}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Шарить цель</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form method="post" action="/goals/{{.ID}}/share">
+          <input type="hidden" name="return" value="/teams/{{$.Team.ID}}/okr?year={{$.Year}}&quarter={{$.Quarter}}">
+          <div class="vstack gap-2">
+            {{ $targets := index $.GoalShareTargets .ID }}
+            {{range $targets}}
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="team_ids" value="{{.ID}}"
+                id="share-team-{{ $goal.ID }}-{{.ID}}" {{if .Selected}}checked{{end}} {{if .Disabled}}disabled{{end}}
+                {{if .Disabled}}title="Команда с валидированным или закрытым кварталом"{{end}}>
+              <label class="form-check-label hierarchy-label" for="share-team-{{ $goal.ID }}-{{.ID}}">{{.Label}}</label>
+            </div>
+            {{end}}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
           </div>
         </form>
       </div>
