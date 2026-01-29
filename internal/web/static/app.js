@@ -968,6 +968,7 @@
         section.hidden = section.dataset.kindSection !== kindSelect.value;
       });
     };
+    kindSelect.value = selectedKind;
     updateSections();
     kindSelect.addEventListener('change', updateSections);
     const addStageButton = form.querySelector('[data-add-stage]');
