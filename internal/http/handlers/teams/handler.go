@@ -21,6 +21,8 @@ type Handler struct {
 	deps common.Dependencies
 }
 
+const maxMultipartMemory = 32 << 20
+
 func New(deps common.Dependencies) *Handler {
 	return &Handler{deps: deps}
 }
@@ -68,8 +70,7 @@ type teamsPage struct {
 	QuarterOptions  []common.QuarterOption
 	SelectedYear    int
 	SelectedQuarter int
-	Teams           []teamRow
-	TeamFilters     []teamFilterOption
+	SelectedTeam    string
 	CurrentYear     int
 	PageTitle       string
 	ContentTemplate string
@@ -128,53 +129,15 @@ type teamOKRPage struct {
 }
 
 func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 	year, quarter, quarterValue := resolveQuarterFilter(r, h.deps.Zone)
 	options := common.BuildQuarterOptions(year, quarter, h.deps.Zone)
 	selectedFilter := resolveTeamFilter(r)
-	var selectedTeamID *int64
-	if selectedFilter != "ALL" {
-		id, err := strconv.ParseInt(selectedFilter, 10, 64)
-		if err == nil {
-			selectedTeamID = &id
-		}
-	}
-
-	teams, err := h.deps.Store.ListTeams(ctx)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-
-	teamsByID, childrenMap, rootTeams := buildTeamHierarchy(teams)
-	if selectedTeamID != nil {
-		if _, ok := teamsByID[*selectedTeamID]; !ok {
-			selectedTeamID = nil
-			selectedFilter = "ALL"
-		}
-	}
-	filterOptions := buildTeamFilterOptions(rootTeams, childrenMap, selectedFilter)
-	filteredRoots := rootTeams
-	if selectedTeamID != nil {
-		if team, ok := teamsByID[*selectedTeamID]; ok {
-			filteredRoots = []domain.Team{team}
-		}
-	}
-
-	rows := make([]teamRow, 0, len(teams))
-	for _, team := range filteredRoots {
-		if err := h.appendTeamRows(ctx, &rows, team, 0, year, quarter, childrenMap, teamsByID); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-	}
 
 	page := teamsPage{
 		QuarterOptions:  options,
 		SelectedYear:    year,
 		SelectedQuarter: quarter,
-		Teams:           rows,
-		TeamFilters:     filterOptions,
+		SelectedTeam:    selectedFilter,
 		CurrentYear:     year,
 		PageTitle:       "Команды",
 		ContentTemplate: "teams-content",
@@ -243,7 +206,7 @@ func persistTeamsFilters(w http.ResponseWriter, quarterValue, selectedFilter str
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -337,7 +300,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -441,7 +404,7 @@ func (h *Handler) HandleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.R
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -480,76 +443,18 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	year, quarter := common.ParseQuarter(r, h.deps.Zone)
-
-	team, err := h.deps.Store.GetTeam(ctx, teamID)
+	team, err := h.deps.Service.GetTeam(ctx, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
-	}
-
-	goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, teamID, year, quarter)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	for i := range goals {
-		comments, err := h.deps.Store.ListGoalComments(ctx, goals[i].ID)
-		if err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-		goals[i].Comments = comments
-	}
-	teams, err := h.deps.Store.ListTeams(ctx)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	teamsByID := make(map[int64]domain.Team, len(teams))
-	for _, teamItem := range teams {
-		teamsByID[teamItem.ID] = teamItem
-	}
-	goalShares, goalShareIDs, err := h.buildGoalSharesMap(ctx, goals, teamsByID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	_, childrenMap, rootTeams := buildTeamHierarchy(teams)
-	statuses, err := h.buildTeamQuarterStatuses(ctx, teams, year, quarter)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	shareTargets := buildShareTargets(rootTeams, childrenMap, statuses)
-	goalShareTargets := buildGoalShareTargets(shareTargets, goalShareIDs)
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	var totalWeight int
-	for i := range goals {
-		goals[i].Progress = common.CalculateGoalProgress(goals[i])
-		totalWeight += goals[i].Weight
 	}
 	page := teamOKRPage{
-		Team:             team,
-		TeamTypeLabel:    common.TeamTypeLabel(team.Type),
-		Year:             year,
-		Quarter:          quarter,
-		Goals:            goals,
-		GoalShares:       goalShares,
-		GoalShareIDs:     goalShareIDs,
-		GoalShareTargets: goalShareTargets,
-		QuarterStatus:    status,
-		StatusOptions:    buildTeamStatusOptions(status),
-		IsClosed:         status == domain.TeamQuarterStatusClosed,
-		QuarterProgress:  okr.QuarterProgress(goals),
-		GoalsCount:       len(goals),
-		GoalsWeight:      totalWeight,
-		PageTitle:        "OKR команды",
-		ContentTemplate:  "team-okr-content",
-		ObjectiveBlockV2: common.FeatureEnabled("okr_objective_block_ui_v2"),
+		Team:            team,
+		TeamTypeLabel:   common.TeamTypeLabel(team.Type),
+		Year:            year,
+		Quarter:         quarter,
+		PageTitle:       "OKR команды",
+		ContentTemplate: "team-okr-content",
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
@@ -561,7 +466,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

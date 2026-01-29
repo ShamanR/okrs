@@ -17,6 +17,8 @@ type Handler struct {
 	deps common.Dependencies
 }
 
+const maxMultipartMemory = 32 << 20
+
 func New(deps common.Dependencies) *Handler {
 	return &Handler{deps: deps}
 }
@@ -76,7 +78,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -107,7 +109,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -194,7 +196,7 @@ func (h *Handler) HandleUpdateKeyResultWeights(w http.ResponseWriter, r *http.Re
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -229,7 +231,7 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -296,7 +298,7 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -332,7 +334,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -515,7 +517,7 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

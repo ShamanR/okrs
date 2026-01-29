@@ -2,6 +2,12 @@
 
 Серверное приложение для ведения OKR нескольких команд. Реализовано на Go 1.22 с PostgreSQL и HTML-шаблонами.
 
+## Подход: HTML-каркас + данные через API
+
+- SSR-страницы отдают «каркас» (layout + контейнеры).
+- Данные и все мутации идут через `/api/v1/...` JSON-эндпоинты.
+- Фронтенд использует минимальный vanilla JS без сборщика.
+
 ## Запуск
 
 ### Через Docker Compose (Postgres локально)
@@ -31,10 +37,95 @@ go run ./cmd/server --seed
 go test ./...
 ```
 
+## API v1
+
+Базовый URL: `/api/v1`  
+Content-Type: `application/json; charset=utf-8`  
+Некоторые мутации принимают `multipart/form-data` (через `FormData`).  
+Ошибки:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR|NOT_FOUND|CONFLICT|INTERNAL",
+    "message": "Описание ошибки",
+    "fields": { "field": "msg" }
+  }
+}
+```
+
+### Чтение
+
+- `GET /api/v1/hierarchy`
+- `GET /api/v1/teams?quarter=2024-3&org_id=123`
+- `GET /api/v1/teams/{teamID}`
+- `GET /api/v1/teams/{teamID}/okrs?quarter=2024-3`
+- `GET /api/v1/goals/{goalID}`
+
+### Мутации
+
+- `POST /api/v1/krs/{id}/progress/percent`
+  ```json
+  { "current_value": 42.5 }
+  ```
+- `POST /api/v1/krs/{id}/progress/boolean`
+  ```json
+  { "done": true }
+  ```
+- `POST /api/v1/krs/{id}/progress/project`
+  ```json
+  { "stages": [ { "id": 1, "done": true } ] }
+  ```
+- `POST /api/v1/goals/{goalID}/share`
+  ```json
+  { "targets": [ { "team_id": 10, "weight": 50 } ] }
+  ```
+- `POST /api/v1/goals/{goalID}/weight`
+  ```json
+  { "team_id": 10, "weight": 60 }
+  ```
+- `POST /api/v1/goals/{goalID}/comments`
+  ```json
+  { "text": "Комментарий" }
+  ```
+- `POST /api/v1/krs/{id}/comments`
+  ```json
+  { "text": "Комментарий" }
+  ```
+- `POST /api/v1/goals/{goalID}` (form)
+  ```text
+  title=...&description=...&priority=P0|P1|P2|P3&weight=50&
+  work_type=Discovery|Delivery&focus_type=PROFITABILITY|STABILITY|SPEED_EFFICIENCY|TECH_INDEPENDENCE&
+  owner_text=...&team_id=123
+  ```
+  - `team_id` опционален: если цель расшарена, вес обновится только для указанной команды.
+- `POST /api/v1/goals/{goalID}/key-results` (form)
+  ```text
+  title=...&description=...&weight=25&kind=percent|linear|boolean|project
+  ```
+  - для `percent`: `percent_start`, `percent_target`, `percent_current`
+  - для `linear`: `linear_start`, `linear_target`, `linear_current`
+  - для `boolean`: `boolean_done=true|false`
+  - для `project`: `stage_title[]`, `stage_weight[]`
+- `POST /api/v1/krs/{id}` (form)
+  ```text
+  title=...&description=...&weight=25&kind=percent|linear|boolean|project
+  ```
+  - поля meta те же, что и при создании KR
+- `POST /api/v1/goals/{goalID}/move-up` (form)
+- `POST /api/v1/goals/{goalID}/move-down` (form)
+- `POST /api/v1/krs/{id}/move-up` (form)
+- `POST /api/v1/krs/{id}/move-down` (form)
+- `POST /api/v1/teams/{teamID}/status?quarter=2024-3` (form)
+  ```text
+  status=no_goals|forming|in_progress|validated|closed
+  ```
+
 ## UX обновления
 
 - На странице OKR действия целей и KR перенесены в меню «⋯», а название цели открывает модальное редактирование.
 - Кнопка добавления KR находится под списком KR рядом с суммой весов.
+- При статусах квартала `validated` и `closed` редактирование целей и KR недоступно (доступны только порядок и обновление прогресса).
 
 ## Прогресс вычисляется
 
@@ -50,6 +141,7 @@ go test ./...
 - `/teams/{teamID}/okr?year=2024&quarter=3`
 - `/goals/{goalID}`
 - `/api/teams?year=2024&quarter=3`
+- `/api/v1/teams?quarter=2024-3`
 
 ## Переменные окружения
 
