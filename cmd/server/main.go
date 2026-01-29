@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -17,6 +18,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -52,8 +54,29 @@ func main() {
 
 	pgstore := store.New(pool)
 	if seed {
-		current := store.CurrentQuarter(time.Now().In(zone))
-		if err := pgstore.SeedDemo(context.Background(), current.Year, current.Quarter); err != nil {
+		now := time.Now().In(zone)
+		period, err := pgstore.FindPeriodForDate(context.Background(), now)
+		var periodID int64
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				name, startDate, endDate := quarterPeriod(now)
+				periodID, err = pgstore.CreatePeriod(context.Background(), store.PeriodInput{
+					Name:      name,
+					StartDate: startDate,
+					EndDate:   endDate,
+				})
+				if err != nil {
+					logger.Error("failed to create seed period", slog.String("error", err.Error()))
+					os.Exit(1)
+				}
+			} else {
+				logger.Error("failed to resolve seed period", slog.String("error", err.Error()))
+				os.Exit(1)
+			}
+		} else {
+			periodID = period.ID
+		}
+		if err := pgstore.SeedDemo(context.Background(), periodID); err != nil {
 			logger.Error("failed to seed", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
@@ -121,4 +144,13 @@ func resolveMigrationsPath() (string, error) {
 		return "", err
 	}
 	return filepath.ToSlash(absPath), nil
+}
+
+func quarterPeriod(now time.Time) (string, time.Time, time.Time) {
+	year := now.Year()
+	quarter := ((int(now.Month()) - 1) / 3) + 1
+	startMonth := time.Month((quarter-1)*3 + 1)
+	start := time.Date(year, startMonth, 1, 0, 0, 0, 0, now.Location())
+	end := start.AddDate(0, 3, -1)
+	return fmt.Sprintf("%d Q%d", year, quarter), start, end
 }

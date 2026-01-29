@@ -57,9 +57,10 @@ Content-Type: `application/json; charset=utf-8`
 ### Чтение
 
 - `GET /api/v1/hierarchy`
-- `GET /api/v1/teams?quarter=2024-3&org_id=123`
+- `GET /api/v1/periods`
+- `GET /api/v1/teams?period_id=42&org_id=123`
 - `GET /api/v1/teams/{teamID}`
-- `GET /api/v1/teams/{teamID}/okrs?quarter=2024-3`
+- `GET /api/v1/teams/{teamID}/okrs?period_id=42`
 - `GET /api/v1/goals/{goalID}`
 
 ### Мутации
@@ -116,7 +117,7 @@ Content-Type: `application/json; charset=utf-8`
 - `POST /api/v1/goals/{goalID}/move-down` (form)
 - `POST /api/v1/krs/{id}/move-up` (form)
 - `POST /api/v1/krs/{id}/move-down` (form)
-- `POST /api/v1/teams/{teamID}/status?quarter=2024-3` (form)
+- `POST /api/v1/teams/{teamID}/status?period_id=42` (form)
   ```text
   status=no_goals|forming|in_progress|validated|closed
   ```
@@ -125,23 +126,23 @@ Content-Type: `application/json; charset=utf-8`
 
 - На странице OKR действия целей и KR перенесены в меню «⋯», а название цели открывает модальное редактирование.
 - Кнопка добавления KR находится под списком KR рядом с суммой весов.
-- При статусах квартала `validated` и `closed` редактирование целей и KR недоступно (доступны только порядок и обновление прогресса).
+- При статусах периода `validated` и `closed` редактирование целей и KR недоступно (доступны только порядок и обновление прогресса).
 
 ## Прогресс вычисляется
 
 - **Goal.progress**: среднее по KR с учётом их весов (если суммарный вес = 0 → 0%).
-- **Quarter.progress**: среднее по целям с учётом их весов (если суммарный вес = 0 → 0%).
+- **Period.progress**: среднее по целям с учётом их весов (если суммарный вес = 0 → 0%).
 - **PROJECT KR**: сумма весов выполненных этапов.
 - **PERCENT KR**: линейная интерполяция между start/target (или по checkpoints).
 - **BOOLEAN KR**: 100% если done, иначе 0%.
 
 ## Примеры URL
 
-- `/teams` — список команд и фильтр квартала.
-- `/teams/{teamID}/okr?year=2024&quarter=3`
+- `/teams` — список команд и фильтр периода.
+- `/teams/{teamID}/okr?period_id=42`
 - `/goals/{goalID}`
-- `/api/teams?year=2024&quarter=3`
-- `/api/v1/teams?quarter=2024-3`
+- `/api/teams?period_id=42`
+- `/api/v1/teams?period_id=42`
 
 ## Переменные окружения
 

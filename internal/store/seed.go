@@ -7,7 +7,7 @@ import (
 	"okrs/internal/domain"
 )
 
-func (s *Store) SeedDemo(ctx context.Context, year, quarter int) error {
+func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 	teams := []string{"Platform", "Payments", "Growth"}
 	teamIDs := make([]int64, 0, len(teams))
 	for _, name := range teams {
@@ -22,8 +22,7 @@ func (s *Store) SeedDemo(ctx context.Context, year, quarter int) error {
 	for _, teamID := range teamIDs {
 		goalID, err := s.CreateGoal(ctx, GoalInput{
 			TeamID:      teamID,
-			Year:        year,
-			Quarter:     quarter,
+			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Improve reliability for team %d", teamID),
 			Description: "Reduce incidents and improve on-call experience.",
 			Priority:    domain.PriorityP1,
@@ -50,8 +49,7 @@ func (s *Store) SeedDemo(ctx context.Context, year, quarter int) error {
 
 		goalID2, err := s.CreateGoal(ctx, GoalInput{
 			TeamID:      teamID,
-			Year:        year,
-			Quarter:     quarter,
+			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Grow adoption for team %d", teamID),
 			Description: "Ship features that increase engagement.",
 			Priority:    domain.PriorityP2,

@@ -55,11 +55,17 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('API') RETURNING id`).Scan(&teamID); err != nil {
 		t.Fatalf("insert team: %v", err)
 	}
+	var periodID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
 
 	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
 		TeamID:      teamID,
-		Year:        2024,
-		Quarter:     3,
+		PeriodID:    periodID,
 		Title:       "API Goal",
 		Description: "desc",
 		Priority:    domain.PriorityP1,
@@ -104,7 +110,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	getResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?quarter=2024-3", server.URL, teamID))
+	getResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, teamID, periodID))
 	if err != nil {
 		t.Fatalf("get okrs: %v", err)
 	}

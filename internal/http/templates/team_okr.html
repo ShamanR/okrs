@@ -4,17 +4,17 @@
     <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
     <li class="breadcrumb-item active" aria-current="page">
       <span class="badge text-bg-secondary">{{.TeamTypeLabel}}</span>
-      {{.Team.Name}} · {{.Year}} Q{{.Quarter}}
+      {{.Team.Name}} · {{.Period.Name}}
     </li>
   </ol>
 </nav>
 
-<div id="team-okr-page" data-page="team-okr" data-team-id="{{.Team.ID}}" data-year="{{.Year}}" data-quarter="{{.Quarter}}">
+<div id="team-okr-page" data-page="team-okr" data-team-id="{{.Team.ID}}" data-period-id="{{.Period.ID}}">
   <div class="row g-4 mb-4">
     <div class="col-lg-5">
       <div class="card h-100">
         <div class="card-body" data-okr-summary>
-          <h2 class="h5">Сводка квартала</h2>
+          <h2 class="h5">Сводка периода</h2>
           <p class="text-muted mb-0">Загрузка данных...</p>
         </div>
       </div>
@@ -22,7 +22,7 @@
     <div class="col-lg-7">
       <div class="card">
         <div class="card-body">
-          <h2 class="h5">Цели квартала</h2>
+          <h2 class="h5">Цели периода</h2>
           <div data-okr-actions>
             <p class="text-muted mb-0">Данные загружаются из API.</p>
           </div>

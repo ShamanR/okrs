@@ -8,9 +8,9 @@
   const goalPriorityOptions = ['P0', 'P1', 'P2', 'P3'];
   const goalWorkOptions = ['Discovery', 'Delivery'];
   const goalFocusOptions = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
-  const lockedQuarterStatuses = ['validated', 'closed'];
+  const lockedPeriodStatuses = ['validated', 'closed'];
 
-  const isQuarterLocked = () => lockedQuarterStatuses.includes(state.teamOKR?.quarter_status);
+  const isPeriodLocked = () => lockedPeriodStatuses.includes(state.teamOKR?.period_status);
 
   const pluralize = (count, forms) => {
     const mod10 = count % 10;
@@ -57,6 +57,56 @@
     return payload;
   };
 
+  const periodsCacheKey = 'okr_periods_cache_v1';
+  const periodsCacheTTL = 1000 * 60 * 60 * 6;
+
+  const readPeriodsCache = () => {
+    try {
+      const raw = window.localStorage.getItem(periodsCacheKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.items || !Array.isArray(parsed.items)) return null;
+      if (!parsed.savedAt || Date.now() - parsed.savedAt > periodsCacheTTL) return null;
+      return parsed.items;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const writePeriodsCache = (items) => {
+    try {
+      window.localStorage.setItem(periodsCacheKey, JSON.stringify({ savedAt: Date.now(), items }));
+    } catch (error) {
+      // ignore cache errors
+    }
+  };
+
+  const loadPeriods = async () => {
+    const cached = readPeriodsCache();
+    if (cached) return cached;
+    const payload = await fetchJSON('/api/v1/periods');
+    const items = payload.items || [];
+    writePeriodsCache(items);
+    return items;
+  };
+
+  const renderPeriodSelect = (select, periods, selectedID) => {
+    select.innerHTML = '';
+    if (!periods.length) {
+      select.appendChild(createOption('', 'Нет периодов'));
+      select.disabled = true;
+      return;
+    }
+    select.disabled = false;
+    periods.forEach((period) => {
+      const option = createOption(String(period.id), period.name);
+      if (selectedID && String(period.id) === String(selectedID)) {
+        option.selected = true;
+      }
+      select.appendChild(option);
+    });
+  };
+
   const renderHierarchySelect = (tree, select, selected) => {
     const options = [createOption('ALL', 'Все команды')];
     const walk = (nodes, level) => {
@@ -78,7 +128,7 @@
     });
   };
 
-  const renderTeamsList = (data, tbody, year, quarter) => {
+  const renderTeamsList = (data, tbody, periodID) => {
     tbody.innerHTML = '';
     if (!data.items || data.items.length === 0) {
       const row = document.createElement('tr');
@@ -92,9 +142,9 @@
     }
     data.items.forEach((team) => {
       const row = document.createElement('tr');
-      row.appendChild(renderTeamCell(team, year, quarter));
-      row.appendChild(renderQuarterProgressCell(team));
-      row.appendChild(renderGoalsCell(team, year, quarter));
+      row.appendChild(renderTeamCell(team, periodID));
+      row.appendChild(renderPeriodProgressCell(team));
+      row.appendChild(renderGoalsCell(team, periodID));
       row.appendChild(renderStatusCell(team));
       row.appendChild(renderActionsCell(team));
       tbody.appendChild(row);
@@ -145,7 +195,7 @@
 
     const titleWrap = document.createElement('div');
     titleWrap.className = 'd-flex flex-column';
-    if (isQuarterLocked()) {
+    if (isPeriodLocked()) {
       const title = document.createElement('span');
       title.className = 'fw-semibold';
       title.textContent = goal.title;
@@ -211,7 +261,7 @@
 
     const actions = document.createElement('div');
     actions.className = 'mt-3';
-    if (!isQuarterLocked()) {
+    if (!isPeriodLocked()) {
       const addKRButton = document.createElement('button');
       addKRButton.type = 'button';
       addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
@@ -271,7 +321,7 @@
     const titleCell = document.createElement('td');
     const titleWrap = document.createElement('div');
     titleWrap.className = 'd-flex flex-column align-items-start';
-    if (isQuarterLocked()) {
+    if (isPeriodLocked()) {
       const title = document.createElement('span');
       title.className = 'fw-semibold';
       title.textContent = kr.title;
@@ -549,7 +599,7 @@
     summaryEl.innerHTML = '';
     const title = document.createElement('h2');
     title.className = 'h5';
-    title.textContent = 'Сводка квартала';
+    title.textContent = 'Сводка периода';
 
     const progressRow = document.createElement('div');
     progressRow.className = 'mb-3';
@@ -560,18 +610,18 @@
     progressLabel.className = 'text-muted';
     progressLabel.textContent = 'Прогресс';
     const progressValue = document.createElement('strong');
-    progressValue.textContent = `${data.quarter_progress}%`;
+    progressValue.textContent = `${data.period_progress}%`;
     progressHeader.append(progressLabel, progressValue);
 
     const progressBar = document.createElement('div');
     progressBar.className = 'progress';
     progressBar.setAttribute('role', 'progressbar');
-    progressBar.setAttribute('aria-valuenow', data.quarter_progress);
+    progressBar.setAttribute('aria-valuenow', data.period_progress);
     progressBar.setAttribute('aria-valuemin', '0');
     progressBar.setAttribute('aria-valuemax', '100');
     const progressFill = document.createElement('div');
     progressFill.className = 'progress-bar';
-    progressFill.style.width = `${data.quarter_progress}%`;
+    progressFill.style.width = `${data.period_progress}%`;
     progressBar.appendChild(progressFill);
 
     progressRow.append(progressHeader, progressBar);
@@ -588,7 +638,7 @@
     status.className = 'mt-3';
     const statusLabel = document.createElement('h3');
     statusLabel.className = 'h6 mb-2';
-    statusLabel.textContent = 'Статус квартала';
+    statusLabel.textContent = 'Статус периода';
 
     const statusSelect = document.createElement('select');
     statusSelect.className = 'form-select';
@@ -603,12 +653,12 @@
       const opt = document.createElement('option');
       opt.value = option.value;
       opt.textContent = option.label;
-      if (option.value === data.quarter_status) {
+      if (option.value === data.period_status) {
         opt.selected = true;
       }
       statusSelect.appendChild(opt);
     });
-    statusSelect.addEventListener('change', () => updateQuarterStatus(statusSelect.value));
+    statusSelect.addEventListener('change', () => updatePeriodStatus(statusSelect.value));
 
     status.append(statusLabel, statusSelect);
 
@@ -620,7 +670,7 @@
     const wrapper = document.createElement('div');
     wrapper.className = 'd-flex flex-wrap gap-2';
 
-    if (!isQuarterLocked()) {
+    if (!isPeriodLocked()) {
       const addGoalButton = document.createElement('button');
       addGoalButton.type = 'button';
       addGoalButton.className = 'btn btn-primary';
@@ -644,13 +694,13 @@
     const menu = document.createElement('ul');
     menu.className = 'dropdown-menu dropdown-menu-end';
 
-    if (!isQuarterLocked()) {
+    if (!isPeriodLocked()) {
       menu.appendChild(buildMenuButton('Редактировать', () => openGoalModal(goal)));
       menu.appendChild(buildMenuButton('Шарить', () => openShareGoalModal(goal)));
     }
     menu.appendChild(buildMenuButton('Переместить вверх', () => moveGoal(goal.id, 'move-up')));
     menu.appendChild(buildMenuButton('Переместить вниз', () => moveGoal(goal.id, 'move-down')));
-    if (!isQuarterLocked()) {
+    if (!isPeriodLocked()) {
       menu.appendChild(buildMenuForm(`/goals/${goal.id}/delete`, buildReturnFields(), true));
     }
 
@@ -671,12 +721,12 @@
     const menu = document.createElement('ul');
     menu.className = 'dropdown-menu dropdown-menu-end';
 
-    if (!isQuarterLocked()) {
+    if (!isPeriodLocked()) {
       menu.appendChild(buildMenuButton('Редактировать', () => openKRModal(kr)));
     }
     menu.appendChild(buildMenuButton('Переместить вверх', () => moveKeyResult(kr.id, 'move-up')));
     menu.appendChild(buildMenuButton('Переместить вниз', () => moveKeyResult(kr.id, 'move-down')));
-    if (!isQuarterLocked()) {
+    if (!isPeriodLocked()) {
       menu.appendChild(buildMenuForm(`/key-results/${kr.id}/delete`, buildReturnFields(), true));
     }
 
@@ -727,7 +777,7 @@
 
   const buildReturnURL = () => {
     if (!state.teamOKR) return '';
-    return `/teams/${state.teamOKR.team.id}/okr?year=${state.teamOKR.year}&quarter=${state.teamOKR.quarter}`;
+    return `/teams/${state.teamOKR.team.id}/okr?period_id=${state.teamOKR.period.id}`;
   };
 
   const buildReturnFields = () => {
@@ -768,8 +818,7 @@
   const renderSharedGoalBadge = (goal, options = {}) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'd-flex align-items-center gap-1';
-    const shareYear = options.year ?? state.teamOKR?.year ?? '';
-    const shareQuarter = options.quarter ?? state.teamOKR?.quarter ?? '';
+    const sharePeriodID = options.period_id ?? state.teamOKR?.period?.id ?? '';
     const showBadge = options.showBadge !== false;
     if (showBadge) {
       const badge = document.createElement('span');
@@ -792,7 +841,7 @@
     const list = goal.share_teams
       .map(
         (team) =>
-          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?year=${shareYear}&quarter=${shareQuarter}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
+          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?period_id=${sharePeriodID}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
       )
       .join('');
     popover.innerHTML = `<div class="small fw-semibold mb-1">Команды с целью</div><ul class="list-unstyled mb-0">${list}</ul>`;
@@ -849,12 +898,11 @@
     return response;
   };
 
-  const updateQuarterStatus = async (status) => {
+  const updatePeriodStatus = async (status) => {
     if (!state.teamOKR) return;
     try {
       await postFormData(`/api/v1/teams/${state.teamOKR.team.id}/status`, {
-        year: state.teamOKR.year,
-        quarter: state.teamOKR.quarter,
+        period_id: state.teamOKR.period.id,
         status,
       });
       await reloadTeamOKR();
@@ -912,7 +960,7 @@
     const action = options.action || `/api/v1/goals/${goal.id}`;
     const titleText = options.titleText || 'Редактировать цель';
     const submitLabel = options.submitLabel || 'Сохранить';
-    const includeQuarter = options.includeQuarter === true;
+    const includePeriod = options.includePeriod === true;
     const isSharedGoal = goal.share_teams && goal.share_teams.length > 1;
     const body = `
       <form method="post" action="${action}" class="vstack gap-3" data-goal-edit-form>
@@ -948,8 +996,7 @@
             <input class="form-control" name="owner_text" value="${escapeHTML(goal.owner_text || '')}" />
           </div>
         </div>
-        ${includeQuarter ? `<input type="hidden" name="year" value="${goal.year ?? ''}" />` : ''}
-        ${includeQuarter ? `<input type="hidden" name="quarter" value="${goal.quarter ?? ''}" />` : ''}
+        ${includePeriod ? `<input type="hidden" name="period_id" value="${goal.period_id ?? ''}" />` : ''}
         ${isSharedGoal && state.teamOKR ? `<input type="hidden" name="team_id" value="${state.teamOKR.team.id}" />` : ''}
         <button class="btn btn-primary" type="submit">${submitLabel}</button>
       </form>`;
@@ -973,14 +1020,13 @@
       work_type: goalWorkOptions[0],
       focus_type: goalFocusOptions[0],
       owner_text: '',
-      year: data.year,
-      quarter: data.quarter,
+      period_id: data.period?.id,
     };
     openGoalModal(emptyGoal, {
       action: `/teams/${data.team.id}/okr`,
       titleText: 'Добавить цель',
       submitLabel: 'Создать',
-      includeQuarter: true,
+      includePeriod: true,
     });
   };
 
@@ -1254,7 +1300,7 @@
     return div.innerHTML;
   };
 
-  const renderTeamCell = (team, year, quarter) => {
+  const renderTeamCell = (team, periodID) => {
     const cell = document.createElement('td');
     cell.className = 'teams-col-team';
     const wrapper = document.createElement('div');
@@ -1267,7 +1313,7 @@
 
     const link = document.createElement('a');
     link.className = 'link-primary';
-    link.href = `/teams/${team.id}/okr?year=${year}&quarter=${quarter}`;
+    link.href = `/teams/${team.id}/okr?period_id=${periodID}`;
     link.textContent = team.name;
 
     wrapper.append(badge, link);
@@ -1275,7 +1321,7 @@
     return cell;
   };
 
-  const renderQuarterProgressCell = (team) => {
+  const renderPeriodProgressCell = (team) => {
     const cell = document.createElement('td');
     cell.className = 'teams-col-progress';
     const wrapper = document.createElement('div');
@@ -1283,22 +1329,22 @@
     const progressBar = document.createElement('div');
     progressBar.className = 'progress flex-grow-1';
     progressBar.setAttribute('role', 'progressbar');
-    progressBar.setAttribute('aria-valuenow', team.quarter_progress);
+    progressBar.setAttribute('aria-valuenow', team.period_progress);
     progressBar.setAttribute('aria-valuemin', '0');
     progressBar.setAttribute('aria-valuemax', '100');
     const fill = document.createElement('div');
     fill.className = 'progress-bar';
-    fill.style.width = `${team.quarter_progress}%`;
+    fill.style.width = `${team.period_progress}%`;
     progressBar.appendChild(fill);
     const value = document.createElement('span');
     value.className = 'fw-semibold';
-    value.textContent = `${team.quarter_progress}%`;
+    value.textContent = `${team.period_progress}%`;
     wrapper.append(progressBar, value);
     cell.appendChild(wrapper);
     return cell;
   };
 
-  const renderGoalsCell = (team, year, quarter) => {
+  const renderGoalsCell = (team, periodID) => {
     const cell = document.createElement('td');
     cell.className = 'teams-col-goals';
     if (!team.goals || team.goals.length === 0) {
@@ -1359,7 +1405,7 @@
       const titleWrapper = document.createElement('div');
       titleWrapper.className = 'd-flex align-items-center gap-2';
       if (goal.share_teams && goal.share_teams.length > 1) {
-        titleWrapper.appendChild(renderSharedGoalBadge(goal, { year, quarter, showBadge: false }));
+        titleWrapper.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
       }
       const titleText = document.createElement('span');
       titleText.textContent = goal.title;
@@ -1457,7 +1503,7 @@
     const page = document.querySelector('[data-page="teams"]');
     if (!page) return;
     const filtersForm = document.querySelector('[data-teams-filters]');
-    const quarterSelect = filtersForm.querySelector('[data-quarter-select]');
+    const periodSelect = filtersForm.querySelector('[data-period-select]');
     const hierarchySelect = filtersForm.querySelector('[data-hierarchy-select]');
     const tbody = document.querySelector('[data-teams-body]');
 
@@ -1469,23 +1515,28 @@
     };
 
     const loadTeams = async () => {
+      if (!periodSelect.value) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Нет периодов для отображения</td></tr>';
+        return;
+      }
       const orgId = hierarchySelect.value !== 'ALL' ? hierarchySelect.value : '';
       const url = new URL('/api/v1/teams', window.location.origin);
-      url.searchParams.set('quarter', quarterSelect.value);
+      url.searchParams.set('period_id', periodSelect.value);
       if (orgId) {
         url.searchParams.set('org_id', orgId);
       }
       const payload = await fetchJSON(url.toString());
-      const [year, quarter] = quarterSelect.value.split('-');
-      renderTeamsList(payload, tbody, year, quarter);
+      renderTeamsList(payload, tbody, periodSelect.value);
       initPopovers();
     };
 
     const selectedTeam = page.dataset.selectedTeam || 'ALL';
+    const selectedPeriod = page.dataset.periodId || periodSelect.value;
 
-    loadHierarchy()
-      .then((tree) => {
+    Promise.all([loadHierarchy(), loadPeriods()])
+      .then(([tree, periods]) => {
         renderHierarchySelect(tree, hierarchySelect, selectedTeam);
+        renderPeriodSelect(periodSelect, periods, selectedPeriod);
         return loadTeams();
       })
       .catch((error) => {
@@ -1505,12 +1556,11 @@
     const actionsEl = page.querySelector('[data-okr-actions]');
     const goalsEl = page.querySelector('[data-okr-goals]');
     const teamID = page.dataset.teamId;
-    const year = page.dataset.year;
-    const quarter = page.dataset.quarter;
+    const periodID = page.dataset.periodId;
 
     const load = async () => {
       const url = new URL(`/api/v1/teams/${teamID}/okrs`, window.location.origin);
-      url.searchParams.set('quarter', `${year}-${quarter}`);
+      url.searchParams.set('period_id', periodID);
       const payload = await fetchJSON(url.toString());
       renderOKRPage(payload, summaryEl, goalsEl, actionsEl);
     };

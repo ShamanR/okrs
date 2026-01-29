@@ -38,14 +38,20 @@ func (f *fakeStore) ListTeams(context.Context) ([]domain.Team, error) {
 func (f *fakeStore) GetTeam(context.Context, int64) (domain.Team, error) {
 	return domain.Team{}, nil
 }
-func (f *fakeStore) ListGoalsByTeamQuarter(context.Context, int64, int, int) ([]domain.Goal, error) {
+func (f *fakeStore) ListPeriods(context.Context) ([]domain.Period, error) {
+	return nil, nil
+}
+func (f *fakeStore) GetPeriod(context.Context, int64) (domain.Period, error) {
+	return domain.Period{}, nil
+}
+func (f *fakeStore) ListGoalsByTeamPeriod(context.Context, int64, int64) ([]domain.Goal, error) {
 	return nil, nil
 }
 func (f *fakeStore) ListGoalShares(context.Context, int64) ([]store.GoalShare, error) {
 	return nil, nil
 }
-func (f *fakeStore) GetTeamQuarterStatus(context.Context, int64, int, int) (domain.TeamQuarterStatus, error) {
-	return domain.TeamQuarterStatusNoGoals, nil
+func (f *fakeStore) GetTeamPeriodStatus(context.Context, int64, int64) (domain.TeamPeriodStatus, error) {
+	return domain.TeamPeriodStatusNoGoals, nil
 }
 func (f *fakeStore) UpdatePercentCurrent(_ context.Context, krID int64, current float64) error {
 	f.percentUpdates[krID] = current
@@ -113,7 +119,7 @@ func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error {
 func (f *fakeStore) ReplaceProjectStages(context.Context, int64, []store.ProjectStageInput) error {
 	return nil
 }
-func (f *fakeStore) SetTeamQuarterStatus(context.Context, int64, int, int, domain.TeamQuarterStatus) error {
+func (f *fakeStore) SetTeamPeriodStatus(context.Context, int64, int64, domain.TeamPeriodStatus) error {
 	return nil
 }
 
