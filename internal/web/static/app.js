@@ -94,7 +94,7 @@
       const row = document.createElement('tr');
       row.appendChild(renderTeamCell(team, year, quarter));
       row.appendChild(renderQuarterProgressCell(team));
-      row.appendChild(renderGoalsCell(team));
+      row.appendChild(renderGoalsCell(team, year, quarter));
       row.appendChild(renderStatusCell(team));
       row.appendChild(renderActionsCell(team));
       tbody.appendChild(row);
@@ -764,9 +764,11 @@
     return kr.comments[kr.comments.length - 1];
   }
 
-  const renderSharedGoalBadge = (goal) => {
+  const renderSharedGoalBadge = (goal, options = {}) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'd-flex align-items-center gap-1';
+    const shareYear = options.year ?? state.teamOKR?.year ?? '';
+    const shareQuarter = options.quarter ?? state.teamOKR?.quarter ?? '';
     const badge = document.createElement('span');
     badge.className = 'badge text-bg-info share-goal-badge';
     badge.textContent = 'Общая';
@@ -786,7 +788,7 @@
     const list = goal.share_teams
       .map(
         (team) =>
-          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?year=${state.teamOKR?.year ?? ''}&quarter=${state.teamOKR?.quarter ?? ''}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
+          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?year=${shareYear}&quarter=${shareQuarter}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
       )
       .join('');
     popover.innerHTML = `<div class="small fw-semibold mb-1">Команды с целью</div><ul class="list-unstyled mb-0">${list}</ul>`;
@@ -1271,7 +1273,7 @@
     return cell;
   };
 
-  const renderGoalsCell = (team) => {
+  const renderGoalsCell = (team, year, quarter) => {
     const cell = document.createElement('td');
     cell.className = 'teams-col-goals';
     if (!team.goals || team.goals.length === 0) {
@@ -1299,15 +1301,12 @@
       title.className = 'teams-goals-col-title text-break';
       const titleWrapper = document.createElement('div');
       titleWrapper.className = 'd-flex align-items-center gap-2';
+      if (goal.share_teams && goal.share_teams.length > 1) {
+        titleWrapper.appendChild(renderSharedGoalBadge(goal, { year, quarter }));
+      }
       const titleText = document.createElement('span');
       titleText.textContent = goal.title;
       titleWrapper.appendChild(titleText);
-      if (goal.share_teams && goal.share_teams.length > 1) {
-        const share = document.createElement('span');
-        share.className = 'text-muted small';
-        share.textContent = `\u2194 ${goal.share_teams.map((team) => team.name).join(', ')}`;
-        titleWrapper.appendChild(share);
-      }
       title.appendChild(titleWrapper);
 
       const progress = document.createElement('td');
@@ -1349,24 +1348,39 @@
     const cell = document.createElement('td');
     cell.className = 'teams-col-actions text-end';
     const wrapper = document.createElement('div');
-    wrapper.className = 'd-inline-flex gap-2';
+    wrapper.className = 'dropdown d-inline-flex';
 
+    const button = document.createElement('button');
+    button.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
+    button.type = 'button';
+    button.dataset.bsToggle = 'dropdown';
+    button.setAttribute('aria-expanded', 'false');
+    button.textContent = '⋯';
+
+    const menu = document.createElement('ul');
+    menu.className = 'dropdown-menu dropdown-menu-end';
+
+    const editItem = document.createElement('li');
     const edit = document.createElement('a');
-    edit.className = 'btn btn-outline-secondary btn-sm';
+    edit.className = 'dropdown-item';
     edit.href = `/teams/${team.id}/edit`;
-    edit.textContent = 'Редактировать';
+    edit.textContent = 'Изменить команду';
+    editItem.appendChild(edit);
 
+    const deleteItem = document.createElement('li');
     const form = document.createElement('form');
     form.method = 'post';
     form.action = `/teams/${team.id}/delete`;
     form.className = 'm-0';
-    const button = document.createElement('button');
-    button.type = 'submit';
-    button.className = 'btn btn-outline-danger btn-sm';
-    button.textContent = 'Удалить';
-    form.appendChild(button);
+    const deleteButton = document.createElement('button');
+    deleteButton.type = 'submit';
+    deleteButton.className = 'dropdown-item text-danger';
+    deleteButton.textContent = 'Удалить';
+    form.appendChild(deleteButton);
+    deleteItem.appendChild(form);
 
-    wrapper.append(edit, form);
+    menu.append(editItem, deleteItem);
+    wrapper.append(button, menu);
     cell.appendChild(wrapper);
     return cell;
   };
@@ -1405,6 +1419,7 @@
       const payload = await fetchJSON(url.toString());
       const [year, quarter] = quarterSelect.value.split('-');
       renderTeamsList(payload, tbody, year, quarter);
+      initPopovers();
     };
 
     const selectedTeam = page.dataset.selectedTeam || 'ALL';
