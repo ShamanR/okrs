@@ -769,10 +769,13 @@
     wrapper.className = 'd-flex align-items-center gap-1';
     const shareYear = options.year ?? state.teamOKR?.year ?? '';
     const shareQuarter = options.quarter ?? state.teamOKR?.quarter ?? '';
-    const badge = document.createElement('span');
-    badge.className = 'badge text-bg-info share-goal-badge';
-    badge.textContent = 'Общая';
-    wrapper.appendChild(badge);
+    const showBadge = options.showBadge !== false;
+    if (showBadge) {
+      const badge = document.createElement('span');
+      badge.className = 'badge text-bg-info share-goal-badge';
+      badge.textContent = 'Общая';
+      wrapper.appendChild(badge);
+    }
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'btn btn-link p-0 share-goal-button';
@@ -1301,8 +1304,12 @@
       title.className = 'teams-goals-col-title text-break';
       const titleWrapper = document.createElement('div');
       titleWrapper.className = 'd-flex align-items-center gap-2';
+      const priority = document.createElement('span');
+      priority.className = `badge ${priorityBadgeClass(goal.priority)}`;
+      priority.textContent = goal.priority;
+      titleWrapper.appendChild(priority);
       if (goal.share_teams && goal.share_teams.length > 1) {
-        titleWrapper.appendChild(renderSharedGoalBadge(goal, { year, quarter }));
+        titleWrapper.appendChild(renderSharedGoalBadge(goal, { year, quarter, showBadge: false }));
       }
       const titleText = document.createElement('span');
       titleText.textContent = goal.title;
