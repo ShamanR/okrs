@@ -16,6 +16,7 @@ import (
 	"okrs/internal/http/handlers/common"
 	"okrs/internal/http/handlers/goals"
 	"okrs/internal/http/handlers/keyresults"
+	"okrs/internal/http/handlers/periods"
 	"okrs/internal/http/handlers/teams"
 	"okrs/internal/service"
 	"okrs/internal/store"
@@ -101,7 +102,7 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 			}
 			return t.Format("02.01.2006 15:04")
 		},
-		"goalStatusLabel": func(goal domain.Goal, year, quarter int) string {
+		"goalStatusLabel": func(goal domain.Goal, period domain.Period) string {
 			if len(goal.KeyResults) == 0 {
 				return "Нет данных"
 			}
@@ -116,7 +117,7 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 			if totalWeight == 0 {
 				return "Нет данных"
 			}
-			start, end := quarterBounds(year, quarter, zone)
+			start, end := periodBounds(period, zone)
 			planned := plannedProgress(nowInZone(zone), start, end)
 			status := progressToStatus(goal.Progress, planned)
 			if time.Since(latestUpdate) > 21*24*time.Hour && status == "В норме" {
@@ -136,8 +137,8 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 				return "text-bg-secondary"
 			}
 		},
-		"plannedProgress": func(year, quarter int) int {
-			start, end := quarterBounds(year, quarter, zone)
+		"plannedProgress": func(period domain.Period) int {
+			start, end := periodBounds(period, zone)
 			return plannedProgress(nowInZone(zone), start, end)
 		},
 		"krContribution": func(weight, progress, totalWeight int) float64 {
@@ -188,6 +189,7 @@ func (s *Server) Routes() http.Handler {
 	goalsHandler := goals.New(deps)
 	krHandler := keyresults.New(deps)
 	apiHandler := api.New(deps)
+	periodsHandler := periods.New(deps)
 	apiV1Handler := apiv1.NewHandler(s.service)
 
 	r := chi.NewRouter()
@@ -202,7 +204,15 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
 	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)
-	r.Post("/teams/{teamID}/okr/status", teamsHandler.HandleUpdateTeamQuarterStatus)
+	r.Post("/teams/{teamID}/okr/status", teamsHandler.HandleUpdateTeamPeriodStatus)
+
+	r.Get("/periods", periodsHandler.HandlePeriods)
+	r.Post("/periods", periodsHandler.HandleCreatePeriod)
+	r.Get("/periods/{periodID}/edit", periodsHandler.HandleEditPeriod)
+	r.Post("/periods/{periodID}/update", periodsHandler.HandleUpdatePeriod)
+	r.Post("/periods/{periodID}/delete", periodsHandler.HandleDeletePeriod)
+	r.Post("/periods/{periodID}/move-up", periodsHandler.HandleMovePeriodUp)
+	r.Post("/periods/{periodID}/move-down", periodsHandler.HandleMovePeriodDown)
 
 	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
@@ -213,7 +223,7 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Post("/goals/{goalID}/share", goalsHandler.HandleUpdateGoalShare)
-	r.Get("/goals/year", goalsHandler.HandleYearGoals)
+	r.Get("/goals/period", goalsHandler.HandlePeriodGoals)
 
 	r.Post("/key-results/{krID}/stages", krHandler.HandleAddStage)
 	r.Post("/stages/{stageID}/toggle", krHandler.HandleToggleStage)
@@ -253,13 +263,15 @@ func pluralizeRu(value int, singular, few, many string) string {
 	}
 }
 
-func quarterBounds(year, quarter int, zone *time.Location) (time.Time, time.Time) {
-	if quarter < 1 || quarter > 4 {
-		quarter = 1
+func periodBounds(period domain.Period, zone *time.Location) (time.Time, time.Time) {
+	if zone == nil {
+		zone = time.Local
 	}
-	startMonth := time.Month((quarter-1)*3 + 1)
-	start := time.Date(year, startMonth, 1, 0, 0, 0, 0, zone)
-	end := start.AddDate(0, 3, 0)
+	start := time.Date(period.StartDate.Year(), period.StartDate.Month(), period.StartDate.Day(), 0, 0, 0, 0, zone)
+	end := time.Date(period.EndDate.Year(), period.EndDate.Month(), period.EndDate.Day(), 23, 59, 59, 0, zone)
+	if end.Before(start) {
+		end = start
+	}
 	return start, end
 }
 

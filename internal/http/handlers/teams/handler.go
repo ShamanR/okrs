@@ -28,15 +28,15 @@ func New(deps common.Dependencies) *Handler {
 }
 
 type teamRow struct {
-	ID              int64
-	Name            string
-	TypeLabel       string
-	Indent          int
-	StatusLabel     string
-	QuarterProgress int
-	GoalsCount      int
-	Goals           []teamGoalRow
-	GoalsWeight     int
+	ID             int64
+	Name           string
+	TypeLabel      string
+	Indent         int
+	StatusLabel    string
+	PeriodProgress int
+	GoalsCount     int
+	Goals          []teamGoalRow
+	GoalsWeight    int
 }
 
 type goalShareTeam struct {
@@ -67,13 +67,17 @@ type teamFilterOption struct {
 }
 
 type teamsPage struct {
-	QuarterOptions  []common.QuarterOption
-	SelectedYear    int
-	SelectedQuarter int
+	PeriodOptions   []periodOption
+	SelectedPeriod  int64
 	SelectedTeam    string
-	CurrentYear     int
 	PageTitle       string
 	ContentTemplate string
+}
+
+type periodOption struct {
+	ID       int64
+	Name     string
+	Selected bool
 }
 
 type teamTypeOption struct {
@@ -110,16 +114,15 @@ type teamStatusOption struct {
 type teamOKRPage struct {
 	Team             domain.Team
 	TeamTypeLabel    string
-	Year             int
-	Quarter          int
+	Period           domain.Period
 	Goals            []domain.Goal
 	GoalShares       map[int64][]goalShareTeam
 	GoalShareIDs     map[int64]map[int64]bool
 	GoalShareTargets map[int64][]shareTeamOption
-	QuarterStatus    domain.TeamQuarterStatus
+	PeriodStatus     domain.TeamPeriodStatus
 	StatusOptions    []teamStatusOption
 	IsClosed         bool
-	QuarterProgress  int
+	PeriodProgress   int
 	GoalsCount       int
 	GoalsWeight      int
 	FormError        string
@@ -129,37 +132,63 @@ type teamOKRPage struct {
 }
 
 func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
-	year, quarter, quarterValue := resolveQuarterFilter(r, h.deps.Zone)
-	options := common.BuildQuarterOptions(year, quarter, h.deps.Zone)
+	period, periodValue, periods, err := h.resolvePeriodFilter(r.Context(), r)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	options := buildPeriodOptions(periods, period.ID)
 	selectedFilter := resolveTeamFilter(r)
 
 	page := teamsPage{
-		QuarterOptions:  options,
-		SelectedYear:    year,
-		SelectedQuarter: quarter,
+		PeriodOptions:   options,
+		SelectedPeriod:  period.ID,
 		SelectedTeam:    selectedFilter,
-		CurrentYear:     year,
 		PageTitle:       "Команды",
 		ContentTemplate: "teams-content",
 	}
-	persistTeamsFilters(w, quarterValue, selectedFilter)
+	persistTeamsFilters(w, periodValue, selectedFilter)
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func resolveQuarterFilter(r *http.Request, zone *time.Location) (int, int, string) {
-	quarterValue := r.URL.Query().Get("quarter")
-	if quarterValue != "" {
-		if year, quarter, ok := parseQuarterValue(quarterValue); ok {
-			return year, quarter, quarterValue
+func (h *Handler) resolvePeriodFilter(ctx context.Context, r *http.Request) (domain.Period, string, []domain.Period, error) {
+	periods, err := h.deps.Store.ListPeriods(ctx)
+	if err != nil {
+		return domain.Period{}, "", nil, err
+	}
+	var selectedID int64
+	if periodID, err := common.ParsePeriodID(r); err != nil {
+		return domain.Period{}, "", nil, err
+	} else if periodID > 0 {
+		selectedID = periodID
+	}
+	if selectedID == 0 {
+		if cookie, err := r.Cookie("teams_period"); err == nil {
+			if parsed, err := common.ParseID(cookie.Value); err == nil {
+				selectedID = parsed
+			}
 		}
 	}
-	if cookie, err := r.Cookie("teams_quarter"); err == nil {
-		if year, quarter, ok := parseQuarterValue(cookie.Value); ok {
-			return year, quarter, cookie.Value
+	var selectedPeriod domain.Period
+	if selectedID != 0 {
+		for _, period := range periods {
+			if period.ID == selectedID {
+				selectedPeriod = period
+				break
+			}
 		}
 	}
-	year, quarter := common.ParseQuarter(r, zone)
-	return year, quarter, fmt.Sprintf("%d-%d", year, quarter)
+	if selectedPeriod.ID == 0 && len(periods) > 0 {
+		if current, err := h.deps.Store.FindPeriodForDate(ctx, time.Now().In(h.deps.Zone)); err == nil {
+			selectedPeriod = current
+		} else {
+			selectedPeriod = periods[0]
+		}
+	}
+	if selectedPeriod.ID == 0 {
+		return domain.Period{}, "", periods, nil
+	}
+	return selectedPeriod, fmt.Sprintf("%d", selectedPeriod.ID), periods, nil
 }
 
 func resolveTeamFilter(r *http.Request) string {
@@ -173,26 +202,22 @@ func resolveTeamFilter(r *http.Request) string {
 	return "ALL"
 }
 
-func parseQuarterValue(value string) (int, int, bool) {
-	parts := strings.Split(value, "-")
-	if len(parts) != 2 {
-		return 0, 0, false
+func buildPeriodOptions(periods []domain.Period, selectedID int64) []periodOption {
+	options := make([]periodOption, 0, len(periods))
+	for _, period := range periods {
+		options = append(options, periodOption{
+			ID:       period.ID,
+			Name:     period.Name,
+			Selected: period.ID == selectedID,
+		})
 	}
-	year, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return 0, 0, false
-	}
-	quarter, err := strconv.Atoi(parts[1])
-	if err != nil || quarter < 1 || quarter > 4 {
-		return 0, 0, false
-	}
-	return year, quarter, true
+	return options
 }
 
-func persistTeamsFilters(w http.ResponseWriter, quarterValue, selectedFilter string) {
+func persistTeamsFilters(w http.ResponseWriter, periodValue, selectedFilter string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:   "teams_quarter",
-		Value:  quarterValue,
+		Name:   "teams_period",
+		Value:  periodValue,
 		Path:   "/",
 		MaxAge: 60 * 60 * 24 * 180,
 	})
@@ -397,7 +422,7 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func (h *Handler) HandleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
@@ -408,17 +433,21 @@ func (h *Handler) HandleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.R
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
-	status := domain.TeamQuarterStatus(r.FormValue("status"))
-	if !common.ValidTeamQuarterStatus(status) {
-		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid team quarter status"))
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
 		return
 	}
-	if err := h.deps.Store.SetTeamQuarterStatus(ctx, teamID, year, quarter, status); err != nil {
+	status := domain.TeamPeriodStatus(r.FormValue("status"))
+	if !common.ValidTeamPeriodStatus(status) {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid team period status"))
+		return
+	}
+	if err := h.deps.Store.SetTeamPeriodStatus(ctx, teamID, periodID, status); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", teamID, periodID), http.StatusSeeOther)
 }
 
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -442,7 +471,15 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
+	period, _, _, err := h.resolvePeriodFilter(ctx, r)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if period.ID == 0 {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("period not found"))
+		return
+	}
 	team, err := h.deps.Service.GetTeam(ctx, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -451,8 +488,7 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 	page := teamOKRPage{
 		Team:            team,
 		TeamTypeLabel:   common.TeamTypeLabel(team.Type),
-		Year:            year,
-		Quarter:         quarter,
+		Period:          period,
 		PageTitle:       "OKR команды",
 		ContentTemplate: "team-okr-content",
 	}
@@ -470,14 +506,18 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
+		return
+	}
+	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if status == domain.TeamQuarterStatusClosed {
-		h.renderTeamOKRWithError(w, r, teamID, year, quarter, "Квартал закрыт, изменения недоступны")
+	if status == domain.TeamPeriodStatusClosed {
+		h.renderTeamOKRWithError(w, r, teamID, periodID, "Период закрыт, изменения недоступны")
 		return
 	}
 	weight := common.ParseIntField(r.FormValue("weight"))
@@ -487,14 +527,13 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 
 	validationErr := common.ValidateGoalInput(priority, workType, focusType, weight)
 	if validationErr != "" {
-		h.renderTeamOKRWithError(w, r, teamID, year, quarter, validationErr)
+		h.renderTeamOKRWithError(w, r, teamID, periodID, validationErr)
 		return
 	}
 
 	_, err = h.deps.Store.CreateGoal(ctx, store.GoalInput{
 		TeamID:      teamID,
-		Year:        year,
-		Quarter:     quarter,
+		PeriodID:    periodID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
 		Priority:    priority,
@@ -507,23 +546,28 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if status == domain.TeamQuarterStatusNoGoals {
-		if err := h.deps.Store.SetTeamQuarterStatus(ctx, teamID, year, quarter, domain.TeamQuarterStatusForming); err != nil {
+	if status == domain.TeamPeriodStatusNoGoals {
+		if err := h.deps.Store.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusForming); err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", teamID, periodID), http.StatusSeeOther)
 }
 
-func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request, teamID int64, year, quarter int, message string) {
+func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request, teamID, periodID int64, message string) {
 	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goals, err := h.deps.Store.ListGoalsByTeamQuarter(r.Context(), teamID, year, quarter)
+	period, err := h.deps.Store.GetPeriod(r.Context(), periodID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	goals, err := h.deps.Store.ListGoalsByTeamPeriod(r.Context(), teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -551,14 +595,14 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	_, childrenMap, rootTeams := buildTeamHierarchy(teams)
-	statuses, err := h.buildTeamQuarterStatuses(r.Context(), teams, year, quarter)
+	statuses, err := h.buildTeamPeriodStatuses(r.Context(), teams, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	shareTargets := buildShareTargets(rootTeams, childrenMap, statuses)
 	goalShareTargets := buildGoalShareTargets(shareTargets, goalShareIDs)
-	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), teamID, year, quarter)
+	status, err := h.deps.Store.GetTeamPeriodStatus(r.Context(), teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -571,16 +615,15 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	page := teamOKRPage{
 		Team:             team,
 		TeamTypeLabel:    common.TeamTypeLabel(team.Type),
-		Year:             year,
-		Quarter:          quarter,
+		Period:           period,
 		Goals:            goals,
 		GoalShares:       goalShares,
 		GoalShareIDs:     goalShareIDs,
 		GoalShareTargets: goalShareTargets,
-		QuarterStatus:    status,
+		PeriodStatus:     status,
 		StatusOptions:    buildTeamStatusOptions(status),
-		IsClosed:         status == domain.TeamQuarterStatusClosed,
-		QuarterProgress:  okr.QuarterProgress(goals),
+		IsClosed:         status == domain.TeamPeriodStatusClosed,
+		PeriodProgress:   okr.PeriodProgress(goals),
 		GoalsCount:       len(goals),
 		GoalsWeight:      totalWeight,
 		FormError:        message,
@@ -591,12 +634,12 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team domain.Team, level int, year, quarter int, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
-	goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, team.ID, year, quarter)
+func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team domain.Team, level int, periodID int64, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
+	goals, err := h.deps.Store.ListGoalsByTeamPeriod(ctx, team.ID, periodID)
 	if err != nil {
 		return err
 	}
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, team.ID, year, quarter)
+	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, team.ID, periodID)
 	if err != nil {
 		return err
 	}
@@ -615,24 +658,24 @@ func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team doma
 			ShareTeams: shareTeams,
 		})
 	}
-	quarterProgress := okr.QuarterProgress(goals)
+	periodProgress := okr.PeriodProgress(goals)
 	totalWeight := 0
 	for _, goal := range goals {
 		totalWeight += goal.Weight
 	}
 	*rows = append(*rows, teamRow{
-		ID:              team.ID,
-		Name:            team.Name,
-		TypeLabel:       common.TeamTypeLabel(team.Type),
-		Indent:          level * 24,
-		StatusLabel:     common.TeamQuarterStatusLabel(status),
-		QuarterProgress: quarterProgress,
-		GoalsCount:      len(goals),
-		Goals:           goalRows,
-		GoalsWeight:     totalWeight,
+		ID:             team.ID,
+		Name:           team.Name,
+		TypeLabel:      common.TeamTypeLabel(team.Type),
+		Indent:         level * 24,
+		StatusLabel:    common.TeamPeriodStatusLabel(status),
+		PeriodProgress: periodProgress,
+		GoalsCount:     len(goals),
+		Goals:          goalRows,
+		GoalsWeight:    totalWeight,
 	})
 	for _, child := range childrenMap[team.ID] {
-		if err := h.appendTeamRows(ctx, rows, child, level+1, year, quarter, childrenMap, teamsByID); err != nil {
+		if err := h.appendTeamRows(ctx, rows, child, level+1, periodID, childrenMap, teamsByID); err != nil {
 			return err
 		}
 	}
@@ -685,10 +728,10 @@ func (h *Handler) buildGoalSharesMap(ctx context.Context, goals []domain.Goal, t
 	return result, ids, nil
 }
 
-func (h *Handler) buildTeamQuarterStatuses(ctx context.Context, teams []domain.Team, year, quarter int) (map[int64]domain.TeamQuarterStatus, error) {
-	statuses := make(map[int64]domain.TeamQuarterStatus, len(teams))
+func (h *Handler) buildTeamPeriodStatuses(ctx context.Context, teams []domain.Team, periodID int64) (map[int64]domain.TeamPeriodStatus, error) {
+	statuses := make(map[int64]domain.TeamPeriodStatus, len(teams))
 	for _, team := range teams {
-		status, err := h.deps.Store.GetTeamQuarterStatus(ctx, team.ID, year, quarter)
+		status, err := h.deps.Store.GetTeamPeriodStatus(ctx, team.ID, periodID)
 		if err != nil {
 			return nil, err
 		}
@@ -697,7 +740,7 @@ func (h *Handler) buildTeamQuarterStatuses(ctx context.Context, teams []domain.T
 	return statuses, nil
 }
 
-func buildShareTargets(rootTeams []domain.Team, childrenMap map[int64][]domain.Team, statuses map[int64]domain.TeamQuarterStatus) []shareTeamOption {
+func buildShareTargets(rootTeams []domain.Team, childrenMap map[int64][]domain.Team, statuses map[int64]domain.TeamPeriodStatus) []shareTeamOption {
 	options := make([]shareTeamOption, 0, len(rootTeams))
 	for _, team := range rootTeams {
 		appendShareTarget(&options, team, childrenMap, statuses, 0)
@@ -705,10 +748,10 @@ func buildShareTargets(rootTeams []domain.Team, childrenMap map[int64][]domain.T
 	return options
 }
 
-func appendShareTarget(options *[]shareTeamOption, team domain.Team, childrenMap map[int64][]domain.Team, statuses map[int64]domain.TeamQuarterStatus, level int) {
+func appendShareTarget(options *[]shareTeamOption, team domain.Team, childrenMap map[int64][]domain.Team, statuses map[int64]domain.TeamPeriodStatus, level int) {
 	label := fmt.Sprintf("%s%s %s", teamHierarchyPrefix(level), common.TeamTypeLabel(team.Type), team.Name)
 	status := statuses[team.ID]
-	disabled := status == domain.TeamQuarterStatusValidated || status == domain.TeamQuarterStatusClosed
+	disabled := status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed
 	*options = append(*options, shareTeamOption{
 		ID:       team.ID,
 		Label:    label,
@@ -809,13 +852,13 @@ func buildParentTeamOptions(teams []domain.Team, selectedParentID *int64, exclud
 	return options
 }
 
-func buildTeamStatusOptions(selected domain.TeamQuarterStatus) []teamStatusOption {
+func buildTeamStatusOptions(selected domain.TeamPeriodStatus) []teamStatusOption {
 	return []teamStatusOption{
-		{Value: string(domain.TeamQuarterStatusNoGoals), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusNoGoals), Selected: selected == domain.TeamQuarterStatusNoGoals},
-		{Value: string(domain.TeamQuarterStatusForming), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusForming), Selected: selected == domain.TeamQuarterStatusForming},
-		{Value: string(domain.TeamQuarterStatusInProgress), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusInProgress), Selected: selected == domain.TeamQuarterStatusInProgress},
-		{Value: string(domain.TeamQuarterStatusValidated), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusValidated), Selected: selected == domain.TeamQuarterStatusValidated},
-		{Value: string(domain.TeamQuarterStatusClosed), Label: common.TeamQuarterStatusLabel(domain.TeamQuarterStatusClosed), Selected: selected == domain.TeamQuarterStatusClosed},
+		{Value: string(domain.TeamPeriodStatusNoGoals), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusNoGoals), Selected: selected == domain.TeamPeriodStatusNoGoals},
+		{Value: string(domain.TeamPeriodStatusForming), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusForming), Selected: selected == domain.TeamPeriodStatusForming},
+		{Value: string(domain.TeamPeriodStatusInProgress), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusInProgress), Selected: selected == domain.TeamPeriodStatusInProgress},
+		{Value: string(domain.TeamPeriodStatusValidated), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusValidated), Selected: selected == domain.TeamPeriodStatusValidated},
+		{Value: string(domain.TeamPeriodStatusClosed), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusClosed), Selected: selected == domain.TeamPeriodStatusClosed},
 	}
 }
 

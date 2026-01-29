@@ -47,11 +47,17 @@ func TestStoreCRUD(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('QA') RETURNING id`).Scan(&teamID); err != nil {
 		t.Fatalf("insert team: %v", err)
 	}
+	var periodID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
 
 	goalID, err := s.CreateGoal(ctx, GoalInput{
 		TeamID:      teamID,
-		Year:        2024,
-		Quarter:     3,
+		PeriodID:    periodID,
 		Title:       "Ship something",
 		Description: "Testing",
 		Priority:    domain.PriorityP1,
@@ -78,7 +84,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("update boolean: %v", err)
 	}
 
-	goals, err := s.ListGoalsByTeamQuarter(ctx, teamID, 2024, 3)
+	goals, err := s.ListGoalsByTeamPeriod(ctx, teamID, periodID)
 	if err != nil {
 		t.Fatalf("list goals: %v", err)
 	}

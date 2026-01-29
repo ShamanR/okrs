@@ -2,17 +2,18 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="h3 mb-0">Команды</h1>
   <div class="d-flex gap-2">
-    <a class="btn btn-outline-secondary btn-sm" href="/goals/year?year={{.CurrentYear}}">Цели за год</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/periods">Периоды</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/goals/period">Цели по периоду</a>
     <a class="btn btn-primary btn-sm" href="/teams/new">Новая команда</a>
   </div>
 </div>
 <form method="get" class="card card-body mb-4" data-teams-filters>
   <div class="row g-3 align-items-end">
     <div class="col-sm-6 col-md-4">
-      <label class="form-label">Квартал</label>
-      <select name="quarter" class="form-select" data-quarter-select>
-        {{range .QuarterOptions}}
-        <option value="{{.Year}}-{{.Quarter}}" {{if .Selected}}selected{{end}}>{{.Year}} Q{{.Quarter}}</option>
+      <label class="form-label">Период</label>
+      <select name="period_id" class="form-select" data-period-select>
+        {{range .PeriodOptions}}
+        <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
         {{end}}
       </select>
     </div>
@@ -27,13 +28,12 @@
     </div>
   </div>
 </form>
-<div id="teams-page" data-page="teams" data-selected-team="{{.SelectedTeam}}" data-year="{{.SelectedYear}}"
-  data-quarter="{{.SelectedQuarter}}">
+<div id="teams-page" data-page="teams" data-selected-team="{{.SelectedTeam}}" data-period-id="{{.SelectedPeriod}}">
   <table class="table table-striped align-middle teams-table">
     <thead>
       <tr>
         <th class="teams-col-team">Команда</th>
-        <th class="teams-col-progress">Прогресс квартала</th>
+        <th class="teams-col-progress">Прогресс периода</th>
         <th class="teams-col-goals">Цели</th>
         <th class="teams-col-status">Статус</th>
         <th class="teams-col-actions"></th>

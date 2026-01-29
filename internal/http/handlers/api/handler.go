@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"okrs/internal/http/handlers/common"
@@ -18,15 +19,19 @@ func New(deps common.Dependencies) *Handler {
 }
 
 type teamRow struct {
-	ID              int64
-	Name            string
-	QuarterProgress int
-	GoalsCount      int
+	ID             int64
+	Name           string
+	PeriodProgress int
+	GoalsCount     int
 }
 
 func (h *Handler) HandleAPITeams(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		common.RenderJSONError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
+		return
+	}
 	teams, err := h.deps.Store.ListTeams(ctx)
 	if err != nil {
 		common.RenderJSONError(w, h.deps.Logger, err)
@@ -35,7 +40,7 @@ func (h *Handler) HandleAPITeams(w http.ResponseWriter, r *http.Request) {
 
 	response := make([]teamRow, 0, len(teams))
 	for _, team := range teams {
-		goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, team.ID, year, quarter)
+		goals, err := h.deps.Store.ListGoalsByTeamPeriod(ctx, team.ID, periodID)
 		if err != nil {
 			common.RenderJSONError(w, h.deps.Logger, err)
 			return
@@ -43,7 +48,7 @@ func (h *Handler) HandleAPITeams(w http.ResponseWriter, r *http.Request) {
 		for i := range goals {
 			goals[i].Progress = common.CalculateGoalProgress(goals[i])
 		}
-		response = append(response, teamRow{ID: team.ID, Name: team.Name, QuarterProgress: okr.QuarterProgress(goals), GoalsCount: len(goals)})
+		response = append(response, teamRow{ID: team.ID, Name: team.Name, PeriodProgress: okr.PeriodProgress(goals), GoalsCount: len(goals)})
 	}
 
 	common.WriteJSON(w, response)
@@ -56,8 +61,12 @@ func (h *Handler) HandleAPITeamGoals(w http.ResponseWriter, r *http.Request) {
 		common.RenderJSONError(w, h.deps.Logger, err)
 		return
 	}
-	year, quarter := common.ParseQuarter(r, h.deps.Zone)
-	goals, err := h.deps.Store.ListGoalsByTeamQuarter(ctx, teamID, year, quarter)
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		common.RenderJSONError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
+		return
+	}
+	goals, err := h.deps.Store.ListGoalsByTeamPeriod(ctx, teamID, periodID)
 	if err != nil {
 		common.RenderJSONError(w, h.deps.Logger, err)
 		return

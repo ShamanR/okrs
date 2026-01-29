@@ -23,7 +23,7 @@ func GoalProgress(keyResults []domain.KeyResult) int {
 	return int(math.Round(weighted / float64(sumWeight)))
 }
 
-func QuarterProgress(goals []domain.Goal) int {
+func PeriodProgress(goals []domain.Goal) int {
 	if len(goals) == 0 {
 		return 0
 	}

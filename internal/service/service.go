@@ -13,9 +13,11 @@ import (
 type Store interface {
 	ListTeams(ctx context.Context) ([]domain.Team, error)
 	GetTeam(ctx context.Context, id int64) (domain.Team, error)
-	ListGoalsByTeamQuarter(ctx context.Context, teamID int64, year, quarter int) ([]domain.Goal, error)
+	ListPeriods(ctx context.Context) ([]domain.Period, error)
+	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
+	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
-	GetTeamQuarterStatus(ctx context.Context, teamID int64, year, quarter int) (domain.TeamQuarterStatus, error)
+	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
 	UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error
 	UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error
 	UpdateBoolean(ctx context.Context, krID int64, done bool) error
@@ -36,7 +38,7 @@ type Store interface {
 	UpsertLinearMeta(ctx context.Context, input store.LinearMetaInput) error
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
 	ReplaceProjectStages(ctx context.Context, krID int64, stages []store.ProjectStageInput) error
-	SetTeamQuarterStatus(ctx context.Context, teamID int64, year, quarter int, status domain.TeamQuarterStatus) error
+	SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error
 }
 
 type Service struct {
@@ -53,15 +55,15 @@ type TeamNode struct {
 }
 
 type TeamSummary struct {
-	ID              int64
-	Name            string
-	Type            domain.TeamType
-	Indent          int
-	Status          domain.TeamQuarterStatus
-	QuarterProgress int
-	GoalsCount      int
-	GoalsWeight     int
-	Goals           []TeamGoalSummary
+	ID             int64
+	Name           string
+	Type           domain.TeamType
+	Indent         int
+	Status         domain.TeamPeriodStatus
+	PeriodProgress int
+	GoalsCount     int
+	GoalsWeight    int
+	Goals          []TeamGoalSummary
 }
 
 type TeamGoalSummary struct {
@@ -81,14 +83,13 @@ type TeamShareInfo struct {
 }
 
 type TeamOKR struct {
-	Team            domain.Team
-	Year            int
-	Quarter         int
-	QuarterStatus   domain.TeamQuarterStatus
-	QuarterProgress int
-	GoalsCount      int
-	GoalsWeight     int
-	Goals           []GoalDetails
+	Team           domain.Team
+	Period         domain.Period
+	PeriodStatus   domain.TeamPeriodStatus
+	PeriodProgress int
+	GoalsCount     int
+	GoalsWeight    int
+	Goals          []GoalDetails
 }
 
 type GoalDetails struct {
@@ -114,7 +115,15 @@ func (s *Service) GetTeam(ctx context.Context, teamID int64) (domain.Team, error
 	return s.store.GetTeam(ctx, teamID)
 }
 
-func (s *Service) GetTeamsWithQuarterSummary(ctx context.Context, year, quarter int, orgID *int64) ([]TeamSummary, error) {
+func (s *Service) ListPeriods(ctx context.Context) ([]domain.Period, error) {
+	return s.store.ListPeriods(ctx)
+}
+
+func (s *Service) GetPeriod(ctx context.Context, periodID int64) (domain.Period, error) {
+	return s.store.GetPeriod(ctx, periodID)
+}
+
+func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, periodID int64, orgID *int64) ([]TeamSummary, error) {
 	teams, err := s.store.ListTeams(ctx)
 	if err != nil {
 		return nil, err
@@ -128,19 +137,19 @@ func (s *Service) GetTeamsWithQuarterSummary(ctx context.Context, year, quarter 
 	}
 	rows := make([]TeamSummary, 0, len(teams))
 	for _, team := range filteredRoots {
-		if err := s.appendTeamSummary(ctx, &rows, team, 0, year, quarter, childrenMap, teamsByID); err != nil {
+		if err := s.appendTeamSummary(ctx, &rows, team, 0, periodID, childrenMap, teamsByID); err != nil {
 			return nil, err
 		}
 	}
 	return rows, nil
 }
 
-func (s *Service) GetTeamOKR(ctx context.Context, teamID int64, year, quarter int) (TeamOKR, error) {
+func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period domain.Period) (TeamOKR, error) {
 	team, err := s.store.GetTeam(ctx, teamID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
-	goals, err := s.store.ListGoalsByTeamQuarter(ctx, teamID, year, quarter)
+	goals, err := s.store.ListGoalsByTeamPeriod(ctx, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -153,12 +162,12 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID int64, year, quarter in
 		}
 		shareInfos[goals[i].ID] = shares
 	}
-	quarterProgress := okr.QuarterProgress(goals)
+	periodProgress := okr.PeriodProgress(goals)
 	goalsWeight := 0
 	for _, goal := range goals {
 		goalsWeight += goal.Weight
 	}
-	status, err := s.store.GetTeamQuarterStatus(ctx, teamID, year, quarter)
+	status, err := s.store.GetTeamPeriodStatus(ctx, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -170,14 +179,13 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID int64, year, quarter in
 		})
 	}
 	return TeamOKR{
-		Team:            team,
-		Year:            year,
-		Quarter:         quarter,
-		QuarterStatus:   status,
-		QuarterProgress: quarterProgress,
-		GoalsCount:      len(goals),
-		GoalsWeight:     goalsWeight,
-		Goals:           goalDetails,
+		Team:           team,
+		Period:         period,
+		PeriodStatus:   status,
+		PeriodProgress: periodProgress,
+		GoalsCount:     len(goals),
+		GoalsWeight:    goalsWeight,
+		Goals:          goalDetails,
 	}, nil
 }
 
@@ -338,16 +346,16 @@ func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domai
 	}
 }
 
-func (s *Service) UpdateTeamQuarterStatus(ctx context.Context, teamID int64, year, quarter int, status domain.TeamQuarterStatus) error {
-	return s.store.SetTeamQuarterStatus(ctx, teamID, year, quarter, status)
+func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
+	return s.store.SetTeamPeriodStatus(ctx, teamID, periodID, status)
 }
 
-func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, team domain.Team, level int, year, quarter int, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
-	goals, err := s.store.ListGoalsByTeamQuarter(ctx, team.ID, year, quarter)
+func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, team domain.Team, level int, periodID int64, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
+	goals, err := s.store.ListGoalsByTeamPeriod(ctx, team.ID, periodID)
 	if err != nil {
 		return err
 	}
-	status, err := s.store.GetTeamQuarterStatus(ctx, team.ID, year, quarter)
+	status, err := s.store.GetTeamPeriodStatus(ctx, team.ID, periodID)
 	if err != nil {
 		return err
 	}
@@ -367,26 +375,26 @@ func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, te
 			Priority:   string(goals[i].Priority),
 		})
 	}
-	quarterProgress := okr.QuarterProgress(goals)
+	periodProgress := okr.PeriodProgress(goals)
 	goalsWeight := 0
 	for _, goal := range goals {
 		goalsWeight += goal.Weight
 	}
 	*rows = append(*rows, TeamSummary{
-		ID:              team.ID,
-		Name:            team.Name,
-		Type:            team.Type,
-		Indent:          level * 24,
-		Status:          status,
-		QuarterProgress: quarterProgress,
-		GoalsCount:      len(goals),
-		GoalsWeight:     goalsWeight,
-		Goals:           goalRows,
+		ID:             team.ID,
+		Name:           team.Name,
+		Type:           team.Type,
+		Indent:         level * 24,
+		Status:         status,
+		PeriodProgress: periodProgress,
+		GoalsCount:     len(goals),
+		GoalsWeight:    goalsWeight,
+		Goals:          goalRows,
 	})
 	children := childrenMap[team.ID]
 	sort.Slice(children, func(i, j int) bool { return children[i].Name < children[j].Name })
 	for _, child := range children {
-		if err := s.appendTeamSummary(ctx, rows, child, level+1, year, quarter, childrenMap, teamsByID); err != nil {
+		if err := s.appendTeamSummary(ctx, rows, child, level+1, periodID, childrenMap, teamsByID); err != nil {
 			return err
 		}
 	}

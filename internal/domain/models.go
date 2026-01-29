@@ -44,14 +44,14 @@ const (
 	TeamTypeTeam    TeamType = "team"
 )
 
-type TeamQuarterStatus string
+type TeamPeriodStatus string
 
 const (
-	TeamQuarterStatusNoGoals    TeamQuarterStatus = "no_goals"
-	TeamQuarterStatusForming    TeamQuarterStatus = "forming"
-	TeamQuarterStatusInProgress TeamQuarterStatus = "in_progress"
-	TeamQuarterStatusValidated  TeamQuarterStatus = "validated"
-	TeamQuarterStatusClosed     TeamQuarterStatus = "closed"
+	TeamPeriodStatusNoGoals    TeamPeriodStatus = "no_goals"
+	TeamPeriodStatusForming    TeamPeriodStatus = "forming"
+	TeamPeriodStatusInProgress TeamPeriodStatus = "in_progress"
+	TeamPeriodStatusValidated  TeamPeriodStatus = "validated"
+	TeamPeriodStatusClosed     TeamPeriodStatus = "closed"
 )
 
 type Team struct {
@@ -66,8 +66,7 @@ type Team struct {
 type Goal struct {
 	ID          int64
 	TeamID      int64
-	Year        int
-	Quarter     int
+	PeriodID    int64
 	Title       string
 	Description string
 	Priority    Priority
@@ -151,7 +150,12 @@ type KRBoolean struct {
 	IsDone bool
 }
 
-type Quarter struct {
-	Year    int
-	Quarter int
+type Period struct {
+	ID        int64
+	Name      string
+	StartDate time.Time
+	EndDate   time.Time
+	SortOrder int
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }

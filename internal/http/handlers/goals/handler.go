@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
@@ -35,6 +34,11 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	period, err := h.deps.Store.GetPeriod(ctx, goal.PeriodID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
 	teamID := goal.TeamID
 	if value := r.URL.Query().Get("team"); value != "" {
 		if parsed, err := common.ParseID(value); err == nil {
@@ -51,7 +55,7 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, team.ID, goal.Year, goal.Quarter)
+	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, team.ID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -63,11 +67,12 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		Team            domain.Team
 		TeamTypeLabel   string
 		Goal            domain.Goal
+		Period          domain.Period
 		IsClosed        bool
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, Period: period, IsClosed: status == domain.TeamPeriodStatusClosed, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
@@ -246,7 +251,7 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
-		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		redirectToTeam(w, r, teamID, goal.PeriodID)
 		return
 	}
 	shares, err := h.deps.Store.ListGoalShares(ctx, goalID)
@@ -264,23 +269,23 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
-		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		redirectToTeam(w, r, teamID, goal.PeriodID)
 		return
 	}
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, goal.TeamID, goal.Year, goal.Quarter)
+	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, goal.TeamID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if status == domain.TeamQuarterStatusClosed {
-		h.renderGoalWithError(w, r, goalID, "Квартал закрыт, изменения недоступны")
+	if status == domain.TeamPeriodStatusClosed {
+		h.renderGoalWithError(w, r, goalID, "Период закрыт, изменения недоступны")
 		return
 	}
 	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", goal.TeamID, goal.PeriodID), http.StatusSeeOther)
 }
 
 func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {
@@ -313,7 +318,7 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 			http.Redirect(w, r, returnURL, http.StatusSeeOther)
 			return
 		}
-		redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+		redirectToTeam(w, r, teamID, goal.PeriodID)
 		return
 	}
 	if err := h.deps.Store.MoveGoal(ctx, goalID, direction); err != nil {
@@ -324,7 +329,7 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", goal.TeamID, goal.Year, goal.Quarter), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", goal.TeamID, goal.PeriodID), http.StatusSeeOther)
 }
 
 func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
@@ -344,13 +349,13 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, goal.Year, goal.Quarter)
+	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if status == domain.TeamQuarterStatusClosed {
-		h.renderGoalWithError(w, r, goalID, "Квартал закрыт, изменения недоступны")
+	if status == domain.TeamPeriodStatusClosed {
+		h.renderGoalWithError(w, r, goalID, "Период закрыт, изменения недоступны")
 		return
 	}
 	priority := domain.Priority(r.FormValue("priority"))
@@ -377,60 +382,94 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	redirectToTeam(w, r, teamID, goal.Year, goal.Quarter)
+	redirectToTeam(w, r, teamID, goal.PeriodID)
 }
 
-type yearGoalsPage struct {
-	Year            int
-	Goals           []yearGoalRow
-	YearValues      []int
+type periodGoalsPage struct {
+	Period          domain.Period
+	Goals           []periodGoalRow
+	PeriodOptions   []periodOption
 	PageTitle       string
 	ContentTemplate string
 }
 
-type yearGoalRow struct {
+type periodGoalRow struct {
 	Goal          domain.Goal
 	TeamName      string
 	TeamTypeLabel string
+	PeriodName    string
 }
 
-func (h *Handler) HandleYearGoals(w http.ResponseWriter, r *http.Request) {
-	year := common.ParseIntField(r.URL.Query().Get("year"))
-	if year == 0 {
-		current := store.CurrentQuarter(time.Now().In(h.deps.Zone))
-		year = current.Year
+type periodOption struct {
+	ID       int64
+	Name     string
+	Selected bool
+}
+
+func buildPeriodOptions(periods []domain.Period, selectedID int64) []periodOption {
+	options := make([]periodOption, 0, len(periods))
+	for _, period := range periods {
+		options = append(options, periodOption{
+			ID:       period.ID,
+			Name:     period.Name,
+			Selected: period.ID == selectedID,
+		})
 	}
-	goals, err := h.deps.Store.ListGoalsByYear(r.Context(), year)
+	return options
+}
+
+func (h *Handler) HandlePeriodGoals(w http.ResponseWriter, r *http.Request) {
+	periods, err := h.deps.Store.ListPeriods(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	rows := make([]yearGoalRow, 0, len(goals))
+	var selectedPeriod domain.Period
+	if periodID, err := common.ParsePeriodID(r); err == nil && periodID > 0 {
+		for _, period := range periods {
+			if period.ID == periodID {
+				selectedPeriod = period
+				break
+			}
+		}
+	}
+	if selectedPeriod.ID == 0 && len(periods) > 0 {
+		selectedPeriod = periods[0]
+	}
+	if selectedPeriod.ID == 0 {
+		page := periodGoalsPage{
+			Period:          domain.Period{},
+			Goals:           nil,
+			PeriodOptions:   buildPeriodOptions(periods, 0),
+			PageTitle:       "Цели по периоду",
+			ContentTemplate: "year-goals-content",
+		}
+		common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+		return
+	}
+	goals, err := h.deps.Store.ListGoalsByPeriod(r.Context(), selectedPeriod.ID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	rows := make([]periodGoalRow, 0, len(goals))
 	for _, goal := range goals {
-		rows = append(rows, yearGoalRow{
+		rows = append(rows, periodGoalRow{
 			Goal:          goal.Goal,
 			TeamName:      goal.TeamName,
 			TeamTypeLabel: common.TeamTypeLabel(goal.TeamType),
+			PeriodName:    goal.PeriodName,
 		})
 	}
-	values := buildYearOptions(year)
-	page := yearGoalsPage{
-		Year:            year,
+	options := buildPeriodOptions(periods, selectedPeriod.ID)
+	page := periodGoalsPage{
+		Period:          selectedPeriod,
 		Goals:           rows,
-		YearValues:      values,
-		PageTitle:       "Цели за год",
+		PeriodOptions:   options,
+		PageTitle:       "Цели по периоду",
 		ContentTemplate: "year-goals-content",
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
-}
-
-func buildYearOptions(selected int) []int {
-	values := make([]int, 0, 7)
-	start := selected - 3
-	for i := 0; i < 7; i++ {
-		values = append(values, start+i)
-	}
-	return values
 }
 
 func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
@@ -492,7 +531,12 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	status, err := h.deps.Store.GetTeamQuarterStatus(r.Context(), team.ID, goal.Year, goal.Quarter)
+	period, err := h.deps.Store.GetPeriod(r.Context(), goal.PeriodID)
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	status, err := h.deps.Store.GetTeamPeriodStatus(r.Context(), team.ID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -502,11 +546,12 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		Team            domain.Team
 		TeamTypeLabel   string
 		Goal            domain.Goal
+		Period          domain.Period
 		IsClosed        bool
 		FormError       string
 		PageTitle       string
 		ContentTemplate string
-	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, IsClosed: status == domain.TeamQuarterStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
+	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, Period: period, IsClosed: status == domain.TeamPeriodStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
@@ -559,13 +604,13 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 	}
 	shares := make([]store.GoalShareInput, 0, len(selectedIDs))
 	for _, teamID := range selectedIDs {
-		status, err := h.deps.Store.GetTeamQuarterStatus(ctx, teamID, goal.Year, goal.Quarter)
+		status, err := h.deps.Store.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
 		if err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
-		if status == domain.TeamQuarterStatusValidated || status == domain.TeamQuarterStatusClosed {
-			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым кварталом"))
+		if status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed {
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым периодом"))
 			return
 		}
 		if teamID == ownerID {
@@ -597,7 +642,7 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", ownerID, goal.Year, goal.Quarter), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", ownerID, goal.PeriodID), http.StatusSeeOther)
 }
 
 func parseOptionalTeamID(value string, fallback int64) int64 {
@@ -611,6 +656,6 @@ func parseOptionalTeamID(value string, fallback int64) int64 {
 	return parsed
 }
 
-func redirectToTeam(w http.ResponseWriter, r *http.Request, teamID int64, year, quarter int) {
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?year=%d&quarter=%d", teamID, year, quarter), http.StatusSeeOther)
+func redirectToTeam(w http.ResponseWriter, r *http.Request, teamID, periodID int64) {
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", teamID, periodID), http.StatusSeeOther)
 }

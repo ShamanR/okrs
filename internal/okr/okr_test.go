@@ -23,15 +23,15 @@ func TestGoalProgress(t *testing.T) {
 	}
 }
 
-func TestQuarterProgress(t *testing.T) {
+func TestPeriodProgress(t *testing.T) {
 	goals := []domain.Goal{
 		{Progress: 100, Weight: 60},
 		{Progress: 50, Weight: 40},
 	}
-	if got := QuarterProgress(goals); got != 80 {
+	if got := PeriodProgress(goals); got != 80 {
 		t.Fatalf("expected 80 got %d", got)
 	}
-	if got := QuarterProgress(nil); got != 0 {
+	if got := PeriodProgress(nil); got != 0 {
 		t.Fatalf("expected 0 got %d", got)
 	}
 }

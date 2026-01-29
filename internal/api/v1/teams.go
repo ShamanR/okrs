@@ -2,7 +2,6 @@ package v1
 
 import (
 	"net/http"
-	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
@@ -10,20 +9,29 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// handleTeams returns team summaries for a quarter.
+// handleTeams returns team summaries for a period.
 func (h *Handler) handleTeams(w http.ResponseWriter, r *http.Request) {
-	year, quarter := common.ParseQuarter(r, time.UTC)
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
+		return
+	}
 	orgID, err := parseOptionalID(r.URL.Query().Get("org_id"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid org_id", map[string]string{"org_id": "invalid"})
 		return
 	}
-	teams, err := h.service.GetTeamsWithQuarterSummary(r.Context(), year, quarter, orgID)
+	period, err := h.service.GetPeriod(r.Context(), periodID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
+		return
+	}
+	teams, err := h.service.GetTeamsWithPeriodSummary(r.Context(), periodID, orgID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load teams", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, mapTeamsResponse(year, quarter, teams))
+	writeJSON(w, http.StatusOK, mapTeamsResponse(period, teams))
 }
 
 // handleTeam returns a single team.
@@ -47,15 +55,24 @@ func (h *Handler) handleTeam(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleTeamOKRs returns OKR data for a team and quarter.
+// handleTeamOKRs returns OKR data for a team and period.
 func (h *Handler) handleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
 		return
 	}
-	year, quarter := common.ParseQuarter(r, time.UTC)
-	okr, err := h.service.GetTeamOKR(r.Context(), teamID, year, quarter)
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
+		return
+	}
+	period, err := h.service.GetPeriod(r.Context(), periodID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
+		return
+	}
+	okr, err := h.service.GetTeamOKR(r.Context(), teamID, periodID, period)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
@@ -63,8 +80,8 @@ func (h *Handler) handleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, mapTeamOKRResponse(okr))
 }
 
-// handleUpdateTeamQuarterStatus updates the quarter status for a team.
-func (h *Handler) handleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.Request) {
+// handleUpdateTeamPeriodStatus updates the period status for a team.
+func (h *Handler) handleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
@@ -74,13 +91,17 @@ func (h *Handler) handleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.R
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	year, quarter := common.ParseQuarter(r, time.UTC)
-	status := domain.TeamQuarterStatus(r.FormValue("status"))
-	if !common.ValidTeamQuarterStatus(status) {
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
+		return
+	}
+	status := domain.TeamPeriodStatus(r.FormValue("status"))
+	if !common.ValidTeamPeriodStatus(status) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status", map[string]string{"status": "invalid"})
 		return
 	}
-	if err := h.service.UpdateTeamQuarterStatus(r.Context(), teamID, year, quarter, status); err != nil {
+	if err := h.service.UpdateTeamPeriodStatus(r.Context(), teamID, periodID, status); err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
 		return
 	}

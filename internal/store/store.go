@@ -1,6 +1,8 @@
 package store
 
 import (
+	"time"
+
 	"okrs/internal/domain"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,8 +18,7 @@ func New(db *pgxpool.Pool) *Store {
 
 type GoalInput struct {
 	TeamID      int64
-	Year        int
-	Quarter     int
+	PeriodID    int64
 	Title       string
 	Description string
 	Priority    domain.Priority
@@ -25,6 +26,12 @@ type GoalInput struct {
 	WorkType    domain.WorkType
 	FocusType   domain.FocusType
 	OwnerText   string
+}
+
+type PeriodInput struct {
+	Name      string
+	StartDate time.Time
+	EndDate   time.Time
 }
 
 type KeyResultInput struct {

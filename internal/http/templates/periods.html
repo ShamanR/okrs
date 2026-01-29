@@ -1,0 +1,83 @@
+{{define "periods-content"}}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="h3 mb-0">Периоды</h1>
+  <a class="btn btn-outline-secondary btn-sm" href="/teams">К командам</a>
+</div>
+
+{{if .FormError}}
+  <div class="alert alert-danger py-2">{{.FormError}}</div>
+{{end}}
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body">
+        <h2 class="h5">Созданные периоды</h2>
+        {{if .Periods}}
+          <table class="table table-striped align-middle mt-3">
+            <thead>
+              <tr>
+                <th>Название</th>
+                <th>Начало</th>
+                <th>Окончание</th>
+                <th>Порядок</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Periods}}
+                <tr>
+                  <td>{{.Name}}</td>
+                  <td>{{.StartDate.Format "2006-01-02"}}</td>
+                  <td>{{.EndDate.Format "2006-01-02"}}</td>
+                  <td>{{.SortOrder}}</td>
+                  <td class="text-end">
+                    <div class="d-flex justify-content-end gap-2 flex-wrap">
+                      <a class="btn btn-outline-primary btn-sm" href="/periods/{{.ID}}/edit">Редактировать</a>
+                      <form method="post" action="/periods/{{.ID}}/delete" onsubmit="return confirm('Удалить период?');">
+                        <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
+                      </form>
+                      <div class="btn-group">
+                        <form method="post" action="/periods/{{.ID}}/move-up">
+                          <button class="btn btn-outline-secondary btn-sm" type="submit">↑</button>
+                        </form>
+                        <form method="post" action="/periods/{{.ID}}/move-down">
+                          <button class="btn btn-outline-secondary btn-sm" type="submit">↓</button>
+                        </form>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              {{end}}
+            </tbody>
+          </table>
+        {{else}}
+          <p class="text-muted mt-3">Периоды пока не созданы.</p>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h2 class="h5">Новый период</h2>
+        <form method="post" action="/periods" class="vstack gap-3 mt-3">
+          <div>
+            <label class="form-label">Название</label>
+            <input class="form-control" name="name" required>
+          </div>
+          <div>
+            <label class="form-label">Дата начала</label>
+            <input class="form-control" type="date" name="start_date" required>
+          </div>
+          <div>
+            <label class="form-label">Дата окончания</label>
+            <input class="form-control" type="date" name="end_date" required>
+          </div>
+          <button class="btn btn-primary" type="submit">Создать период</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}

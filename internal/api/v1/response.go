@@ -21,23 +21,34 @@ type teamNode struct {
 }
 
 type teamsResponse struct {
-	Year    int           `json:"year"`
-	Quarter int           `json:"quarter"`
-	Items   []teamSummary `json:"items"`
+	Period periodInfo    `json:"period"`
+	Items  []teamSummary `json:"items"`
+}
+
+type periodsResponse struct {
+	Items []periodInfo `json:"items"`
+}
+
+type periodInfo struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	StartDate time.Time `json:"start_date"`
+	EndDate   time.Time `json:"end_date"`
+	SortOrder int       `json:"sort_order"`
 }
 
 type teamSummary struct {
-	ID              int64             `json:"id"`
-	Name            string            `json:"name"`
-	Type            string            `json:"type"`
-	TypeLabel       string            `json:"type_label"`
-	Indent          int               `json:"indent"`
-	Status          string            `json:"status"`
-	StatusLabel     string            `json:"status_label"`
-	QuarterProgress int               `json:"quarter_progress"`
-	GoalsCount      int               `json:"goals_count"`
-	GoalsWeight     int               `json:"goals_weight"`
-	Goals           []teamGoalSummary `json:"goals"`
+	ID             int64             `json:"id"`
+	Name           string            `json:"name"`
+	Type           string            `json:"type"`
+	TypeLabel      string            `json:"type_label"`
+	Indent         int               `json:"indent"`
+	Status         string            `json:"status"`
+	StatusLabel    string            `json:"status_label"`
+	PeriodProgress int               `json:"period_progress"`
+	GoalsCount     int               `json:"goals_count"`
+	GoalsWeight    int               `json:"goals_weight"`
+	Goals          []teamGoalSummary `json:"goals"`
 }
 
 type teamGoalSummary struct {
@@ -58,15 +69,14 @@ type shareTeam struct {
 }
 
 type teamOKRResponse struct {
-	Team            teamInfo      `json:"team"`
-	Year            int           `json:"year"`
-	Quarter         int           `json:"quarter"`
-	QuarterStatus   string        `json:"quarter_status"`
-	StatusLabel     string        `json:"status_label"`
-	QuarterProgress int           `json:"quarter_progress"`
-	GoalsCount      int           `json:"goals_count"`
-	GoalsWeight     int           `json:"goals_weight"`
-	Goals           []goalDetails `json:"goals"`
+	Team           teamInfo      `json:"team"`
+	Period         periodInfo    `json:"period"`
+	PeriodStatus   string        `json:"period_status"`
+	StatusLabel    string        `json:"status_label"`
+	PeriodProgress int           `json:"period_progress"`
+	GoalsCount     int           `json:"goals_count"`
+	GoalsWeight    int           `json:"goals_weight"`
+	Goals          []goalDetails `json:"goals"`
 }
 
 type teamInfo struct {
@@ -80,8 +90,7 @@ type teamInfo struct {
 type goalDetails struct {
 	ID          int64       `json:"id"`
 	TeamID      int64       `json:"team_id"`
-	Year        int         `json:"year"`
-	Quarter     int         `json:"quarter"`
+	PeriodID    int64       `json:"period_id"`
 	Title       string      `json:"title"`
 	Description string      `json:"description"`
 	Priority    string      `json:"priority"`
@@ -191,7 +200,17 @@ func mapTeamNode(node service.TeamNode) teamNode {
 	}
 }
 
-func mapTeamsResponse(year, quarter int, teams []service.TeamSummary) teamsResponse {
+func mapPeriodInfo(period domain.Period) periodInfo {
+	return periodInfo{
+		ID:        period.ID,
+		Name:      period.Name,
+		StartDate: period.StartDate,
+		EndDate:   period.EndDate,
+		SortOrder: period.SortOrder,
+	}
+}
+
+func mapTeamsResponse(period domain.Period, teams []service.TeamSummary) teamsResponse {
 	items := make([]teamSummary, 0, len(teams))
 	for _, team := range teams {
 		goals := make([]teamGoalSummary, 0, len(team.Goals))
@@ -216,20 +235,20 @@ func mapTeamsResponse(year, quarter int, teams []service.TeamSummary) teamsRespo
 			})
 		}
 		items = append(items, teamSummary{
-			ID:              team.ID,
-			Name:            team.Name,
-			Type:            string(team.Type),
-			TypeLabel:       common.TeamTypeLabel(team.Type),
-			Indent:          team.Indent,
-			Status:          string(team.Status),
-			StatusLabel:     common.TeamQuarterStatusLabel(team.Status),
-			QuarterProgress: team.QuarterProgress,
-			GoalsCount:      team.GoalsCount,
-			GoalsWeight:     team.GoalsWeight,
-			Goals:           goals,
+			ID:             team.ID,
+			Name:           team.Name,
+			Type:           string(team.Type),
+			TypeLabel:      common.TeamTypeLabel(team.Type),
+			Indent:         team.Indent,
+			Status:         string(team.Status),
+			StatusLabel:    common.TeamPeriodStatusLabel(team.Status),
+			PeriodProgress: team.PeriodProgress,
+			GoalsCount:     team.GoalsCount,
+			GoalsWeight:    team.GoalsWeight,
+			Goals:          goals,
 		})
 	}
-	return teamsResponse{Year: year, Quarter: quarter, Items: items}
+	return teamsResponse{Period: mapPeriodInfo(period), Items: items}
 }
 
 func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
@@ -245,14 +264,13 @@ func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 			TypeLabel: common.TeamTypeLabel(data.Team.Type),
 			ParentID:  data.Team.ParentID,
 		},
-		Year:            data.Year,
-		Quarter:         data.Quarter,
-		QuarterStatus:   string(data.QuarterStatus),
-		StatusLabel:     common.TeamQuarterStatusLabel(data.QuarterStatus),
-		QuarterProgress: data.QuarterProgress,
-		GoalsCount:      data.GoalsCount,
-		GoalsWeight:     data.GoalsWeight,
-		Goals:           goals,
+		Period:         mapPeriodInfo(data.Period),
+		PeriodStatus:   string(data.PeriodStatus),
+		StatusLabel:    common.TeamPeriodStatusLabel(data.PeriodStatus),
+		PeriodProgress: data.PeriodProgress,
+		GoalsCount:     data.GoalsCount,
+		GoalsWeight:    data.GoalsWeight,
+		Goals:          goals,
 	}
 }
 
@@ -275,8 +293,7 @@ func mapGoalDetails(detail service.GoalDetails) goalDetails {
 	return goalDetails{
 		ID:          goal.ID,
 		TeamID:      goal.TeamID,
-		Year:        goal.Year,
-		Quarter:     goal.Quarter,
+		PeriodID:    goal.PeriodID,
 		Title:       goal.Title,
 		Description: goal.Description,
 		Priority:    string(goal.Priority),
@@ -304,8 +321,7 @@ func mapGoalResponse(goal domain.Goal) goalResponse {
 	goalDetail := goalDetails{
 		ID:          goal.ID,
 		TeamID:      goal.TeamID,
-		Year:        goal.Year,
-		Quarter:     goal.Quarter,
+		PeriodID:    goal.PeriodID,
 		Title:       goal.Title,
 		Description: goal.Description,
 		Priority:    string(goal.Priority),

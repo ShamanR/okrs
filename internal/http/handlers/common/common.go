@@ -94,55 +94,21 @@ func WriteJSON(w http.ResponseWriter, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func ParseQuarter(r *http.Request, zone *time.Location) (int, int) {
-	q := r.URL.Query().Get("quarter")
-	if q != "" {
-		parts := strings.Split(q, "-")
-		if len(parts) == 2 {
-			year, _ := strconv.Atoi(parts[0])
-			quarter, _ := strconv.Atoi(parts[1])
-			if year > 0 && quarter >= 1 && quarter <= 4 {
-				return year, quarter
-			}
-		}
+func ParsePeriodID(r *http.Request) (int64, error) {
+	value := r.URL.Query().Get("period_id")
+	if value == "" {
+		value = r.URL.Query().Get("period")
 	}
-
-	year, _ := strconv.Atoi(r.FormValue("year"))
-	quarter, _ := strconv.Atoi(r.FormValue("quarter"))
-	if year > 0 && quarter >= 1 && quarter <= 4 {
-		return year, quarter
+	if value == "" {
+		value = r.FormValue("period_id")
 	}
-
-	current := store.CurrentQuarter(time.Now().In(zone))
-	return current.Year, current.Quarter
-}
-
-type QuarterOption struct {
-	Year     int
-	Quarter  int
-	Selected bool
-}
-
-func BuildQuarterOptions(selectedYear, selectedQuarter int, zone *time.Location) []QuarterOption {
-	current := store.CurrentQuarter(time.Now().In(zone))
-	options := make([]QuarterOption, 0, 9)
-	start := -4
-	end := 4
-	for i := start; i <= end; i++ {
-		q := addQuarters(current, i)
-		options = append(options, QuarterOption{Year: q.Year, Quarter: q.Quarter, Selected: q.Year == selectedYear && q.Quarter == selectedQuarter})
+	if value == "" {
+		value = r.FormValue("period")
 	}
-	return options
-}
-
-func addQuarters(q domain.Quarter, delta int) domain.Quarter {
-	total := (q.Year*4 + (q.Quarter - 1)) + delta
-	if total < 0 {
-		total = 0
+	if value == "" {
+		return 0, nil
 	}
-	newYear := total / 4
-	newQuarter := total%4 + 1
-	return domain.Quarter{Year: newYear, Quarter: newQuarter}
+	return ParseID(value)
 }
 
 func CalculateGoalProgress(goal domain.Goal) int {
@@ -244,26 +210,26 @@ func TeamTypeLabel(t domain.TeamType) string {
 	}
 }
 
-func ValidTeamQuarterStatus(status domain.TeamQuarterStatus) bool {
+func ValidTeamPeriodStatus(status domain.TeamPeriodStatus) bool {
 	switch status {
-	case domain.TeamQuarterStatusNoGoals, domain.TeamQuarterStatusForming, domain.TeamQuarterStatusInProgress, domain.TeamQuarterStatusValidated, domain.TeamQuarterStatusClosed:
+	case domain.TeamPeriodStatusNoGoals, domain.TeamPeriodStatusForming, domain.TeamPeriodStatusInProgress, domain.TeamPeriodStatusValidated, domain.TeamPeriodStatusClosed:
 		return true
 	default:
 		return false
 	}
 }
 
-func TeamQuarterStatusLabel(status domain.TeamQuarterStatus) string {
+func TeamPeriodStatusLabel(status domain.TeamPeriodStatus) string {
 	switch status {
-	case domain.TeamQuarterStatusNoGoals:
+	case domain.TeamPeriodStatusNoGoals:
 		return "Нет целей"
-	case domain.TeamQuarterStatusForming:
+	case domain.TeamPeriodStatusForming:
 		return "Черновик целей"
-	case domain.TeamQuarterStatusInProgress:
+	case domain.TeamPeriodStatusInProgress:
 		return "Готовы к валидации"
-	case domain.TeamQuarterStatusValidated:
+	case domain.TeamPeriodStatusValidated:
 		return "Провалидировано"
-	case domain.TeamQuarterStatusClosed:
+	case domain.TeamPeriodStatusClosed:
 		return "Цели закрыты"
 	default:
 		return "Нет целей"

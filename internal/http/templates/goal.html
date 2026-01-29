@@ -3,9 +3,9 @@
   <ol class="breadcrumb">
     <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
     <li class="breadcrumb-item">
-      <a href="/teams/{{.Team.ID}}/okr?year={{.Goal.Year}}&quarter={{.Goal.Quarter}}">
+      <a href="/teams/{{.Team.ID}}/okr?period_id={{.Goal.PeriodID}}">
         <span class="badge text-bg-secondary">{{.TeamTypeLabel}}</span>
-        {{.Team.Name}}
+        {{.Team.Name}} · {{.Period.Name}}
       </a>
     </li>
     <li class="breadcrumb-item active" aria-current="page">{{.Goal.Title}}</li>
@@ -16,7 +16,7 @@
   <div class="alert alert-danger py-2">{{.FormError}}</div>
 {{end}}
 {{if .IsClosed}}
-  <div class="alert alert-warning py-2">Квартал закрыт, изменения недоступны.</div>
+  <div class="alert alert-warning py-2">Период закрыт, изменения недоступны.</div>
 {{end}}
 
 <div class="card mb-4">

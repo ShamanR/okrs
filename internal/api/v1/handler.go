@@ -22,6 +22,7 @@ func (h *Handler) Routes() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/hierarchy", h.handleHierarchy)
+	r.Get("/periods", h.handlePeriods)
 	r.Get("/teams", h.handleTeams)
 	r.Get("/teams/{teamID}", h.handleTeam)
 	r.Get("/teams/{teamID}/okrs", h.handleTeamOKRs)
@@ -43,7 +44,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/krs/{krID}/move-up", h.handleMoveKeyResultUp)
 	r.Post("/krs/{krID}/move-down", h.handleMoveKeyResultDown)
 
-	r.Post("/teams/{teamID}/status", h.handleUpdateTeamQuarterStatus)
+	r.Post("/teams/{teamID}/status", h.handleUpdateTeamPeriodStatus)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)
