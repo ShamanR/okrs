@@ -2,12 +2,16 @@ package v1
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
 	"okrs/internal/service"
+	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -32,11 +36,15 @@ func (h *Handler) Routes() chi.Router {
 	r.Post("/goals/{goalID}/share", h.handleShareGoal)
 	r.Post("/goals/{goalID}/weight", h.handleUpdateGoalWeight)
 	r.Post("/goals/{goalID}/comments", h.handleAddGoalComment)
+	r.Post("/goals/{goalID}", h.handleUpdateGoal)
+	r.Post("/goals/{goalID}/key-results", h.handleCreateKeyResult)
 
 	r.Post("/krs/{krID}/progress/percent", h.handleUpdatePercentProgress)
 	r.Post("/krs/{krID}/progress/boolean", h.handleUpdateBooleanProgress)
 	r.Post("/krs/{krID}/progress/project", h.handleUpdateProjectProgress)
 	r.Post("/krs/{krID}/comments", h.handleAddKRComment)
+	r.Post("/krs/{krID}", h.handleUpdateKeyResult)
+	r.Post("/teams/{teamID}/status", h.handleUpdateTeamQuarterStatus)
 
 	return r
 }
@@ -234,6 +242,217 @@ func (h *Handler) handleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleUpdateGoal(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	priority := domain.Priority(r.FormValue("priority"))
+	workType := domain.WorkType(r.FormValue("work_type"))
+	focusType := domain.FocusType(r.FormValue("focus_type"))
+	weight := common.ParseIntField(r.FormValue("weight"))
+	if validationErr := common.ValidateGoalInput(priority, workType, focusType, weight); validationErr != "" {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", validationErr, nil)
+		return
+	}
+	if err := h.service.UpdateGoal(r.Context(), store.GoalUpdateInput{
+		ID:          goalID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Priority:    priority,
+		Weight:      weight,
+		WorkType:    workType,
+		FocusType:   focusType,
+		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
+	}); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update goal", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleCreateKeyResult(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	kind := domain.KRKind(r.FormValue("kind"))
+	if !common.ValidKRKind(kind) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr kind", map[string]string{"kind": "invalid"})
+		return
+	}
+	weight := common.ParseIntField(r.FormValue("weight"))
+	if weight < 0 || weight > 100 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid weight", map[string]string{"weight": "0..100"})
+		return
+	}
+	meta, err := parseKeyResultMeta(r, kind)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+		return
+	}
+	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), store.KeyResultInput{
+		GoalID:      goalID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Weight:      weight,
+		Kind:        kind,
+	}, meta)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to create key result", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"id": krID})
+}
+
+func (h *Handler) handleUpdateKeyResult(w http.ResponseWriter, r *http.Request) {
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	kind := domain.KRKind(r.FormValue("kind"))
+	if !common.ValidKRKind(kind) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr kind", map[string]string{"kind": "invalid"})
+		return
+	}
+	weight := common.ParseIntField(r.FormValue("weight"))
+	if weight < 0 || weight > 100 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid weight", map[string]string{"weight": "0..100"})
+		return
+	}
+	meta, err := parseKeyResultMeta(r, kind)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
+		return
+	}
+	if err := h.service.UpdateKeyResultWithMeta(r.Context(), store.KeyResultUpdateInput{
+		ID:          krID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Weight:      weight,
+		Kind:        kind,
+	}, meta); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update key result", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleUpdateTeamQuarterStatus(w http.ResponseWriter, r *http.Request) {
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	year, quarter := common.ParseQuarter(r, time.UTC)
+	status := domain.TeamQuarterStatus(r.FormValue("status"))
+	if !common.ValidTeamQuarterStatus(status) {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status", map[string]string{"status": "invalid"})
+		return
+	}
+	if err := h.service.UpdateTeamQuarterStatus(r.Context(), teamID, year, quarter, status); err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func parseKeyResultMeta(r *http.Request, kind domain.KRKind) (service.KeyResultMetaInput, error) {
+	switch kind {
+	case domain.KRKindPercent:
+		start := common.ParseFloatField(r.FormValue("percent_start"))
+		target := common.ParseFloatField(r.FormValue("percent_target"))
+		if start == target {
+			return service.KeyResultMetaInput{}, fmt.Errorf("Start и Target не должны быть равны")
+		}
+		return service.KeyResultMetaInput{
+			PercentStart:   start,
+			PercentTarget:  target,
+			PercentCurrent: common.ParseFloatField(r.FormValue("percent_current")),
+		}, nil
+	case domain.KRKindLinear:
+		start := common.ParseFloatField(r.FormValue("linear_start"))
+		target := common.ParseFloatField(r.FormValue("linear_target"))
+		if start == target {
+			return service.KeyResultMetaInput{}, fmt.Errorf("Start и Target не должны быть равны")
+		}
+		return service.KeyResultMetaInput{
+			LinearStart:   start,
+			LinearTarget:  target,
+			LinearCurrent: common.ParseFloatField(r.FormValue("linear_current")),
+		}, nil
+	case domain.KRKindBoolean:
+		done := r.FormValue("boolean_done") == "true"
+		return service.KeyResultMetaInput{BooleanDone: done}, nil
+	case domain.KRKindProject:
+		stages, err := parseProjectStages(r)
+		if err != nil {
+			return service.KeyResultMetaInput{}, err
+		}
+		return service.KeyResultMetaInput{ProjectStages: stages}, nil
+	default:
+		return service.KeyResultMetaInput{}, nil
+	}
+}
+
+func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
+	stages := make([]store.ProjectStageInput, 0, 4)
+	titles := r.Form["step_title[]"]
+	weights := r.Form["step_weight[]"]
+	dones := r.Form["step_done[]"]
+	sortOrder := 1
+
+	for i, title := range titles {
+		trimmed := strings.TrimSpace(title)
+		if trimmed == "" {
+			continue
+		}
+		weightValue := ""
+		if i < len(weights) {
+			weightValue = weights[i]
+		}
+		weight := common.ParseIntField(weightValue)
+		if weight <= 0 || weight > 100 {
+			return nil, fmt.Errorf("Вес шага должен быть 1..100")
+		}
+		isDone := false
+		if i < len(dones) {
+			isDone = dones[i] == "true"
+		}
+		stages = append(stages, store.ProjectStageInput{
+			Title:     trimmed,
+			Weight:    weight,
+			IsDone:    isDone,
+			SortOrder: sortOrder,
+		})
+		sortOrder++
+	}
+
+	if len(stages) == 0 {
+		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
+	}
+	return stages, nil
 }
 
 type updatePercentRequest struct {

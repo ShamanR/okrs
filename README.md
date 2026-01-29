@@ -41,6 +41,7 @@ go test ./...
 
 Базовый URL: `/api/v1`  
 Content-Type: `application/json; charset=utf-8`  
+Некоторые мутации принимают form-данные (`application/x-www-form-urlencoded`).  
 Ошибки:
 
 ```json
@@ -90,6 +91,28 @@ Content-Type: `application/json; charset=utf-8`
 - `POST /api/v1/krs/{id}/comments`
   ```json
   { "text": "Комментарий" }
+  ```
+- `POST /api/v1/goals/{goalID}` (form)
+  ```text
+  title=...&description=...&priority=high|medium|low&weight=50&
+  work_type=product|tech|business|support&focus_type=okr|initiative&owner_text=...
+  ```
+- `POST /api/v1/goals/{goalID}/key-results` (form)
+  ```text
+  title=...&description=...&weight=25&kind=percent|linear|boolean|project
+  ```
+  - для `percent`: `percent_start`, `percent_target`, `percent_current`
+  - для `linear`: `linear_start`, `linear_target`, `linear_current`
+  - для `boolean`: `boolean_done=true|false`
+  - для `project`: `stage_title[]`, `stage_weight[]`
+- `POST /api/v1/krs/{id}` (form)
+  ```text
+  title=...&description=...&weight=25&kind=percent|linear|boolean|project
+  ```
+  - поля meta те же, что и при создании KR
+- `POST /api/v1/teams/{teamID}/status?quarter=2024-3` (form)
+  ```text
+  status=draft|active|done
   ```
 
 ## UX обновления

@@ -27,6 +27,14 @@ type Store interface {
 	AddGoalComment(ctx context.Context, goalID int64, text string) error
 	AddKeyResultComment(ctx context.Context, krID int64, text string) error
 	GetGoal(ctx context.Context, id int64) (domain.Goal, error)
+	UpdateGoal(ctx context.Context, input store.GoalUpdateInput) error
+	CreateKeyResult(ctx context.Context, input store.KeyResultInput) (int64, error)
+	UpdateKeyResult(ctx context.Context, input store.KeyResultUpdateInput) error
+	UpsertPercentMeta(ctx context.Context, input store.PercentMetaInput) error
+	UpsertLinearMeta(ctx context.Context, input store.LinearMetaInput) error
+	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
+	ReplaceProjectStages(ctx context.Context, krID int64, stages []store.ProjectStageInput) error
+	SetTeamQuarterStatus(ctx context.Context, teamID int64, year, quarter int, status domain.TeamQuarterStatus) error
 }
 
 type Service struct {
@@ -259,6 +267,68 @@ func (s *Service) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 	}
 	goal.Progress = CalculateGoalProgress(&goal)
 	return goal, nil
+}
+
+type KeyResultMetaInput struct {
+	PercentStart   float64
+	PercentTarget  float64
+	PercentCurrent float64
+	LinearStart    float64
+	LinearTarget   float64
+	LinearCurrent  float64
+	BooleanDone    bool
+	ProjectStages  []store.ProjectStageInput
+}
+
+func (s *Service) UpdateGoal(ctx context.Context, input store.GoalUpdateInput) error {
+	return s.store.UpdateGoal(ctx, input)
+}
+
+func (s *Service) CreateKeyResultWithMeta(ctx context.Context, input store.KeyResultInput, meta KeyResultMetaInput) (int64, error) {
+	krID, err := s.store.CreateKeyResult(ctx, input)
+	if err != nil {
+		return 0, err
+	}
+	if err := s.applyKeyResultMeta(ctx, krID, input.Kind, meta); err != nil {
+		return 0, err
+	}
+	return krID, nil
+}
+
+func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, input store.KeyResultUpdateInput, meta KeyResultMetaInput) error {
+	if err := s.store.UpdateKeyResult(ctx, input); err != nil {
+		return err
+	}
+	return s.applyKeyResultMeta(ctx, input.ID, input.Kind, meta)
+}
+
+func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
+	switch kind {
+	case domain.KRKindPercent:
+		return s.store.UpsertPercentMeta(ctx, store.PercentMetaInput{
+			KeyResultID:  krID,
+			StartValue:   meta.PercentStart,
+			TargetValue:  meta.PercentTarget,
+			CurrentValue: meta.PercentCurrent,
+		})
+	case domain.KRKindLinear:
+		return s.store.UpsertLinearMeta(ctx, store.LinearMetaInput{
+			KeyResultID:  krID,
+			StartValue:   meta.LinearStart,
+			TargetValue:  meta.LinearTarget,
+			CurrentValue: meta.LinearCurrent,
+		})
+	case domain.KRKindBoolean:
+		return s.store.UpsertBooleanMeta(ctx, krID, meta.BooleanDone)
+	case domain.KRKindProject:
+		return s.store.ReplaceProjectStages(ctx, krID, meta.ProjectStages)
+	default:
+		return nil
+	}
+}
+
+func (s *Service) UpdateTeamQuarterStatus(ctx context.Context, teamID int64, year, quarter int, status domain.TeamQuarterStatus) error {
+	return s.store.SetTeamQuarterStatus(ctx, teamID, year, quarter, status)
 }
 
 func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, team domain.Team, level int, year, quarter int, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {

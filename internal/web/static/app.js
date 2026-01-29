@@ -76,6 +76,7 @@
     data.goals.forEach((goal) => {
       goalsEl.appendChild(renderGoalCard(goal));
     });
+    initPopovers();
   };
 
   const renderGoalCard = (goal) => {
@@ -108,7 +109,11 @@
 
     const menu = renderGoalMenu(goal);
 
-    header.append(priority, weight, krWeightBadge, title, menu);
+    header.append(priority, weight, krWeightBadge);
+    if (goal.share_teams && goal.share_teams.length > 1) {
+      header.appendChild(renderSharedGoalBadge(goal));
+    }
+    header.append(title, menu);
 
     const description = document.createElement('p');
     description.className = 'text-muted mb-2';
@@ -599,6 +604,36 @@
 
   const sumKRWeights = (krs) => krs.reduce((sum, kr) => sum + (kr.weight || 0), 0);
 
+  const renderSharedGoalBadge = (goal) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'd-flex align-items-center gap-1';
+    const badge = document.createElement('span');
+    badge.className = 'badge text-bg-info share-goal-badge';
+    badge.textContent = 'Общая';
+    wrapper.appendChild(badge);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-link p-0 share-goal-button';
+    button.setAttribute('data-popover-content', `#share-goal-${goal.id}`);
+    button.setAttribute('data-popover-trigger', 'hoverable');
+    button.setAttribute('aria-label', 'Shared goal');
+    button.innerHTML = '<i class="bi bi-share"></i>';
+    wrapper.appendChild(button);
+
+    const popover = document.createElement('div');
+    popover.id = `share-goal-${goal.id}`;
+    popover.className = 'd-none';
+    const list = goal.share_teams
+      .map(
+        (team) =>
+          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?year=${state.teamOKR?.year ?? ''}&quarter=${state.teamOKR?.quarter ?? ''}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
+      )
+      .join('');
+    popover.innerHTML = `<div class="small fw-semibold mb-1">Команды с целью</div><ul class="list-unstyled mb-0">${list}</ul>`;
+    wrapper.appendChild(popover);
+    return wrapper;
+  };
+
   const postForm = async (url, data) => {
     const body = new URLSearchParams(data);
     const response = await fetch(url, {
@@ -611,10 +646,18 @@
     }
   };
 
+  const submitFormXHR = async (form) => {
+    const response = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+    return response;
+  };
+
   const updateQuarterStatus = async (status) => {
     if (!state.teamOKR) return;
     try {
-      await postForm(`/teams/${state.teamOKR.team.id}/okr/status`, {
+      await postForm(`/api/v1/teams/${state.teamOKR.team.id}/status`, {
         year: state.teamOKR.year,
         quarter: state.teamOKR.quarter,
         status,
@@ -672,7 +715,7 @@
 
   const openGoalModal = (goal) => {
     const body = `
-      <form method="post" action="/goals/${goal.id}/update" class="vstack gap-3">
+      <form method="post" action="/api/v1/goals/${goal.id}" class="vstack gap-3" data-goal-edit-form>
         <div>
           <label class="form-label">Название</label>
           <input class="form-control" name="title" value="${escapeHTML(goal.title)}" />
@@ -707,7 +750,14 @@
         </div>
         <button class="btn btn-primary" type="submit">Сохранить</button>
       </form>`;
-    openModal(`Редактировать цель`, body);
+    const modalEl = openModal(`Редактировать цель`, body);
+    const form = modalEl.querySelector('[data-goal-edit-form]');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      await submitFormXHR(form);
+      await reloadTeamOKR();
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+    });
   };
 
   const openShareGoalModal = async (goal) => {
@@ -763,7 +813,7 @@
     });
   };
 
-  const openKRModal = (kr) => {
+  const openKRModalWithAction = (kr, action, titleText) => {
     const kindOptions = ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'];
     const percentSection = `
       <div data-kind-section="PERCENT" class="vstack gap-2">
@@ -817,7 +867,6 @@
               <input class="form-control" name="step_weight[]" type="number" value="${stage.weight}" />
             </div>
             <div class="col-md-3 form-check">
-              <input type="hidden" name="step_done[]" value="false" />
               <input class="form-check-input" type="checkbox" name="step_done[]" value="true" ${stage.is_done ? 'checked' : ''} />
               <label class="form-check-label">Готово</label>
             </div>
@@ -834,7 +883,7 @@
       </div>`;
 
     const body = `
-      <form method="post" action="/key-results/${kr.id}/update" class="vstack gap-3" data-kr-edit-form>
+      <form method="post" action="${action}" class="vstack gap-3" data-kr-edit-form>
         <div>
           <label class="form-label">Название</label>
           <input class="form-control" name="title" value="${escapeHTML(kr.title)}" />
@@ -860,7 +909,7 @@
         <input type="hidden" name="return" value="${buildReturnURL()}" />
         <button class="btn btn-primary" type="submit">Сохранить</button>
       </form>`;
-    const modalEl = openModal(`Редактировать KR`, body);
+    const modalEl = openModal(titleText, body);
     const form = modalEl.querySelector('[data-kr-edit-form]');
     const kindSelect = form.querySelector('select[name="kind"]');
     const sections = Array.from(form.querySelectorAll('[data-kind-section]'));
@@ -888,7 +937,6 @@
             <input class="form-control" name="step_weight[]" type="number" value="0" />
           </div>
           <div class="col-md-3 form-check">
-            <input type="hidden" name="step_done[]" value="false" />
             <input class="form-check-input" type="checkbox" name="step_done[]" value="true" />
             <label class="form-check-label">Готово</label>
           </div>`;
@@ -897,45 +945,31 @@
     }
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const formData = new FormData(form);
-      await fetch(form.action, { method: 'POST', body: formData });
+      await submitFormXHR(form);
       await reloadTeamOKR();
       bootstrap.Modal.getInstance(modalEl)?.hide();
     });
   };
 
+  const openKRModal = (kr) => {
+    openKRModalWithAction(kr, `/api/v1/krs/${kr.id}`, 'Редактировать KR');
+  };
+
   const openKRCreateModal = (goal) => {
-    const body = `
-      <form method="post" action="/goals/${goal.id}/key-results" class="vstack gap-3" data-kr-create-form>
-        <div>
-          <label class="form-label">Название</label>
-          <input class="form-control" name="title" />
-        </div>
-        <div>
-          <label class="form-label">Описание</label>
-          <textarea class="form-control" name="description"></textarea>
-        </div>
-        <div class="row g-3">
-          <div class="col-md-6">
-            <label class="form-label">Вес</label>
-            <input class="form-control" name="weight" type="number" value="0" />
-          </div>
-          <div class="col-md-6">
-            <label class="form-label">Тип</label>
-            ${buildSelect('kind', ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'], 'PERCENT')}
-          </div>
-        </div>
-        <button class="btn btn-primary" type="submit">Добавить</button>
-      </form>`;
-    const modalEl = openModal(`Добавить KR`, body);
-    const form = modalEl.querySelector('[data-kr-create-form]');
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const formData = new FormData(form);
-      await fetch(form.action, { method: 'POST', body: formData });
-      await reloadTeamOKR();
-      bootstrap.Modal.getInstance(modalEl)?.hide();
-    });
+    const emptyKR = {
+      id: 0,
+      title: '',
+      description: '',
+      weight: 0,
+      kind: 'PERCENT',
+      measure: {
+        percent: { start_value: 0, target_value: 100, current_value: 0 },
+        linear: { start_value: 0, target_value: 100, current_value: 0 },
+        boolean: { is_done: false },
+        project: { stages: [] },
+      },
+    };
+    openKRModalWithAction(emptyKR, `/api/v1/goals/${goal.id}/key-results`, 'Добавить KR');
   };
 
   const buildSelect = (name, options, selected) => {
@@ -1197,4 +1231,21 @@
     initTeamsPage();
     initTeamOKRPage();
   });
+
+  const initPopovers = () => {
+    if (!window.bootstrap) return;
+    document.querySelectorAll('[data-popover-content]').forEach((el) => {
+      const targetSelector = el.getAttribute('data-popover-content');
+      if (!targetSelector) return;
+      const contentEl = document.querySelector(targetSelector);
+      if (!contentEl) return;
+      bootstrap.Popover.getOrCreateInstance(el, {
+        trigger: el.getAttribute('data-popover-trigger') === 'hoverable' ? 'hover' : 'click',
+        content: contentEl.innerHTML,
+        html: true,
+        placement: 'bottom',
+        customClass: 'okr-popover',
+      });
+    });
+  };
 })();
