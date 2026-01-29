@@ -16,6 +16,8 @@ type Handler struct {
 	deps common.Dependencies
 }
 
+const maxMultipartMemory = 32 << 20
+
 func New(deps common.Dependencies) *Handler {
 	return &Handler{deps: deps}
 }
@@ -27,7 +29,7 @@ func (h *Handler) HandleAddStage(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -57,7 +59,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -144,7 +146,7 @@ func (h *Handler) HandleToggleStage(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -176,7 +178,7 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -199,7 +201,7 @@ func (h *Handler) HandleUpdatePercentCurrent(w http.ResponseWriter, r *http.Requ
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -223,7 +225,7 @@ func (h *Handler) HandleUpdateLinearCurrent(w http.ResponseWriter, r *http.Reque
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -247,7 +249,7 @@ func (h *Handler) HandleAddCheckpoint(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -276,7 +278,7 @@ func (h *Handler) HandleUpdateBoolean(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -300,7 +302,7 @@ func (h *Handler) HandleUpdateProjectStages(w http.ResponseWriter, r *http.Reque
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -336,7 +338,7 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
