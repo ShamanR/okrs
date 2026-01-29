@@ -80,7 +80,8 @@
 
   const renderGoalCard = (goal) => {
     const card = document.createElement('div');
-    card.className = 'card';
+    const krWeightSum = sumKRWeights(goal.key_results || []);
+    card.className = `card ${krWeightSum !== 100 ? 'border-danger' : ''}`;
     const body = document.createElement('div');
     body.className = 'card-body';
 
@@ -95,6 +96,10 @@
     weight.className = 'badge text-bg-light border';
     weight.textContent = `Вес ${goal.weight}%`;
 
+    const krWeightBadge = document.createElement('span');
+    krWeightBadge.className = `badge ${krWeightSum !== 100 ? 'text-bg-danger' : 'text-bg-light border'}`;
+    krWeightBadge.textContent = `Σ KR ${krWeightSum}`;
+
     const title = document.createElement('button');
     title.type = 'button';
     title.className = 'btn btn-link p-0 fw-semibold';
@@ -103,7 +108,7 @@
 
     const menu = renderGoalMenu(goal);
 
-    header.append(priority, weight, title, menu);
+    header.append(priority, weight, krWeightBadge, title, menu);
 
     const description = document.createElement('p');
     description.className = 'text-muted mb-2';
@@ -145,19 +150,7 @@
 
     meta.append(workBadge, focusBadge, owner);
 
-    const krWrap = document.createElement('div');
-    krWrap.className = 'vstack gap-2';
-
-    if (goal.key_results && goal.key_results.length) {
-      goal.key_results.forEach((kr) => {
-        krWrap.appendChild(renderKRRow(kr));
-      });
-    } else {
-      const empty = document.createElement('div');
-      empty.className = 'text-muted';
-      empty.textContent = 'Ключевые результаты не заданы.';
-      krWrap.appendChild(empty);
-    }
+    const krWrap = renderKRTable(goal);
 
     const addKRButton = document.createElement('button');
     addKRButton.type = 'button';
@@ -174,48 +167,95 @@
     return card;
   };
 
-  const renderKRRow = (kr) => {
+  const renderKRTable = (goal) => {
     const wrapper = document.createElement('div');
-    wrapper.className = 'border rounded p-3';
+    if (!goal.key_results || goal.key_results.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'text-muted';
+      empty.textContent = 'Ключевые результаты не заданы.';
+      wrapper.appendChild(empty);
+      return wrapper;
+    }
 
-    const header = document.createElement('div');
-    header.className = 'd-flex flex-wrap align-items-center gap-2';
+    const table = document.createElement('table');
+    table.className = 'table table-sm align-middle mb-0';
 
+    const head = document.createElement('thead');
+    head.innerHTML = `
+      <tr>
+        <th>Вес</th>
+        <th>Название</th>
+        <th>Факт (%)</th>
+        <th class="text-end">Действия</th>
+      </tr>`;
+    table.appendChild(head);
+
+    const body = document.createElement('tbody');
+    goal.key_results.forEach((kr) => {
+      const { row, detailRow } = renderKRRow(kr);
+      body.appendChild(row);
+      body.appendChild(detailRow);
+    });
+    table.appendChild(body);
+    wrapper.appendChild(table);
+    return wrapper;
+  };
+
+  const renderKRRow = (kr) => {
+    const row = document.createElement('tr');
+
+    const weightCell = document.createElement('td');
+    const weight = document.createElement('span');
+    weight.className = 'badge text-bg-light border';
+    weight.textContent = kr.weight;
+    weightCell.appendChild(weight);
+
+    const titleCell = document.createElement('td');
     const title = document.createElement('button');
     title.type = 'button';
     title.className = 'btn btn-link p-0 fw-semibold';
     title.textContent = kr.title;
     title.addEventListener('click', () => openKRModal(kr));
+    titleCell.appendChild(title);
 
-    const weight = document.createElement('span');
-    weight.className = 'badge text-bg-light border';
-    weight.textContent = `Вес ${kr.weight}%`;
-
+    const progressCell = document.createElement('td');
     const progress = document.createElement('span');
     progress.className = 'badge text-bg-light border';
     progress.textContent = `${kr.progress}%`;
+    progressCell.appendChild(progress);
+
+    const actionsCell = document.createElement('td');
+    actionsCell.className = 'text-end';
+    const actions = document.createElement('div');
+    actions.className = 'd-flex justify-content-end gap-2';
 
     const menu = renderKRMenu(kr);
 
     const updateButton = document.createElement('button');
     updateButton.type = 'button';
-    updateButton.className = 'btn btn-outline-primary btn-sm ms-auto';
+    updateButton.className = 'btn btn-outline-primary btn-sm';
     updateButton.textContent = 'Обновить прогресс';
 
-    header.append(title, weight, progress, menu, updateButton);
+    actions.append(menu, updateButton);
+    actionsCell.appendChild(actions);
 
+    row.append(weightCell, titleCell, progressCell, actionsCell);
+
+    const detailRow = document.createElement('tr');
+    const detailCell = document.createElement('td');
+    detailCell.colSpan = 4;
     const panel = renderMeasurePanel(kr);
-    panel.classList.add('mt-3');
+    panel.classList.add('mt-2');
     panel.hidden = true;
+    const comments = renderKRComments(kr);
+    detailCell.append(panel, comments);
+    detailRow.appendChild(detailCell);
 
     updateButton.addEventListener('click', () => {
       panel.hidden = !panel.hidden;
     });
 
-    const comments = renderKRComments(kr);
-
-    wrapper.append(header, panel, comments);
-    return wrapper;
+    return { row, detailRow };
   };
 
   const renderMeasurePanel = (kr) => {
@@ -409,7 +449,31 @@
 
     const status = document.createElement('div');
     status.className = 'mt-3';
-    status.innerHTML = `<h3 class="h6 mb-2">Статус квартала</h3><span class="badge text-bg-light border">${data.status_label}</span>`;
+    const statusLabel = document.createElement('h3');
+    statusLabel.className = 'h6 mb-2';
+    statusLabel.textContent = 'Статус квартала';
+
+    const statusSelect = document.createElement('select');
+    statusSelect.className = 'form-select';
+    const statusOptions = [
+      { value: 'no_goals', label: 'Нет целей' },
+      { value: 'forming', label: 'Черновик целей' },
+      { value: 'in_progress', label: 'Готовы к валидации' },
+      { value: 'validated', label: 'Провалидировано' },
+      { value: 'closed', label: 'Цели закрыты' },
+    ];
+    statusOptions.forEach((option) => {
+      const opt = document.createElement('option');
+      opt.value = option.value;
+      opt.textContent = option.label;
+      if (option.value === data.quarter_status) {
+        opt.selected = true;
+      }
+      statusSelect.appendChild(opt);
+    });
+    statusSelect.addEventListener('change', () => updateQuarterStatus(statusSelect.value));
+
+    status.append(statusLabel, statusSelect);
 
     summaryEl.append(title, progressRow, counts, weight, status);
   };
@@ -428,6 +492,7 @@
     menu.className = 'dropdown-menu dropdown-menu-end';
 
     menu.appendChild(buildMenuButton('Редактировать', () => openGoalModal(goal)));
+    menu.appendChild(buildMenuButton('Шарить', () => openShareGoalModal(goal)));
     menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-up`, buildReturnFields()));
     menu.appendChild(buildMenuForm(`/goals/${goal.id}/move-down`, buildReturnFields()));
     menu.appendChild(buildMenuForm(`/goals/${goal.id}/delete`, buildReturnFields(), true));
@@ -498,10 +563,15 @@
     return item;
   };
 
+  const buildReturnURL = () => {
+    if (!state.teamOKR) return '';
+    return `/teams/${state.teamOKR.team.id}/okr?year=${state.teamOKR.year}&quarter=${state.teamOKR.quarter}`;
+  };
+
   const buildReturnFields = () => {
     if (!state.teamOKR) return [];
     return [
-      { name: 'return', value: `/teams/${state.teamOKR.team.id}/okr?year=${state.teamOKR.year}&quarter=${state.teamOKR.quarter}` },
+      { name: 'return', value: buildReturnURL() },
       { name: 'team_id', value: state.teamOKR.team.id },
     ];
   };
@@ -525,6 +595,34 @@
     });
     container.append(title, list);
     return container;
+  };
+
+  const sumKRWeights = (krs) => krs.reduce((sum, kr) => sum + (kr.weight || 0), 0);
+
+  const postForm = async (url, data) => {
+    const body = new URLSearchParams(data);
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
+      body,
+    });
+    if (!response.ok) {
+      throw new Error('Request failed');
+    }
+  };
+
+  const updateQuarterStatus = async (status) => {
+    if (!state.teamOKR) return;
+    try {
+      await postForm(`/teams/${state.teamOKR.team.id}/okr/status`, {
+        year: state.teamOKR.year,
+        quarter: state.teamOKR.quarter,
+        status,
+      });
+      await reloadTeamOKR();
+    } catch (error) {
+      // noop
+    }
   };
 
   const priorityBadgeClass = (priority) => {
@@ -569,6 +667,7 @@
     modalEl.querySelector('.modal-body').innerHTML = bodyHTML;
     const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
     modal.show();
+    return modalEl;
   };
 
   const openGoalModal = (goal) => {
@@ -611,9 +710,131 @@
     openModal(`Редактировать цель`, body);
   };
 
-  const openKRModal = (kr) => {
+  const openShareGoalModal = async (goal) => {
+    const hierarchy = state.hierarchy || (await fetchJSON('/api/v1/hierarchy')).items || [];
+    state.hierarchy = hierarchy;
+    const options = flattenHierarchyOptions(hierarchy);
+    const buildRow = () => `
+      <div class="row g-2 align-items-end" data-share-row>
+        <div class="col-md-7">
+          <label class="form-label">Команда</label>
+          <select class="form-select" name="team_id">
+            ${options}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Вес</label>
+          <input class="form-control" name="weight" type="number" value="0" />
+        </div>
+      </div>`;
     const body = `
-      <form method="post" action="/key-results/${kr.id}/update" class="vstack gap-3">
+      <form class="vstack gap-3" data-share-goal-form>
+        <div data-share-list class="vstack gap-2">
+          ${buildRow()}
+        </div>
+        <button class="btn btn-outline-secondary btn-sm" type="button" data-add-share>Добавить команду</button>
+        <button class="btn btn-primary" type="submit">Сохранить</button>
+      </form>`;
+    const modalEl = openModal('Шарить цель', body);
+    const form = modalEl.querySelector('[data-share-goal-form]');
+    const addButton = modalEl.querySelector('[data-add-share]');
+    addButton.addEventListener('click', () => {
+      const list = modalEl.querySelector('[data-share-list]');
+      list.insertAdjacentHTML('beforeend', buildRow());
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const rows = Array.from(form.querySelectorAll('[data-share-row]'));
+      const targets = rows
+        .map((row) => {
+          const teamId = Number(row.querySelector('select[name="team_id"]').value);
+          const weight = Number(row.querySelector('input[name="weight"]').value);
+          return { team_id: teamId, weight };
+        })
+        .filter((target) => target.team_id);
+      if (targets.length === 0) return;
+      await fetchJSON(`/api/v1/goals/${goal.id}/share`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ targets }),
+      });
+      await reloadTeamOKR();
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+    });
+  };
+
+  const openKRModal = (kr) => {
+    const kindOptions = ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'];
+    const percentSection = `
+      <div data-kind-section="PERCENT" class="vstack gap-2">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Start</label>
+            <input class="form-control" name="percent_start" type="number" step="any" value="${kr.measure?.percent?.start_value ?? 0}" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Target</label>
+            <input class="form-control" name="percent_target" type="number" step="any" value="${kr.measure?.percent?.target_value ?? 0}" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Current</label>
+            <input class="form-control" name="percent_current" type="number" step="any" value="${kr.measure?.percent?.current_value ?? 0}" />
+          </div>
+        </div>
+      </div>`;
+    const linearSection = `
+      <div data-kind-section="LINEAR" class="vstack gap-2">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Start</label>
+            <input class="form-control" name="linear_start" type="number" step="any" value="${kr.measure?.linear?.start_value ?? 0}" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Target</label>
+            <input class="form-control" name="linear_target" type="number" step="any" value="${kr.measure?.linear?.target_value ?? 0}" />
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Current</label>
+            <input class="form-control" name="linear_current" type="number" step="any" value="${kr.measure?.linear?.current_value ?? 0}" />
+          </div>
+        </div>
+      </div>`;
+    const booleanSection = `
+      <div data-kind-section="BOOLEAN" class="form-check">
+        <input class="form-check-input" type="checkbox" name="boolean_done" value="true" ${kr.measure?.boolean?.is_done ? 'checked' : ''} />
+        <label class="form-check-label">Выполнено</label>
+      </div>`;
+    const projectStages = (kr.measure?.project?.stages || [])
+      .map(
+        (stage) => `
+          <div class="row g-2 align-items-end" data-stage-row>
+            <div class="col-md-6">
+              <label class="form-label">Шаг</label>
+              <input class="form-control" name="step_title[]" value="${escapeHTML(stage.title)}" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Вес</label>
+              <input class="form-control" name="step_weight[]" type="number" value="${stage.weight}" />
+            </div>
+            <div class="col-md-3 form-check">
+              <input type="hidden" name="step_done[]" value="false" />
+              <input class="form-check-input" type="checkbox" name="step_done[]" value="true" ${stage.is_done ? 'checked' : ''} />
+              <label class="form-check-label">Готово</label>
+            </div>
+          </div>`,
+      )
+      .join('');
+
+    const projectSection = `
+      <div data-kind-section="PROJECT" class="vstack gap-2">
+        <div data-stage-list class="vstack gap-2">
+          ${projectStages || ''}
+        </div>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-add-stage>Добавить шаг</button>
+      </div>`;
+
+    const body = `
+      <form method="post" action="/key-results/${kr.id}/update" class="vstack gap-3" data-kr-edit-form>
         <div>
           <label class="form-label">Название</label>
           <input class="form-control" name="title" value="${escapeHTML(kr.title)}" />
@@ -629,17 +850,63 @@
           </div>
           <div class="col-md-6">
             <label class="form-label">Тип</label>
-            ${buildSelect('kind', ['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'], kr.kind)}
+            ${buildSelect('kind', kindOptions, kr.kind)}
           </div>
         </div>
+        ${percentSection}
+        ${linearSection}
+        ${booleanSection}
+        ${projectSection}
+        <input type="hidden" name="return" value="${buildReturnURL()}" />
         <button class="btn btn-primary" type="submit">Сохранить</button>
       </form>`;
-    openModal(`Редактировать KR`, body);
+    const modalEl = openModal(`Редактировать KR`, body);
+    const form = modalEl.querySelector('[data-kr-edit-form]');
+    const kindSelect = form.querySelector('select[name="kind"]');
+    const sections = Array.from(form.querySelectorAll('[data-kind-section]'));
+    const updateSections = () => {
+      sections.forEach((section) => {
+        section.hidden = section.dataset.kindSection !== kindSelect.value;
+      });
+    };
+    updateSections();
+    kindSelect.addEventListener('change', updateSections);
+    const addStageButton = form.querySelector('[data-add-stage]');
+    if (addStageButton) {
+      addStageButton.addEventListener('click', () => {
+        const list = form.querySelector('[data-stage-list]');
+        if (!list) return;
+        const row = document.createElement('div');
+        row.className = 'row g-2 align-items-end';
+        row.innerHTML = `
+          <div class="col-md-6">
+            <label class="form-label">Шаг</label>
+            <input class="form-control" name="step_title[]" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Вес</label>
+            <input class="form-control" name="step_weight[]" type="number" value="0" />
+          </div>
+          <div class="col-md-3 form-check">
+            <input type="hidden" name="step_done[]" value="false" />
+            <input class="form-check-input" type="checkbox" name="step_done[]" value="true" />
+            <label class="form-check-label">Готово</label>
+          </div>`;
+        list.appendChild(row);
+      });
+    }
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      await fetch(form.action, { method: 'POST', body: formData });
+      await reloadTeamOKR();
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+    });
   };
 
   const openKRCreateModal = (goal) => {
     const body = `
-      <form method="post" action="/goals/${goal.id}/key-results" class="vstack gap-3">
+      <form method="post" action="/goals/${goal.id}/key-results" class="vstack gap-3" data-kr-create-form>
         <div>
           <label class="form-label">Название</label>
           <input class="form-control" name="title" />
@@ -660,7 +927,15 @@
         </div>
         <button class="btn btn-primary" type="submit">Добавить</button>
       </form>`;
-    openModal(`Добавить KR`, body);
+    const modalEl = openModal(`Добавить KR`, body);
+    const form = modalEl.querySelector('[data-kr-create-form]');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      await fetch(form.action, { method: 'POST', body: formData });
+      await reloadTeamOKR();
+      bootstrap.Modal.getInstance(modalEl)?.hide();
+    });
   };
 
   const buildSelect = (name, options, selected) => {
@@ -677,6 +952,18 @@
       select.appendChild(opt);
     });
     return select.outerHTML;
+  };
+
+  const flattenHierarchyOptions = (tree, level = 0) => {
+    let html = '';
+    tree.forEach((node) => {
+      const prefix = '&nbsp;'.repeat(level * 2);
+      html += `<option value="${node.id}">${prefix}${node.type_label} ${escapeHTML(node.name)}</option>`;
+      if (node.children && node.children.length) {
+        html += flattenHierarchyOptions(node.children, level + 1);
+      }
+    });
+    return html;
   };
 
   const escapeHTML = (value) => {
