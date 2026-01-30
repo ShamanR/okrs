@@ -10,5 +10,15 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/okrs?sslmode=disable
+      PORT: "8080"
+      TZ: Asia/Bangkok
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
 volumes:
   pgdata:

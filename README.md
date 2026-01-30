@@ -10,6 +10,34 @@
 
 ## Запуск
 
+### Docker
+
+#### Сборка образа
+
+```bash
+docker build -t okr-app .
+```
+
+#### Запуск через Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Контейнер приложения читает переменные окружения:
+
+- `DATABASE_URL` (например `postgres://postgres:postgres@db:5432/okrs?sslmode=disable`)
+- `PORT` (по умолчанию `8080`)
+- `TZ` (например `Asia/Bangkok`)
+
+Миграции накатываются автоматически при старте сервера из папки `/app/migrations`.
+
+Проверка статики (файл лежит в `internal/web/static`):
+
+```bash
+curl -I http://localhost:8080/static/app.js
+```
+
 ### Через Docker Compose (Postgres локально)
 
 ```bash
