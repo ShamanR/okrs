@@ -57,7 +57,7 @@ TZ=Asia/Bangkok PORT=8080 \
 go run ./cmd/server --seed
 ```
 
-Откройте [http://localhost:8080/teams](http://localhost:8080/teams).
+Откройте [http://localhost:8080/teamOkrs](http://localhost:8080/teamOkrs).
 
 ## Тесты
 

@@ -1495,13 +1495,6 @@
     const menu = document.createElement('ul');
     menu.className = 'dropdown-menu dropdown-menu-end';
 
-    const editItem = document.createElement('li');
-    const edit = document.createElement('a');
-    edit.className = 'dropdown-item';
-    edit.href = `/teams/${team.id}/edit`;
-    edit.textContent = 'Изменить команду';
-    editItem.appendChild(edit);
-
     const deleteItem = document.createElement('li');
     const form = document.createElement('form');
     form.method = 'post';
@@ -1514,7 +1507,7 @@
     form.appendChild(deleteButton);
     deleteItem.appendChild(form);
 
-    menu.append(editItem, deleteItem);
+    menu.append(deleteItem);
     wrapper.append(button, menu);
     cell.appendChild(wrapper);
     return cell;
@@ -1530,7 +1523,7 @@
   let reloadTeamOKR = async () => { };
 
   const initTeamsPage = () => {
-    const page = document.querySelector('[data-page="teams"]');
+    const page = document.querySelector('[data-page="team-okrs"]');
     if (!page) return;
     const filtersForm = document.querySelector('[data-teams-filters]');
     const periodSelect = filtersForm.querySelector('[data-period-select]');
