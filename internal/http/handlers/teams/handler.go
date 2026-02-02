@@ -262,7 +262,7 @@ func persistTeamsFilters(w http.ResponseWriter, periodValue, selectedFilter stri
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -368,7 +368,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
