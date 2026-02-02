@@ -1,7 +1,7 @@
 {{define "team-form-content"}}
 <nav class="mb-4" aria-label="breadcrumb">
   <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="/teams">Команды</a></li>
+    <li class="breadcrumb-item"><a href="/teams">Управление командами</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{.BreadcrumbTitle}}</li>
   </ol>
 </nav>
@@ -18,12 +18,20 @@
             <input class="form-control" name="name" value="{{.TeamName}}" required>
           </div>
           <div class="mb-3">
+            <label class="form-label">Лид команды</label>
+            <input class="form-control" name="lead" value="{{.TeamLead}}">
+          </div>
+          <div class="mb-3">
             <label class="form-label">Тип команды</label>
             <select class="form-select" name="team_type" required>
               {{range .TeamTypes}}
                 <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Label}}</option>
               {{end}}
             </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Описание</label>
+            <textarea class="form-control" name="description" rows="3">{{.TeamDescription}}</textarea>
           </div>
           <div class="mb-3">
             <label class="form-label">Родительская команда</label>
@@ -46,7 +54,10 @@
       <div class="card-body">
         <h2 class="h5">Быстрые ссылки</h2>
         <p class="text-muted">После сохранения команды можно перейти к OKR текущего периода.</p>
-        <a class="btn btn-outline-primary" href="/teams">Вернуться к списку</a>
+        <div class="d-flex flex-wrap gap-2">
+          <a class="btn btn-outline-primary" href="/teams">Вернуться к управлению</a>
+          <a class="btn btn-outline-secondary" href="/teamOkrs">К OKR команд</a>
+        </div>
       </div>
     </div>
   </div>

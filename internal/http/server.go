@@ -196,7 +196,8 @@ func (s *Server) Routes() http.Handler {
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
 
-	r.Get("/teams", teamsHandler.HandleTeams)
+	r.Get("/teams", teamsHandler.HandleTeamManagement)
+	r.Get("/teamOkrs", teamsHandler.HandleTeamOKRs)
 	r.Get("/teams/new", teamsHandler.HandleNewTeam)
 	r.Post("/teams", teamsHandler.HandleCreateTeam)
 	r.Get("/teams/{teamID}/edit", teamsHandler.HandleEditTeam)

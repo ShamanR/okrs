@@ -1,10 +1,10 @@
 {{define "teams-content"}}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h3 mb-0">Команды</h1>
+  <h1 class="h3 mb-0">OKR команд</h1>
   <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary btn-sm" href="/periods">Периоды</a>
     <a class="btn btn-outline-secondary btn-sm" href="/goals/period">Цели по периоду</a>
-    <a class="btn btn-primary btn-sm" href="/teams/new">Новая команда</a>
+    <a class="btn btn-primary btn-sm" href="/teams">Управление командами</a>
   </div>
 </div>
 <form method="get" class="card card-body mb-4" data-teams-filters>
@@ -28,7 +28,7 @@
     </div>
   </div>
 </form>
-<div id="teams-page" data-page="teams" data-selected-team="{{.SelectedTeam}}" data-period-id="{{.SelectedPeriod}}">
+<div id="teams-page" data-page="team-okrs" data-selected-team="{{.SelectedTeam}}" data-period-id="{{.SelectedPeriod}}">
   <table class="table table-striped align-middle teams-table">
     <thead>
       <tr>

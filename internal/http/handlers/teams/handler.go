@@ -66,7 +66,7 @@ type teamFilterOption struct {
 	Selected bool
 }
 
-type teamsPage struct {
+type teamOkrsPage struct {
 	PeriodOptions   []periodOption
 	SelectedPeriod  int64
 	SelectedTeam    string
@@ -92,6 +92,21 @@ type teamParentOption struct {
 	Selected bool
 }
 
+type teamManageRow struct {
+	ID          int64
+	Name        string
+	TypeLabel   string
+	Lead        string
+	Description string
+	IndentPx    int
+}
+
+type teamManagePage struct {
+	PageTitle       string
+	ContentTemplate string
+	Teams           []teamManageRow
+}
+
 type teamFormPage struct {
 	FormError       string
 	PageTitle       string
@@ -101,6 +116,8 @@ type teamFormPage struct {
 	FormAction      string
 	SubmitLabel     string
 	TeamName        string
+	TeamLead        string
+	TeamDescription string
 	TeamTypes       []teamTypeOption
 	ParentTeams     []teamParentOption
 }
@@ -131,7 +148,7 @@ type teamOKRPage struct {
 	ContentTemplate  string
 }
 
-func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	period, periodValue, periods, err := h.resolvePeriodFilter(r.Context(), r)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -140,14 +157,28 @@ func (h *Handler) HandleTeams(w http.ResponseWriter, r *http.Request) {
 	options := buildPeriodOptions(periods, period.ID)
 	selectedFilter := resolveTeamFilter(r)
 
-	page := teamsPage{
+	page := teamOkrsPage{
 		PeriodOptions:   options,
 		SelectedPeriod:  period.ID,
 		SelectedTeam:    selectedFilter,
-		PageTitle:       "Команды",
+		PageTitle:       "OKR команд",
 		ContentTemplate: "teams-content",
 	}
 	persistTeamsFilters(w, periodValue, selectedFilter)
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
+func (h *Handler) HandleTeamManagement(w http.ResponseWriter, r *http.Request) {
+	teams, err := h.deps.Store.ListTeams(r.Context())
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	page := teamManagePage{
+		PageTitle:       "Управление командами",
+		ContentTemplate: "team-manage-content",
+		Teams:           buildTeamManagementRows(teams),
+	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
@@ -231,13 +262,15 @@ func persistTeamsFilters(w http.ResponseWriter, periodValue, selectedFilter stri
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	name := common.TrimmedFormValue(r, "name")
 	teamType := domain.TeamType(r.FormValue("team_type"))
 	parentID, err := parseOptionalID(r.FormValue("parent_id"))
+	lead := common.TrimmedFormValue(r, "lead")
+	description := common.TrimmedFormValue(r, "description")
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -250,32 +283,38 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 
 	if name == "" {
 		h.renderTeamForm(w, r, teamFormValues{
-			Message:  "Название команды обязательно",
-			Name:     name,
-			Type:     teamType,
-			ParentID: parentID,
+			Message:     "Название команды обязательно",
+			Name:        name,
+			Type:        teamType,
+			ParentID:    parentID,
+			Lead:        lead,
+			Description: description,
 		}, teams, 0, false)
 		return
 	}
 	if !common.ValidTeamType(teamType) {
 		h.renderTeamForm(w, r, teamFormValues{
-			Message:  "Неверный тип команды",
-			Name:     name,
-			Type:     teamType,
-			ParentID: parentID,
+			Message:     "Неверный тип команды",
+			Name:        name,
+			Type:        teamType,
+			ParentID:    parentID,
+			Lead:        lead,
+			Description: description,
 		}, teams, 0, false)
 		return
 	}
 	if parentID != nil && !teamExists(teams, *parentID) {
 		h.renderTeamForm(w, r, teamFormValues{
-			Message:  "Выбранная родительская команда не найдена",
-			Name:     name,
-			Type:     teamType,
-			ParentID: parentID,
+			Message:     "Выбранная родительская команда не найдена",
+			Name:        name,
+			Type:        teamType,
+			ParentID:    parentID,
+			Lead:        lead,
+			Description: description,
 		}, teams, 0, false)
 		return
 	}
-	if _, err := h.deps.Store.CreateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID}); err != nil {
+	if _, err := h.deps.Store.CreateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -289,9 +328,11 @@ func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderTeamForm(w, r, teamFormValues{
-		Name:     "",
-		Type:     domain.TeamTypeTeam,
-		ParentID: nil,
+		Name:        "",
+		Type:        domain.TeamTypeTeam,
+		ParentID:    nil,
+		Lead:        "",
+		Description: "",
 	}, teams, 0, false)
 }
 
@@ -312,9 +353,11 @@ func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderTeamForm(w, r, teamFormValues{
-		Name:     team.Name,
-		Type:     team.Type,
-		ParentID: team.ParentID,
+		Name:        team.Name,
+		Type:        team.Type,
+		ParentID:    team.ParentID,
+		Lead:        team.Lead,
+		Description: team.Description,
 	}, teams, teamID, true)
 }
 
@@ -325,13 +368,15 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
+	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	name := common.TrimmedFormValue(r, "name")
 	teamType := domain.TeamType(r.FormValue("team_type"))
 	parentID, err := parseOptionalID(r.FormValue("parent_id"))
+	lead := common.TrimmedFormValue(r, "lead")
+	description := common.TrimmedFormValue(r, "description")
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -344,53 +389,63 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 
 	if name == "" {
 		h.renderTeamForm(w, r, teamFormValues{
-			Message:  "Название команды обязательно",
-			Name:     name,
-			Type:     teamType,
-			ParentID: parentID,
+			Message:     "Название команды обязательно",
+			Name:        name,
+			Type:        teamType,
+			ParentID:    parentID,
+			Lead:        lead,
+			Description: description,
 		}, teams, teamID, true)
 		return
 	}
 	if !common.ValidTeamType(teamType) {
 		h.renderTeamForm(w, r, teamFormValues{
-			Message:  "Неверный тип команды",
-			Name:     name,
-			Type:     teamType,
-			ParentID: parentID,
+			Message:     "Неверный тип команды",
+			Name:        name,
+			Type:        teamType,
+			ParentID:    parentID,
+			Lead:        lead,
+			Description: description,
 		}, teams, teamID, true)
 		return
 	}
 	if parentID != nil {
 		if *parentID == teamID {
 			h.renderTeamForm(w, r, teamFormValues{
-				Message:  "Команда не может быть родителем самой себя",
-				Name:     name,
-				Type:     teamType,
-				ParentID: parentID,
+				Message:     "Команда не может быть родителем самой себя",
+				Name:        name,
+				Type:        teamType,
+				ParentID:    parentID,
+				Lead:        lead,
+				Description: description,
 			}, teams, teamID, true)
 			return
 		}
 		if !teamExists(teams, *parentID) {
 			h.renderTeamForm(w, r, teamFormValues{
-				Message:  "Выбранная родительская команда не найдена",
-				Name:     name,
-				Type:     teamType,
-				ParentID: parentID,
+				Message:     "Выбранная родительская команда не найдена",
+				Name:        name,
+				Type:        teamType,
+				ParentID:    parentID,
+				Lead:        lead,
+				Description: description,
 			}, teams, teamID, true)
 			return
 		}
 		descendants := collectDescendants(teams, teamID)
 		if descendants[*parentID] {
 			h.renderTeamForm(w, r, teamFormValues{
-				Message:  "Нельзя привязать команду к её дочерней команде",
-				Name:     name,
-				Type:     teamType,
-				ParentID: parentID,
+				Message:     "Нельзя привязать команду к её дочерней команде",
+				Name:        name,
+				Type:        teamType,
+				ParentID:    parentID,
+				Lead:        lead,
+				Description: description,
 			}, teams, teamID, true)
 			return
 		}
 	}
-	if err := h.deps.Store.UpdateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID}, teamID); err != nil {
+	if err := h.deps.Store.UpdateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -398,10 +453,12 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 type teamFormValues struct {
-	Message  string
-	Name     string
-	Type     domain.TeamType
-	ParentID *int64
+	Message     string
+	Name        string
+	Type        domain.TeamType
+	ParentID    *int64
+	Lead        string
+	Description string
 }
 
 func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values teamFormValues, teams []domain.Team, teamID int64, isEdit bool) {
@@ -416,6 +473,8 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 		FormAction:      map[bool]string{true: fmt.Sprintf("/teams/%d/update", teamID), false: "/teams"}[isEdit],
 		SubmitLabel:     map[bool]string{true: "Сохранить", false: "Создать"}[isEdit],
 		TeamName:        values.Name,
+		TeamLead:        values.Lead,
+		TeamDescription: values.Description,
 		TeamTypes:       types,
 		ParentTeams:     parentOptions,
 	}
@@ -799,6 +858,29 @@ func buildTeamHierarchy(teams []domain.Team) (map[int64]domain.Team, map[int64][
 	}
 	rootTeams := childrenMap[0]
 	return teamsByID, childrenMap, rootTeams
+}
+
+func buildTeamManagementRows(teams []domain.Team) []teamManageRow {
+	_, childrenMap, roots := buildTeamHierarchy(teams)
+	rows := make([]teamManageRow, 0, len(teams))
+	var appendTeam func(team domain.Team, level int)
+	appendTeam = func(team domain.Team, level int) {
+		rows = append(rows, teamManageRow{
+			ID:          team.ID,
+			Name:        team.Name,
+			TypeLabel:   common.TeamTypeLabel(team.Type),
+			Lead:        team.Lead,
+			Description: team.Description,
+			IndentPx:    level * 24,
+		})
+		for _, child := range childrenMap[team.ID] {
+			appendTeam(child, level+1)
+		}
+	}
+	for _, team := range roots {
+		appendTeam(team, 0)
+	}
+	return rows
 }
 
 func buildTeamFilterOptions(rootTeams []domain.Team, childrenMap map[int64][]domain.Team, selected string) []teamFilterOption {

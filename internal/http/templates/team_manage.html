@@ -1,0 +1,59 @@
+{{define "team-manage-content"}}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+  <div>
+    <h1 class="h3 mb-1">Управление командами</h1>
+    <p class="text-muted mb-0">Создавайте и настраивайте команды, чтобы управлять иерархией.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary btn-sm" href="/teamOkrs">К OKR команд</a>
+    <a class="btn btn-primary btn-sm" href="/teams/new">Новая команда</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Команда</th>
+          <th>Лид</th>
+          <th>Описание</th>
+          <th class="text-end">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{if .Teams}}
+          {{range .Teams}}
+            <tr>
+              <td>
+                <div class="d-flex align-items-center gap-2" style="padding-left: {{.IndentPx}}px;">
+                  <span class="badge text-bg-secondary">{{.TypeLabel}}</span>
+                  <span class="fw-semibold">{{.Name}}</span>
+                </div>
+              </td>
+              <td>
+                {{if .Lead}}{{.Lead}}{{else}}<span class="text-muted">—</span>{{end}}
+              </td>
+              <td class="text-muted">
+                {{if .Description}}{{.Description}}{{else}}—{{end}}
+              </td>
+              <td class="text-end">
+                <div class="d-inline-flex gap-2">
+                  <a class="btn btn-outline-secondary btn-sm" href="/teams/{{.ID}}/edit">Редактировать</a>
+                  <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
+                    <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {{end}}
+        {{else}}
+          <tr>
+            <td colspan="4" class="text-muted">Команды не найдены.</td>
+          </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+{{end}}
