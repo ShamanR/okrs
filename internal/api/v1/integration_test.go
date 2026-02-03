@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -21,7 +23,9 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestUpdateKRProgressIntegration(t *testing.T) {
@@ -30,6 +34,11 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
 	)
 	if err != nil {
 		t.Skipf("docker unavailable: %v", err)
@@ -149,7 +158,11 @@ func runMigrations(databaseURL string) error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://../../migrations", "postgres", driver)
+	migrationsPath, err := resolveMigrationsPath()
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
 	if err != nil {
 		return err
 	}
@@ -157,4 +170,27 @@ func runMigrations(databaseURL string) error {
 		return err
 	}
 	return nil
+}
+
+func resolveMigrationsPath() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "migrations"), nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("go.mod not found (start dir: %s)", dir)
+		}
+		dir = parent
+	}
 }
