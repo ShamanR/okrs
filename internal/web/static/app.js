@@ -137,7 +137,7 @@
     if (!data.items || data.items.length === 0) {
       const row = document.createElement('tr');
       const cell = document.createElement('td');
-      cell.colSpan = 5;
+      cell.colSpan = 4;
       cell.className = 'text-muted';
       cell.textContent = 'Нет данных';
       row.appendChild(cell);
@@ -150,7 +150,6 @@
       row.appendChild(renderPeriodProgressCell(team));
       row.appendChild(renderGoalsCell(team, periodID));
       row.appendChild(renderStatusCell(team));
-      row.appendChild(renderActionsCell(team));
       tbody.appendChild(row);
     });
   };
@@ -1476,40 +1475,6 @@
     badge.className = 'badge text-bg-light border';
     badge.textContent = team.status_label;
     cell.appendChild(badge);
-    return cell;
-  };
-
-  const renderActionsCell = (team) => {
-    const cell = document.createElement('td');
-    cell.className = 'teams-col-actions text-end';
-    const wrapper = document.createElement('div');
-    wrapper.className = 'dropdown d-inline-flex';
-
-    const button = document.createElement('button');
-    button.className = 'btn btn-outline-secondary btn-sm dropdown-toggle';
-    button.type = 'button';
-    button.dataset.bsToggle = 'dropdown';
-    button.setAttribute('aria-expanded', 'false');
-    button.textContent = '⋯';
-
-    const menu = document.createElement('ul');
-    menu.className = 'dropdown-menu dropdown-menu-end';
-
-    const deleteItem = document.createElement('li');
-    const form = document.createElement('form');
-    form.method = 'post';
-    form.action = `/teams/${team.id}/delete`;
-    form.className = 'm-0';
-    const deleteButton = document.createElement('button');
-    deleteButton.type = 'submit';
-    deleteButton.className = 'dropdown-item text-danger';
-    deleteButton.textContent = 'Удалить';
-    form.appendChild(deleteButton);
-    deleteItem.appendChild(form);
-
-    menu.append(deleteItem);
-    wrapper.append(button, menu);
-    cell.appendChild(wrapper);
     return cell;
   };
 
