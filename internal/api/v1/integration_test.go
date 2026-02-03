@@ -21,6 +21,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
@@ -31,7 +32,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
-		tcpostgres.WithWaitStrategy(
+		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
 				WithStartupTimeout(30*time.Second),
