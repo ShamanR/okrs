@@ -13,7 +13,9 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func TestStoreCRUD(t *testing.T) {
@@ -22,6 +24,10 @@ func TestStoreCRUD(t *testing.T) {
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+		),
 	)
 	if err != nil {
 		t.Skipf("docker unavailable: %v", err)
