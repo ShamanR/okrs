@@ -27,6 +27,7 @@ func TestStoreCRUD(t *testing.T) {
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
 		),
 	)
 	if err != nil {
