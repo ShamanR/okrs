@@ -1,6 +1,7 @@
 {{define "base"}}
 <!doctype html>
 <html lang="ru">
+
 <head>
   <meta charset="utf-8">
   <title>{{.PageTitle}}</title>
@@ -145,9 +146,11 @@
       0% {
         box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
       }
+
       70% {
         box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
       }
+
       100% {
         box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
       }
@@ -167,7 +170,7 @@
       --bs-table-active-bg: transparent;
     }
 
-    .table-transparent > :not(caption) > * > * {
+    .table-transparent> :not(caption)>*>* {
       background-color: transparent;
     }
 
@@ -201,7 +204,7 @@
     }
 
     .teams-goals-col-weight {
-      width: 80px;
+      width: 40px;
     }
 
     .teams-goals-col-priority {
@@ -293,259 +296,261 @@
     }
   </style>
 </head>
+
 <body class="bg-light">
-<header class="navbar navbar-dark bg-dark">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="/teamOkrs">OKR Tracker</a>
-    <div class="d-flex align-items-center gap-2">
-      <a class="btn btn-outline-light btn-sm" href="/teamOkrs">OKR команд</a>
-      <a class="btn btn-outline-light btn-sm" href="/teams">Управление командами</a>
+  <header class="navbar navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/teamOkrs">OKR Tracker</a>
+      <div class="d-flex align-items-center gap-2">
+        <a class="btn btn-outline-light btn-sm" href="/teamOkrs">OKR команд</a>
+        <a class="btn btn-outline-light btn-sm" href="/teams">Управление командами</a>
+      </div>
     </div>
-  </div>
-</header>
-<main class="container py-4">
-  {{.ContentHTML}}
-</main>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  const autosaveTimers = new WeakMap();
+  </header>
+  <main class="container py-4">
+    {{.ContentHTML}}
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const autosaveTimers = new WeakMap();
 
-  function updateAutosaveStatus(statusEl, text, className) {
-    const textEl = statusEl.querySelector('.autosave-text');
-    if (textEl) {
-      textEl.textContent = text;
-    } else {
-      statusEl.textContent = text;
-    }
-    statusEl.classList.remove('is-saving', 'is-saved');
-    if (className) {
-      statusEl.classList.add(className);
-    }
-  }
-
-  function scheduleAutosave(statusEl) {
-    if (!statusEl) return;
-    const existingTimer = autosaveTimers.get(statusEl);
-    if (existingTimer) {
-      clearTimeout(existingTimer);
-    }
-    updateAutosaveStatus(statusEl, 'Автосохранение…', 'is-saving');
-    const timer = setTimeout(() => {
-      updateAutosaveStatus(statusEl, 'Все изменения сохранены', 'is-saved');
-    }, 900);
-    autosaveTimers.set(statusEl, timer);
-  }
-
-  document.querySelectorAll('form.autosave-form').forEach((form) => {
-    const statusEl = form.querySelector('[data-autosave-status]');
-    if (!statusEl) return;
-    updateAutosaveStatus(statusEl, 'Нет несохранённых изменений');
-    form.addEventListener('input', () => scheduleAutosave(statusEl));
-    form.addEventListener('change', () => scheduleAutosave(statusEl));
-    form.addEventListener('submit', () => {
-      updateAutosaveStatus(statusEl, 'Сохраняем…', 'is-saving');
-    });
-  });
-
-  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
-    new bootstrap.Tooltip(el);
-  });
-
-  document.querySelectorAll('[data-popover-content]').forEach((el) => {
-    const contentEl = document.querySelector(el.getAttribute('data-popover-content'));
-    if (!contentEl) return;
-    const trigger = el.getAttribute('data-popover-trigger') || 'focus';
-    const popover = new bootstrap.Popover(el, {
-      html: true,
-      trigger: trigger === 'hoverable' ? 'manual' : trigger,
-      content: contentEl.innerHTML,
-      container: 'body',
-    });
-
-    if (trigger === 'hoverable') {
-      let hideTimer;
-      const clearHideTimer = () => {
-        if (hideTimer) {
-          clearTimeout(hideTimer);
-          hideTimer = null;
-        }
-      };
-      const scheduleHide = () => {
-        clearHideTimer();
-        hideTimer = setTimeout(() => {
-          popover.hide();
-        }, 120);
-      };
-      el.addEventListener('mouseenter', () => {
-        clearHideTimer();
-        popover.show();
-      });
-      el.addEventListener('mouseleave', scheduleHide);
-      el.addEventListener('shown.bs.popover', () => {
-        const popoverId = el.getAttribute('aria-describedby');
-        if (!popoverId) return;
-        const popoverEl = document.getElementById(popoverId);
-        if (!popoverEl) return;
-        popoverEl.addEventListener('mouseenter', clearHideTimer);
-        popoverEl.addEventListener('mouseleave', scheduleHide);
-      });
-    }
-  });
-
-  function updateMoveControls() {
-    const goalCards = Array.from(document.querySelectorAll('[data-goal-card]'));
-    goalCards.forEach((card, index) => {
-      const isFirst = index === 0;
-      const isLast = index === goalCards.length - 1;
-      card.querySelectorAll('[data-goal-move="up"]').forEach((btn) => {
-        if (isFirst) btn.disabled = true;
-      });
-      card.querySelectorAll('[data-goal-move="down"]').forEach((btn) => {
-        if (isLast) btn.disabled = true;
-      });
-
-      const krItems = Array.from(card.querySelectorAll('[data-kr-item]'));
-      krItems.forEach((krItem, krIndex) => {
-        const krIsFirst = krIndex === 0;
-        const krIsLast = krIndex === krItems.length - 1;
-        krItem.querySelectorAll('[data-kr-move="up"]').forEach((btn) => {
-          if (krIsFirst) btn.disabled = true;
-        });
-        krItem.querySelectorAll('[data-kr-move="down"]').forEach((btn) => {
-          if (krIsLast) btn.disabled = true;
-        });
-      });
-    });
-  }
-
-  updateMoveControls();
-
-  function serializeForm(form) {
-    const data = new FormData(form);
-    const entries = [];
-    for (const [key, value] of data.entries()) {
-      entries.push([key, value]);
-    }
-    return JSON.stringify(entries);
-  }
-
-  function updateSaveState(form) {
-    const saveButton = form.querySelector('[data-kr-save]');
-    if (!saveButton) return;
-    const dirty = serializeForm(form) !== form.dataset.initialState;
-    form.dataset.dirty = dirty ? 'true' : 'false';
-    saveButton.disabled = !dirty || !form.checkValidity();
-  }
-
-  document.querySelectorAll('[data-kr-progress-form]').forEach((form) => {
-    form.dataset.initialState = serializeForm(form);
-    updateSaveState(form);
-    form.addEventListener('input', () => updateSaveState(form));
-    form.addEventListener('change', () => updateSaveState(form));
-  });
-
-  const unsavedModalEl = document.getElementById('krUnsavedChangesModal');
-  const unsavedModal = unsavedModalEl ? new bootstrap.Modal(unsavedModalEl) : null;
-  let pendingPanel = null;
-
-  document.querySelectorAll('[data-kr-panel]').forEach((panel) => {
-    panel.addEventListener('show.bs.collapse', (event) => {
-      const openPanel = document.querySelector('[data-kr-panel].show');
-      if (!openPanel || openPanel === panel) return;
-      const dirtyForm = openPanel.querySelector('[data-kr-progress-form][data-dirty="true"]');
-      if (dirtyForm && unsavedModal) {
-        event.preventDefault();
-        pendingPanel = panel;
-        unsavedModal.show();
-        return;
+    function updateAutosaveStatus(statusEl, text, className) {
+      const textEl = statusEl.querySelector('.autosave-text');
+      if (textEl) {
+        textEl.textContent = text;
+      } else {
+        statusEl.textContent = text;
       }
-      bootstrap.Collapse.getOrCreateInstance(openPanel, { toggle: false }).hide();
+      statusEl.classList.remove('is-saving', 'is-saved');
+      if (className) {
+        statusEl.classList.add(className);
+      }
+    }
+
+    function scheduleAutosave(statusEl) {
+      if (!statusEl) return;
+      const existingTimer = autosaveTimers.get(statusEl);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+      updateAutosaveStatus(statusEl, 'Автосохранение…', 'is-saving');
+      const timer = setTimeout(() => {
+        updateAutosaveStatus(statusEl, 'Все изменения сохранены', 'is-saved');
+      }, 900);
+      autosaveTimers.set(statusEl, timer);
+    }
+
+    document.querySelectorAll('form.autosave-form').forEach((form) => {
+      const statusEl = form.querySelector('[data-autosave-status]');
+      if (!statusEl) return;
+      updateAutosaveStatus(statusEl, 'Нет несохранённых изменений');
+      form.addEventListener('input', () => scheduleAutosave(statusEl));
+      form.addEventListener('change', () => scheduleAutosave(statusEl));
+      form.addEventListener('submit', () => {
+        updateAutosaveStatus(statusEl, 'Сохраняем…', 'is-saving');
+      });
     });
-    panel.addEventListener('hidden.bs.collapse', () => {
-      const form = panel.querySelector('[data-kr-progress-form]');
-      if (!form) return;
-      form.reset();
+
+    document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach((el) => {
+      new bootstrap.Tooltip(el);
+    });
+
+    document.querySelectorAll('[data-popover-content]').forEach((el) => {
+      const contentEl = document.querySelector(el.getAttribute('data-popover-content'));
+      if (!contentEl) return;
+      const trigger = el.getAttribute('data-popover-trigger') || 'focus';
+      const popover = new bootstrap.Popover(el, {
+        html: true,
+        trigger: trigger === 'hoverable' ? 'manual' : trigger,
+        content: contentEl.innerHTML,
+        container: 'body',
+      });
+
+      if (trigger === 'hoverable') {
+        let hideTimer;
+        const clearHideTimer = () => {
+          if (hideTimer) {
+            clearTimeout(hideTimer);
+            hideTimer = null;
+          }
+        };
+        const scheduleHide = () => {
+          clearHideTimer();
+          hideTimer = setTimeout(() => {
+            popover.hide();
+          }, 120);
+        };
+        el.addEventListener('mouseenter', () => {
+          clearHideTimer();
+          popover.show();
+        });
+        el.addEventListener('mouseleave', scheduleHide);
+        el.addEventListener('shown.bs.popover', () => {
+          const popoverId = el.getAttribute('aria-describedby');
+          if (!popoverId) return;
+          const popoverEl = document.getElementById(popoverId);
+          if (!popoverEl) return;
+          popoverEl.addEventListener('mouseenter', clearHideTimer);
+          popoverEl.addEventListener('mouseleave', scheduleHide);
+        });
+      }
+    });
+
+    function updateMoveControls() {
+      const goalCards = Array.from(document.querySelectorAll('[data-goal-card]'));
+      goalCards.forEach((card, index) => {
+        const isFirst = index === 0;
+        const isLast = index === goalCards.length - 1;
+        card.querySelectorAll('[data-goal-move="up"]').forEach((btn) => {
+          if (isFirst) btn.disabled = true;
+        });
+        card.querySelectorAll('[data-goal-move="down"]').forEach((btn) => {
+          if (isLast) btn.disabled = true;
+        });
+
+        const krItems = Array.from(card.querySelectorAll('[data-kr-item]'));
+        krItems.forEach((krItem, krIndex) => {
+          const krIsFirst = krIndex === 0;
+          const krIsLast = krIndex === krItems.length - 1;
+          krItem.querySelectorAll('[data-kr-move="up"]').forEach((btn) => {
+            if (krIsFirst) btn.disabled = true;
+          });
+          krItem.querySelectorAll('[data-kr-move="down"]').forEach((btn) => {
+            if (krIsLast) btn.disabled = true;
+          });
+        });
+      });
+    }
+
+    updateMoveControls();
+
+    function serializeForm(form) {
+      const data = new FormData(form);
+      const entries = [];
+      for (const [key, value] of data.entries()) {
+        entries.push([key, value]);
+      }
+      return JSON.stringify(entries);
+    }
+
+    function updateSaveState(form) {
+      const saveButton = form.querySelector('[data-kr-save]');
+      if (!saveButton) return;
+      const dirty = serializeForm(form) !== form.dataset.initialState;
+      form.dataset.dirty = dirty ? 'true' : 'false';
+      saveButton.disabled = !dirty || !form.checkValidity();
+    }
+
+    document.querySelectorAll('[data-kr-progress-form]').forEach((form) => {
       form.dataset.initialState = serializeForm(form);
       updateSaveState(form);
+      form.addEventListener('input', () => updateSaveState(form));
+      form.addEventListener('change', () => updateSaveState(form));
     });
-  });
 
-  document.querySelectorAll('[data-kr-cancel]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const panel = button.closest('[data-kr-panel]');
-      const form = panel ? panel.querySelector('[data-kr-progress-form]') : null;
-      if (!form) return;
-      form.reset();
-      form.dataset.initialState = serializeForm(form);
-      updateSaveState(form);
-    });
-  });
+    const unsavedModalEl = document.getElementById('krUnsavedChangesModal');
+    const unsavedModal = unsavedModalEl ? new bootstrap.Modal(unsavedModalEl) : null;
+    let pendingPanel = null;
 
-  const discardButton = document.querySelector('[data-kr-discard]');
-  if (discardButton) {
-    discardButton.addEventListener('click', () => {
-      const openPanel = document.querySelector('[data-kr-panel].show');
-      if (openPanel) {
-        const form = openPanel.querySelector('[data-kr-progress-form]');
-        if (form) {
-          form.reset();
-          form.dataset.initialState = serializeForm(form);
-          updateSaveState(form);
+    document.querySelectorAll('[data-kr-panel]').forEach((panel) => {
+      panel.addEventListener('show.bs.collapse', (event) => {
+        const openPanel = document.querySelector('[data-kr-panel].show');
+        if (!openPanel || openPanel === panel) return;
+        const dirtyForm = openPanel.querySelector('[data-kr-progress-form][data-dirty="true"]');
+        if (dirtyForm && unsavedModal) {
+          event.preventDefault();
+          pendingPanel = panel;
+          unsavedModal.show();
+          return;
         }
         bootstrap.Collapse.getOrCreateInstance(openPanel, { toggle: false }).hide();
-      }
-      if (pendingPanel) {
-        const target = pendingPanel;
-        pendingPanel = null;
-        bootstrap.Collapse.getOrCreateInstance(target, { toggle: false }).show();
-      }
-      if (unsavedModal) {
-        unsavedModal.hide();
-      }
-    });
-  }
-
-  document.querySelectorAll('[data-weights-normalize]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const form = button.closest('form');
-      if (!form) return;
-      const inputs = Array.from(form.querySelectorAll('input[type="number"][name^="kr_weight_"]'));
-      if (!inputs.length) return;
-      const values = inputs.map((input) => Math.max(0, Number.parseFloat(input.value) || 0));
-      const total = values.reduce((sum, value) => sum + value, 0);
-      if (total === 0) return;
-      let normalized = values.map((value) => Math.round((value / total) * 100));
-      let diff = 100 - normalized.reduce((sum, value) => sum + value, 0);
-      let index = 0;
-      while (diff !== 0 && normalized.length > 0) {
-        normalized[index] += diff > 0 ? 1 : -1;
-        diff += diff > 0 ? -1 : 1;
-        index = (index + 1) % normalized.length;
-      }
-      inputs.forEach((input, idx) => {
-        input.value = normalized[idx];
+      });
+      panel.addEventListener('hidden.bs.collapse', () => {
+        const form = panel.querySelector('[data-kr-progress-form]');
+        if (!form) return;
+        form.reset();
+        form.dataset.initialState = serializeForm(form);
+        updateSaveState(form);
       });
     });
-  });
 
-  document.querySelectorAll('[data-goal-description]').forEach((description) => {
-    const toggle = description.querySelector('[data-goal-description-toggle]');
-    if (!toggle) return;
-    description.classList.add('is-clamped');
-    const isOverflowing = description.scrollHeight > description.clientHeight + 1;
-    if (!isOverflowing) {
-      description.classList.remove('is-clamped');
-      toggle.hidden = true;
-      return;
-    }
-    toggle.hidden = false;
-    toggle.addEventListener('click', () => {
-      description.classList.remove('is-clamped');
-      toggle.hidden = true;
+    document.querySelectorAll('[data-kr-cancel]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const panel = button.closest('[data-kr-panel]');
+        const form = panel ? panel.querySelector('[data-kr-progress-form]') : null;
+        if (!form) return;
+        form.reset();
+        form.dataset.initialState = serializeForm(form);
+        updateSaveState(form);
+      });
     });
-  });
-</script>
-<script defer src="/static/app.js"></script>
+
+    const discardButton = document.querySelector('[data-kr-discard]');
+    if (discardButton) {
+      discardButton.addEventListener('click', () => {
+        const openPanel = document.querySelector('[data-kr-panel].show');
+        if (openPanel) {
+          const form = openPanel.querySelector('[data-kr-progress-form]');
+          if (form) {
+            form.reset();
+            form.dataset.initialState = serializeForm(form);
+            updateSaveState(form);
+          }
+          bootstrap.Collapse.getOrCreateInstance(openPanel, { toggle: false }).hide();
+        }
+        if (pendingPanel) {
+          const target = pendingPanel;
+          pendingPanel = null;
+          bootstrap.Collapse.getOrCreateInstance(target, { toggle: false }).show();
+        }
+        if (unsavedModal) {
+          unsavedModal.hide();
+        }
+      });
+    }
+
+    document.querySelectorAll('[data-weights-normalize]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const form = button.closest('form');
+        if (!form) return;
+        const inputs = Array.from(form.querySelectorAll('input[type="number"][name^="kr_weight_"]'));
+        if (!inputs.length) return;
+        const values = inputs.map((input) => Math.max(0, Number.parseFloat(input.value) || 0));
+        const total = values.reduce((sum, value) => sum + value, 0);
+        if (total === 0) return;
+        let normalized = values.map((value) => Math.round((value / total) * 100));
+        let diff = 100 - normalized.reduce((sum, value) => sum + value, 0);
+        let index = 0;
+        while (diff !== 0 && normalized.length > 0) {
+          normalized[index] += diff > 0 ? 1 : -1;
+          diff += diff > 0 ? -1 : 1;
+          index = (index + 1) % normalized.length;
+        }
+        inputs.forEach((input, idx) => {
+          input.value = normalized[idx];
+        });
+      });
+    });
+
+    document.querySelectorAll('[data-goal-description]').forEach((description) => {
+      const toggle = description.querySelector('[data-goal-description-toggle]');
+      if (!toggle) return;
+      description.classList.add('is-clamped');
+      const isOverflowing = description.scrollHeight > description.clientHeight + 1;
+      if (!isOverflowing) {
+        description.classList.remove('is-clamped');
+        toggle.hidden = true;
+        return;
+      }
+      toggle.hidden = false;
+      toggle.addEventListener('click', () => {
+        description.classList.remove('is-clamped');
+        toggle.hidden = true;
+      });
+    });
+  </script>
+  <script defer src="/static/app.js"></script>
 </body>
+
 </html>
 {{end}}
