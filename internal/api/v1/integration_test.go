@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -156,7 +158,11 @@ func runMigrations(databaseURL string) error {
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://../../migrations", "postgres", driver)
+	migrationsPath, err := resolveMigrationsPath()
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
 	if err != nil {
 		return err
 	}
@@ -164,4 +170,27 @@ func runMigrations(databaseURL string) error {
 		return err
 	}
 	return nil
+}
+
+func resolveMigrationsPath() (string, error) {
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	dir, err = filepath.Abs(dir)
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return filepath.Join(dir, "migrations"), nil
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf("go.mod not found (start dir: %s)", dir)
+		}
+		dir = parent
+	}
 }
