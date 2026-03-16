@@ -1591,13 +1591,22 @@
         html: true,
         placement: 'bottom',
         customClass: 'okr-popover',
+        container: 'body',
       });
       if (!isHoverable) return;
 
       let hideTimeout;
+      let isPointerOnTrigger = false;
+      let isPointerOnPopover = false;
+
+      const hideIfNotHovered = () => {
+        if (isPointerOnTrigger || isPointerOnPopover) return;
+        popover.hide();
+      };
+
       const scheduleHide = () => {
         cancelHide();
-        hideTimeout = window.setTimeout(() => popover.hide(), 150);
+        hideTimeout = window.setTimeout(hideIfNotHovered, 120);
       };
       const cancelHide = () => {
         if (hideTimeout) {
@@ -1607,16 +1616,33 @@
       };
 
       el.addEventListener('mouseenter', () => {
+        isPointerOnTrigger = true;
         cancelHide();
         popover.show();
       });
-      el.addEventListener('mouseleave', scheduleHide);
+      el.addEventListener('mouseleave', () => {
+        isPointerOnTrigger = false;
+        scheduleHide();
+      });
 
       el.addEventListener('shown.bs.popover', () => {
         const tip = popover.getTipElement();
         if (!tip) return;
-        tip.addEventListener('mouseenter', cancelHide);
-        tip.addEventListener('mouseleave', scheduleHide);
+        if (tip.dataset.hoverableBound === 'true') return;
+        tip.dataset.hoverableBound = 'true';
+
+        tip.addEventListener('mouseenter', () => {
+          isPointerOnPopover = true;
+          cancelHide();
+        });
+        tip.addEventListener('mouseleave', () => {
+          isPointerOnPopover = false;
+          scheduleHide();
+        });
+      });
+
+      el.addEventListener('hidden.bs.popover', () => {
+        isPointerOnPopover = false;
       });
     });
   };
