@@ -1594,6 +1594,8 @@
         container: 'body',
       });
       if (!isHoverable) return;
+      if (el.dataset.hoverablePopoverBound === 'true') return;
+      el.dataset.hoverablePopoverBound = 'true';
 
       let hideTimeout;
       let isPointerOnTrigger = false;
@@ -1606,7 +1608,7 @@
 
       const scheduleHide = () => {
         cancelHide();
-        hideTimeout = window.setTimeout(hideIfNotHovered, 120);
+        hideTimeout = window.setTimeout(hideIfNotHovered, 220);
       };
       const cancelHide = () => {
         if (hideTimeout) {
