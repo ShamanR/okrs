@@ -1602,7 +1602,9 @@
       let isPointerOnPopover = false;
 
       const hideIfNotHovered = () => {
-        if (isPointerOnTrigger || isPointerOnPopover) return;
+        const tip = popover.getTipElement();
+        const isTipHovered = Boolean(tip && tip.matches(':hover'));
+        if (isPointerOnTrigger || isPointerOnPopover || isTipHovered) return;
         popover.hide();
       };
 
