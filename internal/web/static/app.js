@@ -295,7 +295,7 @@
     head.innerHTML = `
       <tr>
         <th>Вес</th>
-        <th>Название</th>
+        <th class="okr-kr-title-col">Название</th>
         <th>Факт (%)</th>
         <th class="text-end"></th>
       </tr>`;
@@ -328,6 +328,7 @@
     weightCell.appendChild(weight);
 
     const titleCell = document.createElement('td');
+    titleCell.className = 'okr-kr-title-col';
     const titleWrap = document.createElement('div');
     titleWrap.className = 'd-flex flex-column align-items-start';
     if (isPeriodLocked()) {
@@ -338,7 +339,7 @@
     } else {
       const title = document.createElement('button');
       title.type = 'button';
-      title.className = 'btn btn-link p-0 fw-semibold';
+      title.className = 'btn btn-link p-0 fw-semibold okr-kr-title-button';
       title.textContent = kr.title;
       title.addEventListener('click', () => openKRModal(kr));
       titleWrap.appendChild(title);
@@ -410,7 +411,7 @@
 
     const commentLabel = document.createElement('label');
     commentLabel.className = 'form-label';
-    commentLabel.textContent = 'Комментарий';
+    commentLabel.textContent = 'Заметки';
     const commentInput = document.createElement('textarea');
     commentInput.className = 'form-control';
     commentInput.rows = 2;
@@ -806,7 +807,7 @@
     }
     const title = document.createElement('div');
     title.className = 'small text-muted';
-    title.textContent = 'Комментарии';
+    title.textContent = 'Заметки';
     const list = document.createElement('ul');
     list.className = 'list-unstyled mb-0';
     const item = document.createElement('li');
@@ -1521,6 +1522,13 @@
     const selectedTeam = page.dataset.selectedTeam || 'ALL';
     const selectedPeriod = page.dataset.periodId || periodSelect.value;
 
+    const applyFilters = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('period_id', periodSelect.value);
+      url.searchParams.set('team', hierarchySelect.value || 'ALL');
+      window.location.assign(url.toString());
+    };
+
     Promise.all([loadHierarchy(), loadPeriods()])
       .then(([tree, periods]) => {
         renderHierarchySelect(tree, hierarchySelect, selectedTeam);
@@ -1533,8 +1541,11 @@
 
     filtersForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      loadTeams();
+      applyFilters();
     });
+
+    periodSelect.addEventListener('change', applyFilters);
+    hierarchySelect.addEventListener('change', applyFilters);
   };
 
   const initTeamOKRPage = () => {
@@ -1584,7 +1595,14 @@
       if (!isHoverable) return;
 
       let hideTimeout;
-      const scheduleHide = () => {
+      const isInPopover = (node) => {
+        if (!node) return false;
+        const tip = popover.getTipElement();
+        return node === el || el.contains(node) || (tip && tip.contains(node));
+      };
+
+      const scheduleHide = (event) => {
+        if (isInPopover(event?.relatedTarget || null)) return;
         hideTimeout = window.setTimeout(() => popover.hide(), 150);
       };
       const cancelHide = () => {
@@ -1598,15 +1616,20 @@
         cancelHide();
         popover.show();
       });
-      el.addEventListener('mouseleave', () => {
-        scheduleHide();
+      el.addEventListener('mouseleave', scheduleHide);
+      el.addEventListener('focusin', () => {
+        cancelHide();
+        popover.show();
       });
+      el.addEventListener('focusout', scheduleHide);
 
       el.addEventListener('shown.bs.popover', () => {
         const tip = popover.getTipElement();
         if (!tip) return;
         tip.addEventListener('mouseenter', cancelHide);
         tip.addEventListener('mouseleave', scheduleHide);
+        tip.addEventListener('focusin', cancelHide);
+        tip.addEventListener('focusout', scheduleHide);
       });
     });
   };
