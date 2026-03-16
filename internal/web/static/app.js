@@ -1595,14 +1595,8 @@
       if (!isHoverable) return;
 
       let hideTimeout;
-      const isInPopover = (node) => {
-        if (!node) return false;
-        const tip = popover.getTipElement();
-        return node === el || el.contains(node) || (tip && tip.contains(node));
-      };
-
-      const scheduleHide = (event) => {
-        if (isInPopover(event?.relatedTarget || null)) return;
+      const scheduleHide = () => {
+        cancelHide();
         hideTimeout = window.setTimeout(() => popover.hide(), 150);
       };
       const cancelHide = () => {
@@ -1617,19 +1611,12 @@
         popover.show();
       });
       el.addEventListener('mouseleave', scheduleHide);
-      el.addEventListener('focusin', () => {
-        cancelHide();
-        popover.show();
-      });
-      el.addEventListener('focusout', scheduleHide);
 
       el.addEventListener('shown.bs.popover', () => {
         const tip = popover.getTipElement();
         if (!tip) return;
         tip.addEventListener('mouseenter', cancelHide);
         tip.addEventListener('mouseleave', scheduleHide);
-        tip.addEventListener('focusin', cancelHide);
-        tip.addEventListener('focusout', scheduleHide);
       });
     });
   };
