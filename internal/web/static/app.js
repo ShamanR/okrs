@@ -1600,11 +1600,15 @@
       let hideTimeout;
       let isPointerOnTrigger = false;
       let isPointerOnPopover = false;
+      let isFocusOnTrigger = false;
+      let isFocusOnPopover = false;
 
       const hideIfNotHovered = () => {
         const tip = popover.getTipElement();
         const isTipHovered = Boolean(tip && tip.matches(':hover'));
-        if (isPointerOnTrigger || isPointerOnPopover || isTipHovered) return;
+        const active = document.activeElement;
+        const isTipFocused = Boolean(tip && active && tip.contains(active));
+        if (isPointerOnTrigger || isPointerOnPopover || isTipHovered || isFocusOnTrigger || isFocusOnPopover || isTipFocused) return;
         popover.hide();
       };
 
@@ -1628,6 +1632,17 @@
         isPointerOnTrigger = false;
         scheduleHide();
       });
+      el.addEventListener('focusin', () => {
+        isFocusOnTrigger = true;
+        cancelHide();
+        popover.show();
+      });
+      el.addEventListener('focusout', (event) => {
+        const next = event.relatedTarget;
+        if (next && el.contains(next)) return;
+        isFocusOnTrigger = false;
+        scheduleHide();
+      });
 
       el.addEventListener('shown.bs.popover', () => {
         const tip = popover.getTipElement();
@@ -1643,10 +1658,22 @@
           isPointerOnPopover = false;
           scheduleHide();
         });
+        tip.addEventListener('focusin', () => {
+          isFocusOnPopover = true;
+          cancelHide();
+        });
+        tip.addEventListener('focusout', (event) => {
+          const next = event.relatedTarget;
+          if (next && tip.contains(next)) return;
+          isFocusOnPopover = false;
+          scheduleHide();
+        });
       });
 
       el.addEventListener('hidden.bs.popover', () => {
         isPointerOnPopover = false;
+        isFocusOnTrigger = false;
+        isFocusOnPopover = false;
       });
     });
   };
