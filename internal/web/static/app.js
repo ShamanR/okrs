@@ -295,7 +295,7 @@
     head.innerHTML = `
       <tr>
         <th>Вес</th>
-        <th>Название</th>
+        <th class="okr-kr-title-col">Название</th>
         <th>Факт (%)</th>
         <th class="text-end"></th>
       </tr>`;
@@ -328,6 +328,7 @@
     weightCell.appendChild(weight);
 
     const titleCell = document.createElement('td');
+    titleCell.className = 'okr-kr-title-col';
     const titleWrap = document.createElement('div');
     titleWrap.className = 'd-flex flex-column align-items-start';
     if (isPeriodLocked()) {
@@ -338,7 +339,7 @@
     } else {
       const title = document.createElement('button');
       title.type = 'button';
-      title.className = 'btn btn-link p-0 fw-semibold';
+      title.className = 'btn btn-link p-0 fw-semibold okr-kr-title-button';
       title.textContent = kr.title;
       title.addEventListener('click', () => openKRModal(kr));
       titleWrap.appendChild(title);
@@ -410,7 +411,7 @@
 
     const commentLabel = document.createElement('label');
     commentLabel.className = 'form-label';
-    commentLabel.textContent = 'Комментарий';
+    commentLabel.textContent = 'Заметки';
     const commentInput = document.createElement('textarea');
     commentInput.className = 'form-control';
     commentInput.rows = 2;
@@ -806,7 +807,7 @@
     }
     const title = document.createElement('div');
     title.className = 'small text-muted';
-    title.textContent = 'Комментарии';
+    title.textContent = 'Заметки';
     const list = document.createElement('ul');
     list.className = 'list-unstyled mb-0';
     const item = document.createElement('li');
@@ -1521,6 +1522,13 @@
     const selectedTeam = page.dataset.selectedTeam || 'ALL';
     const selectedPeriod = page.dataset.periodId || periodSelect.value;
 
+    const applyFilters = () => {
+      const url = new URL(window.location.href);
+      url.searchParams.set('period_id', periodSelect.value);
+      url.searchParams.set('team', hierarchySelect.value || 'ALL');
+      window.location.assign(url.toString());
+    };
+
     Promise.all([loadHierarchy(), loadPeriods()])
       .then(([tree, periods]) => {
         renderHierarchySelect(tree, hierarchySelect, selectedTeam);
@@ -1533,8 +1541,11 @@
 
     filtersForm.addEventListener('submit', (event) => {
       event.preventDefault();
-      loadTeams();
+      applyFilters();
     });
+
+    periodSelect.addEventListener('change', applyFilters);
+    hierarchySelect.addEventListener('change', applyFilters);
   };
 
   const initTeamOKRPage = () => {
@@ -1580,12 +1591,30 @@
         html: true,
         placement: 'bottom',
         customClass: 'okr-popover',
+        container: 'body',
       });
       if (!isHoverable) return;
+      if (el.dataset.hoverablePopoverBound === 'true') return;
+      el.dataset.hoverablePopoverBound = 'true';
 
       let hideTimeout;
+      let isPointerOnTrigger = false;
+      let isPointerOnPopover = false;
+      let isFocusOnTrigger = false;
+      let isFocusOnPopover = false;
+
+      const hideIfNotHovered = () => {
+        const tip = popover.getTipElement();
+        const isTipHovered = Boolean(tip && tip.matches(':hover'));
+        const active = document.activeElement;
+        const isTipFocused = Boolean(tip && active && tip.contains(active));
+        if (isPointerOnTrigger || isPointerOnPopover || isTipHovered || isFocusOnTrigger || isFocusOnPopover || isTipFocused) return;
+        popover.hide();
+      };
+
       const scheduleHide = () => {
-        hideTimeout = window.setTimeout(() => popover.hide(), 150);
+        cancelHide();
+        hideTimeout = window.setTimeout(hideIfNotHovered, 220);
       };
       const cancelHide = () => {
         if (hideTimeout) {
@@ -1595,18 +1624,56 @@
       };
 
       el.addEventListener('mouseenter', () => {
+        isPointerOnTrigger = true;
         cancelHide();
         popover.show();
       });
       el.addEventListener('mouseleave', () => {
+        isPointerOnTrigger = false;
+        scheduleHide();
+      });
+      el.addEventListener('focusin', () => {
+        isFocusOnTrigger = true;
+        cancelHide();
+        popover.show();
+      });
+      el.addEventListener('focusout', (event) => {
+        const next = event.relatedTarget;
+        if (next && el.contains(next)) return;
+        isFocusOnTrigger = false;
         scheduleHide();
       });
 
       el.addEventListener('shown.bs.popover', () => {
         const tip = popover.getTipElement();
         if (!tip) return;
-        tip.addEventListener('mouseenter', cancelHide);
-        tip.addEventListener('mouseleave', scheduleHide);
+        if (tip.dataset.hoverableBound === 'true') return;
+        tip.dataset.hoverableBound = 'true';
+
+        tip.addEventListener('mouseenter', () => {
+          isPointerOnPopover = true;
+          cancelHide();
+        });
+        tip.addEventListener('mouseleave', () => {
+          isPointerOnPopover = false;
+          scheduleHide();
+        });
+        tip.addEventListener('focusin', () => {
+          isFocusOnPopover = true;
+          cancelHide();
+        });
+        tip.addEventListener('focusout', (event) => {
+          const next = event.relatedTarget;
+          if (next && tip.contains(next)) return;
+          isFocusOnPopover = false;
+          scheduleHide();
+        });
+      });
+
+      el.addEventListener('hidden.bs.popover', () => {
+        isPointerOnPopover = false;
+        isFocusOnTrigger = false;
+        isFocusOnPopover = false;
       });
     });
   };
