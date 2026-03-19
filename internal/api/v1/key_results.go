@@ -3,6 +3,7 @@ package v1
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
@@ -23,7 +24,8 @@ func (h *Handler) handleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	if req.Text == "" {
+	req.Text = strings.ReplaceAll(req.Text, "\r\n", "\n")
+	if strings.TrimSpace(req.Text) == "" {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
