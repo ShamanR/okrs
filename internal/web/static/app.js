@@ -1069,12 +1069,16 @@
     const selectedTeamIds = (goal.share_teams || []).map((team) => team.id);
     const buildOptions = (currentTeamId, tree = hierarchy, level = 0) => {
       let html = '';
+      if (level === 0) {
+        const currentTeam = teamsById.get(currentTeamId);
+        if (currentTeam) {
+          html += `<option value="${currentTeam.id}" selected hidden>${currentTeam.type_label} ${escapeHTML(currentTeam.name)}</option>`;
+        }
+      }
       tree.forEach((node) => {
-        const isSelectedElsewhere = selectedTeamIds.includes(node.id) && node.id !== currentTeamId;
-        if (!isSelectedElsewhere) {
+        if (!selectedTeamIds.includes(node.id)) {
           const prefix = '&nbsp;'.repeat(level * 2);
-          const isSelected = node.id === currentTeamId ? ' selected' : '';
-          html += `<option value="${node.id}"${isSelected}>${prefix}${node.type_label} ${escapeHTML(node.name)}</option>`;
+          html += `<option value="${node.id}">${prefix}${node.type_label} ${escapeHTML(node.name)}</option>`;
         }
         if (node.children && node.children.length) {
           html += buildOptions(currentTeamId, node.children, level + 1);
@@ -1093,8 +1097,8 @@
               ${buildOptions(teamId)}
             </select>
           </div>
-          <div class="col-md-4">
-            <button class="btn btn-outline-danger w-100" type="button" data-remove-share${canRemove ? '' : ' disabled'}>&times;</button>
+          <div class="col-auto">
+            <button class="btn btn-outline-danger px-3" type="button" data-remove-share${canRemove ? '' : ' disabled'}>&times;</button>
           </div>
         </div>`;
     };
