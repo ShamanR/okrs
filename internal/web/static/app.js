@@ -1052,75 +1052,122 @@
   const openShareGoalModal = async (goal) => {
     const hierarchy = state.hierarchy || (await fetchJSON('/api/v1/hierarchy')).items || [];
     state.hierarchy = hierarchy;
-    const existingTeams = goal.share_teams || [];
-    const existingTeamIds = new Set(existingTeams.map((team) => team.id));
-    const buildOptions = (tree, level = 0) => {
-      let html = '';
+    const teamsById = new Map();
+    const collectTeams = (tree) => {
       tree.forEach((node) => {
-        if (!existingTeamIds.has(node.id)) {
+        teamsById.set(node.id, node);
+        if (node.children && node.children.length) {
+          collectTeams(node.children);
+        }
+      });
+    };
+    collectTeams(hierarchy);
+    (goal.share_teams || []).forEach((team) => {
+      teamsById.set(team.id, team);
+    });
+
+    const selectedTeamIds = (goal.share_teams || []).map((team) => team.id);
+    const buildOptions = (currentTeamId, tree = hierarchy, level = 0) => {
+      let html = '';
+      if (level === 0) {
+        const currentTeam = teamsById.get(currentTeamId);
+        if (currentTeam) {
+          html += `<option value="${currentTeam.id}" selected hidden>${currentTeam.type_label} ${escapeHTML(currentTeam.name)}</option>`;
+        }
+      }
+      tree.forEach((node) => {
+        if (!selectedTeamIds.includes(node.id)) {
           const prefix = '&nbsp;'.repeat(level * 2);
           html += `<option value="${node.id}">${prefix}${node.type_label} ${escapeHTML(node.name)}</option>`;
         }
         if (node.children && node.children.length) {
-          html += buildOptions(node.children, level + 1);
+          html += buildOptions(currentTeamId, node.children, level + 1);
         }
       });
       return html;
     };
-    const options = buildOptions(hierarchy);
-    const buildRow = () => `
-      <div class="row g-2 align-items-end" data-share-row>
-        <div class="col-md-7">
-          <label class="form-label">Команда</label>
-          <select class="form-select" name="team_id">
-            ${options}
-          </select>
-        </div>
-      </div>`;
-    const sharedList = existingTeams.length
-      ? `<div class="vstack gap-1">
-          <div class="small text-muted">Уже шарят цель</div>
-          <ul class="list-unstyled mb-0">
-            ${existingTeams
-        .map((team) => `<li><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</li>`)
-        .join('')}
-          </ul>
-        </div>`
-      : '';
+    const buildRow = (teamId, index, canRemove) => {
+      const team = teamsById.get(teamId);
+      const teamLabel = team ? `${team.type_label} ${escapeHTML(team.name)}` : 'Команда';
+      return `
+        <div class="row g-2 align-items-end" data-share-row data-share-index="${index}">
+          <div class="col-md-8">
+            <label class="form-label">Команда</label>
+            <select class="form-select" name="team_id" aria-label="${teamLabel}">
+              ${buildOptions(teamId)}
+            </select>
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-outline-danger px-3" type="button" data-remove-share${canRemove ? '' : ' disabled'}>&times;</button>
+          </div>
+        </div>`;
+    };
     const body = `
       <form class="vstack gap-3" data-share-goal-form>
-        ${sharedList}
-        <div data-share-list class="vstack gap-2">
-          ${buildRow()}
-        </div>
-        <button class="btn btn-outline-secondary btn-sm" type="button" data-add-share>Добавить команду</button>
+        <div class="small text-muted">Команды, владеющие целью</div>
+        <div data-share-list class="vstack gap-2"></div>
+        <button class="btn btn-outline-secondary btn-sm align-self-start" type="button" data-add-share>Добавить команду</button>
         <button class="btn btn-primary" type="submit">Сохранить</button>
       </form>`;
     const modalEl = openModal('Шарить цель', body);
     const form = modalEl.querySelector('[data-share-goal-form]');
+    const list = modalEl.querySelector('[data-share-list]');
     const addButton = modalEl.querySelector('[data-add-share]');
+
+    const renderRows = () => {
+      list.innerHTML = selectedTeamIds.map((teamId, index) => buildRow(teamId, index, selectedTeamIds.length > 1)).join('');
+      addButton.disabled = teamsById.size === selectedTeamIds.length;
+    };
+
     addButton.addEventListener('click', () => {
-      const list = modalEl.querySelector('[data-share-list]');
-      list.insertAdjacentHTML('beforeend', buildRow());
+      const nextTeam = Array.from(teamsById.keys()).find((teamId) => !selectedTeamIds.includes(teamId));
+      if (!nextTeam) return;
+      selectedTeamIds.push(nextTeam);
+      renderRows();
     });
+
+    list.addEventListener('click', (event) => {
+      const removeButton = event.target.closest('[data-remove-share]');
+      if (!removeButton || selectedTeamIds.length <= 1) return;
+      const row = removeButton.closest('[data-share-row]');
+      const index = Number(row?.dataset.shareIndex);
+      if (Number.isNaN(index)) return;
+      selectedTeamIds.splice(index, 1);
+      renderRows();
+    });
+
+    list.addEventListener('change', (event) => {
+      const select = event.target.closest('select[name="team_id"]');
+      if (!select) return;
+      const row = select.closest('[data-share-row]');
+      const index = Number(row?.dataset.shareIndex);
+      const teamId = Number(select.value);
+      if (Number.isNaN(index) || !teamId) return;
+      selectedTeamIds[index] = teamId;
+      renderRows();
+    });
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const rows = Array.from(form.querySelectorAll('[data-share-row]'));
-      const targets = rows
-        .map((row) => {
-          const teamId = Number(row.querySelector('select[name="team_id"]').value);
-          return { team_id: teamId, weight: 0 };
-        })
-        .filter((target) => target.team_id && !existingTeamIds.has(target.team_id));
-      if (targets.length === 0) return;
-      await fetchJSON(`/api/v1/goals/${goal.id}/share`, {
-        method: 'POST',
-        headers: jsonHeaders,
-        body: JSON.stringify({ targets }),
+      if (selectedTeamIds.length === 0) return;
+      const payload = new FormData();
+      selectedTeamIds.forEach((teamId) => {
+        payload.append('team_ids', String(teamId));
       });
+      payload.append('return', `${window.location.pathname}${window.location.search}`);
+
+      const response = await fetch(`/goals/${goal.id}/share`, {
+        method: 'POST',
+        body: payload,
+      });
+      if (!response.ok) {
+        throw new Error('Не удалось обновить список команд для цели');
+      }
       await reloadTeamOKR();
       bootstrap.Modal.getInstance(modalEl)?.hide();
     });
+
+    renderRows();
   };
 
   const openKRModalWithAction = (kr, action, titleText) => {
