@@ -822,7 +822,7 @@
 
   function getLatestComment(kr) {
     if (!kr.comments || kr.comments.length === 0) return null;
-    return kr.comments[kr.comments.length - 1];
+    return kr.comments[0];
   }
 
   const renderSharedGoalBadge = (goal, options = {}) => {

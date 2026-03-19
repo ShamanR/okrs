@@ -97,7 +97,7 @@ func (s *Store) AddKeyResultComment(ctx context.Context, krID int64, text string
 }
 
 func (s *Store) ListKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, key_result_id, text, created_at FROM key_result_comments WHERE key_result_id=$1 ORDER BY created_at DESC`, krID)
+	rows, err := s.DB.Query(ctx, `SELECT id, key_result_id, text, created_at FROM key_result_comments WHERE key_result_id=$1 ORDER BY created_at DESC LIMIT 3`, krID)
 	if err != nil {
 		return nil, err
 	}
