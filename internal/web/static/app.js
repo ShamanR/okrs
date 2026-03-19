@@ -476,8 +476,8 @@
             headers: jsonHeaders,
             body: JSON.stringify({ current_value: parseFloat(currentInput.value) }),
           });
-          const comment = commentInput.value.trim();
-          if (comment && kr.comments[0] && comment != kr.comments[0].text) {
+          const { normalized: comment, trimmed } = prepareCommentForSave(commentInput.value);
+          if (trimmed && comment !== (kr.comments[0]?.text ?? '')) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
               headers: jsonHeaders,
@@ -525,8 +525,8 @@
             headers: jsonHeaders,
             body: JSON.stringify({ done: checkbox.checked }),
           });
-          const comment = commentInput.value.trim();
-          if (comment && kr.comments[0] && comment != kr.comments[0].text) {
+          const { normalized: comment, trimmed } = prepareCommentForSave(commentInput.value);
+          if (trimmed && comment !== (kr.comments[0]?.text ?? '')) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
               headers: jsonHeaders,
@@ -582,8 +582,8 @@
             headers: jsonHeaders,
             body: JSON.stringify({ stages: stagesPayload }),
           });
-          const comment = commentInput.value.trim();
-          if (comment && kr.comments[0] && comment != kr.comments[0].text) {
+          const { normalized: comment, trimmed } = prepareCommentForSave(commentInput.value);
+          if (trimmed && comment !== (kr.comments[0]?.text ?? '')) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
               headers: jsonHeaders,
@@ -810,11 +810,21 @@
     const list = document.createElement('ul');
     list.className = 'list-unstyled mb-0';
     const item = document.createElement('li');
-    item.className = 'small';
+    item.className = 'small okr-kr-comment is-clamped';
     item.textContent = latestComment.text;
     list.appendChild(item);
     container.append(title, list);
     return container;
+  };
+
+  const normalizeCommentText = (value) => value.replace(/\r\n/g, '\n');
+
+  const prepareCommentForSave = (value) => {
+    const normalized = normalizeCommentText(value);
+    return {
+      normalized,
+      trimmed: normalized.trim(),
+    };
   };
 
   const sumKRWeights = (krs) => krs.reduce((sum, kr) => sum + (kr.weight || 0), 0);

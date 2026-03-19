@@ -143,6 +143,108 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	}
 }
 
+func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	repo := store.New(pool)
+	var teamID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('API') RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("insert team: %v", err)
+	}
+	var periodID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+
+	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
+		TeamID:      teamID,
+		PeriodID:    periodID,
+		Title:       "API Goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	})
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	krID, err := repo.CreateKeyResult(ctx, store.KeyResultInput{
+		GoalID:      goalID,
+		Title:       "KR",
+		Description: "",
+		Weight:      100,
+		Kind:        domain.KRKindBoolean,
+	})
+	if err != nil {
+		t.Fatalf("create kr: %v", err)
+	}
+
+	svc := service.New(repo)
+	handler := NewHandler(svc)
+	router := chi.NewRouter()
+	router.Mount("/api/v1", handler.Routes())
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	commentText := "Первая строка\r\nВторая строка\r\nТретья строка"
+	payload, _ := json.Marshal(map[string]string{"text": commentText})
+	resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/comments", server.URL, krID), "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		t.Fatalf("post comment: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	comments, err := repo.LastKeyResultComments(ctx, krID)
+	if err != nil {
+		t.Fatalf("list comments: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Fatalf("expected one comment, got %d", len(comments))
+	}
+	want := "Первая строка\nВторая строка\nТретья строка"
+	if comments[0].Text != want {
+		t.Fatalf("expected %q, got %q", want, comments[0].Text)
+	}
+}
+
 func runMigrations(databaseURL string) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
