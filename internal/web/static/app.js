@@ -477,7 +477,7 @@
             body: JSON.stringify({ current_value: parseFloat(currentInput.value) }),
           });
           const comment = commentInput.value.trim();
-          if (comment) {
+          if (comment && kr.comments[0] && comment != kr.comments[0].text) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
               headers: jsonHeaders,
@@ -526,7 +526,7 @@
             body: JSON.stringify({ done: checkbox.checked }),
           });
           const comment = commentInput.value.trim();
-          if (comment) {
+          if (comment && kr.comments[0] && comment != kr.comments[0].text) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
               headers: jsonHeaders,
@@ -583,7 +583,7 @@
             body: JSON.stringify({ stages: stagesPayload }),
           });
           const comment = commentInput.value.trim();
-          if (comment) {
+          if (comment && kr.comments[0] && comment != kr.comments[0].text) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
               headers: jsonHeaders,
@@ -797,7 +797,6 @@
       { name: 'team_id', value: state.teamOKR.team.id },
     ];
   };
-
   const renderKRComments = (kr) => {
     const container = document.createElement('div');
     container.className = 'mt-2';

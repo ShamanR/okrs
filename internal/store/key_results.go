@@ -84,7 +84,7 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 			}
 		}
 
-		comments, _ := s.ListKeyResultComments(ctx, kr.ID)
+		comments, _ := s.LastKeyResultComments(ctx, kr.ID)
 		kr.Comments = comments
 	}
 
@@ -96,8 +96,9 @@ func (s *Store) AddKeyResultComment(ctx context.Context, krID int64, text string
 	return err
 }
 
-func (s *Store) ListKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, key_result_id, text, created_at FROM key_result_comments WHERE key_result_id=$1 ORDER BY created_at DESC LIMIT 3`, krID)
+func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
+	const Limit = 3
+	rows, err := s.DB.Query(ctx, `SELECT id, key_result_id, text, created_at FROM key_result_comments WHERE key_result_id=$1 ORDER BY created_at DESC LIMIT $2`, krID, Limit)
 	if err != nil {
 		return nil, err
 	}
