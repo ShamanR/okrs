@@ -94,58 +94,79 @@ Content-Type: `application/json; charset=utf-8`
 ### Мутации
 
 - `POST /api/v1/krs/{id}/progress/percent`
+
   ```json
   { "current_value": 42.5 }
   ```
+
 - `POST /api/v1/krs/{id}/progress/boolean`
+
   ```json
   { "done": true }
   ```
+
 - `POST /api/v1/krs/{id}/progress/project`
+
   ```json
   { "stages": [ { "id": 1, "done": true } ] }
   ```
+
 - `POST /api/v1/goals/{goalID}/share`
+
   ```json
   { "targets": [ { "team_id": 10, "weight": 50 } ] }
   ```
+
 - `POST /api/v1/goals/{goalID}/weight`
+
   ```json
   { "team_id": 10, "weight": 60 }
   ```
+
 - `POST /api/v1/goals/{goalID}/comments`
+
   ```json
   { "text": "Комментарий" }
   ```
+
 - `POST /api/v1/krs/{id}/comments`
+
   ```json
   { "text": "Комментарий" }
   ```
+
 - `POST /api/v1/goals/{goalID}` (form)
+
   ```text
   title=...&description=...&priority=P0|P1|P2|P3&weight=50&
   work_type=Discovery|Delivery&focus_type=PROFITABILITY|STABILITY|SPEED_EFFICIENCY|TECH_INDEPENDENCE&
   owner_text=...&team_id=123
   ```
+
   - `team_id` опционален: если цель расшарена, вес обновится только для указанной команды.
 - `POST /api/v1/goals/{goalID}/key-results` (form)
+
   ```text
   title=...&description=...&weight=25&kind=percent|linear|boolean|project
   ```
+
   - для `percent`: `percent_start`, `percent_target`, `percent_current`
   - для `linear`: `linear_start`, `linear_target`, `linear_current`
   - для `boolean`: `boolean_done=true|false`
   - для `project`: `stage_title[]`, `stage_weight[]`
 - `POST /api/v1/krs/{id}` (form)
+
   ```text
   title=...&description=...&weight=25&kind=percent|linear|boolean|project
   ```
+
   - поля meta те же, что и при создании KR
 - `POST /api/v1/goals/{goalID}/move-up` (form)
 - `POST /api/v1/goals/{goalID}/move-down` (form)
 - `POST /api/v1/krs/{id}/move-up` (form)
 - `POST /api/v1/krs/{id}/move-down` (form)
 - `POST /api/v1/teams/{teamID}/status?period_id=42` (form)
+
   ```text
   status=no_goals|forming|in_progress|validated|closed
   ```
