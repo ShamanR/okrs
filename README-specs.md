@@ -21,6 +21,4 @@
   030-user-flows.md
   040-api-contract.md
   050-permissions-and-lifecycle.md
-  060-nonfunctional-requirements.md
-  070-roadmap-vnext.md
 ```
