@@ -329,6 +329,29 @@ func TestGetTeamsWithPeriodSummaryShowsOnlyActiveTeamsInCurrentPeriod(t *testing
 	}
 }
 
+func TestGetTeamsWithPeriodSummaryKeepsDeletedTeamsWithCurrentGoalsVisible(t *testing.T) {
+	deletedAt := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.currentPeriod = domain.Period{ID: 2}
+	store.teams = []domain.Team{
+		{ID: 1, Name: "Active", Type: domain.TeamTypeUnit},
+		{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt},
+	}
+	store.goalsByTeam[2] = map[int64][]domain.Goal{2: {{ID: 200, TeamID: 2, PeriodID: 2, Title: "Current"}}}
+	service := New(store)
+
+	rows, err := service.GetTeamsWithPeriodSummary(context.Background(), 2, nil)
+	if err != nil {
+		t.Fatalf("get team summaries: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected active team and deleted team with current goals, got %+v", rows)
+	}
+	if rows[1].ID != 2 {
+		t.Fatalf("expected deleted team with current goals to remain visible, got %+v", rows)
+	}
+}
+
 func TestGetTeamOKRAllowsDeletedTeamInHistoricalPeriodWithGoals(t *testing.T) {
 	deletedAt := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
 	store := newFakeStore()
@@ -356,6 +379,23 @@ func TestGetTeamOKRRejectsDeletedTeamInCurrentPeriod(t *testing.T) {
 	_, err := service.GetTeamOKR(context.Background(), 2, 2, domain.Period{ID: 2, Name: "2025 Q1"})
 	if err != ErrTeamNotVisibleInPeriod {
 		t.Fatalf("expected ErrTeamNotVisibleInPeriod, got %v", err)
+	}
+}
+
+func TestGetTeamOKRAllowsDeletedTeamInCurrentPeriodWhenGoalsExist(t *testing.T) {
+	deletedAt := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.currentPeriod = domain.Period{ID: 2}
+	store.teams = []domain.Team{{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt}}
+	store.goalsByTeam[2] = map[int64][]domain.Goal{2: {{ID: 200, TeamID: 2, PeriodID: 2, Title: "Current"}}}
+	service := New(store)
+
+	okr, err := service.GetTeamOKR(context.Background(), 2, 2, domain.Period{ID: 2, Name: "2025 Q1"})
+	if err != nil {
+		t.Fatalf("expected deleted team with current goals to be visible, got %v", err)
+	}
+	if okr.Team.ID != 2 || len(okr.Goals) != 1 {
+		t.Fatalf("expected current deleted team okr to load")
 	}
 }
 

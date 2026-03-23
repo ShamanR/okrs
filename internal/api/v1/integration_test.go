@@ -371,6 +371,45 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if currentDeletedResp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 for deleted team in current period, got %d", currentDeletedResp.StatusCode)
 	}
+
+	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+		TeamID:      deletedTeamID,
+		PeriodID:    currentPeriodID,
+		Title:       "Current goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	}); err != nil {
+		t.Fatalf("create current goal: %v", err)
+	}
+
+	currentAgainResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current teams after goal: %v", err)
+	}
+	defer currentAgainResp.Body.Close()
+	if currentAgainResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for current teams after goal, got %d", currentAgainResp.StatusCode)
+	}
+	var currentTeamsWithGoal teamsResponse
+	if err := json.NewDecoder(currentAgainResp.Body).Decode(&currentTeamsWithGoal); err != nil {
+		t.Fatalf("decode current teams after goal: %v", err)
+	}
+	if len(currentTeamsWithGoal.Items) != 2 {
+		t.Fatalf("expected deleted team with current goal to become visible, got %+v", currentTeamsWithGoal.Items)
+	}
+
+	currentDeletedVisibleResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current deleted team okr after goal: %v", err)
+	}
+	defer currentDeletedVisibleResp.Body.Close()
+	if currentDeletedVisibleResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for deleted team with current goal, got %d", currentDeletedVisibleResp.StatusCode)
+	}
 }
 
 func runMigrations(databaseURL string) error {

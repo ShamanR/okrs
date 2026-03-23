@@ -481,10 +481,17 @@ func (s *Service) isTeamVisibleInPeriod(ctx context.Context, team domain.Team, p
 }
 
 func (s *Service) isTeamVisibleInPeriodWithCurrent(ctx context.Context, team domain.Team, periodID, currentPeriodID int64) (bool, error) {
+	hasGoals, err := s.store.TeamHasGoalsInPeriod(ctx, team.ID, periodID)
+	if err != nil {
+		return false, err
+	}
+	if hasGoals {
+		return true, nil
+	}
 	if currentPeriodID != 0 && currentPeriodID == periodID {
 		return team.DeletedAt == nil, nil
 	}
-	return s.store.TeamHasGoalsInPeriod(ctx, team.ID, periodID)
+	return false, nil
 }
 
 func (s *Service) listGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]TeamShareInfo, error) {
