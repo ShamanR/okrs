@@ -488,10 +488,7 @@ func (s *Service) isTeamVisibleInPeriodWithCurrent(ctx context.Context, team dom
 	if hasGoals {
 		return true, nil
 	}
-	if currentPeriodID != 0 && currentPeriodID == periodID {
-		return team.DeletedAt == nil, nil
-	}
-	return false, nil
+	return team.DeletedAt == nil, nil
 }
 
 func (s *Service) listGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]TeamShareInfo, error) {

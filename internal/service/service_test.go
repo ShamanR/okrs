@@ -282,7 +282,7 @@ func TestHardDeleteTeamRejectsTeamsWithGoals(t *testing.T) {
 	}
 }
 
-func TestGetTeamsWithPeriodSummaryShowsOnlyHistoricalTeamsWithGoals(t *testing.T) {
+func TestGetTeamsWithPeriodSummaryKeepsActiveTeamsWithoutHistoricalGoalsVisible(t *testing.T) {
 	deletedAt := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
 	store := newFakeStore()
 	store.currentPeriod = domain.Period{ID: 2}
@@ -299,14 +299,14 @@ func TestGetTeamsWithPeriodSummaryShowsOnlyHistoricalTeamsWithGoals(t *testing.T
 	if err != nil {
 		t.Fatalf("get team summaries: %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("expected only historical team with goals, got %d", len(rows))
+	if len(rows) != 3 {
+		t.Fatalf("expected active teams plus deleted historical team, got %d", len(rows))
 	}
-	if rows[0].ID != 2 {
-		t.Fatalf("expected deleted historical team to stay visible")
+	if rows[0].ID != 1 || rows[1].ID != 2 || rows[2].ID != 3 {
+		t.Fatalf("expected active parent, deleted child with goals, and active child, got %+v", rows)
 	}
-	if rows[0].Indent != 0 {
-		t.Fatalf("expected hidden parent to not reserve indent, got %d", rows[0].Indent)
+	if rows[1].Indent != 24 || rows[2].Indent != 24 {
+		t.Fatalf("expected children to remain nested under active parent, got %+v", rows)
 	}
 }
 
@@ -366,6 +366,21 @@ func TestGetTeamOKRAllowsDeletedTeamInHistoricalPeriodWithGoals(t *testing.T) {
 	}
 	if okr.Team.ID != 2 || len(okr.Goals) != 1 {
 		t.Fatalf("expected historical deleted team okr to load")
+	}
+}
+
+func TestGetTeamOKRAllowsActiveTeamWithoutHistoricalGoals(t *testing.T) {
+	store := newFakeStore()
+	store.currentPeriod = domain.Period{ID: 2}
+	store.teams = []domain.Team{{ID: 1, Name: "Active", Type: domain.TeamTypeTeam}}
+	service := New(store)
+
+	okr, err := service.GetTeamOKR(context.Background(), 1, 1, domain.Period{ID: 1, Name: "2024 Q4"})
+	if err != nil {
+		t.Fatalf("expected active team without historical goals to stay visible, got %v", err)
+	}
+	if okr.Team.ID != 1 || len(okr.Goals) != 0 {
+		t.Fatalf("expected empty okr page for active team without goals")
 	}
 }
 

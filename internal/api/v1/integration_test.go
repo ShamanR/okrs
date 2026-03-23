@@ -350,8 +350,11 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if err := json.NewDecoder(historyResp.Body).Decode(&historyTeams); err != nil {
 		t.Fatalf("decode history teams: %v", err)
 	}
-	if len(historyTeams.Items) != 1 || historyTeams.Items[0].ID != deletedTeamID {
-		t.Fatalf("expected deleted historical team in history period, got %+v", historyTeams.Items)
+	if len(historyTeams.Items) != 2 {
+		t.Fatalf("expected active team without goals plus deleted historical team, got %+v", historyTeams.Items)
+	}
+	if historyTeams.Items[0].ID != activeTeamID || historyTeams.Items[1].ID != deletedTeamID {
+		t.Fatalf("unexpected history teams order/content: %+v", historyTeams.Items)
 	}
 
 	okrResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, historyPeriodID))
@@ -361,6 +364,15 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	defer okrResp.Body.Close()
 	if okrResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for historical deleted team, got %d", okrResp.StatusCode)
+	}
+
+	activeHistoryResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, activeTeamID, historyPeriodID))
+	if err != nil {
+		t.Fatalf("get active team history okr: %v", err)
+	}
+	defer activeHistoryResp.Body.Close()
+	if activeHistoryResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for active team without historical goals, got %d", activeHistoryResp.StatusCode)
 	}
 
 	currentDeletedResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
