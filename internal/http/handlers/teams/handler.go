@@ -12,6 +12,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/common"
 	"okrs/internal/okr"
+	"okrs/internal/service"
 	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"
@@ -98,13 +99,16 @@ type teamManageRow struct {
 	TypeLabel   string
 	Lead        string
 	Description string
+	DeletedAt   string
 	IndentPx    int
 }
 
 type teamManagePage struct {
 	PageTitle       string
 	ContentTemplate string
+	FormError       string
 	Teams           []teamManageRow
+	DeletedTeams    []teamManageRow
 }
 
 type teamFormPage struct {
@@ -169,17 +173,7 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleTeamManagement(w http.ResponseWriter, r *http.Request) {
-	teams, err := h.deps.Store.ListTeams(r.Context())
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	page := teamManagePage{
-		PageTitle:       "Управление командами",
-		ContentTemplate: "team-manage-content",
-		Teams:           buildTeamManagementRows(teams),
-	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	h.renderTeamManagement(w, r, "")
 }
 
 func (h *Handler) resolvePeriodFilter(ctx context.Context, r *http.Request) (domain.Period, string, []domain.Period, error) {
@@ -260,6 +254,27 @@ func persistTeamsFilters(w http.ResponseWriter, periodValue, selectedFilter stri
 	})
 }
 
+func (h *Handler) renderTeamManagement(w http.ResponseWriter, r *http.Request, formError string) {
+	activeTeams, err := h.deps.Store.ListTeams(r.Context())
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	deletedTeams, err := h.deps.Store.ListDeletedTeams(r.Context())
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	page := teamManagePage{
+		PageTitle:       "Управление командами",
+		ContentTemplate: "team-manage-content",
+		FormError:       formError,
+		Teams:           buildTeamManagementRows(activeTeams),
+		DeletedTeams:    buildTeamManagementRows(deletedTeams),
+	}
+	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+}
+
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := r.ParseForm(); err != nil {
@@ -322,7 +337,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
-	teams, err := h.deps.Store.ListTeams(r.Context())
+	teams, err := h.deps.Store.ListAllTeams(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -345,6 +360,10 @@ func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
 	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if team.DeletedAt != nil {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("deleted team cannot be edited"))
 		return
 	}
 	teams, err := h.deps.Store.ListTeams(r.Context())
@@ -516,7 +535,39 @@ func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Store.DeleteTeam(ctx, teamID); err != nil {
+	if err := h.deps.Service.DeleteTeam(ctx, teamID); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, "/teams", http.StatusSeeOther)
+}
+
+func (h *Handler) HandleRestoreTeam(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Service.RestoreTeam(ctx, teamID); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	http.Redirect(w, r, "/teams", http.StatusSeeOther)
+}
+
+func (h *Handler) HandleHardDeleteTeam(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
+	}
+	if err := h.deps.Service.HardDeleteTeam(ctx, teamID); err != nil {
+		if err == service.ErrTeamHasGoals {
+			h.renderTeamManagement(w, r, "Команду нельзя удалить окончательно: у неё есть цели хотя бы в одном периоде.")
+			return
+		}
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -843,21 +894,28 @@ func buildGoalShareTargets(base []shareTeamOption, goalShareIDs map[int64]map[in
 func buildTeamHierarchy(teams []domain.Team) (map[int64]domain.Team, map[int64][]domain.Team, []domain.Team) {
 	teamsByID := make(map[int64]domain.Team, len(teams))
 	childrenMap := make(map[int64][]domain.Team)
+	roots := make([]domain.Team, 0)
 	for _, team := range teams {
 		teamsByID[team.ID] = team
-		parentKey := int64(0)
+	}
+	for _, team := range teams {
 		if team.ParentID != nil {
-			parentKey = *team.ParentID
+			if _, ok := teamsByID[*team.ParentID]; ok {
+				childrenMap[*team.ParentID] = append(childrenMap[*team.ParentID], team)
+				continue
+			}
 		}
-		childrenMap[parentKey] = append(childrenMap[parentKey], team)
+		roots = append(roots, team)
 	}
 	for key := range childrenMap {
 		sort.Slice(childrenMap[key], func(i, j int) bool {
 			return childrenMap[key][i].Name < childrenMap[key][j].Name
 		})
 	}
-	rootTeams := childrenMap[0]
-	return teamsByID, childrenMap, rootTeams
+	sort.Slice(roots, func(i, j int) bool {
+		return roots[i].Name < roots[j].Name
+	})
+	return teamsByID, childrenMap, roots
 }
 
 func buildTeamManagementRows(teams []domain.Team) []teamManageRow {
@@ -865,12 +923,17 @@ func buildTeamManagementRows(teams []domain.Team) []teamManageRow {
 	rows := make([]teamManageRow, 0, len(teams))
 	var appendTeam func(team domain.Team, level int)
 	appendTeam = func(team domain.Team, level int) {
+		deletedAt := ""
+		if team.DeletedAt != nil {
+			deletedAt = team.DeletedAt.Format("02.01.2006 15:04")
+		}
 		rows = append(rows, teamManageRow{
 			ID:          team.ID,
 			Name:        team.Name,
 			TypeLabel:   common.TeamTypeLabel(team.Type),
 			Lead:        team.Lead,
 			Description: team.Description,
+			DeletedAt:   deletedAt,
 			IndentPx:    level * 24,
 		})
 		for _, child := range childrenMap[team.ID] {

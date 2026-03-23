@@ -61,6 +61,7 @@ type Team struct {
 	ParentID    *int64
 	Lead        string
 	Description string
+	DeletedAt   *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }

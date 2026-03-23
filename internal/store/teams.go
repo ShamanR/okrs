@@ -8,22 +8,67 @@ import (
 )
 
 func (s *Store) ListTeams(ctx context.Context) ([]domain.Team, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, name, team_type, parent_id, lead, description, created_at, updated_at FROM teams ORDER BY name`)
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		FROM teams
+		WHERE deleted_at IS NULL
+		ORDER BY name`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	return scanTeams(rows)
+}
+
+func (s *Store) ListDeletedTeams(ctx context.Context) ([]domain.Team, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		FROM teams
+		WHERE deleted_at IS NOT NULL
+		ORDER BY deleted_at DESC, name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanTeams(rows)
+}
+
+func (s *Store) ListAllTeams(ctx context.Context) ([]domain.Team, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		FROM teams
+		ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanTeams(rows)
+}
+
+func scanTeams(rows interface {
+	Next() bool
+	Scan(dest ...any) error
+	Err() error
+	Close()
+}) ([]domain.Team, error) {
 	var teams []domain.Team
 	for rows.Next() {
 		var team domain.Team
 		var parentID sql.NullInt64
-		if err := rows.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &team.Description, &team.CreatedAt, &team.UpdatedAt); err != nil {
+		var deletedAt sql.NullTime
+		if err := rows.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if parentID.Valid {
 			value := parentID.Int64
 			team.ParentID = &value
+		}
+		if deletedAt.Valid {
+			value := deletedAt.Time
+			team.DeletedAt = &value
 		}
 		teams = append(teams, team)
 	}
@@ -33,13 +78,21 @@ func (s *Store) ListTeams(ctx context.Context) ([]domain.Team, error) {
 func (s *Store) GetTeam(ctx context.Context, id int64) (domain.Team, error) {
 	var team domain.Team
 	var parentID sql.NullInt64
-	row := s.DB.QueryRow(ctx, `SELECT id, name, team_type, parent_id, lead, description, created_at, updated_at FROM teams WHERE id=$1`, id)
-	if err := row.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &team.Description, &team.CreatedAt, &team.UpdatedAt); err != nil {
+	var deletedAt sql.NullTime
+	row := s.DB.QueryRow(ctx, `
+		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		FROM teams
+		WHERE id=$1`, id)
+	if err := row.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
 		return domain.Team{}, err
 	}
 	if parentID.Valid {
 		value := parentID.Int64
 		team.ParentID = &value
+	}
+	if deletedAt.Valid {
+		value := deletedAt.Time
+		team.DeletedAt = &value
 	}
 	return team, nil
 }
@@ -63,7 +116,85 @@ func (s *Store) UpdateTeam(ctx context.Context, input TeamInput, id int64) error
 	return err
 }
 
-func (s *Store) DeleteTeam(ctx context.Context, id int64) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM teams WHERE id=$1`, id)
+func (s *Store) TeamHasGoals(ctx context.Context, id int64) (bool, error) {
+	var exists bool
+	err := s.DB.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM goals WHERE team_id = $1
+			UNION ALL
+			SELECT 1
+			FROM goal_shares gs
+			WHERE gs.team_id = $1
+			LIMIT 1
+		)`, id).Scan(&exists)
+	return exists, err
+}
+
+func (s *Store) TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (bool, error) {
+	var exists bool
+	err := s.DB.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM goals g
+			WHERE g.team_id = $1 AND g.period_id = $2
+			UNION ALL
+			SELECT 1
+			FROM goal_shares gs
+			JOIN goals g ON g.id = gs.goal_id
+			WHERE gs.team_id = $1 AND g.period_id = $2
+			LIMIT 1
+		)`, id, periodID).Scan(&exists)
+	return exists, err
+}
+
+func (s *Store) SoftDeleteTeam(ctx context.Context, id int64) error {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var parentID sql.NullInt64
+	if err := tx.QueryRow(ctx, `SELECT parent_id FROM teams WHERE id=$1 FOR UPDATE`, id).Scan(&parentID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teams SET parent_id=$1, updated_at=NOW() WHERE parent_id=$2`, nullableParent(parentID), id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teams SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (s *Store) RestoreTeam(ctx context.Context, id int64) error {
+	_, err := s.DB.Exec(ctx, `UPDATE teams SET deleted_at=NULL, updated_at=NOW() WHERE id=$1`, id)
 	return err
+}
+
+func (s *Store) HardDeleteTeam(ctx context.Context, id int64) error {
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var parentID sql.NullInt64
+	if err := tx.QueryRow(ctx, `SELECT parent_id FROM teams WHERE id=$1 FOR UPDATE`, id).Scan(&parentID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE teams SET parent_id=$1, updated_at=NOW() WHERE parent_id=$2`, nullableParent(parentID), id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM teams WHERE id=$1`, id); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func nullableParent(parentID sql.NullInt64) any {
+	if !parentID.Valid {
+		return nil
+	}
+	return parentID.Int64
 }
