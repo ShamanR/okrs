@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/okr"
@@ -19,7 +18,6 @@ type Store interface {
 	GetTeam(ctx context.Context, id int64) (domain.Team, error)
 	ListPeriods(ctx context.Context) ([]domain.Period, error)
 	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
-	FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error)
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
@@ -143,10 +141,6 @@ func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, periodID int64,
 	if err != nil {
 		return nil, err
 	}
-	currentPeriodID, err := s.currentPeriodID(ctx)
-	if err != nil {
-		return nil, err
-	}
 	teamsByID, childrenMap, roots := buildTeamHierarchy(teams)
 	filteredRoots := roots
 	if orgID != nil {
@@ -156,7 +150,7 @@ func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, periodID int64,
 	}
 	rows := make([]TeamSummary, 0, len(teams))
 	for _, team := range filteredRoots {
-		if err := s.appendTeamSummary(ctx, &rows, team, 0, periodID, currentPeriodID, childrenMap, teamsByID); err != nil {
+		if err := s.appendTeamSummary(ctx, &rows, team, 0, periodID, childrenMap, teamsByID); err != nil {
 			return nil, err
 		}
 	}
@@ -402,8 +396,8 @@ func (s *Service) HardDeleteTeam(ctx context.Context, teamID int64) error {
 	return s.store.HardDeleteTeam(ctx, teamID)
 }
 
-func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, team domain.Team, level int, periodID, currentPeriodID int64, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
-	visible, err := s.isTeamVisibleInPeriodWithCurrent(ctx, team, periodID, currentPeriodID)
+func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, team domain.Team, level int, periodID int64, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
+	visible, err := s.isTeamVisibleInPeriod(ctx, team, periodID)
 	if err != nil {
 		return err
 	}
@@ -457,30 +451,18 @@ func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, te
 	children := childrenMap[team.ID]
 	sort.Slice(children, func(i, j int) bool { return children[i].Name < children[j].Name })
 	for _, child := range children {
-		if err := s.appendTeamSummary(ctx, rows, child, nextLevel, periodID, currentPeriodID, childrenMap, teamsByID); err != nil {
+		if err := s.appendTeamSummary(ctx, rows, child, nextLevel, periodID, childrenMap, teamsByID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) currentPeriodID(ctx context.Context) (int64, error) {
-	period, err := s.store.FindPeriodForDate(ctx, time.Now())
-	if err != nil {
-		return 0, nil
-	}
-	return period.ID, nil
-}
-
 func (s *Service) isTeamVisibleInPeriod(ctx context.Context, team domain.Team, periodID int64) (bool, error) {
-	currentPeriodID, err := s.currentPeriodID(ctx)
-	if err != nil {
-		return false, err
-	}
-	return s.isTeamVisibleInPeriodWithCurrent(ctx, team, periodID, currentPeriodID)
+	return s.isTeamVisibleInPeriodWithCurrent(ctx, team, periodID)
 }
 
-func (s *Service) isTeamVisibleInPeriodWithCurrent(ctx context.Context, team domain.Team, periodID, currentPeriodID int64) (bool, error) {
+func (s *Service) isTeamVisibleInPeriodWithCurrent(ctx context.Context, team domain.Team, periodID int64) (bool, error) {
 	hasGoals, err := s.store.TeamHasGoalsInPeriod(ctx, team.ID, periodID)
 	if err != nil {
 		return false, err
