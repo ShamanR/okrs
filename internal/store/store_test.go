@@ -106,6 +106,124 @@ func TestStoreCRUD(t *testing.T) {
 	}
 }
 
+func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	s := New(pool)
+
+	var parentID, childNoGoalsID, teamWithGoalsID, childOfDeletedID, periodID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ('Parent', 'unit') RETURNING id`).Scan(&parentID); err != nil {
+		t.Fatalf("insert parent: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type, parent_id) VALUES ('Child no goals', 'team', $1) RETURNING id`, parentID).Scan(&childNoGoalsID); err != nil {
+		t.Fatalf("insert child no goals: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type, parent_id) VALUES ('Team with goals', 'team', $1) RETURNING id`, parentID).Scan(&teamWithGoalsID); err != nil {
+		t.Fatalf("insert team with goals: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type, parent_id) VALUES ('Child of deleted', 'team', $1) RETURNING id`, teamWithGoalsID).Scan(&childOfDeletedID); err != nil {
+		t.Fatalf("insert child of deleted: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2024 Q4', '2024-10-01', '2024-12-31', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+	if _, err := s.CreateGoal(ctx, GoalInput{
+		TeamID:      teamWithGoalsID,
+		PeriodID:    periodID,
+		Title:       "Historic goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	}); err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+
+	if hasGoals, err := s.TeamHasGoals(ctx, teamWithGoalsID); err != nil || !hasGoals {
+		t.Fatalf("expected team with goals to be detected, got %v %v", hasGoals, err)
+	}
+	if hasGoals, err := s.TeamHasGoals(ctx, childNoGoalsID); err != nil || hasGoals {
+		t.Fatalf("expected team without goals to be clean, got %v %v", hasGoals, err)
+	}
+
+	if err := s.HardDeleteTeam(ctx, childNoGoalsID); err != nil {
+		t.Fatalf("hard delete no goals: %v", err)
+	}
+	if _, err := s.GetTeam(ctx, childNoGoalsID); err == nil {
+		t.Fatalf("expected hard-deleted team to be removed")
+	}
+
+	if err := s.SoftDeleteTeam(ctx, teamWithGoalsID); err != nil {
+		t.Fatalf("soft delete team with goals: %v", err)
+	}
+	teamWithGoals, err := s.GetTeam(ctx, teamWithGoalsID)
+	if err != nil {
+		t.Fatalf("get soft-deleted team: %v", err)
+	}
+	if teamWithGoals.DeletedAt == nil {
+		t.Fatalf("expected deleted_at to be set")
+	}
+	childOfDeleted, err := s.GetTeam(ctx, childOfDeletedID)
+	if err != nil {
+		t.Fatalf("get reparented child: %v", err)
+	}
+	if childOfDeleted.ParentID == nil || *childOfDeleted.ParentID != parentID {
+		t.Fatalf("expected child to be reparented to original parent, got %+v", childOfDeleted.ParentID)
+	}
+
+	deletedTeams, err := s.ListDeletedTeams(ctx)
+	if err != nil {
+		t.Fatalf("list deleted teams: %v", err)
+	}
+	if len(deletedTeams) != 1 || deletedTeams[0].ID != teamWithGoalsID {
+		t.Fatalf("expected deleted team list to contain team with goals, got %+v", deletedTeams)
+	}
+
+	if err := s.RestoreTeam(ctx, teamWithGoalsID); err != nil {
+		t.Fatalf("restore team: %v", err)
+	}
+	restored, err := s.GetTeam(ctx, teamWithGoalsID)
+	if err != nil {
+		t.Fatalf("get restored team: %v", err)
+	}
+	if restored.DeletedAt != nil {
+		t.Fatalf("expected restored team to be active")
+	}
+}
+
 func runMigrations(databaseURL string) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {

@@ -203,6 +203,8 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/teams/{teamID}/edit", teamsHandler.HandleEditTeam)
 	r.Post("/teams/{teamID}/update", teamsHandler.HandleUpdateTeam)
 	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
+	r.Post("/teams/{teamID}/restore", teamsHandler.HandleRestoreTeam)
+	r.Post("/teams/{teamID}/hard-delete", teamsHandler.HandleHardDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
 	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)
 	r.Post("/teams/{teamID}/okr/status", teamsHandler.HandleUpdateTeamPeriodStatus)

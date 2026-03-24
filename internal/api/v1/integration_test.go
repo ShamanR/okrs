@@ -245,6 +245,185 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 	}
 }
 
+func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	repo := store.New(pool)
+	var deletedTeamID, activeTeamID, currentPeriodID, historyPeriodID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ('Deleted team', 'team') RETURNING id`).Scan(&deletedTeamID); err != nil {
+		t.Fatalf("insert deleted team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ('Active team', 'team') RETURNING id`).Scan(&activeTeamID); err != nil {
+		t.Fatalf("insert active team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('History', '2025-01-01', '2025-03-31', 1)
+		RETURNING id`).Scan(&historyPeriodID); err != nil {
+		t.Fatalf("insert history period: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('Current', CURRENT_DATE - INTERVAL '5 day', CURRENT_DATE + INTERVAL '5 day', 2)
+		RETURNING id`).Scan(&currentPeriodID); err != nil {
+		t.Fatalf("insert current period: %v", err)
+	}
+
+	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+		TeamID:      deletedTeamID,
+		PeriodID:    historyPeriodID,
+		Title:       "History goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	}); err != nil {
+		t.Fatalf("create historical goal: %v", err)
+	}
+	if err := repo.SoftDeleteTeam(ctx, deletedTeamID); err != nil {
+		t.Fatalf("soft delete team: %v", err)
+	}
+
+	svc := service.New(repo)
+	handler := NewHandler(svc)
+	router := chi.NewRouter()
+	router.Mount("/api/v1", handler.Routes())
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	currentResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current teams: %v", err)
+	}
+	defer currentResp.Body.Close()
+	if currentResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for current teams, got %d", currentResp.StatusCode)
+	}
+	var currentTeams teamsResponse
+	if err := json.NewDecoder(currentResp.Body).Decode(&currentTeams); err != nil {
+		t.Fatalf("decode current teams: %v", err)
+	}
+	if len(currentTeams.Items) != 1 || currentTeams.Items[0].ID != activeTeamID {
+		t.Fatalf("expected only active team in current period, got %+v", currentTeams.Items)
+	}
+
+	historyResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, historyPeriodID))
+	if err != nil {
+		t.Fatalf("get history teams: %v", err)
+	}
+	defer historyResp.Body.Close()
+	if historyResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for history teams, got %d", historyResp.StatusCode)
+	}
+	var historyTeams teamsResponse
+	if err := json.NewDecoder(historyResp.Body).Decode(&historyTeams); err != nil {
+		t.Fatalf("decode history teams: %v", err)
+	}
+	if len(historyTeams.Items) != 2 {
+		t.Fatalf("expected active team without goals plus deleted historical team, got %+v", historyTeams.Items)
+	}
+	if historyTeams.Items[0].ID != activeTeamID || historyTeams.Items[1].ID != deletedTeamID {
+		t.Fatalf("unexpected history teams order/content: %+v", historyTeams.Items)
+	}
+
+	okrResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, historyPeriodID))
+	if err != nil {
+		t.Fatalf("get historical okr: %v", err)
+	}
+	defer okrResp.Body.Close()
+	if okrResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for historical deleted team, got %d", okrResp.StatusCode)
+	}
+
+	activeHistoryResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, activeTeamID, historyPeriodID))
+	if err != nil {
+		t.Fatalf("get active team history okr: %v", err)
+	}
+	defer activeHistoryResp.Body.Close()
+	if activeHistoryResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for active team without historical goals, got %d", activeHistoryResp.StatusCode)
+	}
+
+	currentDeletedResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current deleted team okr: %v", err)
+	}
+	defer currentDeletedResp.Body.Close()
+	if currentDeletedResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for deleted team in current period, got %d", currentDeletedResp.StatusCode)
+	}
+
+	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+		TeamID:      deletedTeamID,
+		PeriodID:    currentPeriodID,
+		Title:       "Current goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	}); err != nil {
+		t.Fatalf("create current goal: %v", err)
+	}
+
+	currentAgainResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current teams after goal: %v", err)
+	}
+	defer currentAgainResp.Body.Close()
+	if currentAgainResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for current teams after goal, got %d", currentAgainResp.StatusCode)
+	}
+	var currentTeamsWithGoal teamsResponse
+	if err := json.NewDecoder(currentAgainResp.Body).Decode(&currentTeamsWithGoal); err != nil {
+		t.Fatalf("decode current teams after goal: %v", err)
+	}
+	if len(currentTeamsWithGoal.Items) != 2 {
+		t.Fatalf("expected deleted team with current goal to become visible, got %+v", currentTeamsWithGoal.Items)
+	}
+
+	currentDeletedVisibleResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current deleted team okr after goal: %v", err)
+	}
+	defer currentDeletedVisibleResp.Body.Close()
+	if currentDeletedVisibleResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for deleted team with current goal, got %d", currentDeletedVisibleResp.StatusCode)
+	}
+}
+
 func runMigrations(databaseURL string) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {
