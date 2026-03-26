@@ -91,13 +91,12 @@ Content-Type: `application/json; charset=utf-8`
 - `GET /api/v1/teams/{teamID}/okrs?period_id=42`
 - `GET /api/v1/goals/{goalID}`
 
-`GET /api/v1/teams` и `GET /api/v1/teams/{teamID}/okrs` теперь учитывают жизненный цикл команды:
+`GET /api/v1/teams` и `GET /api/v1/teams/{teamID}/okrs` теперь используют единое period-aware правило видимости:
 
-- в актуальном периоде возвращаются все активные команды и soft-deleted команды, у которых уже есть goals в этом периоде;
-- активные команды без goals остаются видимыми и в исторических периодах;
-- soft-deleted команды без goals скрыты;
-- soft-deleted команда в историческом периоде видна только если в выбранном периоде у неё есть OKR/goals;
-- historical OKR soft-deleted команды сохраняются и остаются доступны в соответствующем периоде.
+- для любого выбранного периода активные команды видимы даже без goals;
+- soft-deleted команда видима только если в выбранном периоде у неё есть goals/OKR;
+- soft-deleted команды без goals в выбранном периоде скрываются;
+- historical OKR soft-deleted команды сохраняются и остаются доступны в соответствующих периодах.
 
 ### Мутации
 
