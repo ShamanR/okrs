@@ -17,6 +17,7 @@ type teamNode struct {
 	Name      string     `json:"name"`
 	Type      string     `json:"type"`
 	TypeLabel string     `json:"type_label"`
+	Lead      string     `json:"lead"`
 	Children  []teamNode `json:"children"`
 }
 
@@ -69,14 +70,41 @@ type shareTeam struct {
 }
 
 type teamOKRResponse struct {
-	Team           teamInfo      `json:"team"`
-	Period         periodInfo    `json:"period"`
-	PeriodStatus   string        `json:"period_status"`
-	StatusLabel    string        `json:"status_label"`
-	PeriodProgress int           `json:"period_progress"`
-	GoalsCount     int           `json:"goals_count"`
-	GoalsWeight    int           `json:"goals_weight"`
-	Goals          []goalDetails `json:"goals"`
+	Team           teamInfo        `json:"team"`
+	Period         periodInfo      `json:"period"`
+	PeriodStatus   string          `json:"period_status"`
+	StatusLabel    string          `json:"status_label"`
+	PeriodProgress int             `json:"period_progress"`
+	GoalsCount     int             `json:"goals_count"`
+	GoalsWeight    int             `json:"goals_weight"`
+	ProgressMeta   progressBarInfo `json:"progress_meta"`
+	Goals          []goalDetails   `json:"goals"`
+}
+
+type teamOverviewResponse struct {
+	AverageProgress int                 `json:"average_progress"`
+	TeamsWithGoals  int                 `json:"teams_with_goals"`
+	Priorities      prioritySummaryInfo `json:"priorities"`
+	WorkBalance     workBalanceInfo     `json:"work_balance"`
+}
+
+type prioritySummaryInfo struct {
+	P0 int `json:"p0"`
+	P1 int `json:"p1"`
+	P2 int `json:"p2"`
+	P3 int `json:"p3"`
+}
+
+type workBalanceInfo struct {
+	Discovery int `json:"discovery"`
+	Delivery  int `json:"delivery"`
+}
+
+type progressBarInfo struct {
+	Actual   int    `json:"actual"`
+	Forecast int    `json:"forecast"`
+	Delta    int    `json:"delta"`
+	Status   string `json:"status"`
 }
 
 type teamInfo struct {
@@ -196,6 +224,7 @@ func mapTeamNode(node service.TeamNode) teamNode {
 		Name:      node.Team.Name,
 		Type:      string(node.Team.Type),
 		TypeLabel: common.TeamTypeLabel(node.Team.Type),
+		Lead:      node.Team.Lead,
 		Children:  children,
 	}
 }
@@ -270,8 +299,51 @@ func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 		PeriodProgress: data.PeriodProgress,
 		GoalsCount:     data.GoalsCount,
 		GoalsWeight:    data.GoalsWeight,
+		ProgressMeta:   buildProgressBarInfo(data.PeriodProgress, data.Period),
 		Goals:          goals,
 	}
+}
+
+func buildProgressBarInfo(actual int, period domain.Period) progressBarInfo {
+	forecast := calculatePeriodForecast(period, time.Now())
+	delta := actual - forecast
+	status := "on_track"
+	if delta > 10 {
+		status = "above"
+	} else if delta < -10 {
+		status = "below"
+	}
+	return progressBarInfo{
+		Actual:   actual,
+		Forecast: forecast,
+		Delta:    delta,
+		Status:   status,
+	}
+}
+
+func calculatePeriodForecast(period domain.Period, now time.Time) int {
+	if period.EndDate.Before(period.StartDate) {
+		return 0
+	}
+	if now.Before(period.StartDate) {
+		return 0
+	}
+	if now.After(period.EndDate) {
+		return 100
+	}
+	duration := period.EndDate.Sub(period.StartDate)
+	if duration <= 0 {
+		return 100
+	}
+	elapsed := now.Sub(period.StartDate)
+	value := int((elapsed * 100) / duration)
+	if value < 0 {
+		return 0
+	}
+	if value > 100 {
+		return 100
+	}
+	return value
 }
 
 func mapGoalDetails(detail service.GoalDetails) goalDetails {

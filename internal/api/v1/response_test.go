@@ -2,6 +2,7 @@ package v1
 
 import (
 	"testing"
+	"time"
 
 	"okrs/internal/domain"
 )
@@ -77,5 +78,48 @@ func TestBuildMeasureProject(t *testing.T) {
 	}
 	if measure.Project == nil || len(measure.Project.Stages) != 1 {
 		t.Fatalf("expected project measure")
+	}
+}
+
+
+func TestCalculatePeriodForecastBounds(t *testing.T) {
+	period := domain.Period{
+		StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2026, 1, 11, 0, 0, 0, 0, time.UTC),
+	}
+
+	if got := calculatePeriodForecast(period, time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)); got != 0 {
+		t.Fatalf("before start: want 0, got %d", got)
+	}
+	if got := calculatePeriodForecast(period, time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)); got != 100 {
+		t.Fatalf("after end: want 100, got %d", got)
+	}
+
+	mid := time.Date(2026, 1, 6, 0, 0, 0, 0, time.UTC)
+	if got := calculatePeriodForecast(period, mid); got < 49 || got > 51 {
+		t.Fatalf("mid period: want ~50, got %d", got)
+	}
+}
+
+func TestBuildProgressBarInfoStatusByDelta(t *testing.T) {
+	period := domain.Period{
+		StartDate: time.Now().Add(-100 * time.Hour),
+		EndDate:   time.Now().Add(100 * time.Hour),
+	}
+
+	infoBelow := buildProgressBarInfo(0, period)
+	if infoBelow.Status != "below" {
+		t.Fatalf("expected below status, got %s (actual=%d forecast=%d delta=%d)", infoBelow.Status, infoBelow.Actual, infoBelow.Forecast, infoBelow.Delta)
+	}
+
+	infoAbove := buildProgressBarInfo(100, period)
+	if infoAbove.Status != "above" {
+		t.Fatalf("expected above status, got %s (actual=%d forecast=%d delta=%d)", infoAbove.Status, infoAbove.Actual, infoAbove.Forecast, infoAbove.Delta)
+	}
+
+	onTrackActual := infoAbove.Forecast
+	infoOnTrack := buildProgressBarInfo(onTrackActual, period)
+	if infoOnTrack.Status != "on_track" {
+		t.Fatalf("expected on_track status, got %s (actual=%d forecast=%d delta=%d)", infoOnTrack.Status, infoOnTrack.Actual, infoOnTrack.Forecast, infoOnTrack.Delta)
 	}
 }
