@@ -26,6 +26,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/teams", h.handleTeams)
 	r.Get("/teams/{teamID}", h.handleTeam)
 	r.Get("/teams/{teamID}/okrs", h.handleTeamOKRs)
+	r.Get("/teams/{teamID}/overview", h.handleTeamOverview)
 	r.Get("/goals/{goalID}", h.handleGoal)
 
 	r.Post("/goals/{goalID}/share", h.handleShareGoal)

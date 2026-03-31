@@ -2,6 +2,7 @@
   const state = {
     hierarchy: null,
     teamOKR: null,
+    teamsSummaryByPeriod: {},
   };
 
   const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -176,6 +177,9 @@
 
   const renderGoalCard = (goal) => {
     const card = document.createElement('div');
+    if (goal.id) {
+      card.id = `goal-${goal.id}`;
+    }
     const krWeightSum = sumKRWeights(goal.key_results || []);
     card.className = `card ${krWeightSum !== 100 ? 'border-danger' : ''}`;
     const body = document.createElement('div');
@@ -917,13 +921,17 @@
     return response;
   };
 
+  const updateTeamPeriodStatus = async (teamID, periodID, status) => {
+    await postFormData(`/api/v1/teams/${teamID}/status`, {
+      period_id: periodID,
+      status,
+    });
+  };
+
   const updatePeriodStatus = async (status) => {
     if (!state.teamOKR) return;
     try {
-      await postFormData(`/api/v1/teams/${state.teamOKR.team.id}/status`, {
-        period_id: state.teamOKR.period.id,
-        status,
-      });
+      await updateTeamPeriodStatus(state.teamOKR.team.id, state.teamOKR.period.id, status);
       await reloadTeamOKR();
     } catch (error) {
       // noop
@@ -1442,7 +1450,7 @@
     }
 
     const table = document.createElement('table');
-    table.className = 'table table-sm align-middle mb-0 table-transparent teams-goals-table';
+    table.className = 'table table-hover';
     const thead = document.createElement('thead');
     const theadTR = document.createElement('tr');
 
@@ -1544,13 +1552,434 @@
 
   let reloadTeamOKR = async () => { };
 
+  const findCurrentTeamNode = (nodes) => {
+    for (const node of nodes || []) {
+      if (node.current) return node;
+      const child = findCurrentTeamNode(node.children || []);
+      if (child) return child;
+    }
+    return null;
+  };
+
+  const flattenHierarchyNodes = (nodes, map = new Map(), parentByID = new Map(), parentID = null) => {
+    (nodes || []).forEach((node) => {
+      map.set(String(node.id), node);
+      if (parentID !== null) {
+        parentByID.set(String(node.id), String(parentID));
+      }
+      flattenHierarchyNodes(node.children || [], map, parentByID, node.id);
+    });
+    return { map, parentByID };
+  };
+
+  const collectPathToTeam = (teamID, parentByID) => {
+    const path = new Set();
+    let cursor = String(teamID);
+    while (cursor && parentByID.has(cursor)) {
+      const parent = parentByID.get(cursor);
+      path.add(parent);
+      cursor = parent;
+    }
+    return path;
+  };
+
+  const renderGoalsTable = (goals, periodID, currentTeamID) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'team-goals-table-wrapper';
+
+    const table = document.createElement('table');
+    table.className = 'table table-hover';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <td class="teams-goals-col-weight">Вес</td>
+          <td class="teams-goals-col-priority">Приоритет</td>
+          <td class="teams-goals-col-title">Название</td>
+          <td>Владелец</td>
+          <td>Работа</td>
+          <td>Фокус</td>
+          <td class="teams-goals-col-progress">Прогресс</td>
+          <td>Обновлено</td>
+        </tr>
+      </thead>`;
+    const tbody = document.createElement('tbody');
+    (goals || []).forEach((goal) => {
+      const row = document.createElement('tr');
+      const weight = document.createElement('td');
+      weight.className = 'teams-goals-col-weight';
+      weight.innerHTML = `<span class="badge text-bg-light border">${goal.weight}</span>`;
+
+      const priority = document.createElement('td');
+      priority.className = 'teams-goals-col-priority';
+      priority.innerHTML = `<span class="badge ${priorityBadgeClass(goal.priority)}">${escapeHTML(goal.priority)}</span>`;
+
+      const title = document.createElement('td');
+      title.className = 'teams-goals-col-title text-break';
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'd-flex align-items-center gap-2';
+      if (goal.share_teams && goal.share_teams.length > 1) {
+        titleWrap.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
+      }
+      const titleLink = document.createElement('a');
+      titleLink.className = 'link-primary';
+      const targetTeamID = currentTeamID || goal.team_id;
+      titleLink.href = `/teams/${targetTeamID}/okr?period_id=${periodID}#goal-${goal.id}`;
+      titleLink.textContent = goal.title;
+      titleWrap.appendChild(titleLink);
+      title.appendChild(titleWrap);
+
+      const owner = document.createElement('td');
+      const ownerValue = document.createElement('span');
+      ownerValue.className = 'text-decoration-underline';
+      ownerValue.textContent = goal.owner_text || '—';
+      owner.appendChild(ownerValue);
+
+      const work = document.createElement('td');
+      const workBadge = document.createElement('span');
+      workBadge.className = 'badge text-bg-light border';
+      workBadge.textContent = goal.work_type || '—';
+      work.appendChild(workBadge);
+
+      const focus = document.createElement('td');
+      const focusBadge = document.createElement('span');
+      focusBadge.className = 'badge text-bg-light border';
+      focusBadge.textContent = goal.focus_type || '—';
+      focus.appendChild(focusBadge);
+
+      const progress = document.createElement('td');
+      progress.className = 'teams-goals-col-progress';
+      progress.innerHTML = `<span class="badge text-bg-light border">${goal.progress}%</span>`;
+
+      const updated = document.createElement('td');
+      const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
+      if (!goalUpdateMeta.hasDate) {
+        updated.textContent = '—';
+      } else {
+        const freshness = document.createElement('span');
+        freshness.className = goalUpdateMeta.isStale ? 'text-danger' : 'text-success';
+        const emoji = goalUpdateMeta.isStale ? '⏰' : '✅';
+        freshness.textContent = `${emoji} ${goalUpdateMeta.relativeText}`;
+        freshness.title = goalUpdateMeta.absoluteText;
+        updated.appendChild(freshness);
+      }
+
+      row.append(weight, priority, title, owner, work, focus, progress, updated);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    return wrapper;
+  };
+
+  const renderForecastProgress = (progressMeta) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'd-flex flex-column gap-1';
+
+    const row = document.createElement('div');
+    row.className = 'd-flex align-items-center gap-2';
+
+    const track = document.createElement('div');
+    track.className = 'progress flex-grow-1 position-relative';
+    track.style.height = '8px';
+
+    const actual = Number(progressMeta?.actual || 0);
+    const forecast = Number(progressMeta?.forecast || 0);
+
+    const actualFill = document.createElement('div');
+    actualFill.className = 'progress-bar';
+    actualFill.style.width = `${Math.max(0, Math.min(100, actual))}%`;
+    track.appendChild(actualFill);
+
+    const marker = document.createElement('span');
+    marker.style.position = 'absolute';
+    marker.style.left = `${Math.max(0, Math.min(100, forecast))}%`;
+    marker.style.top = '-3px';
+    marker.style.bottom = '-3px';
+    marker.style.width = '2px';
+    marker.style.transform = 'translateX(-1px)';
+    marker.style.backgroundColor = '#111827';
+    marker.title = `Forecast ${forecast}%`;
+    track.appendChild(marker);
+
+    const value = document.createElement('span');
+    value.className = 'small fw-semibold';
+    value.textContent = `${actual}%`;
+
+    const hoverText = `Forecast: ${forecast}% | Actual: ${actual}%`;
+    track.title = hoverText;
+    value.title = hoverText;
+
+    row.append(track, value);
+
+    const chip = document.createElement('span');
+    chip.className = 'badge align-self-start';
+    const status = progressMeta?.status || 'on_track';
+    if (status === 'above') {
+      chip.classList.add('text-bg-success');
+      chip.textContent = '▲ above';
+    } else if (status === 'below') {
+      chip.classList.add('text-bg-danger');
+      chip.textContent = '▼ below';
+    } else {
+      chip.classList.add('text-bg-secondary');
+      chip.textContent = '● on track';
+    }
+
+    wrapper.append(row, chip);
+    return wrapper;
+  };
+
+  const getLastGoalUpdateMeta = (goals = []) => {
+    const lastUpdated = goals
+      .map((goal) => goal.updated_at)
+      .filter(Boolean)
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .reduce((max, date) => (max && max > date ? max : date), null);
+
+    if (!lastUpdated) {
+      return { hasDate: false, text: '—', relativeText: '—', absoluteText: '', iso: '', isStale: false };
+    }
+
+    const now = new Date();
+    const diffMs = now - lastUpdated;
+    const staleThresholdMs = 14 * 24 * 60 * 60 * 1000;
+    const isStale = diffMs > staleThresholdMs;
+    const iso = lastUpdated.toISOString();
+    const absolute = formatAbsoluteDate(iso);
+    const relative = formatRelativeUpdate(iso);
+    return {
+      hasDate: true,
+      isStale,
+      iso,
+      absoluteText: absolute,
+      relativeText: relative || 'сегодня',
+      text: `${absolute}${relative ? ` (${relative})` : ''}`,
+    };
+  };
+
+  const renderChildrenOverview = (container, overviewData) => {
+    const overview = document.createElement('div');
+    overview.className = 'card mb-3';
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const title = document.createElement('h4');
+    title.className = 'h6 mb-3';
+    title.textContent = 'Overview по дочерним командам';
+    body.appendChild(title);
+
+    const avgProgress = Number(overviewData?.average_progress || 0);
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'mb-3';
+    progressWrap.innerHTML = `<div class="small text-muted mb-1">Совокупный прогресс (средний по командам с целями)</div>`;
+    progressWrap.appendChild(renderForecastProgress(overviewData?.progress_meta || {
+      actual: avgProgress,
+      forecast: avgProgress,
+      status: 'on_track',
+    }));
+    body.appendChild(progressWrap);
+
+    const priorities = {
+      P0: Number(overviewData?.priorities?.p0 || 0),
+      P1: Number(overviewData?.priorities?.p1 || 0),
+      P2: Number(overviewData?.priorities?.p2 || 0),
+      P3: Number(overviewData?.priorities?.p3 || 0),
+    };
+    const workBalance = {
+      discovery: Number(overviewData?.work_balance?.discovery || 0),
+      delivery: Number(overviewData?.work_balance?.delivery || 0),
+    };
+
+    const chartSection = document.createElement('div');
+    chartSection.className = 'd-flex flex-wrap align-items-start gap-4';
+
+    const renderPie = (titleText, data, colors, labels) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'd-flex align-items-center gap-3';
+
+      const chartWrap = document.createElement('div');
+      const chartTitle = document.createElement('div');
+      chartTitle.className = 'small text-muted mb-1';
+      chartTitle.textContent = titleText;
+      const chart = document.createElement('div');
+      chart.style.width = '120px';
+      chart.style.height = '120px';
+      chart.style.borderRadius = '50%';
+
+      const total = Object.values(data).reduce((sum, val) => sum + val, 0);
+      if (total > 0) {
+        let current = 0;
+        const segments = Object.entries(data).map(([key, value]) => {
+          const angle = (value / total) * 360;
+          const start = current;
+          const end = current + angle;
+          current = end;
+          return `${colors[key]} ${start}deg ${end}deg`;
+        });
+        chart.style.background = `conic-gradient(${segments.join(', ')})`;
+      } else {
+        chart.style.background = '#e9ecef';
+      }
+      chartWrap.append(chartTitle, chart);
+
+      const legend = document.createElement('div');
+      legend.className = 'small';
+      legend.innerHTML = Object.entries(data)
+        .map(([key, value]) => `<div class="mb-1"><span class="badge" style="background:${colors[key]}">${labels[key]}</span> — ${value}</div>`)
+        .join('');
+
+      wrap.append(chartWrap, legend);
+      return wrap;
+    };
+
+    chartSection.appendChild(renderPie('Приоритеты целей', priorities, {
+      P0: '#dc3545',
+      P1: '#fd7e14',
+      P2: '#198754',
+      P3: '#6c757d',
+    }, {
+      P0: 'P0',
+      P1: 'P1',
+      P2: 'P2',
+      P3: 'P3',
+    }));
+
+    chartSection.appendChild(renderPie('Баланс Discovery / Delivery', workBalance, {
+      discovery: '#0d6efd',
+      delivery: '#20c997',
+    }, {
+      discovery: 'Discovery',
+      delivery: 'Delivery',
+    }));
+
+    body.appendChild(chartSection);
+    overview.appendChild(body);
+    container.appendChild(overview);
+  };
+
+  const renderTeamGoalSection = (data, container, options = {}) => {
+    const section = document.createElement('section');
+    section.className = 'team-section card';
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const title = document.createElement(options.headingTag || 'h3');
+    title.className = options.titleClass || 'h5 mb-2';
+    const titleLink = document.createElement('a');
+    titleLink.className = 'link-primary text-decoration-none';
+    titleLink.href = `/teams/${data.team.id}/okr?period_id=${data.period?.id || ''}`;
+    titleLink.textContent = options.title || `${data.team.type_label} ${data.team.name}`;
+    title.appendChild(titleLink);
+    body.appendChild(title);
+
+    const hasGoals = Array.isArray(data.goals) && data.goals.length > 0;
+
+    if (hasGoals && typeof data.period_progress === 'number') {
+      body.appendChild(renderForecastProgress(data.progress_meta || {
+        actual: data.period_progress,
+        forecast: data.period_progress,
+        status: 'on_track',
+      }));
+    }
+
+    if (options.showStatusControls) {
+      const controls = document.createElement('div');
+      controls.className = 'd-flex flex-wrap align-items-end gap-2 mb-2';
+
+      const statusWrap = document.createElement('div');
+      statusWrap.className = 'flex-grow-1';
+      const statusLabel = document.createElement('label');
+      statusLabel.className = 'form-label mb-1 small';
+      statusLabel.textContent = 'Статус периода';
+      const statusSelect = document.createElement('select');
+      statusSelect.className = 'form-select form-select-sm';
+      const statusOptions = [
+        { value: 'no_goals', label: 'Нет целей' },
+        { value: 'forming', label: 'Черновик целей' },
+        { value: 'in_progress', label: 'Готовы к валидации' },
+        { value: 'validated', label: 'Провалидировано' },
+        { value: 'closed', label: 'Цели закрыты' },
+      ];
+      statusOptions.forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        if (option.value === data.period_status) {
+          opt.selected = true;
+        }
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.addEventListener('change', async () => {
+        statusSelect.disabled = true;
+        try {
+          await updateTeamPeriodStatus(data.team.id, data.period.id, statusSelect.value);
+          if (typeof options.onStatusUpdated === "function") {
+            await options.onStatusUpdated();
+          }
+        } finally {
+          statusSelect.disabled = false;
+        }
+      });
+      statusWrap.append(statusLabel, statusSelect);
+      controls.appendChild(statusWrap);
+      body.appendChild(controls);
+
+      if (hasGoals) {
+        const lastUpdateMeta = getLastGoalUpdateMeta(data.goals || []);
+        const updatedText = document.createElement('div');
+        updatedText.className = 'small text-muted mb-2';
+        updatedText.textContent = `Последнее обновление целей: ${lastUpdateMeta.text}`;
+        body.appendChild(updatedText);
+      }
+    }
+
+    if (options.subtitle) {
+      const subtitle = document.createElement('p');
+      subtitle.className = 'text-muted mb-3';
+      subtitle.textContent = options.subtitle;
+      body.appendChild(subtitle);
+    }
+
+    if (!data.goals || data.goals.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'text-muted mb-2';
+      empty.textContent = 'У команды нет OKR на выбранный период';
+      body.appendChild(empty);
+
+      const createGoalsBtn = document.createElement('a');
+      createGoalsBtn.className = 'btn btn-primary btn-sm';
+      createGoalsBtn.href = `/teams/${data.team.id}/okr?period_id=${data.period?.id || ''}`;
+      createGoalsBtn.textContent = 'Создать цели';
+      body.appendChild(createGoalsBtn);
+    } else {
+      body.appendChild(renderGoalsTable(data.goals, data.period?.id, data.team?.id));
+      if (options.showWeightSummary) {
+        const goalsWeight = data.goals.reduce((sum, goal) => sum + (Number(goal.weight) || 0), 0);
+        const summaryWrap = document.createElement('div');
+        summaryWrap.className = 'mt-2';
+        const summaryBadge = document.createElement('span');
+        summaryBadge.className = `badge ${goalsWeight === 100 ? 'text-bg-success' : 'text-bg-danger'}`;
+        summaryBadge.textContent = `Сумма целей ${goalsWeight}`;
+        summaryWrap.appendChild(summaryBadge);
+        body.appendChild(summaryWrap);
+      }
+    }
+
+    section.appendChild(body);
+    container.appendChild(section);
+  };
+
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="team-okrs"]');
     if (!page) return;
-    const filtersForm = document.querySelector('[data-teams-filters]');
-    const periodSelect = filtersForm.querySelector('[data-period-select]');
-    const hierarchySelect = filtersForm.querySelector('[data-hierarchy-select]');
-    const tbody = document.querySelector('[data-teams-body]');
+
+    const periodSelect = document.querySelector('[data-period-select]');
+    const treeEl = page.querySelector('[data-team-hierarchy-tree]');
+    const mainEl = page.querySelector('[data-team-main-content]');
+    const initialTeam = page.dataset.selectedTeam || '';
+    const expandedNodes = new Set();
 
     const loadHierarchy = async () => {
       if (state.hierarchy) return state.hierarchy;
@@ -1558,50 +1987,329 @@
       state.hierarchy = payload.items || [];
       return state.hierarchy;
     };
+    const loadTeamsSummaryMap = async () => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      if (!periodID) return new Map();
+      const cacheKey = String(periodID);
+      if (state.teamsSummaryByPeriod[cacheKey]) {
+        return state.teamsSummaryByPeriod[cacheKey];
+      }
+      const url = new URL('/api/v1/teams', window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      const payload = await fetchJSON(url.toString());
+      const map = new Map((payload.items || []).map((team) => [String(team.id), team]));
+      state.teamsSummaryByPeriod[cacheKey] = map;
+      return map;
+    };
 
-    const loadTeams = async () => {
-      if (!periodSelect.value) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Нет периодов для отображения</td></tr>';
+    const resolveSelectedTeamID = (tree) => {
+      const url = new URL(window.location.href);
+      const fromURL = url.searchParams.get('team');
+      const { map, parentByID } = flattenHierarchyNodes(tree);
+      let selected = fromURL || initialTeam;
+      if (!selected || selected === 'ALL' || !map.has(String(selected))) {
+        const currentNode = findCurrentTeamNode(tree);
+        selected = currentNode ? String(currentNode.id) : (tree[0] ? String(tree[0].id) : '');
+      }
+      collectPathToTeam(selected, parentByID).forEach((id) => expandedNodes.add(id));
+      return { selected, map, parentByID };
+    };
+
+    const updateURL = (teamID, periodID, replace = false) => {
+      const url = new URL(window.location.href);
+      if (teamID) {
+        url.searchParams.set('team', teamID);
+      }
+      if (periodID) {
+        url.searchParams.set('period_id', periodID);
+      }
+      if (replace) {
+        window.history.replaceState({}, '', url);
+      } else {
+        window.history.pushState({}, '', url);
+      }
+    };
+
+    const renderTree = (nodes, selectedTeamID, teamSummaryMap = new Map()) => {
+      const renderNode = (node) => {
+        const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+        const nodeWrap = document.createElement('div');
+        nodeWrap.className = 'vstack gap-1';
+
+        const row = document.createElement('div');
+        row.className = `team-node-card ${String(node.id) === String(selectedTeamID) ? 'is-selected' : ''}`;
+
+        const header = document.createElement('div');
+        header.className = 'd-flex justify-content-between align-items-start gap-2';
+        const title = document.createElement('div');
+        title.className = 'fw-semibold text-break small';
+        title.textContent = node.name;
+
+        const controls = document.createElement('div');
+        controls.className = 'd-flex align-items-center gap-1';
+
+        if (hasChildren) {
+          const toggle = document.createElement('button');
+          toggle.type = 'button';
+          toggle.className = 'btn btn-sm btn-outline-secondary px-2 py-0';
+          const isExpanded = expandedNodes.has(String(node.id));
+          toggle.innerHTML = isExpanded ? '<i class="bi bi-dash"></i>' : '<i class="bi bi-plus"></i>';
+          toggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (expandedNodes.has(String(node.id))) {
+              expandedNodes.delete(String(node.id));
+            } else {
+              expandedNodes.add(String(node.id));
+            }
+            renderTree(state.hierarchy || [], selectedTeamID, teamSummaryMap);
+          });
+          controls.appendChild(toggle);
+        }
+
+        header.append(title, controls);
+        row.appendChild(header);
+
+        const teamSummary = teamSummaryMap.get(String(node.id));
+
+        const lead = document.createElement('div');
+        lead.className = 'small text-muted text-truncate';
+        lead.textContent = node.lead || node.lead_name || '—';
+        row.appendChild(lead);
+
+        const hasGoals = (typeof node.hasGoals === 'boolean')
+          ? node.hasGoals
+          : ((teamSummary?.goals_count || 0) > 0);
+        const nodeProgress = (typeof node.progress === 'number')
+          ? node.progress
+          : (typeof teamSummary?.period_progress === 'number' ? teamSummary.period_progress : null);
+
+        if (hasGoals && typeof nodeProgress === 'number') {
+          const progressWrap = document.createElement('div');
+          progressWrap.className = 'd-flex align-items-center gap-2 mt-1';
+          const progress = document.createElement('div');
+          progress.className = 'progress flex-grow-1 team-node-progress';
+          progress.innerHTML = `<div class="progress-bar" style="width:${Math.max(0, Math.min(100, nodeProgress))}%"></div>`;
+          const pct = document.createElement('span');
+          pct.className = 'small text-muted';
+          pct.textContent = `${nodeProgress}%`;
+          progressWrap.append(progress, pct);
+          row.appendChild(progressWrap);
+        } else {
+          const noGoals = document.createElement('div');
+          noGoals.className = 'small text-muted mt-1';
+          noGoals.textContent = 'No goals';
+          row.appendChild(noGoals);
+        }
+
+        row.addEventListener('click', async () => {
+          const periodID = periodSelect?.value || page.dataset.periodId;
+          updateURL(String(node.id), periodID);
+          await renderContentForSelection(String(node.id));
+          renderTree(state.hierarchy || [], String(node.id), teamSummaryMap);
+        });
+
+        nodeWrap.appendChild(row);
+
+        if (hasChildren && expandedNodes.has(String(node.id))) {
+          const childrenWrap = document.createElement('div');
+          childrenWrap.className = 'team-node-children vstack gap-1';
+          node.children.forEach((child) => {
+            childrenWrap.appendChild(renderNode(child));
+          });
+          nodeWrap.appendChild(childrenWrap);
+        }
+        return nodeWrap;
+      };
+
+      treeEl.innerHTML = '';
+      if (!nodes.length) {
+        treeEl.innerHTML = '<div class="text-muted">Нет доступных команд.</div>';
         return;
       }
-      const orgId = hierarchySelect.value !== 'ALL' ? hierarchySelect.value : '';
-      const url = new URL('/api/v1/teams', window.location.origin);
-      url.searchParams.set('period_id', periodSelect.value);
-      if (orgId) {
-        url.searchParams.set('org_id', orgId);
-      }
-      const payload = await fetchJSON(url.toString());
-      renderTeamsList(payload, tbody, periodSelect.value);
-      initPopovers();
+      nodes.forEach((node) => treeEl.appendChild(renderNode(node)));
     };
 
-    const selectedTeam = page.dataset.selectedTeam || 'ALL';
-    const selectedPeriod = page.dataset.periodId || periodSelect.value;
+    const loadTeamOKR = async (teamID) => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      const url = new URL(`/api/v1/teams/${teamID}/okrs`, window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      return fetchJSON(url.toString());
+    };
+    const loadTeamOverview = async (teamID) => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      const url = new URL(`/api/v1/teams/${teamID}/overview`, window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      return fetchJSON(url.toString());
+    };
 
-    const applyFilters = () => {
+    const renderContentForSelection = async (teamID) => {
+      mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Загрузка данных команды…</div></div>';
+      try {
+        const hierarchy = state.hierarchy || [];
+        const { map } = flattenHierarchyNodes(hierarchy);
+        const selectedNode = map.get(String(teamID));
+        if (!selectedNode) {
+          mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Команда не найдена в иерархии.</div></div>';
+          return;
+        }
+
+        const selectedData = await loadTeamOKR(teamID);
+        mainEl.innerHTML = '';
+        renderTeamGoalSection(selectedData, mainEl, {
+          title: `${selectedData.team.type_label} ${selectedData.team.name}`,
+          headingTag: 'h2',
+          titleClass: 'h4 mb-2',
+          showWeightSummary: true,
+          showStatusControls: true,
+          onStatusUpdated: () => renderContentForSelection(String(teamID)),
+        });
+
+        const childNodes = Array.isArray(selectedNode.children) ? selectedNode.children : [];
+        if (!childNodes.length) {
+          initPopovers();
+          return;
+        }
+
+        const childrenTitle = document.createElement('h3');
+        childrenTitle.className = 'h5 mt-3 mb-2';
+        childrenTitle.textContent = 'Дочерние команды';
+        mainEl.appendChild(childrenTitle);
+
+        const childContainer = document.createElement('div');
+        childContainer.className = 'vstack gap-2';
+        mainEl.appendChild(childContainer);
+
+        const overviewData = await loadTeamOverview(teamID);
+        renderChildrenOverview(childContainer, overviewData);
+
+        const childResults = await Promise.all(
+          childNodes.map(async (child) => {
+            try {
+              return await loadTeamOKR(child.id);
+            } catch (error) {
+              return {
+                team: { id: child.id, name: child.name, type_label: child.type_label || '' },
+                period: selectedData.period,
+                goals: [],
+                period_progress: 0,
+                status_label: '—',
+                period_status: '',
+              };
+            }
+          }),
+        );
+
+        const childTableWrap = document.createElement('div');
+        childTableWrap.className = 'table-responsive';
+        const childTable = document.createElement('table');
+        childTable.className = 'table table-hover';
+        childTable.innerHTML = `
+          <thead class="table-light">
+            <tr>
+              <th>Статус</th>
+              <th>Команда</th>
+              <th>Прогресс</th>
+              <th>Руководитель</th>
+              <th>Обновлено</th>
+            </tr>
+          </thead>`;
+        const childTBody = document.createElement('tbody');
+
+        childResults.forEach((childData) => {
+          const row = document.createElement('tr');
+          const childNodeMeta = childNodes.find((node) => String(node.id) === String(childData.team.id));
+          const leadText = childNodeMeta?.lead || childNodeMeta?.lead_name || '—';
+          const lastUpdateMeta = getLastGoalUpdateMeta(childData.goals || []);
+
+          const nameCell = document.createElement('td');
+          const nameLink = document.createElement('a');
+          nameLink.className = 'link-primary';
+          nameLink.href = `/teamOkrs?period_id=${childData.period?.id || ''}&team=${childData.team.id}`;
+          nameLink.textContent = `${childData.team.type_label} ${childData.team.name}`;
+          nameCell.appendChild(nameLink);
+
+          const leadCell = document.createElement('td');
+          const leadValue = document.createElement('span');
+          leadValue.className = 'text-decoration-underline';
+          leadValue.textContent = leadText;
+          leadCell.appendChild(leadValue);
+
+          const statusCell = document.createElement('td');
+          const statusBadge = document.createElement('span');
+          statusBadge.className = 'badge text-bg-light border';
+          statusBadge.textContent = childData.status_label || childData.period_status || '—';
+          statusCell.appendChild(statusBadge);
+
+          const progressCell = document.createElement('td');
+          if (!childData.goals || childData.goals.length === 0) {
+            progressCell.textContent = '—';
+          } else {
+            progressCell.appendChild(renderForecastProgress(childData.progress_meta || {
+              actual: childData.period_progress || 0,
+              forecast: childData.period_progress || 0,
+              status: 'on_track',
+            }));
+          }
+
+          const updatedCell = document.createElement('td');
+          if (!lastUpdateMeta.hasDate) {
+            updatedCell.textContent = '—';
+          } else {
+            const freshness = document.createElement('span');
+            freshness.className = lastUpdateMeta.isStale ? 'text-danger' : 'text-success';
+            const emoji = lastUpdateMeta.isStale ? '⏰' : '✅';
+            freshness.textContent = `${emoji} ${lastUpdateMeta.relativeText}`;
+            freshness.title = lastUpdateMeta.absoluteText;
+            updatedCell.appendChild(freshness);
+          }
+
+          row.append(statusCell, nameCell, progressCell, leadCell, updatedCell);
+          childTBody.appendChild(row);
+        });
+
+        childTable.appendChild(childTBody);
+        childTableWrap.appendChild(childTable);
+        childContainer.appendChild(childTableWrap);
+        initPopovers();
+      } catch (error) {
+        mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
+      }
+    };
+
+    const bootstrapPage = async () => {
+      try {
+        const [tree, periods] = await Promise.all([loadHierarchy(), loadPeriods()]);
+        const teamSummaryMap = await loadTeamsSummaryMap();
+        renderPeriodSelect(periodSelect, periods, page.dataset.periodId || periodSelect?.value);
+        const { selected } = resolveSelectedTeamID(tree);
+        if (selected) {
+          updateURL(selected, periodSelect?.value || page.dataset.periodId, true);
+        }
+        renderTree(tree, selected, teamSummaryMap);
+        await renderContentForSelection(selected);
+      } catch (error) {
+        treeEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
+        mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
+      }
+    };
+
+    periodSelect?.addEventListener('change', () => {
       const url = new URL(window.location.href);
       url.searchParams.set('period_id', periodSelect.value);
-      url.searchParams.set('team', hierarchySelect.value || 'ALL');
       window.location.assign(url.toString());
-    };
-
-    Promise.all([loadHierarchy(), loadPeriods()])
-      .then(([tree, periods]) => {
-        renderHierarchySelect(tree, hierarchySelect, selectedTeam);
-        renderPeriodSelect(periodSelect, periods, selectedPeriod);
-        return loadTeams();
-      })
-      .catch((error) => {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">${error.message}</td></tr>`;
-      });
-
-    filtersForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      applyFilters();
     });
 
-    periodSelect.addEventListener('change', applyFilters);
-    hierarchySelect.addEventListener('change', applyFilters);
+    window.addEventListener('popstate', () => {
+      const url = new URL(window.location.href);
+      const teamID = url.searchParams.get('team');
+      if (!teamID) return;
+      loadTeamsSummaryMap().then((teamSummaryMap) => {
+        renderTree(state.hierarchy || [], teamID, teamSummaryMap);
+      });
+      renderContentForSelection(teamID);
+    });
+
+    bootstrapPage();
   };
 
   const initTeamOKRPage = () => {

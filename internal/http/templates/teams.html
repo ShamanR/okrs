@@ -1,45 +1,44 @@
 {{define "teams-content"}}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="h3 mb-0">OKR команд</h1>
-  <div class="d-flex gap-2">
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+  <div>
+    <h1 class="h3 mb-0">OKR команд</h1>
+    <p class="text-muted mb-0">Навигация по иерархии команд и целям периода.</p>
+  </div>
+  <div class="d-flex flex-wrap align-items-end gap-2">
     <a class="btn btn-outline-secondary btn-sm" href="/periods">Периоды</a>
-    <a class="btn btn-outline-secondary btn-sm" href="/goals/period">Цели по периоду</a>
     <a class="btn btn-primary btn-sm" href="/teams">Управление командами</a>
   </div>
 </div>
-<form method="get" class="card card-body mb-4" data-teams-filters>
-  <div class="row g-3 align-items-end">
-    <div class="col-sm-6 col-md-4">
-      <label class="form-label">Период</label>
-      <select name="period_id" class="form-select" data-period-select>
-        {{range .PeriodOptions}}
-        <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
-        {{end}}
-      </select>
-    </div>
-    <div class="col-sm-6 col-md-4">
-      <label class="form-label">Иерархия</label>
-      <select name="team" class="form-select" data-hierarchy-select>
-        <option value="ALL">Все команды</option>
-      </select>
-    </div>
-  </div>
-</form>
+
 <div id="teams-page" data-page="team-okrs" data-selected-team="{{.SelectedTeam}}" data-period-id="{{.SelectedPeriod}}">
-  <table class="table table-striped align-middle teams-table">
-    <thead>
-      <tr>
-        <th class="teams-col-team">Команда</th>
-        <th class="teams-col-progress">Прогресс периода</th>
-        <th class="teams-col-goals">Цели</th>
-        <th class="teams-col-status">Статус</th>
-      </tr>
-    </thead>
-    <tbody data-teams-body>
-      <tr>
-        <td colspan="4" class="text-muted">Загрузка…</td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="team-okrs-layout d-flex flex-column flex-lg-row gap-3 gap-lg-4">
+    <aside class="team-okrs-sidebar" data-team-sidebar>
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="mb-3">
+            <h2 class="h6 mb-2">Период</h2>
+            <select name="period_id" class="form-select form-select-sm" data-period-select>
+              {{range .PeriodOptions}}
+              <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
+              {{end}}
+            </select>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h2 class="h6 mb-0">Иерархия команд</h2>
+          </div>
+          <div class="vstack gap-2 team-hierarchy-scroll" data-team-hierarchy-tree>
+            <div class="text-muted">Загрузка иерархии…</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+    <section class="team-okrs-main" data-team-main-content>
+      <div class="card">
+        <div class="card-body">
+          <div class="text-muted">Загрузка данных команды…</div>
+        </div>
+      </div>
+    </section>
+  </div>
 </div>
 {{end}}

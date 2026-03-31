@@ -127,13 +127,6 @@ func (s *Store) DeleteGoal(ctx context.Context, id int64) error {
 	return err
 }
 
-type GoalWithTeam struct {
-	Goal       domain.Goal
-	TeamName   string
-	TeamType   domain.TeamType
-	PeriodName string
-}
-
 type GoalUpdateInput struct {
 	ID          int64
 	Title       string
@@ -153,33 +146,6 @@ type GoalFieldsUpdateInput struct {
 	WorkType    domain.WorkType
 	FocusType   domain.FocusType
 	OwnerText   string
-}
-
-func (s *Store) ListGoalsByPeriod(ctx context.Context, periodID int64) ([]GoalWithTeam, error) {
-	rows, err := s.DB.Query(ctx, `
-		SELECT g.id, g.team_id, g.period_id, g.title, g.description, g.priority, g.weight, g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
-		       t.name, t.team_type, p.name
-		FROM goals g
-		JOIN teams t ON t.id = g.team_id
-		JOIN periods p ON p.id = g.period_id
-		WHERE g.period_id=$1
-		ORDER BY g.priority, g.weight DESC`, periodID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	results := make([]GoalWithTeam, 0)
-	for rows.Next() {
-		var goal domain.Goal
-		var teamName string
-		var teamType domain.TeamType
-		var periodName string
-		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt, &teamName, &teamType, &periodName); err != nil {
-			return nil, err
-		}
-		results = append(results, GoalWithTeam{Goal: goal, TeamName: teamName, TeamType: teamType, PeriodName: periodName})
-	}
-	return results, rows.Err()
 }
 
 func (s *Store) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {

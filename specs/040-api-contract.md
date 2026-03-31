@@ -24,6 +24,7 @@ SSR-страницы должны опираться на те же правил
 - `GET /api/v1/teams`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
+- `GET /api/v1/teams/{teamID}/overview`
 - `GET /api/v1/goals/{goalID}`
 
 ## Write endpoints
@@ -74,3 +75,65 @@ SSR-страницы должны опираться на те же правил
 - ошибки согласованы по shape;
 - изменение доменного правила сопровождается тестами;
 - нет дублирования business rule между SSR handler и API handler.
+
+
+## Contract extensions for team OKRs UI
+
+### `GET /api/v1/hierarchy`
+
+Hierarchy node shape расширен полем:
+
+- `lead` — строка с руководителем команды.
+
+Это поле используется sidebar/navigation UI и таблицей дочерних команд.
+
+### `GET /api/v1/teams/{teamID}/okrs?period_id={id}`
+
+Response расширен полем:
+
+- `progress_meta`:
+  - `actual` (int, 0..100)
+  - `forecast` (int, 0..100)
+  - `delta` (int, `actual - forecast`)
+  - `status` (`below` | `on_track` | `above`)
+
+Правила расчёта:
+
+- `forecast` рассчитывается сервером на основе доли прошедшего времени периода (`period.start_date .. period.end_date`);
+- `status`:
+  - `on_track`, если отклонение в диапазоне `[-10, +10]`;
+  - `below`, если `delta < -10`;
+  - `above`, если `delta > 10`.
+
+`progress_meta` — обобщённая структура для прогнозного прогресс-бара и может переиспользоваться в других endpoint’ах.
+
+### `GET /api/v1/teams/{teamID}/overview?period_id={id}`
+
+Назначение: агрегировать overview по **всей глубине дочерней иерархии** выбранной команды за период.
+
+Request:
+
+- path param: `teamID` (обязательный, int64)
+- query param: `period_id` (обязательный, int64)
+
+Success response (`200`):
+
+- `average_progress` — средний прогресс по дочерним командам, у которых есть goals;
+- `teams_with_goals` — число дочерних команд с goals в периоде;
+- `progress_meta` (тот же shape, что и в `/teams/{teamID}/okrs`):
+  - `actual`, `forecast`, `delta`, `status`;
+- `priorities`:
+  - `p0`, `p1`, `p2`, `p3` — счётчики целей по приоритетам;
+- `work_balance`:
+  - `discovery`, `delivery` — счётчики целей по типу работы.
+
+Validation and errors:
+
+- `VALIDATION_ERROR` при невалидных `teamID` / `period_id`;
+- `NOT_FOUND` если период не найден;
+- `INTERNAL` при ошибках загрузки иерархии/данных.
+
+Idempotency / side effects:
+
+- endpoint read-only;
+- не изменяет доменные агрегаты, только рассчитывает производные метрики для UI.
