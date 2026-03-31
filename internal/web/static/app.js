@@ -918,13 +918,17 @@
     return response;
   };
 
+  const updateTeamPeriodStatus = async (teamID, periodID, status) => {
+    await postFormData(`/api/v1/teams/${teamID}/status`, {
+      period_id: periodID,
+      status,
+    });
+  };
+
   const updatePeriodStatus = async (status) => {
     if (!state.teamOKR) return;
     try {
-      await postFormData(`/api/v1/teams/${state.teamOKR.team.id}/status`, {
-        period_id: state.teamOKR.period.id,
-        status,
-      });
+      await updateTeamPeriodStatus(state.teamOKR.team.id, state.teamOKR.period.id, status);
       await reloadTeamOKR();
     } catch (error) {
       // noop
@@ -1654,6 +1658,67 @@
       body.appendChild(progressWrap);
     }
 
+    if (options.showStatusControls) {
+      const controls = document.createElement('div');
+      controls.className = 'd-flex flex-wrap align-items-end gap-2 mb-2';
+
+      const statusWrap = document.createElement('div');
+      statusWrap.className = 'flex-grow-1';
+      const statusLabel = document.createElement('label');
+      statusLabel.className = 'form-label mb-1 small';
+      statusLabel.textContent = 'Статус периода';
+      const statusSelect = document.createElement('select');
+      statusSelect.className = 'form-select form-select-sm';
+      const statusOptions = [
+        { value: 'no_goals', label: 'Нет целей' },
+        { value: 'forming', label: 'Черновик целей' },
+        { value: 'in_progress', label: 'Готовы к валидации' },
+        { value: 'validated', label: 'Провалидировано' },
+        { value: 'closed', label: 'Цели закрыты' },
+      ];
+      statusOptions.forEach((option) => {
+        const opt = document.createElement('option');
+        opt.value = option.value;
+        opt.textContent = option.label;
+        if (option.value === data.period_status) {
+          opt.selected = true;
+        }
+        statusSelect.appendChild(opt);
+      });
+      statusSelect.addEventListener('change', async () => {
+        statusSelect.disabled = true;
+        try {
+          await updateTeamPeriodStatus(data.team.id, data.period.id, statusSelect.value);
+          if (typeof options.onStatusUpdated === "function") {
+            await options.onStatusUpdated();
+          }
+        } finally {
+          statusSelect.disabled = false;
+        }
+      });
+      statusWrap.append(statusLabel, statusSelect);
+      controls.appendChild(statusWrap);
+      body.appendChild(controls);
+
+      const lastUpdated = (data.goals || [])
+        .map((goal) => goal.updated_at)
+        .filter(Boolean)
+        .map((value) => new Date(value))
+        .filter((date) => !Number.isNaN(date.getTime()))
+        .reduce((max, date) => (max && max > date ? max : date), null);
+      const updatedText = document.createElement('div');
+      updatedText.className = 'small text-muted mb-2';
+      if (lastUpdated) {
+        const iso = lastUpdated.toISOString();
+        const relative = formatRelativeUpdate(iso);
+        const absolute = formatAbsoluteDate(iso);
+        updatedText.textContent = `Последнее обновление целей: ${absolute}${relative ? ` (${relative})` : ''}`;
+      } else {
+        updatedText.textContent = 'Последнее обновление целей: —';
+      }
+      body.appendChild(updatedText);
+    }
+
     if (options.subtitle) {
       const subtitle = document.createElement('p');
       subtitle.className = 'text-muted mb-3';
@@ -1874,6 +1939,8 @@
           headingTag: 'h2',
           titleClass: 'h4 mb-2',
           showWeightSummary: true,
+          showStatusControls: true,
+          onStatusUpdated: () => renderContentForSelection(String(teamID)),
         });
 
         const childNodes = Array.isArray(selectedNode.children) ? selectedNode.children : [];
