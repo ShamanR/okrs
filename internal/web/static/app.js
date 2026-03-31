@@ -177,6 +177,9 @@
 
   const renderGoalCard = (goal) => {
     const card = document.createElement('div');
+    if (goal.id) {
+      card.id = `goal-${goal.id}`;
+    }
     const krWeightSum = sumKRWeights(goal.key_results || []);
     card.className = `card ${krWeightSum !== 100 ? 'border-danger' : ''}`;
     const body = document.createElement('div');
@@ -1593,6 +1596,7 @@
           <td class="teams-goals-col-priority">Приоритет</td>
           <td class="teams-goals-col-title">Название</td>
           <td class="teams-goals-col-progress">Прогресс</td>
+          <td>Обновлено</td>
         </tr>
       </thead>`;
     const tbody = document.createElement('tbody');
@@ -1613,16 +1617,31 @@
       if (goal.share_teams && goal.share_teams.length > 1) {
         titleWrap.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
       }
-      const titleText = document.createElement('span');
-      titleText.textContent = goal.title;
-      titleWrap.appendChild(titleText);
+      const titleLink = document.createElement('a');
+      titleLink.className = 'link-primary';
+      titleLink.href = `/teams/${goal.team_id}/okr?period_id=${periodID}#goal-${goal.id}`;
+      titleLink.textContent = goal.title;
+      titleWrap.appendChild(titleLink);
       title.appendChild(titleWrap);
 
       const progress = document.createElement('td');
       progress.className = 'teams-goals-col-progress';
       progress.innerHTML = `<span class="badge text-bg-light border">${goal.progress}%</span>`;
 
-      row.append(weight, priority, title, progress);
+      const updated = document.createElement('td');
+      const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
+      if (!goalUpdateMeta.hasDate) {
+        updated.textContent = '—';
+      } else {
+        const freshness = document.createElement('span');
+        freshness.className = goalUpdateMeta.isStale ? 'text-danger' : 'text-success';
+        const emoji = goalUpdateMeta.isStale ? '⏰' : '✅';
+        freshness.textContent = `${emoji} ${goalUpdateMeta.relativeText}`;
+        freshness.title = goalUpdateMeta.absoluteText;
+        updated.appendChild(freshness);
+      }
+
+      row.append(weight, priority, title, progress, updated);
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
