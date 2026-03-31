@@ -2,6 +2,7 @@
   const state = {
     hierarchy: null,
     teamOKR: null,
+    teamsSummaryByPeriod: {},
   };
 
   const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
@@ -1633,8 +1634,25 @@
 
     const title = document.createElement(options.headingTag || 'h3');
     title.className = options.titleClass || 'h5 mb-2';
-    title.textContent = options.title || `${data.team.type_label} ${data.team.name}`;
+    const titleLink = document.createElement('a');
+    titleLink.className = 'link-primary text-decoration-none';
+    titleLink.href = `/teams/${data.team.id}/okr?period_id=${data.period?.id || ''}`;
+    titleLink.textContent = options.title || `${data.team.type_label} ${data.team.name}`;
+    title.appendChild(titleLink);
     body.appendChild(title);
+
+    if (typeof data.period_progress === 'number') {
+      const progressWrap = document.createElement('div');
+      progressWrap.className = 'd-flex align-items-center gap-2 mb-2';
+      const progress = document.createElement('div');
+      progress.className = 'progress flex-grow-1';
+      progress.innerHTML = `<div class="progress-bar" style="width:${Math.max(0, Math.min(100, data.period_progress))}%"></div>`;
+      const value = document.createElement('span');
+      value.className = 'small text-muted';
+      value.textContent = `${data.period_progress}%`;
+      progressWrap.append(progress, value);
+      body.appendChild(progressWrap);
+    }
 
     if (options.subtitle) {
       const subtitle = document.createElement('p');
@@ -1645,9 +1663,15 @@
 
     if (!data.goals || data.goals.length === 0) {
       const empty = document.createElement('div');
-      empty.className = 'text-muted';
+      empty.className = 'text-muted mb-2';
       empty.textContent = 'У команды нет OKR на выбранный период';
       body.appendChild(empty);
+
+      const createGoalsBtn = document.createElement('a');
+      createGoalsBtn.className = 'btn btn-primary btn-sm';
+      createGoalsBtn.href = `/teams/${data.team.id}/okr?period_id=${data.period?.id || ''}`;
+      createGoalsBtn.textContent = 'Создать цели';
+      body.appendChild(createGoalsBtn);
     } else {
       body.appendChild(renderGoalsTable(data.goals, data.period?.id));
     }
@@ -1671,6 +1695,20 @@
       const payload = await fetchJSON('/api/v1/hierarchy');
       state.hierarchy = payload.items || [];
       return state.hierarchy;
+    };
+    const loadTeamsSummaryMap = async () => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      if (!periodID) return new Map();
+      const cacheKey = String(periodID);
+      if (state.teamsSummaryByPeriod[cacheKey]) {
+        return state.teamsSummaryByPeriod[cacheKey];
+      }
+      const url = new URL('/api/v1/teams', window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      const payload = await fetchJSON(url.toString());
+      const map = new Map((payload.items || []).map((team) => [String(team.id), team]));
+      state.teamsSummaryByPeriod[cacheKey] = map;
+      return map;
     };
 
     const resolveSelectedTeamID = (tree) => {
@@ -1701,7 +1739,7 @@
       }
     };
 
-    const renderTree = (nodes, selectedTeamID) => {
+    const renderTree = (nodes, selectedTeamID, teamSummaryMap = new Map()) => {
       const renderNode = (node) => {
         const hasChildren = Array.isArray(node.children) && node.children.length > 0;
         const nodeWrap = document.createElement('div');
@@ -1732,7 +1770,7 @@
             } else {
               expandedNodes.add(String(node.id));
             }
-            renderTree(state.hierarchy || [], selectedTeamID);
+            renderTree(state.hierarchy || [], selectedTeamID, teamSummaryMap);
           });
           controls.appendChild(toggle);
         }
@@ -1740,26 +1778,35 @@
         header.append(title, controls);
         row.appendChild(header);
 
+        const teamSummary = teamSummaryMap.get(String(node.id));
+
         const lead = document.createElement('div');
         lead.className = 'small text-muted text-truncate';
         lead.textContent = node.lead || node.lead_name || '—';
         row.appendChild(lead);
 
-        if (typeof node.progress === 'number') {
+        const hasGoals = (typeof node.hasGoals === 'boolean')
+          ? node.hasGoals
+          : ((teamSummary?.goals_count || 0) > 0);
+        const nodeProgress = (typeof node.progress === 'number')
+          ? node.progress
+          : (typeof teamSummary?.period_progress === 'number' ? teamSummary.period_progress : null);
+
+        if (hasGoals && typeof nodeProgress === 'number') {
           const progressWrap = document.createElement('div');
           progressWrap.className = 'd-flex align-items-center gap-2 mt-1';
           const progress = document.createElement('div');
           progress.className = 'progress flex-grow-1 team-node-progress';
-          progress.innerHTML = `<div class="progress-bar" style="width:${Math.max(0, Math.min(100, node.progress))}%"></div>`;
+          progress.innerHTML = `<div class="progress-bar" style="width:${Math.max(0, Math.min(100, nodeProgress))}%"></div>`;
           const pct = document.createElement('span');
           pct.className = 'small text-muted';
-          pct.textContent = `${node.progress}%`;
+          pct.textContent = `${nodeProgress}%`;
           progressWrap.append(progress, pct);
           row.appendChild(progressWrap);
         } else {
           const noGoals = document.createElement('div');
           noGoals.className = 'small text-muted mt-1';
-          noGoals.textContent = node.hasGoals === false ? 'Нет целей' : 'No goals';
+          noGoals.textContent = 'No goals';
           row.appendChild(noGoals);
         }
 
@@ -1767,7 +1814,7 @@
           const periodID = periodSelect?.value || page.dataset.periodId;
           updateURL(String(node.id), periodID);
           await renderContentForSelection(String(node.id));
-          renderTree(state.hierarchy || [], String(node.id));
+          renderTree(state.hierarchy || [], String(node.id), teamSummaryMap);
         });
 
         nodeWrap.appendChild(row);
@@ -1863,12 +1910,13 @@
     const bootstrapPage = async () => {
       try {
         const [tree, periods] = await Promise.all([loadHierarchy(), loadPeriods()]);
+        const teamSummaryMap = await loadTeamsSummaryMap();
         renderPeriodSelect(periodSelect, periods, page.dataset.periodId || periodSelect?.value);
         const { selected } = resolveSelectedTeamID(tree);
         if (selected) {
           updateURL(selected, periodSelect?.value || page.dataset.periodId, true);
         }
-        renderTree(tree, selected);
+        renderTree(tree, selected, teamSummaryMap);
         await renderContentForSelection(selected);
       } catch (error) {
         treeEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
@@ -1886,7 +1934,9 @@
       const url = new URL(window.location.href);
       const teamID = url.searchParams.get('team');
       if (!teamID) return;
-      renderTree(state.hierarchy || [], teamID);
+      loadTeamsSummaryMap().then((teamSummaryMap) => {
+        renderTree(state.hierarchy || [], teamID, teamSummaryMap);
+      });
       renderContentForSelection(teamID);
     });
 
