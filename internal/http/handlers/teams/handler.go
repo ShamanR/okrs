@@ -161,10 +161,12 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	}
 	options := buildPeriodOptions(periods, period.ID)
 	selectedFilter := resolveTeamFilter(r)
-	teamId, err := strconv.Atoi(selectedFilter)
-	team, _ := h.deps.Service.GetTeam(r.Context(), int64(teamId))
-
-	title := fmt.Sprintf("Список целей %s", team.Name)
+	title := "OKR команд"
+	if teamID, err := strconv.ParseInt(selectedFilter, 10, 64); err == nil && teamID > 0 {
+		if team, teamErr := h.deps.Service.GetTeam(r.Context(), teamID); teamErr == nil {
+			title = fmt.Sprintf("Список целей %s", team.Name)
+		}
+	}
 	page := teamOkrsPage{
 		PeriodOptions:   options,
 		SelectedPeriod:  period.ID,

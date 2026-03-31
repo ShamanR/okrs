@@ -1544,13 +1544,127 @@
 
   let reloadTeamOKR = async () => { };
 
+  const findCurrentTeamNode = (nodes) => {
+    for (const node of nodes || []) {
+      if (node.current) return node;
+      const child = findCurrentTeamNode(node.children || []);
+      if (child) return child;
+    }
+    return null;
+  };
+
+  const flattenHierarchyNodes = (nodes, map = new Map(), parentByID = new Map(), parentID = null) => {
+    (nodes || []).forEach((node) => {
+      map.set(String(node.id), node);
+      if (parentID !== null) {
+        parentByID.set(String(node.id), String(parentID));
+      }
+      flattenHierarchyNodes(node.children || [], map, parentByID, node.id);
+    });
+    return { map, parentByID };
+  };
+
+  const collectPathToTeam = (teamID, parentByID) => {
+    const path = new Set();
+    let cursor = String(teamID);
+    while (cursor && parentByID.has(cursor)) {
+      const parent = parentByID.get(cursor);
+      path.add(parent);
+      cursor = parent;
+    }
+    return path;
+  };
+
+  const renderGoalsTable = (goals, periodID) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'team-goals-table-wrapper';
+
+    const table = document.createElement('table');
+    table.className = 'table table-sm align-middle mb-0 table-transparent teams-goals-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <td class="teams-goals-col-weight">Вес</td>
+          <td class="teams-goals-col-priority">Приоритет</td>
+          <td class="teams-goals-col-title">Название</td>
+          <td class="teams-goals-col-progress">Прогресс</td>
+        </tr>
+      </thead>`;
+    const tbody = document.createElement('tbody');
+    (goals || []).forEach((goal) => {
+      const row = document.createElement('tr');
+      const weight = document.createElement('td');
+      weight.className = 'teams-goals-col-weight';
+      weight.innerHTML = `<span class="badge text-bg-light border">${goal.weight}</span>`;
+
+      const priority = document.createElement('td');
+      priority.className = 'teams-goals-col-priority';
+      priority.innerHTML = `<span class="badge ${priorityBadgeClass(goal.priority)}">${escapeHTML(goal.priority)}</span>`;
+
+      const title = document.createElement('td');
+      title.className = 'teams-goals-col-title text-break';
+      const titleWrap = document.createElement('div');
+      titleWrap.className = 'd-flex align-items-center gap-2';
+      if (goal.share_teams && goal.share_teams.length > 1) {
+        titleWrap.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
+      }
+      const titleText = document.createElement('span');
+      titleText.textContent = goal.title;
+      titleWrap.appendChild(titleText);
+      title.appendChild(titleWrap);
+
+      const progress = document.createElement('td');
+      progress.className = 'teams-goals-col-progress';
+      progress.innerHTML = `<span class="badge text-bg-light border">${goal.progress}%</span>`;
+
+      row.append(weight, priority, title, progress);
+      tbody.appendChild(row);
+    });
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    return wrapper;
+  };
+
+  const renderTeamGoalSection = (data, container, options = {}) => {
+    const section = document.createElement('section');
+    section.className = 'team-section card';
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const title = document.createElement(options.headingTag || 'h3');
+    title.className = options.titleClass || 'h5 mb-2';
+    title.textContent = options.title || `${data.team.type_label} ${data.team.name}`;
+    body.appendChild(title);
+
+    if (options.subtitle) {
+      const subtitle = document.createElement('p');
+      subtitle.className = 'text-muted mb-3';
+      subtitle.textContent = options.subtitle;
+      body.appendChild(subtitle);
+    }
+
+    if (!data.goals || data.goals.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'text-muted';
+      empty.textContent = 'У команды нет OKR на выбранный период';
+      body.appendChild(empty);
+    } else {
+      body.appendChild(renderGoalsTable(data.goals, data.period?.id));
+    }
+
+    section.appendChild(body);
+    container.appendChild(section);
+  };
+
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="team-okrs"]');
     if (!page) return;
-    const filtersForm = document.querySelector('[data-teams-filters]');
-    const periodSelect = filtersForm.querySelector('[data-period-select]');
-    const hierarchySelect = filtersForm.querySelector('[data-hierarchy-select]');
-    const tbody = document.querySelector('[data-teams-body]');
+
+    const periodSelect = document.querySelector('[data-period-select]');
+    const treeEl = page.querySelector('[data-team-hierarchy-tree]');
+    const mainEl = page.querySelector('[data-team-main-content]');
+    const initialTeam = page.dataset.selectedTeam || '';
+    const expandedNodes = new Set();
 
     const loadHierarchy = async () => {
       if (state.hierarchy) return state.hierarchy;
@@ -1559,49 +1673,224 @@
       return state.hierarchy;
     };
 
-    const loadTeams = async () => {
-      if (!periodSelect.value) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Нет периодов для отображения</td></tr>';
+    const resolveSelectedTeamID = (tree) => {
+      const url = new URL(window.location.href);
+      const fromURL = url.searchParams.get('team');
+      const { map, parentByID } = flattenHierarchyNodes(tree);
+      let selected = fromURL || initialTeam;
+      if (!selected || selected === 'ALL' || !map.has(String(selected))) {
+        const currentNode = findCurrentTeamNode(tree);
+        selected = currentNode ? String(currentNode.id) : (tree[0] ? String(tree[0].id) : '');
+      }
+      collectPathToTeam(selected, parentByID).forEach((id) => expandedNodes.add(id));
+      return { selected, map, parentByID };
+    };
+
+    const updateURL = (teamID, periodID, replace = false) => {
+      const url = new URL(window.location.href);
+      if (teamID) {
+        url.searchParams.set('team', teamID);
+      }
+      if (periodID) {
+        url.searchParams.set('period_id', periodID);
+      }
+      if (replace) {
+        window.history.replaceState({}, '', url);
+      } else {
+        window.history.pushState({}, '', url);
+      }
+    };
+
+    const renderTree = (nodes, selectedTeamID) => {
+      const renderNode = (node) => {
+        const hasChildren = Array.isArray(node.children) && node.children.length > 0;
+        const nodeWrap = document.createElement('div');
+        nodeWrap.className = 'vstack gap-1';
+
+        const row = document.createElement('div');
+        row.className = `team-node-card ${String(node.id) === String(selectedTeamID) ? 'is-selected' : ''}`;
+
+        const header = document.createElement('div');
+        header.className = 'd-flex justify-content-between align-items-start gap-2';
+        const title = document.createElement('div');
+        title.className = 'fw-semibold text-break small';
+        title.textContent = node.name;
+
+        const controls = document.createElement('div');
+        controls.className = 'd-flex align-items-center gap-1';
+
+        if (hasChildren) {
+          const toggle = document.createElement('button');
+          toggle.type = 'button';
+          toggle.className = 'btn btn-sm btn-outline-secondary px-2 py-0';
+          const isExpanded = expandedNodes.has(String(node.id));
+          toggle.innerHTML = isExpanded ? '<i class="bi bi-dash"></i>' : '<i class="bi bi-plus"></i>';
+          toggle.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (expandedNodes.has(String(node.id))) {
+              expandedNodes.delete(String(node.id));
+            } else {
+              expandedNodes.add(String(node.id));
+            }
+            renderTree(state.hierarchy || [], selectedTeamID);
+          });
+          controls.appendChild(toggle);
+        }
+
+        header.append(title, controls);
+        row.appendChild(header);
+
+        const lead = document.createElement('div');
+        lead.className = 'small text-muted text-truncate';
+        lead.textContent = node.lead || node.lead_name || '—';
+        row.appendChild(lead);
+
+        if (typeof node.progress === 'number') {
+          const progressWrap = document.createElement('div');
+          progressWrap.className = 'd-flex align-items-center gap-2 mt-1';
+          const progress = document.createElement('div');
+          progress.className = 'progress flex-grow-1 team-node-progress';
+          progress.innerHTML = `<div class="progress-bar" style="width:${Math.max(0, Math.min(100, node.progress))}%"></div>`;
+          const pct = document.createElement('span');
+          pct.className = 'small text-muted';
+          pct.textContent = `${node.progress}%`;
+          progressWrap.append(progress, pct);
+          row.appendChild(progressWrap);
+        } else {
+          const noGoals = document.createElement('div');
+          noGoals.className = 'small text-muted mt-1';
+          noGoals.textContent = node.hasGoals === false ? 'Нет целей' : 'No goals';
+          row.appendChild(noGoals);
+        }
+
+        row.addEventListener('click', async () => {
+          const periodID = periodSelect?.value || page.dataset.periodId;
+          updateURL(String(node.id), periodID);
+          await renderContentForSelection(String(node.id));
+          renderTree(state.hierarchy || [], String(node.id));
+        });
+
+        nodeWrap.appendChild(row);
+
+        if (hasChildren && expandedNodes.has(String(node.id))) {
+          const childrenWrap = document.createElement('div');
+          childrenWrap.className = 'team-node-children vstack gap-1';
+          node.children.forEach((child) => {
+            childrenWrap.appendChild(renderNode(child));
+          });
+          nodeWrap.appendChild(childrenWrap);
+        }
+        return nodeWrap;
+      };
+
+      treeEl.innerHTML = '';
+      if (!nodes.length) {
+        treeEl.innerHTML = '<div class="text-muted">Нет доступных команд.</div>';
         return;
       }
-      const orgId = hierarchySelect.value !== 'ALL' ? hierarchySelect.value : '';
-      const url = new URL('/api/v1/teams', window.location.origin);
-      url.searchParams.set('period_id', periodSelect.value);
-      if (orgId) {
-        url.searchParams.set('org_id', orgId);
-      }
-      const payload = await fetchJSON(url.toString());
-      renderTeamsList(payload, tbody, periodSelect.value);
-      initPopovers();
+      nodes.forEach((node) => treeEl.appendChild(renderNode(node)));
     };
 
-    const selectedTeam = page.dataset.selectedTeam || 'ALL';
-    const selectedPeriod = page.dataset.periodId || periodSelect.value;
+    const loadTeamOKR = async (teamID) => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      const url = new URL(`/api/v1/teams/${teamID}/okrs`, window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      return fetchJSON(url.toString());
+    };
 
-    const applyFilters = () => {
+    const renderContentForSelection = async (teamID) => {
+      mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Загрузка данных команды…</div></div>';
+      try {
+        const hierarchy = state.hierarchy || [];
+        const { map } = flattenHierarchyNodes(hierarchy);
+        const selectedNode = map.get(String(teamID));
+        if (!selectedNode) {
+          mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Команда не найдена в иерархии.</div></div>';
+          return;
+        }
+
+        const selectedData = await loadTeamOKR(teamID);
+        mainEl.innerHTML = '';
+        renderTeamGoalSection(selectedData, mainEl, {
+          title: `${selectedData.team.type_label} ${selectedData.team.name}`,
+          subtitle: `${selectedData.period?.name || ''}`,
+          headingTag: 'h2',
+          titleClass: 'h4 mb-2',
+        });
+
+        const childNodes = Array.isArray(selectedNode.children) ? selectedNode.children : [];
+        if (!childNodes.length) {
+          initPopovers();
+          return;
+        }
+
+        const childrenTitle = document.createElement('h3');
+        childrenTitle.className = 'h5 mt-3 mb-2';
+        childrenTitle.textContent = 'Дочерние команды';
+        mainEl.appendChild(childrenTitle);
+
+        const childContainer = document.createElement('div');
+        childContainer.className = 'vstack gap-2';
+        mainEl.appendChild(childContainer);
+
+        const childResults = await Promise.all(
+          childNodes.map(async (child) => {
+            try {
+              return await loadTeamOKR(child.id);
+            } catch (error) {
+              return {
+                team: { id: child.id, name: child.name, type_label: child.type_label || '' },
+                period: selectedData.period,
+                goals: [],
+              };
+            }
+          }),
+        );
+
+        childResults.forEach((childData) => {
+          renderTeamGoalSection(childData, childContainer, {
+            title: `${childData.team.type_label} ${childData.team.name}`,
+            headingTag: 'h4',
+            titleClass: 'h6 mb-2',
+          });
+        });
+        initPopovers();
+      } catch (error) {
+        mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
+      }
+    };
+
+    const bootstrapPage = async () => {
+      try {
+        const [tree, periods] = await Promise.all([loadHierarchy(), loadPeriods()]);
+        renderPeriodSelect(periodSelect, periods, page.dataset.periodId || periodSelect?.value);
+        const { selected } = resolveSelectedTeamID(tree);
+        if (selected) {
+          updateURL(selected, periodSelect?.value || page.dataset.periodId, true);
+        }
+        renderTree(tree, selected);
+        await renderContentForSelection(selected);
+      } catch (error) {
+        treeEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
+        mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
+      }
+    };
+
+    periodSelect?.addEventListener('change', () => {
       const url = new URL(window.location.href);
       url.searchParams.set('period_id', periodSelect.value);
-      url.searchParams.set('team', hierarchySelect.value || 'ALL');
       window.location.assign(url.toString());
-    };
-
-    Promise.all([loadHierarchy(), loadPeriods()])
-      .then(([tree, periods]) => {
-        renderHierarchySelect(tree, hierarchySelect, selectedTeam);
-        renderPeriodSelect(periodSelect, periods, selectedPeriod);
-        return loadTeams();
-      })
-      .catch((error) => {
-        tbody.innerHTML = `<tr><td colspan="5" class="text-danger">${error.message}</td></tr>`;
-      });
-
-    filtersForm.addEventListener('submit', (event) => {
-      event.preventDefault();
-      applyFilters();
     });
 
-    periodSelect.addEventListener('change', applyFilters);
-    hierarchySelect.addEventListener('change', applyFilters);
+    window.addEventListener('popstate', () => {
+      const url = new URL(window.location.href);
+      const teamID = url.searchParams.get('team');
+      if (!teamID) return;
+      renderTree(state.hierarchy || [], teamID);
+      renderContentForSelection(teamID);
+    });
+
+    bootstrapPage();
   };
 
   const initTeamOKRPage = () => {
