@@ -1639,7 +1639,7 @@
       .reduce((max, date) => (max && max > date ? max : date), null);
 
     if (!lastUpdated) {
-      return { hasDate: false, text: '—', isStale: false };
+      return { hasDate: false, text: '—', relativeText: '—', absoluteText: '', iso: '', isStale: false };
     }
 
     const now = new Date();
@@ -1652,6 +1652,9 @@
     return {
       hasDate: true,
       isStale,
+      iso,
+      absoluteText: absolute,
+      relativeText: relative || 'сегодня',
       text: `${absolute}${relative ? ` (${relative})` : ''}`,
     };
   };
@@ -2102,13 +2105,13 @@
         const childTable = document.createElement('table');
         childTable.className = 'table table-sm align-middle mb-0';
         childTable.innerHTML = `
-          <thead>
+          <thead class="table-light">
             <tr>
               <th>Название команды</th>
               <th>Руководитель команды</th>
               <th>Статус периода</th>
               <th>Прогресс (%)</th>
-              <th>Дата последнего обновления</th>
+              <th>Обновление</th>
             </tr>
           </thead>`;
         const childTBody = document.createElement('tbody');
@@ -2122,7 +2125,7 @@
           const nameCell = document.createElement('td');
           const nameLink = document.createElement('a');
           nameLink.className = 'link-primary';
-          nameLink.href = `/teams/${childData.team.id}/okr?period_id=${childData.period?.id || ''}`;
+          nameLink.href = `/teamOkrs?period_id=${childData.period?.id || ''}&team=${childData.team.id}`;
           nameLink.textContent = `${childData.team.type_label} ${childData.team.name}`;
           nameCell.appendChild(nameLink);
 
@@ -2136,7 +2139,14 @@
           statusCell.appendChild(statusBadge);
 
           const progressCell = document.createElement('td');
-          progressCell.textContent = typeof childData.period_progress === 'number' ? `${childData.period_progress}%` : '—';
+          if (typeof childData.period_progress === 'number') {
+            const progressBadge = document.createElement('span');
+            progressBadge.className = 'badge text-bg-light border';
+            progressBadge.textContent = `${childData.period_progress}%`;
+            progressCell.appendChild(progressBadge);
+          } else {
+            progressCell.textContent = '—';
+          }
 
           const updatedCell = document.createElement('td');
           if (!lastUpdateMeta.hasDate) {
@@ -2145,7 +2155,8 @@
             const freshness = document.createElement('span');
             freshness.className = lastUpdateMeta.isStale ? 'text-danger' : 'text-success';
             const emoji = lastUpdateMeta.isStale ? '⏰' : '✅';
-            freshness.textContent = `${emoji} ${lastUpdateMeta.text}`;
+            freshness.textContent = `${emoji} ${lastUpdateMeta.relativeText}`;
+            freshness.title = lastUpdateMeta.absoluteText;
             updatedCell.appendChild(freshness);
           }
 

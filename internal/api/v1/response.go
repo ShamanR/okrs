@@ -17,6 +17,7 @@ type teamNode struct {
 	Name      string     `json:"name"`
 	Type      string     `json:"type"`
 	TypeLabel string     `json:"type_label"`
+	Lead      string     `json:"lead"`
 	Children  []teamNode `json:"children"`
 }
 
@@ -196,6 +197,7 @@ func mapTeamNode(node service.TeamNode) teamNode {
 		Name:      node.Team.Name,
 		Type:      string(node.Team.Type),
 		TypeLabel: common.TeamTypeLabel(node.Team.Type),
+		Lead:      node.Team.Lead,
 		Children:  children,
 	}
 }
