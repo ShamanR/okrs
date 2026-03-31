@@ -61,7 +61,7 @@ func (h *Handler) HandleEditPeriod(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 	}{
 		Period:          period,
-		PageTitle:       "Редактировать период",
+		PageTitle:       fmt.Sprintf("Редактировать период %s", period.Name),
 		ContentTemplate: "period-edit-content",
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
@@ -209,7 +209,7 @@ func (h *Handler) renderPeriodEditWithError(w http.ResponseWriter, r *http.Reque
 	}{
 		Period:          period,
 		FormError:       message,
-		PageTitle:       "Редактировать период",
+		PageTitle:       fmt.Sprintf("Редактировать период %s", period.Name),
 		ContentTemplate: "period-edit-content",
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
