@@ -223,7 +223,6 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Post("/goals/{goalID}/share", goalsHandler.HandleUpdateGoalShare)
-	r.Get("/goals/period", goalsHandler.HandlePeriodGoals)
 
 	// Key Result and stage form actions.
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
