@@ -201,8 +201,10 @@ Content-Type: `application/json; charset=utf-8`
 - `/teams` — список команд и фильтр периода.
 - `/teams/{teamID}/okr?period_id=42`
 - `/goals/{goalID}`
-- `/api/teams?period_id=42`
 - `/api/v1/teams?period_id=42`
+
+Legacy `/api/*` эндпоинты удалены: фронтенд и интеграции должны использовать только `/api/v1/*`.
+Также удалены неиспользуемые SSR/form-endpoints для операций team OKR (status update, KR progress/update helpers, goal move), которые в текущем FE выполняются через `/api/v1/*`.
 
 ## Переменные окружения
 

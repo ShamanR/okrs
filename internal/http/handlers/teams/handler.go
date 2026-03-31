@@ -504,34 +504,6 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	periodID, err := common.ParsePeriodID(r)
-	if err != nil || periodID == 0 {
-		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
-		return
-	}
-	status := domain.TeamPeriodStatus(r.FormValue("status"))
-	if !common.ValidTeamPeriodStatus(status) {
-		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid team period status"))
-		return
-	}
-	if err := h.deps.Store.SetTeamPeriodStatus(ctx, teamID, periodID, status); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", teamID, periodID), http.StatusSeeOther)
-}
-
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))

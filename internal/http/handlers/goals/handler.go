@@ -194,41 +194,6 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
 }
 
-func (h *Handler) HandleUpdateKeyResultWeights(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	for _, kr := range goal.KeyResults {
-		field := fmt.Sprintf("kr_weight_%d", kr.ID)
-		weight := common.ParseIntField(r.FormValue(field))
-		if weight < 0 || weight > 100 {
-			common.RenderError(w, h.deps.Logger, fmt.Errorf("Вес KR должен быть 0..100"))
-			return
-		}
-		if err := h.deps.Store.UpdateKeyResultWeight(ctx, kr.ID, weight); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-	}
-	if returnURL := r.FormValue("return"); returnURL != "" {
-		http.Redirect(w, r, returnURL, http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
-}
-
 func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
@@ -283,50 +248,6 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", goal.TeamID, goal.PeriodID), http.StatusSeeOther)
-}
-
-func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {
-	h.handleMoveGoal(w, r, -1)
-}
-
-func (h *Handler) HandleMoveGoalDown(w http.ResponseWriter, r *http.Request) {
-	h.handleMoveGoal(w, r, 1)
-}
-
-func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, direction int) {
-	ctx := r.Context()
-	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	if teamID != goal.TeamID {
-		if returnURL := r.FormValue("return"); returnURL != "" {
-			http.Redirect(w, r, returnURL, http.StatusSeeOther)
-			return
-		}
-		redirectToTeam(w, r, teamID, goal.PeriodID)
-		return
-	}
-	if err := h.deps.Store.MoveGoal(ctx, goalID, direction); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if returnURL := r.FormValue("return"); returnURL != "" {
-		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", goal.TeamID, goal.PeriodID), http.StatusSeeOther)
