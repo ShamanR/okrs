@@ -1674,6 +1674,16 @@
       body.appendChild(createGoalsBtn);
     } else {
       body.appendChild(renderGoalsTable(data.goals, data.period?.id));
+      if (options.showWeightSummary) {
+        const goalsWeight = data.goals.reduce((sum, goal) => sum + (Number(goal.weight) || 0), 0);
+        const summaryWrap = document.createElement('div');
+        summaryWrap.className = 'mt-2';
+        const summaryBadge = document.createElement('span');
+        summaryBadge.className = `badge ${goalsWeight === 100 ? 'text-bg-success' : 'text-bg-danger'}`;
+        summaryBadge.textContent = `Сумма целей ${goalsWeight}`;
+        summaryWrap.appendChild(summaryBadge);
+        body.appendChild(summaryWrap);
+      }
     }
 
     section.appendChild(body);
@@ -1863,6 +1873,7 @@
           subtitle: `${selectedData.period?.name || ''}`,
           headingTag: 'h2',
           titleClass: 'h4 mb-2',
+          showWeightSummary: true,
         });
 
         const childNodes = Array.isArray(selectedNode.children) ? selectedNode.children : [];
