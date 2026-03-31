@@ -1664,6 +1664,10 @@
     value.className = 'small fw-semibold';
     value.textContent = `${actual}%`;
 
+    const hoverText = `Forecast: ${forecast}% | Actual: ${actual}%`;
+    track.title = hoverText;
+    value.title = hoverText;
+
     row.append(track, value);
 
     const chip = document.createElement('span');
@@ -2170,8 +2174,8 @@
             <tr>
               <th>Статус</th>
               <th>Команда</th>
-              <th>Руководитель</th>
               <th>Прогресс</th>
+              <th>Руководитель</th>
               <th>Обновлено</th>
             </tr>
           </thead>`;
@@ -2191,7 +2195,10 @@
           nameCell.appendChild(nameLink);
 
           const leadCell = document.createElement('td');
-          leadCell.textContent = leadText;
+          const leadValue = document.createElement('span');
+          leadValue.className = 'text-decoration-underline';
+          leadValue.textContent = leadText;
+          leadCell.appendChild(leadValue);
 
           const statusCell = document.createElement('td');
           const statusBadge = document.createElement('span');
@@ -2200,11 +2207,15 @@
           statusCell.appendChild(statusBadge);
 
           const progressCell = document.createElement('td');
-          progressCell.appendChild(renderForecastProgress(childData.progress_meta || {
-            actual: childData.period_progress || 0,
-            forecast: childData.period_progress || 0,
-            status: 'on_track',
-          }));
+          if (!childData.goals || childData.goals.length === 0) {
+            progressCell.textContent = '—';
+          } else {
+            progressCell.appendChild(renderForecastProgress(childData.progress_meta || {
+              actual: childData.period_progress || 0,
+              forecast: childData.period_progress || 0,
+              status: 'on_track',
+            }));
+          }
 
           const updatedCell = document.createElement('td');
           if (!lastUpdateMeta.hasDate) {
@@ -2218,7 +2229,7 @@
             updatedCell.appendChild(freshness);
           }
 
-          row.append(statusCell, nameCell, leadCell, progressCell, updatedCell);
+          row.append(statusCell, nameCell, progressCell, leadCell, updatedCell);
           childTBody.appendChild(row);
         });
 
