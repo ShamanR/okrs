@@ -2168,11 +2168,11 @@
         childTable.innerHTML = `
           <thead class="table-light">
             <tr>
-              <th>Название команды</th>
-              <th>Руководитель команды</th>
-              <th>Статус периода</th>
-              <th>Прогресс (%)</th>
-              <th>Обновление</th>
+              <th>Статус</th>
+              <th>Команда</th>
+              <th>Руководитель</th>
+              <th>Прогресс</th>
+              <th>Обновлено</th>
             </tr>
           </thead>`;
         const childTBody = document.createElement('tbody');
@@ -2218,7 +2218,7 @@
             updatedCell.appendChild(freshness);
           }
 
-          row.append(nameCell, leadCell, statusCell, progressCell, updatedCell);
+          row.append(statusCell, nameCell, leadCell, progressCell, updatedCell);
           childTBody.appendChild(row);
         });
 
