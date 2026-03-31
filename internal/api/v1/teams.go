@@ -199,6 +199,7 @@ func (h *Handler) handleTeamOverview(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, teamOverviewResponse{
 		AverageProgress: avgProgress,
 		TeamsWithGoals:  teamsWithGoals,
+		ProgressMeta:    buildProgressBarInfo(avgProgress, period),
 		Priorities:      priorities,
 		WorkBalance:     workBalance,
 	})

@@ -1733,16 +1733,11 @@
     const progressWrap = document.createElement('div');
     progressWrap.className = 'mb-3';
     progressWrap.innerHTML = `<div class="small text-muted mb-1">Совокупный прогресс (средний по командам с целями)</div>`;
-    const progressRow = document.createElement('div');
-    progressRow.className = 'd-flex align-items-center gap-2';
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress flex-grow-1';
-    progressBar.innerHTML = `<div class="progress-bar" style="width:${avgProgress}%"></div>`;
-    const progressValue = document.createElement('span');
-    progressValue.className = 'fw-semibold';
-    progressValue.textContent = `${avgProgress}%`;
-    progressRow.append(progressBar, progressValue);
-    progressWrap.appendChild(progressRow);
+    progressWrap.appendChild(renderForecastProgress(overviewData?.progress_meta || {
+      actual: avgProgress,
+      forecast: avgProgress,
+      status: 'on_track',
+    }));
     body.appendChild(progressWrap);
 
     const priorities = {
@@ -1839,16 +1834,11 @@
     body.appendChild(title);
 
     if (typeof data.period_progress === 'number') {
-      const progressWrap = document.createElement('div');
-      progressWrap.className = 'd-flex align-items-center gap-2 mb-2';
-      const progress = document.createElement('div');
-      progress.className = 'progress flex-grow-1';
-      progress.innerHTML = `<div class="progress-bar" style="width:${Math.max(0, Math.min(100, data.period_progress))}%"></div>`;
-      const value = document.createElement('span');
-      value.className = 'small text-muted';
-      value.textContent = `${data.period_progress}%`;
-      progressWrap.append(progress, value);
-      body.appendChild(progressWrap);
+      body.appendChild(renderForecastProgress(data.progress_meta || {
+        actual: data.period_progress,
+        forecast: data.period_progress,
+        status: 'on_track',
+      }));
     }
 
     if (options.showStatusControls) {

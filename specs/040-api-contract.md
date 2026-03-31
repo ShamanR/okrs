@@ -120,6 +120,8 @@ Success response (`200`):
 
 - `average_progress` — средний прогресс по дочерним командам, у которых есть goals;
 - `teams_with_goals` — число дочерних команд с goals в периоде;
+- `progress_meta` (тот же shape, что и в `/teams/{teamID}/okrs`):
+  - `actual`, `forecast`, `delta`, `status`;
 - `priorities`:
   - `p0`, `p1`, `p2`, `p3` — счётчики целей по приоритетам;
 - `work_balance`:

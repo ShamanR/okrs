@@ -84,6 +84,7 @@ type teamOKRResponse struct {
 type teamOverviewResponse struct {
 	AverageProgress int                 `json:"average_progress"`
 	TeamsWithGoals  int                 `json:"teams_with_goals"`
+	ProgressMeta    progressBarInfo     `json:"progress_meta"`
 	Priorities      prioritySummaryInfo `json:"priorities"`
 	WorkBalance     workBalanceInfo     `json:"work_balance"`
 }
