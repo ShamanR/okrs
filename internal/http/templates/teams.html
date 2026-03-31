@@ -16,7 +16,7 @@
       <div class="card h-100">
         <div class="card-body">
           <div class="mb-3">
-            <label class="form-label mb-1 small">Период</label>
+            <h2 class="h6 mb-2">Период</h2>
             <select name="period_id" class="form-select form-select-sm" data-period-select>
               {{range .PeriodOptions}}
               <option value="{{.ID}}" {{if .Selected}}selected{{end}}>{{.Name}}</option>
