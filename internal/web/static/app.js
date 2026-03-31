@@ -1630,6 +1630,32 @@
     return wrapper;
   };
 
+  const getLastGoalUpdateMeta = (goals = []) => {
+    const lastUpdated = goals
+      .map((goal) => goal.updated_at)
+      .filter(Boolean)
+      .map((value) => new Date(value))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .reduce((max, date) => (max && max > date ? max : date), null);
+
+    if (!lastUpdated) {
+      return { hasDate: false, text: '—', isStale: false };
+    }
+
+    const now = new Date();
+    const diffMs = now - lastUpdated;
+    const staleThresholdMs = 14 * 24 * 60 * 60 * 1000;
+    const isStale = diffMs > staleThresholdMs;
+    const iso = lastUpdated.toISOString();
+    const absolute = formatAbsoluteDate(iso);
+    const relative = formatRelativeUpdate(iso);
+    return {
+      hasDate: true,
+      isStale,
+      text: `${absolute}${relative ? ` (${relative})` : ''}`,
+    };
+  };
+
   const renderTeamGoalSection = (data, container, options = {}) => {
     const section = document.createElement('section');
     section.className = 'team-section card';
@@ -1700,22 +1726,10 @@
       controls.appendChild(statusWrap);
       body.appendChild(controls);
 
-      const lastUpdated = (data.goals || [])
-        .map((goal) => goal.updated_at)
-        .filter(Boolean)
-        .map((value) => new Date(value))
-        .filter((date) => !Number.isNaN(date.getTime()))
-        .reduce((max, date) => (max && max > date ? max : date), null);
+      const lastUpdateMeta = getLastGoalUpdateMeta(data.goals || []);
       const updatedText = document.createElement('div');
       updatedText.className = 'small text-muted mb-2';
-      if (lastUpdated) {
-        const iso = lastUpdated.toISOString();
-        const relative = formatRelativeUpdate(iso);
-        const absolute = formatAbsoluteDate(iso);
-        updatedText.textContent = `Последнее обновление целей: ${absolute}${relative ? ` (${relative})` : ''}`;
-      } else {
-        updatedText.textContent = 'Последнее обновление целей: —';
-      }
+      updatedText.textContent = `Последнее обновление целей: ${lastUpdateMeta.text}`;
       body.appendChild(updatedText);
     }
 
@@ -1972,13 +1986,65 @@
           }),
         );
 
+        const childTableWrap = document.createElement('div');
+        childTableWrap.className = 'table-responsive';
+        const childTable = document.createElement('table');
+        childTable.className = 'table table-sm align-middle mb-0';
+        childTable.innerHTML = `
+          <thead>
+            <tr>
+              <th>Название команды</th>
+              <th>Руководитель команды</th>
+              <th>Статус периода</th>
+              <th>Прогресс (%)</th>
+              <th>Дата последнего обновления</th>
+            </tr>
+          </thead>`;
+        const childTBody = document.createElement('tbody');
+
         childResults.forEach((childData) => {
-          renderTeamGoalSection(childData, childContainer, {
-            title: `${childData.team.type_label} ${childData.team.name}`,
-            headingTag: 'h4',
-            titleClass: 'h6 mb-2',
-          });
+          const row = document.createElement('tr');
+          const childNodeMeta = childNodes.find((node) => String(node.id) === String(childData.team.id));
+          const leadText = childNodeMeta?.lead || childNodeMeta?.lead_name || '—';
+          const lastUpdateMeta = getLastGoalUpdateMeta(childData.goals || []);
+
+          const nameCell = document.createElement('td');
+          const nameLink = document.createElement('a');
+          nameLink.className = 'link-primary';
+          nameLink.href = `/teams/${childData.team.id}/okr?period_id=${childData.period?.id || ''}`;
+          nameLink.textContent = `${childData.team.type_label} ${childData.team.name}`;
+          nameCell.appendChild(nameLink);
+
+          const leadCell = document.createElement('td');
+          leadCell.textContent = leadText;
+
+          const statusCell = document.createElement('td');
+          const statusBadge = document.createElement('span');
+          statusBadge.className = 'badge text-bg-light border';
+          statusBadge.textContent = childData.status_label || childData.period_status || '—';
+          statusCell.appendChild(statusBadge);
+
+          const progressCell = document.createElement('td');
+          progressCell.textContent = typeof childData.period_progress === 'number' ? `${childData.period_progress}%` : '—';
+
+          const updatedCell = document.createElement('td');
+          if (!lastUpdateMeta.hasDate) {
+            updatedCell.textContent = '—';
+          } else {
+            const freshness = document.createElement('span');
+            freshness.className = lastUpdateMeta.isStale ? 'text-danger' : 'text-success';
+            const emoji = lastUpdateMeta.isStale ? '⏰' : '✅';
+            freshness.textContent = `${emoji} ${lastUpdateMeta.text}`;
+            updatedCell.appendChild(freshness);
+          }
+
+          row.append(nameCell, leadCell, statusCell, progressCell, updatedCell);
+          childTBody.appendChild(row);
         });
+
+        childTable.appendChild(childTBody);
+        childTableWrap.appendChild(childTable);
+        childContainer.appendChild(childTableWrap);
         initPopovers();
       } catch (error) {
         mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
