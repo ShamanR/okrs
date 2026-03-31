@@ -12,7 +12,6 @@ import (
 
 	apiv1 "okrs/internal/api/v1"
 	"okrs/internal/domain"
-	"okrs/internal/http/handlers/api"
 	"okrs/internal/http/handlers/common"
 	"okrs/internal/http/handlers/goals"
 	"okrs/internal/http/handlers/keyresults"
@@ -188,7 +187,6 @@ func (s *Server) Routes() http.Handler {
 	teamsHandler := teams.New(deps)
 	goalsHandler := goals.New(deps)
 	krHandler := keyresults.New(deps)
-	apiHandler := api.New(deps)
 	periodsHandler := periods.New(deps)
 	apiV1Handler := apiv1.NewHandler(s.service)
 
@@ -196,6 +194,7 @@ func (s *Server) Routes() http.Handler {
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
 
+	// Teams and OKR pages (SSR + form actions).
 	r.Get("/teams", teamsHandler.HandleTeamManagement)
 	r.Get("/teamOkrs", teamsHandler.HandleTeamOKRs)
 	r.Get("/teams/new", teamsHandler.HandleNewTeam)
@@ -207,8 +206,8 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/teams/{teamID}/hard-delete", teamsHandler.HandleHardDeleteTeam)
 	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
 	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)
-	r.Post("/teams/{teamID}/okr/status", teamsHandler.HandleUpdateTeamPeriodStatus)
 
+	// Period management (SSR + form actions).
 	r.Get("/periods", periodsHandler.HandlePeriods)
 	r.Post("/periods", periodsHandler.HandleCreatePeriod)
 	r.Get("/periods/{periodID}/edit", periodsHandler.HandleEditPeriod)
@@ -217,36 +216,23 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/periods/{periodID}/move-up", periodsHandler.HandleMovePeriodUp)
 	r.Post("/periods/{periodID}/move-down", periodsHandler.HandleMovePeriodDown)
 
+	// Goal pages and goal-level actions.
 	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
 	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
-	r.Post("/goals/{goalID}/key-results/weights", goalsHandler.HandleUpdateKeyResultWeights)
-	r.Post("/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
-	r.Post("/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
 	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
 	r.Post("/goals/{goalID}/share", goalsHandler.HandleUpdateGoalShare)
 	r.Get("/goals/period", goalsHandler.HandlePeriodGoals)
 
-	r.Post("/key-results/{krID}/stages", krHandler.HandleAddStage)
-	r.Post("/stages/{stageID}/toggle", krHandler.HandleToggleStage)
-	r.Post("/key-results/{krID}/percent", krHandler.HandleUpdatePercentCurrent)
-	r.Post("/key-results/{krID}/linear", krHandler.HandleUpdateLinearCurrent)
-	r.Post("/key-results/{krID}/checkpoints", krHandler.HandleAddCheckpoint)
-	r.Post("/key-results/{krID}/boolean", krHandler.HandleUpdateBoolean)
-	r.Post("/key-results/{krID}/project-stages", krHandler.HandleUpdateProjectStages)
+	// Key Result and stage form actions.
 	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
 	r.Post("/key-results/{krID}/move-up", krHandler.HandleMoveKeyResultUp)
 	r.Post("/key-results/{krID}/move-down", krHandler.HandleMoveKeyResultDown)
 	r.Post("/key-results/{krID}/delete", krHandler.HandleDeleteKeyResult)
 	r.Post("/key-results/{krID}/update", krHandler.HandleUpdateKeyResult)
 
-	r.Route("/api", func(r chi.Router) {
-		r.Get("/teams", apiHandler.HandleAPITeams)
-		r.Get("/teams/{teamID}/goals", apiHandler.HandleAPITeamGoals)
-		r.Get("/goals/{goalID}", apiHandler.HandleAPIGoal)
-	})
-
+	// Canonical JSON/form API consumed by frontend.
 	r.Mount("/api/v1", apiV1Handler.Routes())
 
 	return r
