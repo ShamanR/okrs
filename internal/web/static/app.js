@@ -1631,10 +1631,16 @@
       owner.textContent = goal.owner_text || '—';
 
       const work = document.createElement('td');
-      work.textContent = goal.work_type || '—';
+      const workBadge = document.createElement('span');
+      workBadge.className = 'badge text-bg-light border';
+      workBadge.textContent = goal.work_type || '—';
+      work.appendChild(workBadge);
 
       const focus = document.createElement('td');
-      focus.textContent = goal.focus_type || '—';
+      const focusBadge = document.createElement('span');
+      focusBadge.className = 'badge text-bg-light border';
+      focusBadge.textContent = goal.focus_type || '—';
+      focus.appendChild(focusBadge);
 
       const progress = document.createElement('td');
       progress.className = 'teams-goals-col-progress';
