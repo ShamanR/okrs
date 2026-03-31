@@ -2168,7 +2168,7 @@
         const childTableWrap = document.createElement('div');
         childTableWrap.className = 'table-responsive';
         const childTable = document.createElement('table');
-        childTable.className = 'table table-hover table-sm align-middle mb-0';
+        childTable.className = 'table table-hover';
         childTable.innerHTML = `
           <thead class="table-light">
             <tr>
