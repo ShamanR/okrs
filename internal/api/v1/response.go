@@ -80,6 +80,25 @@ type teamOKRResponse struct {
 	Goals          []goalDetails `json:"goals"`
 }
 
+type teamOverviewResponse struct {
+	AverageProgress int                 `json:"average_progress"`
+	TeamsWithGoals  int                 `json:"teams_with_goals"`
+	Priorities      prioritySummaryInfo `json:"priorities"`
+	WorkBalance     workBalanceInfo     `json:"work_balance"`
+}
+
+type prioritySummaryInfo struct {
+	P0 int `json:"p0"`
+	P1 int `json:"p1"`
+	P2 int `json:"p2"`
+	P3 int `json:"p3"`
+}
+
+type workBalanceInfo struct {
+	Discovery int `json:"discovery"`
+	Delivery  int `json:"delivery"`
+}
+
 type teamInfo struct {
 	ID        int64  `json:"id"`
 	Name      string `json:"name"`

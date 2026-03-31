@@ -1659,21 +1659,7 @@
     };
   };
 
-  const collectDescendantNodes = (nodes = []) => {
-    const result = [];
-    const walk = (items) => {
-      items.forEach((node) => {
-        result.push(node);
-        if (Array.isArray(node.children) && node.children.length) {
-          walk(node.children);
-        }
-      });
-    };
-    walk(nodes);
-    return result;
-  };
-
-  const renderChildrenOverview = (container, descendantResults) => {
+  const renderChildrenOverview = (container, overviewData) => {
     const overview = document.createElement('div');
     overview.className = 'card mb-3';
     const body = document.createElement('div');
@@ -1684,10 +1670,7 @@
     title.textContent = 'Overview по дочерним командам';
     body.appendChild(title);
 
-    const teamsWithGoals = (descendantResults || []).filter((item) => Array.isArray(item.goals) && item.goals.length > 0);
-    const avgProgress = teamsWithGoals.length
-      ? Math.round(teamsWithGoals.reduce((sum, item) => sum + (Number(item.period_progress) || 0), 0) / teamsWithGoals.length)
-      : 0;
+    const avgProgress = Number(overviewData?.average_progress || 0);
 
     const progressWrap = document.createElement('div');
     progressWrap.className = 'mb-3';
@@ -1704,49 +1687,79 @@
     progressWrap.appendChild(progressRow);
     body.appendChild(progressWrap);
 
-    const priorities = { P0: 0, P1: 0, P2: 0, P3: 0 };
-    (descendantResults || []).forEach((item) => {
-      (item.goals || []).forEach((goal) => {
-        const key = String(goal.priority || '').toUpperCase();
-        if (Object.prototype.hasOwnProperty.call(priorities, key)) {
-          priorities[key] += 1;
-        }
-      });
-    });
+    const priorities = {
+      P0: Number(overviewData?.priorities?.p0 || 0),
+      P1: Number(overviewData?.priorities?.p1 || 0),
+      P2: Number(overviewData?.priorities?.p2 || 0),
+      P3: Number(overviewData?.priorities?.p3 || 0),
+    };
+    const workBalance = {
+      discovery: Number(overviewData?.work_balance?.discovery || 0),
+      delivery: Number(overviewData?.work_balance?.delivery || 0),
+    };
 
     const chartSection = document.createElement('div');
-    chartSection.className = 'd-flex flex-wrap align-items-center gap-3';
-    const totalGoals = Object.values(priorities).reduce((sum, val) => sum + val, 0);
-    const chart = document.createElement('div');
-    chart.style.width = '120px';
-    chart.style.height = '120px';
-    chart.style.borderRadius = '50%';
+    chartSection.className = 'd-flex flex-wrap align-items-start gap-4';
 
-    if (totalGoals > 0) {
-      let current = 0;
-      const colors = { P0: '#dc3545', P1: '#fd7e14', P2: '#198754', P3: '#6c757d' };
-      const segments = Object.entries(priorities).map(([key, value]) => {
-        const angle = (value / totalGoals) * 360;
-        const start = current;
-        const end = current + angle;
-        current = end;
-        return `${colors[key]} ${start}deg ${end}deg`;
-      });
-      chart.style.background = `conic-gradient(${segments.join(', ')})`;
-    } else {
-      chart.style.background = '#e9ecef';
-    }
+    const renderPie = (titleText, data, colors, labels) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'd-flex align-items-center gap-3';
 
-    const legend = document.createElement('div');
-    legend.className = 'small';
-    legend.innerHTML = `
-      <div class="mb-1"><span class="badge text-bg-danger">P0</span> — ${priorities.P0}</div>
-      <div class="mb-1"><span class="badge" style="background:#fd7e14">P1</span> — ${priorities.P1}</div>
-      <div class="mb-1"><span class="badge text-bg-success">P2</span> — ${priorities.P2}</div>
-      <div class="mb-1"><span class="badge text-bg-secondary">P3</span> — ${priorities.P3}</div>
-    `;
+      const chartWrap = document.createElement('div');
+      const chartTitle = document.createElement('div');
+      chartTitle.className = 'small text-muted mb-1';
+      chartTitle.textContent = titleText;
+      const chart = document.createElement('div');
+      chart.style.width = '120px';
+      chart.style.height = '120px';
+      chart.style.borderRadius = '50%';
 
-    chartSection.append(chart, legend);
+      const total = Object.values(data).reduce((sum, val) => sum + val, 0);
+      if (total > 0) {
+        let current = 0;
+        const segments = Object.entries(data).map(([key, value]) => {
+          const angle = (value / total) * 360;
+          const start = current;
+          const end = current + angle;
+          current = end;
+          return `${colors[key]} ${start}deg ${end}deg`;
+        });
+        chart.style.background = `conic-gradient(${segments.join(', ')})`;
+      } else {
+        chart.style.background = '#e9ecef';
+      }
+      chartWrap.append(chartTitle, chart);
+
+      const legend = document.createElement('div');
+      legend.className = 'small';
+      legend.innerHTML = Object.entries(data)
+        .map(([key, value]) => `<div class="mb-1"><span class="badge" style="background:${colors[key]}">${labels[key]}</span> — ${value}</div>`)
+        .join('');
+
+      wrap.append(chartWrap, legend);
+      return wrap;
+    };
+
+    chartSection.appendChild(renderPie('Приоритеты целей', priorities, {
+      P0: '#dc3545',
+      P1: '#fd7e14',
+      P2: '#198754',
+      P3: '#6c757d',
+    }, {
+      P0: 'P0',
+      P1: 'P1',
+      P2: 'P2',
+      P3: 'P3',
+    }));
+
+    chartSection.appendChild(renderPie('Баланс Discovery / Delivery', workBalance, {
+      discovery: '#0d6efd',
+      delivery: '#20c997',
+    }, {
+      discovery: 'Discovery',
+      delivery: 'Delivery',
+    }));
+
     body.appendChild(chartSection);
     overview.appendChild(body);
     container.appendChild(overview);
@@ -2029,6 +2042,12 @@
       url.searchParams.set('period_id', periodID);
       return fetchJSON(url.toString());
     };
+    const loadTeamOverview = async (teamID) => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      const url = new URL(`/api/v1/teams/${teamID}/overview`, window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      return fetchJSON(url.toString());
+    };
 
     const renderContentForSelection = async (teamID) => {
       mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Загрузка данных команды…</div></div>';
@@ -2068,14 +2087,16 @@
         childContainer.className = 'vstack gap-2';
         mainEl.appendChild(childContainer);
 
-        const allDescendantNodes = collectDescendantNodes(childNodes);
-        const descendantResults = await Promise.all(
-          allDescendantNodes.map(async (node) => {
+        const overviewData = await loadTeamOverview(teamID);
+        renderChildrenOverview(childContainer, overviewData);
+
+        const childResults = await Promise.all(
+          childNodes.map(async (child) => {
             try {
-              return await loadTeamOKR(node.id);
+              return await loadTeamOKR(child.id);
             } catch (error) {
               return {
-                team: { id: node.id, name: node.name, type_label: node.type_label || '' },
+                team: { id: child.id, name: child.name, type_label: child.type_label || '' },
                 period: selectedData.period,
                 goals: [],
                 period_progress: 0,
@@ -2085,20 +2106,6 @@
             }
           }),
         );
-
-        renderChildrenOverview(childContainer, descendantResults);
-
-        const descendantByID = new Map(descendantResults.map((item) => [String(item.team.id), item]));
-        const childResults = childNodes.map((child) => (
-          descendantByID.get(String(child.id)) || {
-            team: { id: child.id, name: child.name, type_label: child.type_label || '' },
-            period: selectedData.period,
-            goals: [],
-            period_progress: 0,
-            status_label: '—',
-            period_status: '',
-          }
-        ));
 
         const childTableWrap = document.createElement('div');
         childTableWrap.className = 'table-responsive';
