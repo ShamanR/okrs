@@ -1595,6 +1595,9 @@
           <td class="teams-goals-col-weight">Вес</td>
           <td class="teams-goals-col-priority">Приоритет</td>
           <td class="teams-goals-col-title">Название</td>
+          <td>Владелец</td>
+          <td>Работа</td>
+          <td>Фокус</td>
           <td class="teams-goals-col-progress">Прогресс</td>
           <td>Обновлено</td>
         </tr>
@@ -1624,6 +1627,15 @@
       titleWrap.appendChild(titleLink);
       title.appendChild(titleWrap);
 
+      const owner = document.createElement('td');
+      owner.textContent = goal.owner_text || '—';
+
+      const work = document.createElement('td');
+      work.textContent = goal.work_type || '—';
+
+      const focus = document.createElement('td');
+      focus.textContent = goal.focus_type || '—';
+
       const progress = document.createElement('td');
       progress.className = 'teams-goals-col-progress';
       progress.innerHTML = `<span class="badge text-bg-light border">${goal.progress}%</span>`;
@@ -1641,7 +1653,7 @@
         updated.appendChild(freshness);
       }
 
-      row.append(weight, priority, title, progress, updated);
+      row.append(weight, priority, title, owner, work, focus, progress, updated);
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
