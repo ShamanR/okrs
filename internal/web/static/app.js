@@ -1833,7 +1833,9 @@
     title.appendChild(titleLink);
     body.appendChild(title);
 
-    if (typeof data.period_progress === 'number') {
+    const hasGoals = Array.isArray(data.goals) && data.goals.length > 0;
+
+    if (hasGoals && typeof data.period_progress === 'number') {
       body.appendChild(renderForecastProgress(data.progress_meta || {
         actual: data.period_progress,
         forecast: data.period_progress,
@@ -1883,11 +1885,13 @@
       controls.appendChild(statusWrap);
       body.appendChild(controls);
 
-      const lastUpdateMeta = getLastGoalUpdateMeta(data.goals || []);
-      const updatedText = document.createElement('div');
-      updatedText.className = 'small text-muted mb-2';
-      updatedText.textContent = `Последнее обновление целей: ${lastUpdateMeta.text}`;
-      body.appendChild(updatedText);
+      if (hasGoals) {
+        const lastUpdateMeta = getLastGoalUpdateMeta(data.goals || []);
+        const updatedText = document.createElement('div');
+        updatedText.className = 'small text-muted mb-2';
+        updatedText.textContent = `Последнее обновление целей: ${lastUpdateMeta.text}`;
+        body.appendChild(updatedText);
+      }
     }
 
     if (options.subtitle) {
@@ -2112,7 +2116,6 @@
         mainEl.innerHTML = '';
         renderTeamGoalSection(selectedData, mainEl, {
           title: `${selectedData.team.type_label} ${selectedData.team.name}`,
-          subtitle: `${selectedData.period?.name || ''}`,
           headingTag: 'h2',
           titleClass: 'h4 mb-2',
           showWeightSummary: true,
