@@ -16,6 +16,7 @@ import (
 	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/pkg/errors"
 )
 
 type Handler struct {
@@ -160,12 +161,15 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	}
 	options := buildPeriodOptions(periods, period.ID)
 	selectedFilter := resolveTeamFilter(r)
+	teamId, err := strconv.Atoi(selectedFilter)
+	team, _ := h.deps.Service.GetTeam(r.Context(), int64(teamId))
 
+	title := fmt.Sprintf("Список целей %s", team.Name)
 	page := teamOkrsPage{
 		PeriodOptions:   options,
 		SelectedPeriod:  period.ID,
 		SelectedTeam:    selectedFilter,
-		PageTitle:       "OKR команд",
+		PageTitle:       title,
 		ContentTemplate: "teams-content",
 	}
 	persistTeamsFilters(w, periodValue, selectedFilter)
@@ -592,14 +596,14 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 	}
 	team, err := h.deps.Service.GetTeam(ctx, teamID)
 	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
+		common.RenderError(w, h.deps.Logger, errors.Wrap(err, "failed to get team"))
 		return
 	}
 	page := teamOKRPage{
 		Team:            team,
 		TeamTypeLabel:   common.TeamTypeLabel(team.Type),
 		Period:          period,
-		PageTitle:       "OKR команды",
+		PageTitle:       fmt.Sprintf("OKR %s", team.Name),
 		ContentTemplate: "team-okr-content",
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
@@ -737,59 +741,11 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		GoalsCount:       len(goals),
 		GoalsWeight:      totalWeight,
 		FormError:        message,
-		PageTitle:        "OKR команды",
+		PageTitle:        fmt.Sprintf("OKR %s", team.Name),
 		ContentTemplate:  "team-okr-content",
 		ObjectiveBlockV2: common.FeatureEnabled("okr_objective_block_ui_v2"),
 	}
 	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
-}
-
-func (h *Handler) appendTeamRows(ctx context.Context, rows *[]teamRow, team domain.Team, level int, periodID int64, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
-	goals, err := h.deps.Store.ListGoalsByTeamPeriod(ctx, team.ID, periodID)
-	if err != nil {
-		return err
-	}
-	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, team.ID, periodID)
-	if err != nil {
-		return err
-	}
-	goalRows := make([]teamGoalRow, 0, len(goals))
-	for i := range goals {
-		goals[i].Progress = common.CalculateGoalProgress(goals[i])
-		shareTeams, err := h.buildGoalShareTeams(ctx, goals[i], teamsByID)
-		if err != nil {
-			return err
-		}
-		goalRows = append(goalRows, teamGoalRow{
-			ID:         goals[i].ID,
-			Title:      goals[i].Title,
-			Weight:     goals[i].Weight,
-			Progress:   goals[i].Progress,
-			ShareTeams: shareTeams,
-		})
-	}
-	periodProgress := okr.PeriodProgress(goals)
-	totalWeight := 0
-	for _, goal := range goals {
-		totalWeight += goal.Weight
-	}
-	*rows = append(*rows, teamRow{
-		ID:             team.ID,
-		Name:           team.Name,
-		TypeLabel:      common.TeamTypeLabel(team.Type),
-		Indent:         level * 24,
-		StatusLabel:    common.TeamPeriodStatusLabel(status),
-		PeriodProgress: periodProgress,
-		GoalsCount:     len(goals),
-		Goals:          goalRows,
-		GoalsWeight:    totalWeight,
-	})
-	for _, child := range childrenMap[team.ID] {
-		if err := h.appendTeamRows(ctx, rows, child, level+1, periodID, childrenMap, teamsByID); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {
