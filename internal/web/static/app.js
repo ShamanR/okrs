@@ -1583,7 +1583,7 @@
     return path;
   };
 
-  const renderGoalsTable = (goals, periodID) => {
+  const renderGoalsTable = (goals, periodID, currentTeamID) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'team-goals-table-wrapper';
 
@@ -1622,7 +1622,8 @@
       }
       const titleLink = document.createElement('a');
       titleLink.className = 'link-primary';
-      titleLink.href = `/teams/${goal.team_id}/okr?period_id=${periodID}#goal-${goal.id}`;
+      const targetTeamID = currentTeamID || goal.team_id;
+      titleLink.href = `/teams/${targetTeamID}/okr?period_id=${periodID}#goal-${goal.id}`;
       titleLink.textContent = goal.title;
       titleWrap.appendChild(titleLink);
       title.appendChild(titleWrap);
@@ -1953,7 +1954,7 @@
       createGoalsBtn.textContent = 'Создать цели';
       body.appendChild(createGoalsBtn);
     } else {
-      body.appendChild(renderGoalsTable(data.goals, data.period?.id));
+      body.appendChild(renderGoalsTable(data.goals, data.period?.id, data.team?.id));
       if (options.showWeightSummary) {
         const goalsWeight = data.goals.reduce((sum, goal) => sum + (Number(goal.weight) || 0), 0);
         const summaryWrap = document.createElement('div');
