@@ -89,7 +89,15 @@ Content-Type: `application/json; charset=utf-8`
 - `GET /api/v1/teams?period_id=42&org_id=123`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs?period_id=42`
+- `GET /api/v1/teams/{teamID}/overview?period_id=42`
 - `GET /api/v1/goals/{goalID}`
+
+
+Дополнительно для team OKRs UI:
+
+- `GET /api/v1/hierarchy` возвращает `lead` в каждом узле команды;
+- `GET /api/v1/teams/{teamID}/okrs` возвращает `progress_meta` (`actual`, `forecast`, `delta`, `status`);
+- `GET /api/v1/teams/{teamID}/overview` возвращает агрегаты по всей глубине дочерней иерархии и `progress_meta` того же формата.
 
 `GET /api/v1/teams` и `GET /api/v1/teams/{teamID}/okrs` теперь учитывают жизненный цикл команды:
 
@@ -198,7 +206,8 @@ Content-Type: `application/json; charset=utf-8`
 
 ## Примеры URL
 
-- `/teams` — список команд и фильтр периода.
+- `/teams` — управление командами.
+- `/teamOkrs?period_id=42&team=123` — иерархический обзор OKR команд.
 - `/teams/{teamID}/okr?period_id=42`
 - `/goals/{goalID}`
 - `/api/v1/teams?period_id=42`
