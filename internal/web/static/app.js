@@ -1447,7 +1447,7 @@
     }
 
     const table = document.createElement('table');
-    table.className = 'table table-sm align-middle mb-0 table-transparent teams-goals-table';
+    table.className = 'table table-hover';
     const thead = document.createElement('thead');
     const theadTR = document.createElement('tr');
 
@@ -1585,7 +1585,7 @@
     wrapper.className = 'team-goals-table-wrapper';
 
     const table = document.createElement('table');
-    table.className = 'table table-sm align-middle mb-0 table-transparent teams-goals-table';
+    table.className = 'table table-hover';
     table.innerHTML = `
       <thead>
         <tr>
