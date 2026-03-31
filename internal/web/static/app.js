@@ -1628,7 +1628,10 @@
       title.appendChild(titleWrap);
 
       const owner = document.createElement('td');
-      owner.textContent = goal.owner_text || '—';
+      const ownerValue = document.createElement('span');
+      ownerValue.className = 'text-decoration-underline';
+      ownerValue.textContent = goal.owner_text || '—';
+      owner.appendChild(ownerValue);
 
       const work = document.createElement('td');
       const workBadge = document.createElement('span');
