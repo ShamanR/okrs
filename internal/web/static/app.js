@@ -1656,6 +1656,99 @@
     };
   };
 
+  const collectDescendantNodes = (nodes = []) => {
+    const result = [];
+    const walk = (items) => {
+      items.forEach((node) => {
+        result.push(node);
+        if (Array.isArray(node.children) && node.children.length) {
+          walk(node.children);
+        }
+      });
+    };
+    walk(nodes);
+    return result;
+  };
+
+  const renderChildrenOverview = (container, descendantResults) => {
+    const overview = document.createElement('div');
+    overview.className = 'card mb-3';
+    const body = document.createElement('div');
+    body.className = 'card-body';
+
+    const title = document.createElement('h4');
+    title.className = 'h6 mb-3';
+    title.textContent = 'Overview по дочерним командам';
+    body.appendChild(title);
+
+    const teamsWithGoals = (descendantResults || []).filter((item) => Array.isArray(item.goals) && item.goals.length > 0);
+    const avgProgress = teamsWithGoals.length
+      ? Math.round(teamsWithGoals.reduce((sum, item) => sum + (Number(item.period_progress) || 0), 0) / teamsWithGoals.length)
+      : 0;
+
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'mb-3';
+    progressWrap.innerHTML = `<div class="small text-muted mb-1">Совокупный прогресс (средний по командам с целями)</div>`;
+    const progressRow = document.createElement('div');
+    progressRow.className = 'd-flex align-items-center gap-2';
+    const progressBar = document.createElement('div');
+    progressBar.className = 'progress flex-grow-1';
+    progressBar.innerHTML = `<div class="progress-bar" style="width:${avgProgress}%"></div>`;
+    const progressValue = document.createElement('span');
+    progressValue.className = 'fw-semibold';
+    progressValue.textContent = `${avgProgress}%`;
+    progressRow.append(progressBar, progressValue);
+    progressWrap.appendChild(progressRow);
+    body.appendChild(progressWrap);
+
+    const priorities = { P0: 0, P1: 0, P2: 0, P3: 0 };
+    (descendantResults || []).forEach((item) => {
+      (item.goals || []).forEach((goal) => {
+        const key = String(goal.priority || '').toUpperCase();
+        if (Object.prototype.hasOwnProperty.call(priorities, key)) {
+          priorities[key] += 1;
+        }
+      });
+    });
+
+    const chartSection = document.createElement('div');
+    chartSection.className = 'd-flex flex-wrap align-items-center gap-3';
+    const totalGoals = Object.values(priorities).reduce((sum, val) => sum + val, 0);
+    const chart = document.createElement('div');
+    chart.style.width = '120px';
+    chart.style.height = '120px';
+    chart.style.borderRadius = '50%';
+
+    if (totalGoals > 0) {
+      let current = 0;
+      const colors = { P0: '#dc3545', P1: '#fd7e14', P2: '#198754', P3: '#6c757d' };
+      const segments = Object.entries(priorities).map(([key, value]) => {
+        const angle = (value / totalGoals) * 360;
+        const start = current;
+        const end = current + angle;
+        current = end;
+        return `${colors[key]} ${start}deg ${end}deg`;
+      });
+      chart.style.background = `conic-gradient(${segments.join(', ')})`;
+    } else {
+      chart.style.background = '#e9ecef';
+    }
+
+    const legend = document.createElement('div');
+    legend.className = 'small';
+    legend.innerHTML = `
+      <div class="mb-1"><span class="badge text-bg-danger">P0</span> — ${priorities.P0}</div>
+      <div class="mb-1"><span class="badge" style="background:#fd7e14">P1</span> — ${priorities.P1}</div>
+      <div class="mb-1"><span class="badge text-bg-success">P2</span> — ${priorities.P2}</div>
+      <div class="mb-1"><span class="badge text-bg-secondary">P3</span> — ${priorities.P3}</div>
+    `;
+
+    chartSection.append(chart, legend);
+    body.appendChild(chartSection);
+    overview.appendChild(body);
+    container.appendChild(overview);
+  };
+
   const renderTeamGoalSection = (data, container, options = {}) => {
     const section = document.createElement('section');
     section.className = 'team-section card';
@@ -1972,19 +2065,37 @@
         childContainer.className = 'vstack gap-2';
         mainEl.appendChild(childContainer);
 
-        const childResults = await Promise.all(
-          childNodes.map(async (child) => {
+        const allDescendantNodes = collectDescendantNodes(childNodes);
+        const descendantResults = await Promise.all(
+          allDescendantNodes.map(async (node) => {
             try {
-              return await loadTeamOKR(child.id);
+              return await loadTeamOKR(node.id);
             } catch (error) {
               return {
-                team: { id: child.id, name: child.name, type_label: child.type_label || '' },
+                team: { id: node.id, name: node.name, type_label: node.type_label || '' },
                 period: selectedData.period,
                 goals: [],
+                period_progress: 0,
+                status_label: '—',
+                period_status: '',
               };
             }
           }),
         );
+
+        renderChildrenOverview(childContainer, descendantResults);
+
+        const descendantByID = new Map(descendantResults.map((item) => [String(item.team.id), item]));
+        const childResults = childNodes.map((child) => (
+          descendantByID.get(String(child.id)) || {
+            team: { id: child.id, name: child.name, type_label: child.type_label || '' },
+            period: selectedData.period,
+            goals: [],
+            period_progress: 0,
+            status_label: '—',
+            period_status: '',
+          }
+        ));
 
         const childTableWrap = document.createElement('div');
         childTableWrap.className = 'table-responsive';
