@@ -2341,20 +2341,22 @@
     const teamID = page.dataset.teamId;
     const periodID = page.dataset.periodId;
 
+    const loadTeamAncestry = async (selectedTeamID) => {
+      const chain = [];
+      const seen = new Set();
+      let cursor = selectedTeamID;
+      while (cursor && !seen.has(String(cursor))) {
+        seen.add(String(cursor));
+        const team = await fetchJSON(`/api/v1/teams/${cursor}`);
+        chain.unshift(team);
+        cursor = team.parent_id;
+      }
+      return chain;
+    };
+
     const renderTeamBreadcrumbs = async () => {
       if (!breadcrumbsEl) return;
-      let tree = await loadHierarchyForPeriod('');
-      let { map, parentByID } = flattenHierarchyNodes(tree);
-      if (!map.has(String(teamID))) {
-        tree = await loadHierarchyForPeriod(periodID);
-        ({ map, parentByID } = flattenHierarchyNodes(tree));
-      }
-      const chain = [];
-      let cursor = String(teamID);
-      while (cursor && map.has(cursor)) {
-        chain.unshift(map.get(cursor));
-        cursor = parentByID.get(cursor);
-      }
+      const chain = await loadTeamAncestry(teamID);
       const fragment = document.createDocumentFragment();
       const rootCrumb = document.createElement('li');
       rootCrumb.className = 'breadcrumb-item';
