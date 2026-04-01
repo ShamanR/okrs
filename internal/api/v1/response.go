@@ -91,6 +91,20 @@ type teamOverviewResponse struct {
 	WorkBalance     workBalanceInfo     `json:"work_balance"`
 }
 
+type teamChildrenSummaryResponse struct {
+	Period periodInfo               `json:"period"`
+	Items  []teamChildSummaryResult `json:"items"`
+}
+
+type teamChildSummaryResult struct {
+	Team         teamInfo         `json:"team"`
+	Status       string           `json:"status"`
+	StatusLabel  string           `json:"status_label"`
+	HasGoals     bool             `json:"has_goals"`
+	ProgressMeta *progressBarInfo `json:"progress_meta,omitempty"`
+	LastUpdated  *time.Time       `json:"last_updated,omitempty"`
+}
+
 type prioritySummaryInfo struct {
 	P0 int `json:"p0"`
 	P1 int `json:"p1"`
@@ -320,6 +334,35 @@ func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 		GoalsWeight:    data.GoalsWeight,
 		ProgressMeta:   buildProgressBarInfo(data.PeriodProgress, data.Period),
 		Goals:          goals,
+	}
+}
+
+func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamChildSummary) teamChildrenSummaryResponse {
+	rows := make([]teamChildSummaryResult, 0, len(items))
+	for _, item := range items {
+		var progressMeta *progressBarInfo
+		if item.HasGoals {
+			meta := buildProgressBarInfo(item.Progress, period)
+			progressMeta = &meta
+		}
+		rows = append(rows, teamChildSummaryResult{
+			Team: teamInfo{
+				ID:        item.Team.ID,
+				Name:      item.Team.Name,
+				Type:      string(item.Team.Type),
+				TypeLabel: common.TeamTypeLabel(item.Team.Type),
+				ParentID:  item.Team.ParentID,
+			},
+			Status:       string(item.Status),
+			StatusLabel:  common.TeamPeriodStatusLabel(item.Status),
+			HasGoals:     item.HasGoals,
+			ProgressMeta: progressMeta,
+			LastUpdated:  item.LastUpdateAt,
+		})
+	}
+	return teamChildrenSummaryResponse{
+		Period: mapPeriodInfo(period),
+		Items:  rows,
 	}
 }
 

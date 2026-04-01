@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"okrs/internal/domain"
 
@@ -125,6 +126,39 @@ func (s *Store) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 func (s *Store) DeleteGoal(ctx context.Context, id int64) error {
 	_, err := s.DB.Exec(ctx, `DELETE FROM goals WHERE id=$1`, id)
 	return err
+}
+
+func (s *Store) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
+	updates := make(map[int64]time.Time, len(teamIDs))
+	if len(teamIDs) == 0 {
+		return updates, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT t.team_id, MAX(t.updated_at) AS last_update_at
+		FROM (
+			SELECT g.team_id AS team_id, g.updated_at
+			FROM goals g
+			WHERE g.period_id = $1 AND g.team_id = ANY($2)
+			UNION ALL
+			SELECT gs.team_id AS team_id, g.updated_at
+			FROM goal_shares gs
+			JOIN goals g ON g.id = gs.goal_id
+			WHERE g.period_id = $1 AND gs.team_id = ANY($2)
+		) t
+		GROUP BY t.team_id`, periodID, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var teamID int64
+		var updatedAt time.Time
+		if err := rows.Scan(&teamID, &updatedAt); err != nil {
+			return nil, err
+		}
+		updates[teamID] = updatedAt
+	}
+	return updates, rows.Err()
 }
 
 type GoalUpdateInput struct {

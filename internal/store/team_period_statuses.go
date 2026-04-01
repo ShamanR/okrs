@@ -31,3 +31,27 @@ func (s *Store) SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64,
 	)
 	return err
 }
+
+func (s *Store) ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
+	statuses := make(map[int64]domain.TeamPeriodStatus, len(teamIDs))
+	if len(teamIDs) == 0 {
+		return statuses, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT team_id, status
+		FROM team_period_statuses
+		WHERE period_id=$1 AND team_id = ANY($2)`, periodID, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var teamID int64
+		var status domain.TeamPeriodStatus
+		if err := rows.Scan(&teamID, &status); err != nil {
+			return nil, err
+		}
+		statuses[teamID] = status
+	}
+	return statuses, rows.Err()
+}

@@ -24,6 +24,7 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/hierarchy", h.handleHierarchy)
 	r.Get("/periods", h.handlePeriods)
 	r.Get("/teams/{teamID}", h.handleTeam)
+	r.Get("/teams/{teamID}/children-summary", h.handleTeamChildrenSummary)
 	r.Get("/teams/{teamID}/okrs", h.handleTeamOKRs)
 	r.Get("/teams/{teamID}/overview", h.handleTeamOverview)
 	r.Get("/goals/{goalID}", h.handleGoal)

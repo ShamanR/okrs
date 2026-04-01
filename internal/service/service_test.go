@@ -97,6 +97,31 @@ func (f *fakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID int6
 	}
 	return domain.TeamPeriodStatusNoGoals, nil
 }
+func (f *fakeStore) ListTeamPeriodStatuses(_ context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
+	result := make(map[int64]domain.TeamPeriodStatus, len(teamIDs))
+	for _, teamID := range teamIDs {
+		if status, ok := f.statuses[[2]int64{teamID, periodID}]; ok {
+			result[teamID] = status
+		}
+	}
+	return result, nil
+}
+func (f *fakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
+	result := make(map[int64]time.Time)
+	for _, teamID := range teamIDs {
+		goals := f.goalsByTeam[teamID][periodID]
+		var max time.Time
+		for _, goal := range goals {
+			if goal.UpdatedAt.After(max) {
+				max = goal.UpdatedAt
+			}
+		}
+		if !max.IsZero() {
+			result[teamID] = max
+		}
+	}
+	return result, nil
+}
 func (f *fakeStore) TeamHasGoals(_ context.Context, id int64) (bool, error) {
 	for _, goals := range f.goalsByTeam[id] {
 		if len(goals) > 0 {

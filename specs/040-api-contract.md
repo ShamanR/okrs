@@ -24,6 +24,7 @@ SSR-страницы должны опираться на те же правил
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
+- `GET /api/v1/teams/{teamID}/children-summary`
 - `GET /api/v1/goals/{goalID}`
 
 ## Write endpoints

@@ -89,6 +89,7 @@ Content-Type: `application/json; charset=utf-8`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs?period_id=42`
 - `GET /api/v1/teams/{teamID}/overview?period_id=42`
+- `GET /api/v1/teams/{teamID}/children-summary?period_id=42`
 - `GET /api/v1/goals/{goalID}`
 
 
