@@ -8,6 +8,7 @@ import (
 
 // handleHierarchy returns the organization hierarchy tree.
 func (h *Handler) handleHierarchy(w http.ResponseWriter, r *http.Request) {
+	setAPICacheControl(w)
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
