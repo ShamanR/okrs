@@ -1983,24 +1983,6 @@
     container.appendChild(section);
   };
 
-  const filterHierarchyByVisibleTeams = (nodes, visibleIDs) => {
-    const normalized = new Set(Array.from(visibleIDs || []).map((id) => String(id)));
-    const walk = (tree) => {
-      const result = [];
-      (tree || []).forEach((node) => {
-        const children = walk(node.children || []);
-        const isVisible = normalized.has(String(node.id));
-        if (isVisible) {
-          result.push({ ...node, children });
-        } else {
-          result.push(...children);
-        }
-      });
-      return result;
-    };
-    return walk(nodes || []);
-  };
-
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="team-okrs"]');
     if (!page) return;
@@ -2013,10 +1995,7 @@
 
     const loadHierarchy = async () => loadHierarchyForPeriod(periodSelect?.value || page.dataset.periodId || '');
 
-    const getVisibleHierarchy = (teamSummaryMap = new Map()) => {
-      const visibleIDs = new Set(Array.from(teamSummaryMap.keys()));
-      return filterHierarchyByVisibleTeams(state.hierarchy || [], visibleIDs);
-    };
+    const getVisibleHierarchy = () => state.hierarchy || [];
     const loadTeamsSummaryMap = async () => {
       const periodID = periodSelect?.value || page.dataset.periodId;
       if (!periodID) return new Map();
@@ -2024,10 +2003,9 @@
       if (state.teamsSummaryByPeriod[cacheKey]) {
         return state.teamsSummaryByPeriod[cacheKey];
       }
-      const url = new URL('/api/v1/teams', window.location.origin);
-      url.searchParams.set('period_id', periodID);
-      const payload = await fetchJSON(url.toString());
-      const map = new Map((payload.items || []).map((team) => [String(team.id), team]));
+      const hierarchy = await loadHierarchy();
+      const { map: nodesMap } = flattenHierarchyNodes(hierarchy);
+      const map = new Map(Array.from(nodesMap.keys()).map((id) => [String(id), {}]));
       state.teamsSummaryByPeriod[cacheKey] = map;
       return map;
     };

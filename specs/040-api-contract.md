@@ -21,7 +21,6 @@ SSR-страницы должны опираться на те же правил
 
 - `GET /api/v1/hierarchy`
 - `GET /api/v1/periods`
-- `GET /api/v1/teams`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
@@ -45,7 +44,7 @@ SSR-страницы должны опираться на те же правил
 
 ## Period-aware team visibility
 
-`GET /api/v1/teams?period_id={id}` должен возвращать команды по серверным правилам видимости:
+`GET /api/v1/hierarchy?period_id={id}` должен возвращать команды по серверным правилам видимости:
 
 - для актуального периода — все активные команды и soft-deleted команды, у которых уже есть goals/OKR в этом периоде;
 - для исторического периода — все активные команды и soft-deleted команды, у которых есть goals/OKR в этом периоде;

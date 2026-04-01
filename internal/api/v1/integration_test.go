@@ -322,21 +322,6 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	currentResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, currentPeriodID))
-	if err != nil {
-		t.Fatalf("get current teams: %v", err)
-	}
-	defer currentResp.Body.Close()
-	if currentResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for current teams, got %d", currentResp.StatusCode)
-	}
-	var currentTeams teamsResponse
-	if err := json.NewDecoder(currentResp.Body).Decode(&currentTeams); err != nil {
-		t.Fatalf("decode current teams: %v", err)
-	}
-	if len(currentTeams.Items) != 1 || currentTeams.Items[0].ID != activeTeamID {
-		t.Fatalf("expected only active team in current period, got %+v", currentTeams.Items)
-	}
 	currentHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
 	if err != nil {
 		t.Fatalf("get current hierarchy: %v", err)
@@ -353,25 +338,10 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if _, ok := currentHierarchyIDs[deletedTeamID]; ok {
 		t.Fatalf("expected deleted team to be hidden from current hierarchy without goals, got %+v", currentHierarchyIDs)
 	}
+	if _, ok := currentHierarchyIDs[activeTeamID]; !ok {
+		t.Fatalf("expected active team in current hierarchy, got %+v", currentHierarchyIDs)
+	}
 
-	historyResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, historyPeriodID))
-	if err != nil {
-		t.Fatalf("get history teams: %v", err)
-	}
-	defer historyResp.Body.Close()
-	if historyResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for history teams, got %d", historyResp.StatusCode)
-	}
-	var historyTeams teamsResponse
-	if err := json.NewDecoder(historyResp.Body).Decode(&historyTeams); err != nil {
-		t.Fatalf("decode history teams: %v", err)
-	}
-	if len(historyTeams.Items) != 2 {
-		t.Fatalf("expected active team without goals plus deleted historical team, got %+v", historyTeams.Items)
-	}
-	if historyTeams.Items[0].ID != activeTeamID || historyTeams.Items[1].ID != deletedTeamID {
-		t.Fatalf("unexpected history teams order/content: %+v", historyTeams.Items)
-	}
 	historyHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, historyPeriodID))
 	if err != nil {
 		t.Fatalf("get history hierarchy: %v", err)
@@ -387,6 +357,9 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	historyHierarchyIDs := flattenHierarchyIDs(historyHierarchy.Items)
 	if _, ok := historyHierarchyIDs[deletedTeamID]; !ok {
 		t.Fatalf("expected deleted team with historical goals in hierarchy, got %+v", historyHierarchyIDs)
+	}
+	if _, ok := historyHierarchyIDs[activeTeamID]; !ok {
+		t.Fatalf("expected active team in history hierarchy, got %+v", historyHierarchyIDs)
 	}
 
 	okrResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, historyPeriodID))
@@ -430,21 +403,6 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("create current goal: %v", err)
 	}
 
-	currentAgainResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, currentPeriodID))
-	if err != nil {
-		t.Fatalf("get current teams after goal: %v", err)
-	}
-	defer currentAgainResp.Body.Close()
-	if currentAgainResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 for current teams after goal, got %d", currentAgainResp.StatusCode)
-	}
-	var currentTeamsWithGoal teamsResponse
-	if err := json.NewDecoder(currentAgainResp.Body).Decode(&currentTeamsWithGoal); err != nil {
-		t.Fatalf("decode current teams after goal: %v", err)
-	}
-	if len(currentTeamsWithGoal.Items) != 2 {
-		t.Fatalf("expected deleted team with current goal to become visible, got %+v", currentTeamsWithGoal.Items)
-	}
 	currentHierarchyAfterGoalResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
 	if err != nil {
 		t.Fatalf("get current hierarchy after goal: %v", err)
