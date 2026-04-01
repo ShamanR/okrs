@@ -1,6 +1,6 @@
 {{define "team-okr-content"}}
 <nav class="mb-4" aria-label="breadcrumb">
-  <ol class="breadcrumb">
+  <ol class="breadcrumb" data-okr-breadcrumbs>
     <li class="breadcrumb-item"><a href="/teamOkrs">OKR команд</a></li>
     <li class="breadcrumb-item active" aria-current="page">
       <span class="badge text-bg-secondary">{{.TeamTypeLabel}}</span>
@@ -10,28 +10,10 @@
 </nav>
 
 <div id="team-okr-page" data-page="team-okr" data-team-id="{{.Team.ID}}" data-period-id="{{.Period.ID}}">
-  <div class="row g-4 mb-4">
-    <div class="col-lg-5">
-      <div class="card h-100">
-        <div class="card-body" data-okr-summary>
-          <h2 class="h5">Сводка периода</h2>
-          <p class="text-muted mb-0">Загрузка данных...</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-lg-7">
-      <div class="card">
-        <div class="card-body">
-          <h2 class="h5">Цели периода</h2>
-          <div data-okr-actions>
-            <p class="text-muted mb-0">Данные загружаются из API.</p>
-          </div>
-        </div>
-      </div>
-    </div>
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <h2 class="h4 mb-0">Цели</h2>
+    <div data-okr-actions></div>
   </div>
-
-  <h2 class="h4 mb-3">Цели</h2>
   <div class="vstack gap-3" data-okr-goals>
     <div class="text-muted">Загрузка целей...</div>
   </div>

@@ -115,6 +115,19 @@
     }
   };
 
+  const loadHierarchyForPeriod = async (periodID) => {
+    const cacheKey = String(periodID || '');
+    if (state.hierarchyByPeriod[cacheKey]) return state.hierarchyByPeriod[cacheKey];
+    const url = new URL('/api/v1/hierarchy', window.location.origin);
+    if (periodID) {
+      url.searchParams.set('period_id', periodID);
+    }
+    const payload = await fetchJSON(url.toString());
+    state.hierarchy = payload.items || [];
+    state.hierarchyByPeriod[cacheKey] = state.hierarchy;
+    return state.hierarchyByPeriod[cacheKey];
+  };
+
   const renderPeriodSelect = (select, periods, selectedID) => {
     select.innerHTML = '';
     if (!periods.length) {
@@ -175,9 +188,8 @@
     });
   };
 
-  const renderOKRPage = (data, summaryEl, goalsEl, actionsEl) => {
+  const renderOKRPage = (data, goalsEl, actionsEl) => {
     state.teamOKR = data;
-    renderSummary(data, summaryEl);
     if (actionsEl) {
       renderOKRActions(data, actionsEl);
     }
@@ -193,6 +205,14 @@
       goalsEl.appendChild(renderGoalCard(goal));
     });
     initPopovers();
+    if (window.location.hash) {
+      window.setTimeout(() => {
+        const target = document.querySelector(window.location.hash);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 0);
+    }
   };
 
   const renderGoalCard = (goal) => {
@@ -627,76 +647,6 @@
     form.appendChild(status);
     panel.appendChild(form);
     return panel;
-  };
-
-  const renderSummary = (data, summaryEl) => {
-    summaryEl.innerHTML = '';
-    const title = document.createElement('h2');
-    title.className = 'h5';
-    title.textContent = 'Сводка периода';
-
-    const progressRow = document.createElement('div');
-    progressRow.className = 'mb-3';
-
-    const progressHeader = document.createElement('div');
-    progressHeader.className = 'd-flex justify-content-between';
-    const progressLabel = document.createElement('span');
-    progressLabel.className = 'text-muted';
-    progressLabel.textContent = 'Прогресс';
-    const progressValue = document.createElement('strong');
-    progressValue.textContent = `${data.period_progress}%`;
-    progressHeader.append(progressLabel, progressValue);
-
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress';
-    progressBar.setAttribute('role', 'progressbar');
-    progressBar.setAttribute('aria-valuenow', data.period_progress);
-    progressBar.setAttribute('aria-valuemin', '0');
-    progressBar.setAttribute('aria-valuemax', '100');
-    const progressFill = document.createElement('div');
-    progressFill.className = 'progress-bar';
-    progressFill.style.width = `${data.period_progress}%`;
-    progressBar.appendChild(progressFill);
-
-    progressRow.append(progressHeader, progressBar);
-
-    const counts = document.createElement('div');
-    counts.className = 'd-flex justify-content-between';
-    counts.innerHTML = `<span class="text-muted">Целей</span><span class="fw-semibold">${data.goals_count}</span>`;
-
-    const weight = document.createElement('div');
-    weight.className = 'd-flex justify-content-between';
-    weight.innerHTML = `<span class="text-muted">Суммарный вес</span><span class="fw-semibold">${data.goals_weight}</span>`;
-
-    const status = document.createElement('div');
-    status.className = 'mt-3';
-    const statusLabel = document.createElement('h3');
-    statusLabel.className = 'h6 mb-2';
-    statusLabel.textContent = 'Статус периода';
-
-    const statusSelect = document.createElement('select');
-    statusSelect.className = 'form-select';
-    const statusOptions = [
-      { value: 'no_goals', label: 'Нет целей' },
-      { value: 'forming', label: 'Черновик целей' },
-      { value: 'in_progress', label: 'Готовы к валидации' },
-      { value: 'validated', label: 'Провалидировано' },
-      { value: 'closed', label: 'Цели закрыты' },
-    ];
-    statusOptions.forEach((option) => {
-      const opt = document.createElement('option');
-      opt.value = option.value;
-      opt.textContent = option.label;
-      if (option.value === data.period_status) {
-        opt.selected = true;
-      }
-      statusSelect.appendChild(opt);
-    });
-    statusSelect.addEventListener('change', () => updatePeriodStatus(statusSelect.value));
-
-    status.append(statusLabel, statusSelect);
-
-    summaryEl.append(title, progressRow, counts, weight, status);
   };
 
   const renderOKRActions = (data, actionsEl) => {
@@ -2027,19 +1977,7 @@
     const initialTeam = page.dataset.selectedTeam || '';
     const expandedNodes = new Set();
 
-    const loadHierarchy = async () => {
-      const periodID = periodSelect?.value || page.dataset.periodId || '';
-      const cacheKey = String(periodID);
-      if (state.hierarchyByPeriod[cacheKey]) return state.hierarchyByPeriod[cacheKey];
-      const url = new URL('/api/v1/hierarchy', window.location.origin);
-      if (periodID) {
-        url.searchParams.set('period_id', periodID);
-      }
-      const payload = await fetchJSON(url.toString());
-      state.hierarchy = payload.items || [];
-      state.hierarchyByPeriod[cacheKey] = state.hierarchy;
-      return state.hierarchyByPeriod[cacheKey];
-    };
+    const loadHierarchy = async () => loadHierarchyForPeriod(periodSelect?.value || page.dataset.periodId || '');
 
     const getVisibleHierarchy = (teamSummaryMap = new Map()) => {
       const visibleIDs = new Set(Array.from(teamSummaryMap.keys()));
@@ -2374,23 +2312,60 @@
   const initTeamOKRPage = () => {
     const page = document.querySelector('[data-page="team-okr"]');
     if (!page) return;
-    const summaryEl = page.querySelector('[data-okr-summary]');
     const actionsEl = page.querySelector('[data-okr-actions]');
     const goalsEl = page.querySelector('[data-okr-goals]');
+    const breadcrumbsEl = page.querySelector('[data-okr-breadcrumbs]');
     const teamID = page.dataset.teamId;
     const periodID = page.dataset.periodId;
+
+    const renderTeamBreadcrumbs = async () => {
+      if (!breadcrumbsEl) return;
+      const tree = await loadHierarchyForPeriod(periodID);
+      const { map, parentByID } = flattenHierarchyNodes(tree);
+      const chain = [];
+      let cursor = String(teamID);
+      while (cursor && map.has(cursor)) {
+        chain.unshift(map.get(cursor));
+        cursor = parentByID.get(cursor);
+      }
+      const fragment = document.createDocumentFragment();
+      const rootCrumb = document.createElement('li');
+      rootCrumb.className = 'breadcrumb-item';
+      const rootLink = document.createElement('a');
+      rootLink.href = '/teamOkrs';
+      rootLink.textContent = 'OKR команд';
+      rootCrumb.appendChild(rootLink);
+      fragment.appendChild(rootCrumb);
+
+      chain.forEach((node, index) => {
+        const item = document.createElement('li');
+        const isLast = index === chain.length - 1;
+        item.className = `breadcrumb-item${isLast ? ' active' : ''}`;
+        if (isLast) {
+          item.setAttribute('aria-current', 'page');
+          item.textContent = `${node.type_label} ${node.name}`;
+        } else {
+          const link = document.createElement('a');
+          link.href = `/teamOkrs?period_id=${periodID}&team=${node.id}`;
+          link.textContent = `${node.type_label} ${node.name}`;
+          item.appendChild(link);
+        }
+        fragment.appendChild(item);
+      });
+      breadcrumbsEl.replaceChildren(fragment);
+    };
 
     const load = async () => {
       const url = new URL(`/api/v1/teams/${teamID}/okrs`, window.location.origin);
       url.searchParams.set('period_id', periodID);
       const payload = await fetchJSON(url.toString());
-      renderOKRPage(payload, summaryEl, goalsEl, actionsEl);
+      renderOKRPage(payload, goalsEl, actionsEl);
+      await renderTeamBreadcrumbs();
     };
 
     reloadTeamOKR = load;
 
     load().catch((error) => {
-      summaryEl.innerHTML = `<p class="text-danger mb-0">${error.message}</p>`;
       goalsEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
     });
   };
