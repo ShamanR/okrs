@@ -145,7 +145,7 @@ func (h *Handler) handleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hierarchy, err := h.service.GetHierarchy(r.Context())
+	hierarchy, err := h.service.GetHierarchy(r.Context(), &periodID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy", nil)
 		return

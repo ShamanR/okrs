@@ -110,12 +110,29 @@ type GoalDetails struct {
 	ShareTeams []TeamShareInfo
 }
 
-func (s *Service) GetHierarchy(ctx context.Context) ([]TeamNode, error) {
-	teams, err := s.store.ListTeams(ctx)
+func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode, error) {
+	teams, err := s.store.ListAllTeams(ctx)
 	if err != nil {
 		return nil, err
 	}
-	_, childrenMap, roots := buildTeamHierarchy(teams)
+	visibleTeams := make([]domain.Team, 0, len(teams))
+	for _, team := range teams {
+		if team.DeletedAt == nil {
+			visibleTeams = append(visibleTeams, team)
+			continue
+		}
+		if periodID == nil || *periodID == 0 {
+			continue
+		}
+		hasGoals, err := s.store.TeamHasGoalsInPeriod(ctx, team.ID, *periodID)
+		if err != nil {
+			return nil, err
+		}
+		if hasGoals {
+			visibleTeams = append(visibleTeams, team)
+		}
+	}
+	_, childrenMap, roots := buildTeamHierarchy(visibleTeams)
 	nodes := make([]TeamNode, 0, len(roots))
 	for _, team := range roots {
 		node := buildTeamNode(team, childrenMap)

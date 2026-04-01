@@ -337,6 +337,22 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if len(currentTeams.Items) != 1 || currentTeams.Items[0].ID != activeTeamID {
 		t.Fatalf("expected only active team in current period, got %+v", currentTeams.Items)
 	}
+	currentHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current hierarchy: %v", err)
+	}
+	defer currentHierarchyResp.Body.Close()
+	if currentHierarchyResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for current hierarchy, got %d", currentHierarchyResp.StatusCode)
+	}
+	var currentHierarchy hierarchyResponse
+	if err := json.NewDecoder(currentHierarchyResp.Body).Decode(&currentHierarchy); err != nil {
+		t.Fatalf("decode current hierarchy: %v", err)
+	}
+	currentHierarchyIDs := flattenHierarchyIDs(currentHierarchy.Items)
+	if _, ok := currentHierarchyIDs[deletedTeamID]; ok {
+		t.Fatalf("expected deleted team to be hidden from current hierarchy without goals, got %+v", currentHierarchyIDs)
+	}
 
 	historyResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams?period_id=%d", server.URL, historyPeriodID))
 	if err != nil {
@@ -355,6 +371,22 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}
 	if historyTeams.Items[0].ID != activeTeamID || historyTeams.Items[1].ID != deletedTeamID {
 		t.Fatalf("unexpected history teams order/content: %+v", historyTeams.Items)
+	}
+	historyHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, historyPeriodID))
+	if err != nil {
+		t.Fatalf("get history hierarchy: %v", err)
+	}
+	defer historyHierarchyResp.Body.Close()
+	if historyHierarchyResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for history hierarchy, got %d", historyHierarchyResp.StatusCode)
+	}
+	var historyHierarchy hierarchyResponse
+	if err := json.NewDecoder(historyHierarchyResp.Body).Decode(&historyHierarchy); err != nil {
+		t.Fatalf("decode history hierarchy: %v", err)
+	}
+	historyHierarchyIDs := flattenHierarchyIDs(historyHierarchy.Items)
+	if _, ok := historyHierarchyIDs[deletedTeamID]; !ok {
+		t.Fatalf("expected deleted team with historical goals in hierarchy, got %+v", historyHierarchyIDs)
 	}
 
 	okrResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, historyPeriodID))
@@ -413,6 +445,22 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if len(currentTeamsWithGoal.Items) != 2 {
 		t.Fatalf("expected deleted team with current goal to become visible, got %+v", currentTeamsWithGoal.Items)
 	}
+	currentHierarchyAfterGoalResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
+	if err != nil {
+		t.Fatalf("get current hierarchy after goal: %v", err)
+	}
+	defer currentHierarchyAfterGoalResp.Body.Close()
+	if currentHierarchyAfterGoalResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for current hierarchy after goal, got %d", currentHierarchyAfterGoalResp.StatusCode)
+	}
+	var currentHierarchyAfterGoal hierarchyResponse
+	if err := json.NewDecoder(currentHierarchyAfterGoalResp.Body).Decode(&currentHierarchyAfterGoal); err != nil {
+		t.Fatalf("decode current hierarchy after goal: %v", err)
+	}
+	currentHierarchyAfterGoalIDs := flattenHierarchyIDs(currentHierarchyAfterGoal.Items)
+	if _, ok := currentHierarchyAfterGoalIDs[deletedTeamID]; !ok {
+		t.Fatalf("expected deleted team with current goals in hierarchy, got %+v", currentHierarchyAfterGoalIDs)
+	}
 
 	currentDeletedVisibleResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
 	if err != nil {
@@ -422,6 +470,21 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if currentDeletedVisibleResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 for deleted team with current goal, got %d", currentDeletedVisibleResp.StatusCode)
 	}
+}
+
+func flattenHierarchyIDs(nodes []teamNode) map[int64]struct{} {
+	ids := make(map[int64]struct{})
+	var walk func(items []teamNode)
+	walk = func(items []teamNode) {
+		for _, node := range items {
+			ids[node.ID] = struct{}{}
+			if len(node.Children) > 0 {
+				walk(node.Children)
+			}
+		}
+	}
+	walk(nodes)
+	return ids
 }
 
 func runMigrations(databaseURL string) error {
