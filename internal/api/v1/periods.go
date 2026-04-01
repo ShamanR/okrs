@@ -5,6 +5,7 @@ import (
 )
 
 func (h *Handler) handlePeriods(w http.ResponseWriter, r *http.Request) {
+	setAPICacheControl(w)
 	periods, err := h.service.ListPeriods(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load periods", nil)

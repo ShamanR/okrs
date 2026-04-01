@@ -21,10 +21,10 @@ SSR-страницы должны опираться на те же правил
 
 - `GET /api/v1/hierarchy`
 - `GET /api/v1/periods`
-- `GET /api/v1/teams`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
+- `GET /api/v1/teams/{teamID}/children-summary`
 - `GET /api/v1/goals/{goalID}`
 
 ## Write endpoints
@@ -45,7 +45,7 @@ SSR-страницы должны опираться на те же правил
 
 ## Period-aware team visibility
 
-`GET /api/v1/teams?period_id={id}` должен возвращать команды по серверным правилам видимости:
+`GET /api/v1/hierarchy?period_id={id}` должен возвращать команды по серверным правилам видимости:
 
 - для актуального периода — все активные команды и soft-deleted команды, у которых уже есть goals/OKR в этом периоде;
 - для исторического периода — все активные команды и soft-deleted команды, у которых есть goals/OKR в этом периоде;
@@ -84,6 +84,8 @@ SSR-страницы должны опираться на те же правил
 Hierarchy node shape расширен полем:
 
 - `lead` — строка с руководителем команды.
+- `has_goals` — есть ли у команды goals в выбранном периоде.
+- `progress` — прогресс команды (0..100), возвращается только если `has_goals=true`.
 
 Это поле используется sidebar/navigation UI и таблицей дочерних команд.
 
@@ -137,3 +139,33 @@ Idempotency / side effects:
 
 - endpoint read-only;
 - не изменяет доменные агрегаты, только рассчитывает производные метрики для UI.
+
+### `GET /api/v1/teams/{teamID}/children-summary?period_id={id}`
+
+Назначение: вернуть **готовые данные** для таблицы дочерних команд выбранной команды за период, без дополнительной агрегации на frontend.
+
+Request:
+
+- path param: `teamID` (обязательный, int64)
+- query param: `period_id` (обязательный, int64)
+
+Success response (`200`):
+
+- `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `sort_order`);
+- `items[]`:
+  - `team` (`id`, `name`, `type`, `type_label`, `parent_id`);
+  - `status`, `status_label`;
+  - `has_goals` (bool);
+  - `progress_meta` (optional; возвращается при `has_goals=true`);
+  - `last_updated` (optional; timestamp последнего обновления goals/OKR команды в периоде).
+
+Validation and errors:
+
+- `VALIDATION_ERROR` при невалидных `teamID` / `period_id`;
+- `NOT_FOUND` если период не найден;
+- `INTERNAL` при ошибках загрузки агрегатов.
+
+Idempotency / side effects:
+
+- endpoint read-only;
+- не изменяет доменные агрегаты.

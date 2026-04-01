@@ -11,31 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// handleTeams returns team summaries for a period.
-func (h *Handler) handleTeams(w http.ResponseWriter, r *http.Request) {
-	periodID, err := common.ParsePeriodID(r)
-	if err != nil || periodID == 0 {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
-		return
-	}
-	orgID, err := parseOptionalID(r.URL.Query().Get("org_id"))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid org_id", map[string]string{"org_id": "invalid"})
-		return
-	}
-	period, err := h.service.GetPeriod(r.Context(), periodID)
-	if err != nil {
-		writeError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
-		return
-	}
-	teams, err := h.service.GetTeamsWithPeriodSummary(r.Context(), periodID, orgID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load teams", nil)
-		return
-	}
-	writeJSON(w, http.StatusOK, mapTeamsResponse(period, teams))
-}
-
 // handleTeam returns a single team.
 func (h *Handler) handleTeam(w http.ResponseWriter, r *http.Request) {
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
@@ -203,4 +178,28 @@ func (h *Handler) handleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		Priorities:      priorities,
 		WorkBalance:     workBalance,
 	})
+}
+
+func (h *Handler) handleTeamChildrenSummary(w http.ResponseWriter, r *http.Request) {
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		writeError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
+		return
+	}
+	period, err := h.service.GetPeriod(r.Context(), periodID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
+		return
+	}
+	items, err := h.service.GetDirectChildrenSummary(r.Context(), teamID, periodID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load children summary", nil)
+		return
+	}
+	writeJSON(w, http.StatusOK, mapTeamChildrenSummaryResponse(period, items))
 }

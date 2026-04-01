@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/okr"
@@ -21,8 +22,11 @@ type Store interface {
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
+	ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
+	ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 	TeamHasGoals(ctx context.Context, id int64) (bool, error)
 	TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (bool, error)
+	ListTeamIDsWithGoalsInPeriod(ctx context.Context, periodID int64) (map[int64]struct{}, error)
 	SoftDeleteTeam(ctx context.Context, id int64) error
 	RestoreTeam(ctx context.Context, id int64) error
 	HardDeleteTeam(ctx context.Context, id int64) error
@@ -95,6 +99,14 @@ type TeamShareInfo struct {
 	Weight int
 }
 
+type TeamChildSummary struct {
+	Team         domain.Team
+	Status       domain.TeamPeriodStatus
+	HasGoals     bool
+	Progress     int
+	LastUpdateAt *time.Time
+}
+
 type TeamOKR struct {
 	Team           domain.Team
 	Period         domain.Period
@@ -115,6 +127,13 @@ func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode
 	if err != nil {
 		return nil, err
 	}
+	teamIDsWithGoals := map[int64]struct{}{}
+	if periodID != nil && *periodID > 0 {
+		teamIDsWithGoals, err = s.store.ListTeamIDsWithGoalsInPeriod(ctx, *periodID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	visibleTeams := make([]domain.Team, 0, len(teams))
 	for _, team := range teams {
 		if team.DeletedAt == nil {
@@ -124,10 +143,7 @@ func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode
 		if periodID == nil || *periodID == 0 {
 			continue
 		}
-		hasGoals, err := s.store.TeamHasGoalsInPeriod(ctx, team.ID, *periodID)
-		if err != nil {
-			return nil, err
-		}
+		_, hasGoals := teamIDsWithGoals[team.ID]
 		if hasGoals {
 			visibleTeams = append(visibleTeams, team)
 		}
@@ -224,6 +240,71 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 		GoalsWeight:    goalsWeight,
 		Goals:          goalDetails,
 	}, nil
+}
+
+func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID int64) ([]TeamChildSummary, error) {
+	hierarchy, err := s.GetHierarchy(ctx, &periodID)
+	if err != nil {
+		return nil, err
+	}
+	summaries, err := s.GetTeamsWithPeriodSummary(ctx, periodID, nil)
+	if err != nil {
+		return nil, err
+	}
+	summaryByID := make(map[int64]TeamSummary, len(summaries))
+	for _, item := range summaries {
+		summaryByID[item.ID] = item
+	}
+	var children []TeamNode
+	var walk func(nodes []TeamNode) bool
+	walk = func(nodes []TeamNode) bool {
+		for _, node := range nodes {
+			if node.Team.ID == teamID {
+				children = node.Children
+				return true
+			}
+			if walk(node.Children) {
+				return true
+			}
+		}
+		return false
+	}
+	_ = walk(hierarchy)
+	if len(children) == 0 {
+		return []TeamChildSummary{}, nil
+	}
+	childIDs := make([]int64, 0, len(children))
+	for _, child := range children {
+		childIDs = append(childIDs, child.Team.ID)
+	}
+	statuses, err := s.store.ListTeamPeriodStatuses(ctx, periodID, childIDs)
+	if err != nil {
+		return nil, err
+	}
+	lastUpdates, err := s.store.ListTeamLastGoalUpdateInPeriod(ctx, periodID, childIDs)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]TeamChildSummary, 0, len(children))
+	for _, child := range children {
+		item := TeamChildSummary{
+			Team:   child.Team,
+			Status: domain.TeamPeriodStatusNoGoals,
+		}
+		if status, ok := statuses[child.Team.ID]; ok {
+			item.Status = status
+		}
+		if summary, ok := summaryByID[child.Team.ID]; ok {
+			item.HasGoals = summary.GoalsCount > 0
+			item.Progress = summary.PeriodProgress
+		}
+		if updatedAt, ok := lastUpdates[child.Team.ID]; ok {
+			value := updatedAt
+			item.LastUpdateAt = &value
+		}
+		result = append(result, item)
+	}
+	return result, nil
 }
 
 func (s *Service) UpdateKRProgressPercent(ctx context.Context, krID int64, current float64) error {

@@ -86,20 +86,21 @@ Content-Type: `application/json; charset=utf-8`
 
 - `GET /api/v1/hierarchy`
 - `GET /api/v1/periods`
-- `GET /api/v1/teams?period_id=42&org_id=123`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs?period_id=42`
 - `GET /api/v1/teams/{teamID}/overview?period_id=42`
+- `GET /api/v1/teams/{teamID}/children-summary?period_id=42`
 - `GET /api/v1/goals/{goalID}`
 
 
 Дополнительно для team OKRs UI:
 
 - `GET /api/v1/hierarchy` возвращает `lead` в каждом узле команды;
+- `GET /api/v1/hierarchy` возвращает `has_goals` и `progress` для sidebar progress bar (значения считаются на backend);
 - `GET /api/v1/teams/{teamID}/okrs` возвращает `progress_meta` (`actual`, `forecast`, `delta`, `status`);
 - `GET /api/v1/teams/{teamID}/overview` возвращает агрегаты по всей глубине дочерней иерархии и `progress_meta` того же формата.
 
-`GET /api/v1/teams` и `GET /api/v1/teams/{teamID}/okrs` теперь учитывают жизненный цикл команды:
+`GET /api/v1/hierarchy` и `GET /api/v1/teams/{teamID}/okrs` учитывают жизненный цикл команды:
 
 - в актуальном периоде возвращаются все активные команды и soft-deleted команды, у которых уже есть goals в этом периоде;
 - активные команды без goals остаются видимыми и в исторических периодах;
@@ -210,7 +211,7 @@ Content-Type: `application/json; charset=utf-8`
 - `/teamOkrs?period_id=42&team=123` — иерархический обзор OKR команд.
 - `/teams/{teamID}/okr?period_id=42`
 - `/goals/{goalID}`
-- `/api/v1/teams?period_id=42`
+- `/api/v1/hierarchy?period_id=42`
 
 Legacy `/api/*` эндпоинты удалены: фронтенд и интеграции должны использовать только `/api/v1/*`.
 Также удалены неиспользуемые SSR/form-endpoints для операций team OKR (status update, KR progress/update helpers, goal move), которые в текущем FE выполняются через `/api/v1/*`.

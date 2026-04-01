@@ -1983,24 +1983,6 @@
     container.appendChild(section);
   };
 
-  const filterHierarchyByVisibleTeams = (nodes, visibleIDs) => {
-    const normalized = new Set(Array.from(visibleIDs || []).map((id) => String(id)));
-    const walk = (tree) => {
-      const result = [];
-      (tree || []).forEach((node) => {
-        const children = walk(node.children || []);
-        const isVisible = normalized.has(String(node.id));
-        if (isVisible) {
-          result.push({ ...node, children });
-        } else {
-          result.push(...children);
-        }
-      });
-      return result;
-    };
-    return walk(nodes || []);
-  };
-
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="team-okrs"]');
     if (!page) return;
@@ -2013,10 +1995,7 @@
 
     const loadHierarchy = async () => loadHierarchyForPeriod(periodSelect?.value || page.dataset.periodId || '');
 
-    const getVisibleHierarchy = (teamSummaryMap = new Map()) => {
-      const visibleIDs = new Set(Array.from(teamSummaryMap.keys()));
-      return filterHierarchyByVisibleTeams(state.hierarchy || [], visibleIDs);
-    };
+    const getVisibleHierarchy = () => state.hierarchy || [];
     const loadTeamsSummaryMap = async () => {
       const periodID = periodSelect?.value || page.dataset.periodId;
       if (!periodID) return new Map();
@@ -2024,10 +2003,12 @@
       if (state.teamsSummaryByPeriod[cacheKey]) {
         return state.teamsSummaryByPeriod[cacheKey];
       }
-      const url = new URL('/api/v1/teams', window.location.origin);
-      url.searchParams.set('period_id', periodID);
-      const payload = await fetchJSON(url.toString());
-      const map = new Map((payload.items || []).map((team) => [String(team.id), team]));
+      const hierarchy = await loadHierarchy();
+      const { map: nodesMap } = flattenHierarchyNodes(hierarchy);
+      const map = new Map(Array.from(nodesMap.entries()).map(([id, node]) => [String(id), {
+        goals_count: node.has_goals ? 1 : 0,
+        period_progress: typeof node.progress === 'number' ? node.progress : null,
+      }]));
       state.teamsSummaryByPeriod[cacheKey] = map;
       return map;
     };
@@ -2171,6 +2152,12 @@
       url.searchParams.set('period_id', periodID);
       return fetchJSON(url.toString());
     };
+    const loadTeamChildrenSummary = async (teamID) => {
+      const periodID = periodSelect?.value || page.dataset.periodId;
+      const url = new URL(`/api/v1/teams/${teamID}/children-summary`, window.location.origin);
+      url.searchParams.set('period_id', periodID);
+      return fetchJSON(url.toString());
+    };
 
     const renderContentForSelection = async (teamID) => {
       mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Загрузка данных команды…</div></div>';
@@ -2212,22 +2199,8 @@
         const overviewData = await loadTeamOverview(teamID);
         renderChildrenOverview(childContainer, overviewData);
 
-        const childResults = await Promise.all(
-          childNodes.map(async (child) => {
-            try {
-              return await loadTeamOKR(child.id);
-            } catch (error) {
-              return {
-                team: { id: child.id, name: child.name, type_label: child.type_label || '' },
-                period: selectedData.period,
-                goals: [],
-                period_progress: 0,
-                status_label: '—',
-                period_status: '',
-              };
-            }
-          }),
-        );
+        const childrenSummaryData = await loadTeamChildrenSummary(teamID);
+        const childResults = childrenSummaryData.items || [];
 
         const childTableWrap = document.createElement('div');
         childTableWrap.className = 'table-responsive';
@@ -2249,7 +2222,14 @@
           const row = document.createElement('tr');
           const childNodeMeta = childNodes.find((node) => String(node.id) === String(childData.team.id));
           const leadText = childNodeMeta?.lead || childNodeMeta?.lead_name || '—';
-          const lastUpdateMeta = getLastGoalUpdateMeta(childData.goals || []);
+          const lastUpdateMeta = childData.last_updated
+            ? {
+              hasDate: true,
+              relativeText: formatRelativeUpdate(childData.last_updated) || 'сегодня',
+              absoluteText: formatAbsoluteDate(childData.last_updated),
+              isStale: (new Date() - new Date(childData.last_updated)) > (14 * 24 * 60 * 60 * 1000),
+            }
+            : { hasDate: false };
 
           const nameCell = document.createElement('td');
           const nameLink = document.createElement('a');
@@ -2267,18 +2247,14 @@
           const statusCell = document.createElement('td');
           const statusBadge = document.createElement('span');
           statusBadge.className = 'badge text-bg-light border';
-          statusBadge.textContent = childData.status_label || childData.period_status || '—';
+          statusBadge.textContent = childData.status_label || childData.status || '—';
           statusCell.appendChild(statusBadge);
 
           const progressCell = document.createElement('td');
-          if (!childData.goals || childData.goals.length === 0) {
+          if (!childData.has_goals) {
             progressCell.textContent = '—';
           } else {
-            progressCell.appendChild(renderForecastProgress(childData.progress_meta || {
-              actual: childData.period_progress || 0,
-              forecast: childData.period_progress || 0,
-              status: 'on_track',
-            }));
+            progressCell.appendChild(renderForecastProgress(childData.progress_meta || { actual: 0, forecast: 0, status: 'on_track' }));
           }
 
           const updatedCell = document.createElement('td');

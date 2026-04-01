@@ -18,12 +18,9 @@ type teamNode struct {
 	Type      string     `json:"type"`
 	TypeLabel string     `json:"type_label"`
 	Lead      string     `json:"lead"`
+	HasGoals  bool       `json:"has_goals"`
+	Progress  *int       `json:"progress,omitempty"`
 	Children  []teamNode `json:"children"`
-}
-
-type teamsResponse struct {
-	Period periodInfo    `json:"period"`
-	Items  []teamSummary `json:"items"`
 }
 
 type periodsResponse struct {
@@ -36,29 +33,6 @@ type periodInfo struct {
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 	SortOrder int       `json:"sort_order"`
-}
-
-type teamSummary struct {
-	ID             int64             `json:"id"`
-	Name           string            `json:"name"`
-	Type           string            `json:"type"`
-	TypeLabel      string            `json:"type_label"`
-	Indent         int               `json:"indent"`
-	Status         string            `json:"status"`
-	StatusLabel    string            `json:"status_label"`
-	PeriodProgress int               `json:"period_progress"`
-	GoalsCount     int               `json:"goals_count"`
-	GoalsWeight    int               `json:"goals_weight"`
-	Goals          []teamGoalSummary `json:"goals"`
-}
-
-type teamGoalSummary struct {
-	ID         int64       `json:"id"`
-	Title      string      `json:"title"`
-	Weight     int         `json:"weight"`
-	Progress   int         `json:"progress"`
-	ShareTeams []shareTeam `json:"share_teams"`
-	Priority   string      `json:"priority"`
 }
 
 type shareTeam struct {
@@ -87,6 +61,20 @@ type teamOverviewResponse struct {
 	ProgressMeta    progressBarInfo     `json:"progress_meta"`
 	Priorities      prioritySummaryInfo `json:"priorities"`
 	WorkBalance     workBalanceInfo     `json:"work_balance"`
+}
+
+type teamChildrenSummaryResponse struct {
+	Period periodInfo               `json:"period"`
+	Items  []teamChildSummaryResult `json:"items"`
+}
+
+type teamChildSummaryResult struct {
+	Team         teamInfo         `json:"team"`
+	Status       string           `json:"status"`
+	StatusLabel  string           `json:"status_label"`
+	HasGoals     bool             `json:"has_goals"`
+	ProgressMeta *progressBarInfo `json:"progress_meta,omitempty"`
+	LastUpdated  *time.Time       `json:"last_updated,omitempty"`
 }
 
 type prioritySummaryInfo struct {
@@ -209,17 +197,30 @@ type percentCheckpoint struct {
 }
 
 func mapHierarchy(nodes []service.TeamNode) []teamNode {
+	return mapHierarchyWithMetrics(nodes, nil)
+}
+
+func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) []teamNode {
 	result := make([]teamNode, 0, len(nodes))
 	for _, node := range nodes {
-		result = append(result, mapTeamNode(node))
+		result = append(result, mapTeamNode(node, metrics))
 	}
 	return result
 }
 
-func mapTeamNode(node service.TeamNode) teamNode {
+func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary) teamNode {
 	children := make([]teamNode, 0, len(node.Children))
 	for _, child := range node.Children {
-		children = append(children, mapTeamNode(child))
+		children = append(children, mapTeamNode(child, metrics))
+	}
+	var progress *int
+	hasGoals := false
+	if summary, ok := metrics[node.Team.ID]; ok {
+		hasGoals = summary.GoalsCount > 0
+		if hasGoals {
+			value := summary.PeriodProgress
+			progress = &value
+		}
 	}
 	return teamNode{
 		ID:        node.Team.ID,
@@ -227,6 +228,8 @@ func mapTeamNode(node service.TeamNode) teamNode {
 		Type:      string(node.Team.Type),
 		TypeLabel: common.TeamTypeLabel(node.Team.Type),
 		Lead:      node.Team.Lead,
+		HasGoals:  hasGoals,
+		Progress:  progress,
 		Children:  children,
 	}
 }
@@ -239,47 +242,6 @@ func mapPeriodInfo(period domain.Period) periodInfo {
 		EndDate:   period.EndDate,
 		SortOrder: period.SortOrder,
 	}
-}
-
-func mapTeamsResponse(period domain.Period, teams []service.TeamSummary) teamsResponse {
-	items := make([]teamSummary, 0, len(teams))
-	for _, team := range teams {
-		goals := make([]teamGoalSummary, 0, len(team.Goals))
-		for _, goal := range team.Goals {
-			shareTeams := make([]shareTeam, 0, len(goal.ShareTeams))
-			for _, share := range goal.ShareTeams {
-				shareTeams = append(shareTeams, shareTeam{
-					ID:        share.ID,
-					Name:      share.Name,
-					Type:      string(share.Type),
-					TypeLabel: common.TeamTypeLabel(share.Type),
-					Weight:    share.Weight,
-				})
-			}
-			goals = append(goals, teamGoalSummary{
-				ID:         goal.ID,
-				Title:      goal.Title,
-				Weight:     goal.Weight,
-				Progress:   goal.Progress,
-				ShareTeams: shareTeams,
-				Priority:   goal.Priority,
-			})
-		}
-		items = append(items, teamSummary{
-			ID:             team.ID,
-			Name:           team.Name,
-			Type:           string(team.Type),
-			TypeLabel:      common.TeamTypeLabel(team.Type),
-			Indent:         team.Indent,
-			Status:         string(team.Status),
-			StatusLabel:    common.TeamPeriodStatusLabel(team.Status),
-			PeriodProgress: team.PeriodProgress,
-			GoalsCount:     team.GoalsCount,
-			GoalsWeight:    team.GoalsWeight,
-			Goals:          goals,
-		})
-	}
-	return teamsResponse{Period: mapPeriodInfo(period), Items: items}
 }
 
 func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
@@ -303,6 +265,35 @@ func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 		GoalsWeight:    data.GoalsWeight,
 		ProgressMeta:   buildProgressBarInfo(data.PeriodProgress, data.Period),
 		Goals:          goals,
+	}
+}
+
+func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamChildSummary) teamChildrenSummaryResponse {
+	rows := make([]teamChildSummaryResult, 0, len(items))
+	for _, item := range items {
+		var progressMeta *progressBarInfo
+		if item.HasGoals {
+			meta := buildProgressBarInfo(item.Progress, period)
+			progressMeta = &meta
+		}
+		rows = append(rows, teamChildSummaryResult{
+			Team: teamInfo{
+				ID:        item.Team.ID,
+				Name:      item.Team.Name,
+				Type:      string(item.Team.Type),
+				TypeLabel: common.TeamTypeLabel(item.Team.Type),
+				ParentID:  item.Team.ParentID,
+			},
+			Status:       string(item.Status),
+			StatusLabel:  common.TeamPeriodStatusLabel(item.Status),
+			HasGoals:     item.HasGoals,
+			ProgressMeta: progressMeta,
+			LastUpdated:  item.LastUpdateAt,
+		})
+	}
+	return teamChildrenSummaryResponse{
+		Period: mapPeriodInfo(period),
+		Items:  rows,
 	}
 }
 
