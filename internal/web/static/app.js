@@ -288,23 +288,22 @@
     focusBadge.className = 'badge text-bg-light border';
     focusBadge.textContent = goal.focus_type;
 
-    const owner = document.createElement('span');
-    owner.innerHTML = `Владелец: <span class="text-decoration-underline">${goal.owner_text}</span>`;
-
     const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
     const updated = document.createElement('span');
-    updated.className = 'small';
+    updated.className = 'badge';
     if (!goalUpdateMeta.hasDate) {
-      updated.classList.add('text-muted');
+      updated.classList.add('text-bg-secondary');
       updated.textContent = 'Обновлено: —';
     } else {
-      updated.classList.add(goalUpdateMeta.isStale ? 'text-danger' : 'text-success');
-      const emoji = goalUpdateMeta.isStale ? '⏰' : '✅';
-      updated.textContent = `Обновлено: ${emoji} ${goalUpdateMeta.relativeText}`;
+      updated.classList.add(goalUpdateMeta.isStale ? 'text-bg-warning' : 'text-bg-success');
+      updated.textContent = `Обновлено: ${goalUpdateMeta.relativeText}`;
       updated.title = goalUpdateMeta.absoluteText;
     }
 
-    meta.append(workBadge, focusBadge, owner, updated);
+    const owner = document.createElement('span');
+    owner.innerHTML = `Владелец: <span class="text-decoration-underline">${goal.owner_text}</span>`;
+
+    meta.append(workBadge, focusBadge, updated, owner);
 
     const isGoalFromHash = window.location.hash === `#goal-${goal.id}`;
     const krWrap = renderKRTable(goal, { expanded: isGoalFromHash });
