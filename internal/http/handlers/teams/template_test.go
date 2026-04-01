@@ -15,6 +15,7 @@ func TestTeamOKRTemplateHasDataAttributes(t *testing.T) {
 	required := []string{
 		"data-page=\"team-okr\"",
 		"data-team-id",
+		"data-period-name",
 		"data-okr-breadcrumbs",
 		"data-okr-actions",
 		"data-okr-goals",

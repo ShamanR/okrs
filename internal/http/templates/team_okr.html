@@ -1,15 +1,14 @@
 {{define "team-okr-content"}}
 <nav class="mb-4" aria-label="breadcrumb">
   <ol class="breadcrumb" data-okr-breadcrumbs>
-    <li class="breadcrumb-item"><a href="/teamOkrs">OKR команд</a></li>
+    <li class="breadcrumb-item"><a href="/teamOkrs">teamOkrs</a></li>
     <li class="breadcrumb-item active" aria-current="page">
-      <span class="badge text-bg-secondary">{{.TeamTypeLabel}}</span>
       {{.Team.Name}} · {{.Period.Name}}
     </li>
   </ol>
 </nav>
 
-<div id="team-okr-page" data-page="team-okr" data-team-id="{{.Team.ID}}" data-period-id="{{.Period.ID}}">
+<div id="team-okr-page" data-page="team-okr" data-team-id="{{.Team.ID}}" data-period-id="{{.Period.ID}}" data-period-name="{{.Period.Name}}">
   <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
     <h2 class="h4 mb-0">Цели</h2>
     <div data-okr-actions></div>

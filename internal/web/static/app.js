@@ -2340,6 +2340,7 @@
     const breadcrumbsEl = page.querySelector('[data-okr-breadcrumbs]');
     const teamID = page.dataset.teamId;
     const periodID = page.dataset.periodId;
+    const periodName = page.dataset.periodName || '';
 
     const loadTeamAncestry = async (selectedTeamID) => {
       const chain = [];
@@ -2362,7 +2363,7 @@
       rootCrumb.className = 'breadcrumb-item';
       const rootLink = document.createElement('a');
       rootLink.href = '/teamOkrs';
-      rootLink.textContent = 'OKR команд';
+      rootLink.textContent = 'teamOkrs';
       rootCrumb.appendChild(rootLink);
       fragment.appendChild(rootCrumb);
 
@@ -2372,11 +2373,11 @@
         item.className = `breadcrumb-item${isLast ? ' active' : ''}`;
         if (isLast) {
           item.setAttribute('aria-current', 'page');
-          item.textContent = `${node.type_label} ${node.name}`;
+          item.textContent = `${node.name}${periodName ? ` · ${periodName}` : ''}`;
         } else {
           const link = document.createElement('a');
           link.href = `/teamOkrs?period_id=${periodID}&team=${node.id}`;
-          link.textContent = `${node.type_label} ${node.name}`;
+          link.textContent = node.name;
           item.appendChild(link);
         }
         fragment.appendChild(item);
