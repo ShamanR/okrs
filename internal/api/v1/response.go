@@ -18,6 +18,8 @@ type teamNode struct {
 	Type      string     `json:"type"`
 	TypeLabel string     `json:"type_label"`
 	Lead      string     `json:"lead"`
+	HasGoals  bool       `json:"has_goals"`
+	Progress  *int       `json:"progress,omitempty"`
 	Children  []teamNode `json:"children"`
 }
 
@@ -209,17 +211,30 @@ type percentCheckpoint struct {
 }
 
 func mapHierarchy(nodes []service.TeamNode) []teamNode {
+	return mapHierarchyWithMetrics(nodes, nil)
+}
+
+func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) []teamNode {
 	result := make([]teamNode, 0, len(nodes))
 	for _, node := range nodes {
-		result = append(result, mapTeamNode(node))
+		result = append(result, mapTeamNode(node, metrics))
 	}
 	return result
 }
 
-func mapTeamNode(node service.TeamNode) teamNode {
+func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary) teamNode {
 	children := make([]teamNode, 0, len(node.Children))
 	for _, child := range node.Children {
-		children = append(children, mapTeamNode(child))
+		children = append(children, mapTeamNode(child, metrics))
+	}
+	var progress *int
+	hasGoals := false
+	if summary, ok := metrics[node.Team.ID]; ok {
+		hasGoals = summary.GoalsCount > 0
+		if hasGoals {
+			value := summary.PeriodProgress
+			progress = &value
+		}
 	}
 	return teamNode{
 		ID:        node.Team.ID,
@@ -227,6 +242,8 @@ func mapTeamNode(node service.TeamNode) teamNode {
 		Type:      string(node.Team.Type),
 		TypeLabel: common.TeamTypeLabel(node.Team.Type),
 		Lead:      node.Team.Lead,
+		HasGoals:  hasGoals,
+		Progress:  progress,
 		Children:  children,
 	}
 }

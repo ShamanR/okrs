@@ -2005,7 +2005,10 @@
       }
       const hierarchy = await loadHierarchy();
       const { map: nodesMap } = flattenHierarchyNodes(hierarchy);
-      const map = new Map(Array.from(nodesMap.keys()).map((id) => [String(id), {}]));
+      const map = new Map(Array.from(nodesMap.entries()).map(([id, node]) => [String(id), {
+        goals_count: node.has_goals ? 1 : 0,
+        period_progress: typeof node.progress === 'number' ? node.progress : null,
+      }]));
       state.teamsSummaryByPeriod[cacheKey] = map;
       return map;
     };

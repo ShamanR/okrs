@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"okrs/internal/http/handlers/common"
+	"okrs/internal/service"
 )
 
 // handleHierarchy returns the organization hierarchy tree.
@@ -23,5 +24,17 @@ func (h *Handler) handleHierarchy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy", nil)
 		return
 	}
-	writeJSON(w, http.StatusOK, hierarchyResponse{Items: mapHierarchy(nodes)})
+	metrics := map[int64]service.TeamSummary{}
+	if periodRef != nil {
+		summaries, err := h.service.GetTeamsWithPeriodSummary(r.Context(), periodID, nil)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy summary", nil)
+			return
+		}
+		metrics = make(map[int64]service.TeamSummary, len(summaries))
+		for _, summary := range summaries {
+			metrics[summary.ID] = summary
+		}
+	}
+	writeJSON(w, http.StatusOK, hierarchyResponse{Items: mapHierarchyWithMetrics(nodes, metrics)})
 }

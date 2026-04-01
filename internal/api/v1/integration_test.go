@@ -341,6 +341,16 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if _, ok := currentHierarchyIDs[activeTeamID]; !ok {
 		t.Fatalf("expected active team in current hierarchy, got %+v", currentHierarchyIDs)
 	}
+	activeCurrentNode := findHierarchyNodeByID(currentHierarchy.Items, activeTeamID)
+	if activeCurrentNode == nil {
+		t.Fatalf("expected to find active team node in current hierarchy")
+	}
+	if activeCurrentNode.HasGoals {
+		t.Fatalf("expected active team without goals to have has_goals=false, got true")
+	}
+	if activeCurrentNode.Progress != nil {
+		t.Fatalf("expected active team without goals to not have progress, got %v", *activeCurrentNode.Progress)
+	}
 
 	historyHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, historyPeriodID))
 	if err != nil {
@@ -419,6 +429,16 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if _, ok := currentHierarchyAfterGoalIDs[deletedTeamID]; !ok {
 		t.Fatalf("expected deleted team with current goals in hierarchy, got %+v", currentHierarchyAfterGoalIDs)
 	}
+	deletedWithGoalNode := findHierarchyNodeByID(currentHierarchyAfterGoal.Items, deletedTeamID)
+	if deletedWithGoalNode == nil {
+		t.Fatalf("expected deleted team node in current hierarchy after goal")
+	}
+	if !deletedWithGoalNode.HasGoals {
+		t.Fatalf("expected deleted team with current goals to have has_goals=true")
+	}
+	if deletedWithGoalNode.Progress == nil {
+		t.Fatalf("expected deleted team with current goals to have progress")
+	}
 
 	currentDeletedVisibleResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
 	if err != nil {
@@ -443,6 +463,21 @@ func flattenHierarchyIDs(nodes []teamNode) map[int64]struct{} {
 	}
 	walk(nodes)
 	return ids
+}
+
+func findHierarchyNodeByID(nodes []teamNode, targetID int64) *teamNode {
+	for _, node := range nodes {
+		if node.ID == targetID {
+			copyNode := node
+			return &copyNode
+		}
+		if len(node.Children) > 0 {
+			if child := findHierarchyNodeByID(node.Children, targetID); child != nil {
+				return child
+			}
+		}
+	}
+	return nil
 }
 
 func runMigrations(databaseURL string) error {

@@ -95,6 +95,7 @@ Content-Type: `application/json; charset=utf-8`
 Дополнительно для team OKRs UI:
 
 - `GET /api/v1/hierarchy` возвращает `lead` в каждом узле команды;
+- `GET /api/v1/hierarchy` возвращает `has_goals` и `progress` для sidebar progress bar (значения считаются на backend);
 - `GET /api/v1/teams/{teamID}/okrs` возвращает `progress_meta` (`actual`, `forecast`, `delta`, `status`);
 - `GET /api/v1/teams/{teamID}/overview` возвращает агрегаты по всей глубине дочерней иерархии и `progress_meta` того же формата.
 
