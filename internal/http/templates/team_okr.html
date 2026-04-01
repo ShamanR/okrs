@@ -3,7 +3,7 @@
   <ol class="breadcrumb" data-okr-breadcrumbs>
     <li class="breadcrumb-item"><a href="/teamOkrs">teamOkrs</a></li>
     <li class="breadcrumb-item active" aria-current="page">
-      {{.Team.Name}} · {{.Period.Name}}
+      <a href="/teamOkrs?period_id={{.Period.ID}}&team={{.Team.ID}}">{{.Team.Name}} · {{.Period.Name}}</a>
     </li>
   </ol>
 </nav>

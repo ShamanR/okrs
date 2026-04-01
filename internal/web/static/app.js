@@ -2381,15 +2381,10 @@
         const item = document.createElement('li');
         const isLast = index === chain.length - 1;
         item.className = `breadcrumb-item${isLast ? ' active' : ''}`;
-        if (isLast) {
-          item.setAttribute('aria-current', 'page');
-          item.textContent = `${node.name}${periodName ? ` · ${periodName}` : ''}`;
-        } else {
-          const link = document.createElement('a');
-          link.href = `/teamOkrs?period_id=${periodID}&team=${node.id}`;
-          link.textContent = node.name;
-          item.appendChild(link);
-        }
+        const link = document.createElement('a');
+        link.href = `/teamOkrs?period_id=${periodID}&team=${node.id}`;
+        link.textContent = isLast ? `${node.name}${periodName ? ` · ${periodName}` : ''}` : node.name;
+        item.appendChild(link);
         fragment.appendChild(item);
       });
       breadcrumbsEl.replaceChildren(fragment);
