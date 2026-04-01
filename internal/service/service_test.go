@@ -414,4 +414,74 @@ func TestGetTeamOKRAllowsDeletedTeamInCurrentPeriodWhenGoalsExist(t *testing.T) 
 	}
 }
 
+func TestGetHierarchyWithoutPeriodHidesDeletedTeams(t *testing.T) {
+	deletedAt := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.teams = []domain.Team{
+		{ID: 1, Name: "Active", Type: domain.TeamTypeUnit},
+		{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt},
+	}
+	store.goalsByTeam[2] = map[int64][]domain.Goal{
+		1: {{ID: 100, TeamID: 2, PeriodID: 1, Title: "Historical"}},
+	}
+	service := New(store)
+
+	nodes, err := service.GetHierarchy(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("get hierarchy: %v", err)
+	}
+	ids := flattenNodeIDs(nodes)
+	if _, ok := ids[1]; !ok {
+		t.Fatalf("expected active team in hierarchy, got %+v", ids)
+	}
+	if _, ok := ids[2]; ok {
+		t.Fatalf("expected deleted team to be hidden without period filter, got %+v", ids)
+	}
+}
+
+func TestGetHierarchyWithPeriodIncludesDeletedTeamsWithGoals(t *testing.T) {
+	deletedAt := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
+	store := newFakeStore()
+	store.teams = []domain.Team{
+		{ID: 1, Name: "Active", Type: domain.TeamTypeUnit},
+		{ID: 2, Name: "Deleted with goals", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt},
+		{ID: 3, Name: "Deleted no goals", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt},
+	}
+	store.goalsByTeam[2] = map[int64][]domain.Goal{
+		5: {{ID: 200, TeamID: 2, PeriodID: 5, Title: "Current"}},
+	}
+	service := New(store)
+	periodID := int64(5)
+
+	nodes, err := service.GetHierarchy(context.Background(), &periodID)
+	if err != nil {
+		t.Fatalf("get hierarchy: %v", err)
+	}
+	ids := flattenNodeIDs(nodes)
+	if _, ok := ids[1]; !ok {
+		t.Fatalf("expected active team in hierarchy, got %+v", ids)
+	}
+	if _, ok := ids[2]; !ok {
+		t.Fatalf("expected deleted team with period goals in hierarchy, got %+v", ids)
+	}
+	if _, ok := ids[3]; ok {
+		t.Fatalf("expected deleted team without period goals to be hidden, got %+v", ids)
+	}
+}
+
+func flattenNodeIDs(nodes []TeamNode) map[int64]struct{} {
+	ids := make(map[int64]struct{})
+	var walk func(items []TeamNode)
+	walk = func(items []TeamNode) {
+		for _, node := range items {
+			ids[node.Team.ID] = struct{}{}
+			if len(node.Children) > 0 {
+				walk(node.Children)
+			}
+		}
+	}
+	walk(nodes)
+	return ids
+}
+
 func ptr(id int64) *int64 { return &id }
