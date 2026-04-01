@@ -89,7 +89,6 @@ Content-Type: `application/json; charset=utf-8`
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs?period_id=42`
 - `GET /api/v1/teams/{teamID}/overview?period_id=42`
-- `GET /api/v1/teams/{teamID}/children-summary?period_id=42`
 - `GET /api/v1/goals/{goalID}`
 
 
@@ -98,7 +97,7 @@ Content-Type: `application/json; charset=utf-8`
 - `GET /api/v1/hierarchy` возвращает `lead` в каждом узле команды;
 - `GET /api/v1/hierarchy` возвращает `has_goals` и `progress` для sidebar progress bar (значения считаются на backend);
 - `GET /api/v1/teams/{teamID}/okrs` возвращает `progress_meta` (`actual`, `forecast`, `delta`, `status`);
-- `GET /api/v1/teams/{teamID}/overview` возвращает агрегаты по всей глубине дочерней иерархии и `progress_meta` того же формата.
+- `GET /api/v1/teams/{teamID}/overview` возвращает агрегаты по всей глубине дочерней иерархии, `progress_meta` того же формата и `children_summary` для таблицы дочерних команд.
 
 `GET /api/v1/hierarchy` и `GET /api/v1/teams/{teamID}/okrs` учитывают жизненный цикл команды:
 

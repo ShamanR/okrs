@@ -90,6 +90,7 @@ type TeamGoalSummary struct {
 	Progress   int
 	ShareTeams []TeamShareInfo
 	Priority   string
+	WorkType   domain.WorkType
 }
 
 type TeamShareInfo struct {
@@ -105,6 +106,26 @@ type TeamChildSummary struct {
 	HasGoals     bool
 	Progress     int
 	LastUpdateAt *time.Time
+}
+
+type TeamOverview struct {
+	AverageProgress int
+	TeamsWithGoals  int
+	Priorities      TeamPrioritySummary
+	WorkBalance     TeamWorkBalance
+	ChildrenSummary []TeamChildSummary
+}
+
+type TeamPrioritySummary struct {
+	P0 int
+	P1 int
+	P2 int
+	P3 int
+}
+
+type TeamWorkBalance struct {
+	Discovery int
+	Delivery  int
 }
 
 type TeamOKR struct {
@@ -127,12 +148,17 @@ func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode
 	if err != nil {
 		return nil, err
 	}
+	return s.getHierarchyFromTeams(ctx, teams, periodID)
+}
+
+func (s *Service) getHierarchyFromTeams(ctx context.Context, teams []domain.Team, periodID *int64) ([]TeamNode, error) {
 	teamIDsWithGoals := map[int64]struct{}{}
 	if periodID != nil && *periodID > 0 {
-		teamIDsWithGoals, err = s.store.ListTeamIDsWithGoalsInPeriod(ctx, *periodID)
+		ids, err := s.store.ListTeamIDsWithGoalsInPeriod(ctx, *periodID)
 		if err != nil {
 			return nil, err
 		}
+		teamIDsWithGoals = ids
 	}
 	visibleTeams := make([]domain.Team, 0, len(teams))
 	for _, team := range teams {
@@ -174,6 +200,10 @@ func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, periodID int64,
 	if err != nil {
 		return nil, err
 	}
+	return s.getTeamsWithPeriodSummaryFromTeams(ctx, teams, periodID, orgID)
+}
+
+func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, teams []domain.Team, periodID int64, orgID *int64) ([]TeamSummary, error) {
 	teamsByID, childrenMap, roots := buildTeamHierarchy(teams)
 	filteredRoots := roots
 	if orgID != nil {
@@ -243,36 +273,22 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 }
 
 func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID int64) ([]TeamChildSummary, error) {
-	hierarchy, err := s.GetHierarchy(ctx, &periodID)
+	teams, err := s.store.ListAllTeams(ctx)
 	if err != nil {
 		return nil, err
 	}
-	summaries, err := s.GetTeamsWithPeriodSummary(ctx, periodID, nil)
+	hierarchy, err := s.getHierarchyFromTeams(ctx, teams, &periodID)
 	if err != nil {
 		return nil, err
 	}
-	summaryByID := make(map[int64]TeamSummary, len(summaries))
-	for _, item := range summaries {
-		summaryByID[item.ID] = item
-	}
-	var children []TeamNode
-	var walk func(nodes []TeamNode) bool
-	walk = func(nodes []TeamNode) bool {
-		for _, node := range nodes {
-			if node.Team.ID == teamID {
-				children = node.Children
-				return true
-			}
-			if walk(node.Children) {
-				return true
-			}
-		}
-		return false
-	}
-	_ = walk(hierarchy)
+	children := findDirectChildren(teamID, hierarchy)
 	if len(children) == 0 {
 		return []TeamChildSummary{}, nil
 	}
+	return s.buildDirectChildrenSummary(ctx, periodID, children, nil)
+}
+
+func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64, children []TeamNode, summaryByID map[int64]TeamSummary) ([]TeamChildSummary, error) {
 	childIDs := make([]int64, 0, len(children))
 	for _, child := range children {
 		childIDs = append(childIDs, child.Team.ID)
@@ -285,7 +301,7 @@ func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID
 	if err != nil {
 		return nil, err
 	}
-	result := make([]TeamChildSummary, 0, len(children))
+	result := make([]TeamChildSummary, 0, len(childIDs))
 	for _, child := range children {
 		item := TeamChildSummary{
 			Team:   child.Team,
@@ -294,9 +310,23 @@ func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID
 		if status, ok := statuses[child.Team.ID]; ok {
 			item.Status = status
 		}
-		if summary, ok := summaryByID[child.Team.ID]; ok {
-			item.HasGoals = summary.GoalsCount > 0
-			item.Progress = summary.PeriodProgress
+		if summaryByID != nil {
+			if summary, ok := summaryByID[child.Team.ID]; ok {
+				item.HasGoals = summary.GoalsCount > 0
+				item.Progress = summary.PeriodProgress
+			}
+		} else {
+			goals, err := s.store.ListGoalsByTeamPeriod(ctx, child.Team.ID, periodID)
+			if err != nil {
+				return nil, err
+			}
+			item.HasGoals = len(goals) > 0
+			if item.HasGoals {
+				for i := range goals {
+					goals[i].Progress = CalculateGoalProgress(&goals[i])
+				}
+				item.Progress = okr.PeriodProgress(goals)
+			}
 		}
 		if updatedAt, ok := lastUpdates[child.Team.ID]; ok {
 			value := updatedAt
@@ -305,6 +335,116 @@ func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID
 		result = append(result, item)
 	}
 	return result, nil
+}
+
+func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (TeamOverview, error) {
+	teams, err := s.store.ListAllTeams(ctx)
+	if err != nil {
+		return TeamOverview{}, err
+	}
+	hierarchy, err := s.getHierarchyFromTeams(ctx, teams, &periodID)
+	if err != nil {
+		return TeamOverview{}, err
+	}
+	summaries, err := s.getTeamsWithPeriodSummaryFromTeams(ctx, teams, periodID, nil)
+	if err != nil {
+		return TeamOverview{}, err
+	}
+	summaryByID := make(map[int64]TeamSummary, len(summaries))
+	for _, summary := range summaries {
+		summaryByID[summary.ID] = summary
+	}
+	children := findDirectChildren(teamID, hierarchy)
+	childrenSummary := []TeamChildSummary{}
+	if len(children) > 0 {
+		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, summaryByID)
+		if err != nil {
+			return TeamOverview{}, err
+		}
+	}
+	descendantIDs := collectDescendantIDs(teamID, hierarchy)
+
+	totalProgress := 0
+	teamsWithGoals := 0
+	priorities := TeamPrioritySummary{}
+	workBalance := TeamWorkBalance{}
+
+	for _, id := range descendantIDs {
+		summary, ok := summaryByID[id]
+		if !ok || summary.GoalsCount == 0 {
+			continue
+		}
+		teamsWithGoals++
+		totalProgress += summary.PeriodProgress
+		for _, goal := range summary.Goals {
+			switch goal.Priority {
+			case string(domain.PriorityP0):
+				priorities.P0++
+			case string(domain.PriorityP1):
+				priorities.P1++
+			case string(domain.PriorityP2):
+				priorities.P2++
+			case string(domain.PriorityP3):
+				priorities.P3++
+			}
+			switch goal.WorkType {
+			case domain.WorkTypeDiscovery:
+				workBalance.Discovery++
+			case domain.WorkTypeDelivery:
+				workBalance.Delivery++
+			}
+		}
+	}
+
+	avgProgress := 0
+	if teamsWithGoals > 0 {
+		avgProgress = totalProgress / teamsWithGoals
+	}
+
+	return TeamOverview{
+		AverageProgress: avgProgress,
+		TeamsWithGoals:  teamsWithGoals,
+		Priorities:      priorities,
+		WorkBalance:     workBalance,
+		ChildrenSummary: childrenSummary,
+	}, nil
+}
+
+func findDirectChildren(targetID int64, nodes []TeamNode) []TeamNode {
+	var children []TeamNode
+	var walk func(items []TeamNode) bool
+	walk = func(items []TeamNode) bool {
+		for _, node := range items {
+			if node.Team.ID == targetID {
+				children = node.Children
+				return true
+			}
+			if walk(node.Children) {
+				return true
+			}
+		}
+		return false
+	}
+	_ = walk(nodes)
+	return children
+}
+
+func collectDescendantIDs(targetID int64, nodes []TeamNode) []int64 {
+	var descendants []int64
+	var walk func(items []TeamNode, collect bool)
+	walk = func(items []TeamNode, collect bool) {
+		for _, node := range items {
+			nextCollect := collect || node.Team.ID == targetID
+			if collect {
+				descendants = append(descendants, node.Team.ID)
+			}
+			if len(node.Children) > 0 {
+				walk(node.Children, nextCollect)
+			}
+		}
+	}
+	walk(nodes, false)
+	return descendants
 }
 
 func (s *Service) UpdateKRProgressPercent(ctx context.Context, krID int64, current float64) error {
@@ -522,6 +662,7 @@ func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, te
 				Progress:   goals[i].Progress,
 				ShareTeams: shareTeams,
 				Priority:   string(goals[i].Priority),
+				WorkType:   goals[i].WorkType,
 			})
 		}
 		periodProgress := okr.PeriodProgress(goals)

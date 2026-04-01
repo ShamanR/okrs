@@ -450,7 +450,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}
 }
 
-func TestTeamChildrenSummaryIntegration(t *testing.T) {
+func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
 		tcpostgres.WithDatabase("okrs"),
@@ -521,22 +521,22 @@ func TestTeamChildrenSummaryIntegration(t *testing.T) {
 	server := httptest.NewServer(router)
 	defer server.Close()
 
-	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/children-summary?period_id=%d", server.URL, parentID, periodID))
+	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/overview?period_id=%d", server.URL, parentID, periodID))
 	if err != nil {
-		t.Fatalf("get children summary: %v", err)
+		t.Fatalf("get team overview: %v", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var payload teamChildrenSummaryResponse
+	var payload teamOverviewResponse
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		t.Fatalf("decode children summary: %v", err)
+		t.Fatalf("decode overview: %v", err)
 	}
-	if len(payload.Items) != 1 {
-		t.Fatalf("expected one child summary row, got %d", len(payload.Items))
+	if len(payload.ChildrenSummary.Items) != 1 {
+		t.Fatalf("expected one child summary row, got %d", len(payload.ChildrenSummary.Items))
 	}
-	item := payload.Items[0]
+	item := payload.ChildrenSummary.Items[0]
 	if item.Team.ID != childID {
 		t.Fatalf("expected child team id %d, got %d", childID, item.Team.ID)
 	}
