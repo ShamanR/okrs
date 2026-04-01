@@ -23,11 +23,6 @@ type teamNode struct {
 	Children  []teamNode `json:"children"`
 }
 
-type teamsResponse struct {
-	Period periodInfo    `json:"period"`
-	Items  []teamSummary `json:"items"`
-}
-
 type periodsResponse struct {
 	Items []periodInfo `json:"items"`
 }
@@ -38,29 +33,6 @@ type periodInfo struct {
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
 	SortOrder int       `json:"sort_order"`
-}
-
-type teamSummary struct {
-	ID             int64             `json:"id"`
-	Name           string            `json:"name"`
-	Type           string            `json:"type"`
-	TypeLabel      string            `json:"type_label"`
-	Indent         int               `json:"indent"`
-	Status         string            `json:"status"`
-	StatusLabel    string            `json:"status_label"`
-	PeriodProgress int               `json:"period_progress"`
-	GoalsCount     int               `json:"goals_count"`
-	GoalsWeight    int               `json:"goals_weight"`
-	Goals          []teamGoalSummary `json:"goals"`
-}
-
-type teamGoalSummary struct {
-	ID         int64       `json:"id"`
-	Title      string      `json:"title"`
-	Weight     int         `json:"weight"`
-	Progress   int         `json:"progress"`
-	ShareTeams []shareTeam `json:"share_teams"`
-	Priority   string      `json:"priority"`
 }
 
 type shareTeam struct {
@@ -270,47 +242,6 @@ func mapPeriodInfo(period domain.Period) periodInfo {
 		EndDate:   period.EndDate,
 		SortOrder: period.SortOrder,
 	}
-}
-
-func mapTeamsResponse(period domain.Period, teams []service.TeamSummary) teamsResponse {
-	items := make([]teamSummary, 0, len(teams))
-	for _, team := range teams {
-		goals := make([]teamGoalSummary, 0, len(team.Goals))
-		for _, goal := range team.Goals {
-			shareTeams := make([]shareTeam, 0, len(goal.ShareTeams))
-			for _, share := range goal.ShareTeams {
-				shareTeams = append(shareTeams, shareTeam{
-					ID:        share.ID,
-					Name:      share.Name,
-					Type:      string(share.Type),
-					TypeLabel: common.TeamTypeLabel(share.Type),
-					Weight:    share.Weight,
-				})
-			}
-			goals = append(goals, teamGoalSummary{
-				ID:         goal.ID,
-				Title:      goal.Title,
-				Weight:     goal.Weight,
-				Progress:   goal.Progress,
-				ShareTeams: shareTeams,
-				Priority:   goal.Priority,
-			})
-		}
-		items = append(items, teamSummary{
-			ID:             team.ID,
-			Name:           team.Name,
-			Type:           string(team.Type),
-			TypeLabel:      common.TeamTypeLabel(team.Type),
-			Indent:         team.Indent,
-			Status:         string(team.Status),
-			StatusLabel:    common.TeamPeriodStatusLabel(team.Status),
-			PeriodProgress: team.PeriodProgress,
-			GoalsCount:     team.GoalsCount,
-			GoalsWeight:    team.GoalsWeight,
-			Goals:          goals,
-		})
-	}
-	return teamsResponse{Period: mapPeriodInfo(period), Items: items}
 }
 
 func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
