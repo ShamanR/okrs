@@ -307,24 +307,14 @@
     const isGoalFromHash = window.location.hash === `#goal-${goal.id}`;
     const krWrap = renderKRTable(goal, { expanded: isGoalFromHash });
 
-    const actions = document.createElement('div');
-    actions.className = 'mt-3';
-    if (!isPeriodLocked()) {
-      const addKRButton = document.createElement('button');
-      addKRButton.type = 'button';
-      addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
-      addKRButton.textContent = 'Добавить KR';
-      addKRButton.addEventListener('click', () => openKRCreateModal(goal));
-      actions.appendChild(addKRButton);
-    }
-
-    body.append(header, description, progressWrap, meta, krWrap, actions);
+    body.append(header, description, progressWrap, meta, krWrap);
     card.appendChild(body);
     return card;
   };
 
   const renderKRTable = (goal, options = {}) => {
-    const isExpanded = options.expanded === true;
+    const hasKeyResults = Array.isArray(goal.key_results) && goal.key_results.length > 0;
+    const isExpanded = options.expanded === true || !hasKeyResults;
     const wrapper = document.createElement('div');
     const collapseID = `goal-${goal.id || 'new'}-krs`;
     const toggle = document.createElement('button');
@@ -334,18 +324,37 @@
     toggle.setAttribute('data-bs-target', `#${collapseID}`);
     toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
     toggle.setAttribute('aria-controls', collapseID);
-    toggle.textContent = 'Key Results';
+    const setToggleText = (expanded) => {
+      toggle.textContent = expanded ? 'Скрыть KR' : 'Показать KR';
+    };
+    setToggleText(isExpanded);
     wrapper.appendChild(toggle);
 
     const collapse = document.createElement('div');
     collapse.id = collapseID;
     collapse.className = `collapse${isExpanded ? ' show' : ''}`;
+    collapse.addEventListener('shown.bs.collapse', () => setToggleText(true));
+    collapse.addEventListener('hidden.bs.collapse', () => setToggleText(false));
 
-    if (!goal.key_results || goal.key_results.length === 0) {
+    const appendAddKRButton = () => {
+      if (isPeriodLocked()) return;
+      const actions = document.createElement('div');
+      actions.className = 'mt-3';
+      const addKRButton = document.createElement('button');
+      addKRButton.type = 'button';
+      addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
+      addKRButton.textContent = 'Добавить KR';
+      addKRButton.addEventListener('click', () => openKRCreateModal(goal));
+      actions.appendChild(addKRButton);
+      collapse.appendChild(actions);
+    };
+
+    if (!hasKeyResults) {
       const empty = document.createElement('div');
       empty.className = 'text-muted';
       empty.textContent = 'Ключевые результаты не заданы.';
       collapse.appendChild(empty);
+      appendAddKRButton();
       wrapper.appendChild(collapse);
       return wrapper;
     }
@@ -377,6 +386,7 @@
     });
     table.appendChild(body);
     collapse.appendChild(table);
+    appendAddKRButton();
     wrapper.appendChild(collapse);
     return wrapper;
   };
