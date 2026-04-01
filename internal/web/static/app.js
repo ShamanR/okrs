@@ -46,6 +46,25 @@
     return date.toLocaleDateString('ru-RU', { year: 'numeric', month: 'long', day: 'numeric' });
   };
 
+  const renderWorkTypeIcon = (workType) => {
+    const normalized = String(workType || '').trim().toLowerCase();
+    const icon = document.createElement('i');
+    icon.classList.add('bi');
+    if (normalized === 'discovery') {
+      icon.classList.add('bi-compass');
+      icon.title = 'Discovery';
+      icon.setAttribute('aria-label', 'Discovery');
+      return icon;
+    }
+    if (normalized === 'delivery') {
+      icon.classList.add('bi-wrench-adjustable-circle');
+      icon.title = 'Delivery';
+      icon.setAttribute('aria-label', 'Delivery');
+      return icon;
+    }
+    return document.createTextNode('—');
+  };
+
   const fetchJSON = async (url, options = {}) => {
     const response = await fetch(url, options);
     const payload = await response.json();
@@ -1451,6 +1470,7 @@
 
     const table = document.createElement('table');
     table.className = 'table table-hover';
+    table.style.fontSize = 'x-small';
     const thead = document.createElement('thead');
     const theadTR = document.createElement('tr');
 
@@ -1460,7 +1480,7 @@
     theadTR.append(theadTRW);
 
     const theadTRP = document.createElement('td')
-    theadTRP.textContent = "Приоритет"
+    theadTRP.textContent = "Prio"
     theadTRP.className = 'teams-goals-col-priority';
     theadTR.append(theadTRP)
 
@@ -1589,15 +1609,15 @@
 
     const table = document.createElement('table');
     table.className = 'table table-hover';
+    table.style.fontSize = 'x-small';
     table.innerHTML = `
       <thead>
         <tr>
           <td class="teams-goals-col-weight">Вес</td>
-          <td class="teams-goals-col-priority">Приоритет</td>
+          <td class="teams-goals-col-priority">Prio</td>
           <td class="teams-goals-col-title">Название</td>
           <td>Владелец</td>
-          <td>Работа</td>
-          <td>Фокус</td>
+          <td>Тип</td>
           <td class="teams-goals-col-progress">Прогресс</td>
           <td>Обновлено</td>
         </tr>
@@ -1635,16 +1655,9 @@
       owner.appendChild(ownerValue);
 
       const work = document.createElement('td');
-      const workBadge = document.createElement('span');
-      workBadge.className = 'badge text-bg-light border';
-      workBadge.textContent = goal.work_type || '—';
-      work.appendChild(workBadge);
-
-      const focus = document.createElement('td');
-      const focusBadge = document.createElement('span');
-      focusBadge.className = 'badge text-bg-light border';
-      focusBadge.textContent = goal.focus_type || '—';
-      focus.appendChild(focusBadge);
+      work.className = 'text-center';
+      const workIcon = renderWorkTypeIcon(goal.work_type);
+      work.appendChild(workIcon);
 
       const progress = document.createElement('td');
       progress.className = 'teams-goals-col-progress';
@@ -1663,7 +1676,7 @@
         updated.appendChild(freshness);
       }
 
-      row.append(weight, priority, title, owner, work, focus, progress, updated);
+      row.append(weight, priority, title, owner, work, progress, updated);
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
@@ -1680,7 +1693,7 @@
 
     const track = document.createElement('div');
     track.className = 'progress flex-grow-1 position-relative';
-    track.style.height = '8px';
+    track.style.height = '12px';
 
     const actual = Number(progressMeta?.actual || 0);
     const forecast = Number(progressMeta?.forecast || 0);
@@ -1693,11 +1706,13 @@
     const marker = document.createElement('span');
     marker.style.position = 'absolute';
     marker.style.left = `${Math.max(0, Math.min(100, forecast))}%`;
-    marker.style.top = '-3px';
-    marker.style.bottom = '-3px';
-    marker.style.width = '2px';
-    marker.style.transform = 'translateX(-1px)';
-    marker.style.backgroundColor = '#111827';
+    marker.style.top = '-4px';
+    marker.style.bottom = '-4px';
+    marker.style.width = '4px';
+    marker.style.transform = 'translateX(-2px)';
+    marker.style.borderRadius = '999px';
+    marker.style.backgroundColor = '#ff1744';
+    marker.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.65), 0 0 6px rgba(255,23,68,0.8)';
     marker.title = `Forecast ${forecast}%`;
     track.appendChild(marker);
 
@@ -1971,6 +1986,24 @@
     container.appendChild(section);
   };
 
+  const filterHierarchyByVisibleTeams = (nodes, visibleIDs) => {
+    const normalized = new Set(Array.from(visibleIDs || []).map((id) => String(id)));
+    const walk = (tree) => {
+      const result = [];
+      (tree || []).forEach((node) => {
+        const children = walk(node.children || []);
+        const isVisible = normalized.has(String(node.id));
+        if (isVisible) {
+          result.push({ ...node, children });
+        } else {
+          result.push(...children);
+        }
+      });
+      return result;
+    };
+    return walk(nodes || []);
+  };
+
   const initTeamsPage = () => {
     const page = document.querySelector('[data-page="team-okrs"]');
     if (!page) return;
@@ -1986,6 +2019,11 @@
       const payload = await fetchJSON('/api/v1/hierarchy');
       state.hierarchy = payload.items || [];
       return state.hierarchy;
+    };
+
+    const getVisibleHierarchy = (teamSummaryMap = new Map()) => {
+      const visibleIDs = new Set(Array.from(teamSummaryMap.keys()));
+      return filterHierarchyByVisibleTeams(state.hierarchy || [], visibleIDs);
     };
     const loadTeamsSummaryMap = async () => {
       const periodID = periodSelect?.value || page.dataset.periodId;
@@ -2061,7 +2099,7 @@
             } else {
               expandedNodes.add(String(node.id));
             }
-            renderTree(state.hierarchy || [], selectedTeamID, teamSummaryMap);
+            renderTree(getVisibleHierarchy(teamSummaryMap), selectedTeamID, teamSummaryMap);
           });
           controls.appendChild(toggle);
         }
@@ -2105,7 +2143,7 @@
           const periodID = periodSelect?.value || page.dataset.periodId;
           updateURL(String(node.id), periodID);
           await renderContentForSelection(String(node.id));
-          renderTree(state.hierarchy || [], String(node.id), teamSummaryMap);
+          renderTree(getVisibleHierarchy(teamSummaryMap), String(node.id), teamSummaryMap);
         });
 
         nodeWrap.appendChild(row);
@@ -2145,7 +2183,7 @@
     const renderContentForSelection = async (teamID) => {
       mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Загрузка данных команды…</div></div>';
       try {
-        const hierarchy = state.hierarchy || [];
+        const hierarchy = getVisibleHierarchy(await loadTeamsSummaryMap());
         const { map } = flattenHierarchyNodes(hierarchy);
         const selectedNode = map.get(String(teamID));
         if (!selectedNode) {
@@ -2278,8 +2316,9 @@
 
     const bootstrapPage = async () => {
       try {
-        const [tree, periods] = await Promise.all([loadHierarchy(), loadPeriods()]);
+        const [, periods] = await Promise.all([loadHierarchy(), loadPeriods()]);
         const teamSummaryMap = await loadTeamsSummaryMap();
+        const tree = getVisibleHierarchy(teamSummaryMap);
         renderPeriodSelect(periodSelect, periods, page.dataset.periodId || periodSelect?.value);
         const { selected } = resolveSelectedTeamID(tree);
         if (selected) {
@@ -2304,7 +2343,7 @@
       const teamID = url.searchParams.get('team');
       if (!teamID) return;
       loadTeamsSummaryMap().then((teamSummaryMap) => {
-        renderTree(state.hierarchy || [], teamID, teamSummaryMap);
+        renderTree(getVisibleHierarchy(teamSummaryMap), teamID, teamSummaryMap);
       });
       renderContentForSelection(teamID);
     });
