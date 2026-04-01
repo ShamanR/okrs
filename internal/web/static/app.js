@@ -304,7 +304,8 @@
 
     meta.append(workBadge, focusBadge, owner);
 
-    const krWrap = renderKRTable(goal);
+    const isGoalFromHash = window.location.hash === `#goal-${goal.id}`;
+    const krWrap = renderKRTable(goal, { expanded: isGoalFromHash });
 
     const actions = document.createElement('div');
     actions.className = 'mt-3';
@@ -322,13 +323,30 @@
     return card;
   };
 
-  const renderKRTable = (goal) => {
+  const renderKRTable = (goal, options = {}) => {
+    const isExpanded = options.expanded === true;
     const wrapper = document.createElement('div');
+    const collapseID = `goal-${goal.id || 'new'}-krs`;
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'btn btn-outline-secondary btn-sm mb-2';
+    toggle.setAttribute('data-bs-toggle', 'collapse');
+    toggle.setAttribute('data-bs-target', `#${collapseID}`);
+    toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    toggle.setAttribute('aria-controls', collapseID);
+    toggle.textContent = 'Key Results';
+    wrapper.appendChild(toggle);
+
+    const collapse = document.createElement('div');
+    collapse.id = collapseID;
+    collapse.className = `collapse${isExpanded ? ' show' : ''}`;
+
     if (!goal.key_results || goal.key_results.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'text-muted';
       empty.textContent = 'Ключевые результаты не заданы.';
-      wrapper.appendChild(empty);
+      collapse.appendChild(empty);
+      wrapper.appendChild(collapse);
       return wrapper;
     }
 
@@ -358,7 +376,8 @@
       body.appendChild(detailRow);
     });
     table.appendChild(body);
-    wrapper.appendChild(table);
+    collapse.appendChild(table);
+    wrapper.appendChild(collapse);
     return wrapper;
   };
 
