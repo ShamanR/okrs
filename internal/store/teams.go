@@ -147,6 +147,35 @@ func (s *Store) TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (b
 	return exists, err
 }
 
+func (s *Store) ListTeamIDsWithGoalsInPeriod(ctx context.Context, periodID int64) (map[int64]struct{}, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT DISTINCT team_id
+		FROM (
+			SELECT g.team_id AS team_id
+			FROM goals g
+			WHERE g.period_id = $1
+			UNION ALL
+			SELECT gs.team_id AS team_id
+			FROM goal_shares gs
+			JOIN goals g ON g.id = gs.goal_id
+			WHERE g.period_id = $1
+		) teams_with_goals`, periodID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make(map[int64]struct{})
+	for rows.Next() {
+		var teamID int64
+		if err := rows.Scan(&teamID); err != nil {
+			return nil, err
+		}
+		ids[teamID] = struct{}{}
+	}
+	return ids, rows.Err()
+}
+
 func (s *Store) SoftDeleteTeam(ctx context.Context, id int64) error {
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {

@@ -108,6 +108,15 @@ func (f *fakeStore) TeamHasGoals(_ context.Context, id int64) (bool, error) {
 func (f *fakeStore) TeamHasGoalsInPeriod(_ context.Context, id, periodID int64) (bool, error) {
 	return len(f.goalsByTeam[id][periodID]) > 0, nil
 }
+func (f *fakeStore) ListTeamIDsWithGoalsInPeriod(_ context.Context, periodID int64) (map[int64]struct{}, error) {
+	ids := make(map[int64]struct{})
+	for teamID := range f.goalsByTeam {
+		if len(f.goalsByTeam[teamID][periodID]) > 0 {
+			ids[teamID] = struct{}{}
+		}
+	}
+	return ids, nil
+}
 func (f *fakeStore) SoftDeleteTeam(_ context.Context, id int64) error {
 	f.softDeleted = append(f.softDeleted, id)
 	return nil

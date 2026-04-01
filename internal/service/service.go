@@ -23,6 +23,7 @@ type Store interface {
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
 	TeamHasGoals(ctx context.Context, id int64) (bool, error)
 	TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (bool, error)
+	ListTeamIDsWithGoalsInPeriod(ctx context.Context, periodID int64) (map[int64]struct{}, error)
 	SoftDeleteTeam(ctx context.Context, id int64) error
 	RestoreTeam(ctx context.Context, id int64) error
 	HardDeleteTeam(ctx context.Context, id int64) error
@@ -115,6 +116,13 @@ func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode
 	if err != nil {
 		return nil, err
 	}
+	teamIDsWithGoals := map[int64]struct{}{}
+	if periodID != nil && *periodID > 0 {
+		teamIDsWithGoals, err = s.store.ListTeamIDsWithGoalsInPeriod(ctx, *periodID)
+		if err != nil {
+			return nil, err
+		}
+	}
 	visibleTeams := make([]domain.Team, 0, len(teams))
 	for _, team := range teams {
 		if team.DeletedAt == nil {
@@ -124,10 +132,7 @@ func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode
 		if periodID == nil || *periodID == 0 {
 			continue
 		}
-		hasGoals, err := s.store.TeamHasGoalsInPeriod(ctx, team.ID, *periodID)
-		if err != nil {
-			return nil, err
-		}
+		_, hasGoals := teamIDsWithGoals[team.ID]
 		if hasGoals {
 			visibleTeams = append(visibleTeams, team)
 		}
