@@ -1001,7 +1001,11 @@
     const form = modalEl.querySelector('[data-goal-edit-form]');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      await submitFormXHR(form);
+      const response = await submitFormXHR(form);
+      const responseURL = response?.url ? new URL(response.url, window.location.origin) : null;
+      if (responseURL?.hash) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${responseURL.hash}`);
+      }
       await reloadTeamOKR();
       bootstrap.Modal.getInstance(modalEl)?.hide();
     });
@@ -2320,8 +2324,12 @@
 
     const renderTeamBreadcrumbs = async () => {
       if (!breadcrumbsEl) return;
-      const tree = await loadHierarchyForPeriod(periodID);
-      const { map, parentByID } = flattenHierarchyNodes(tree);
+      let tree = await loadHierarchyForPeriod('');
+      let { map, parentByID } = flattenHierarchyNodes(tree);
+      if (!map.has(String(teamID))) {
+        tree = await loadHierarchyForPeriod(periodID);
+        ({ map, parentByID } = flattenHierarchyNodes(tree));
+      }
       const chain = [];
       let cursor = String(teamID);
       while (cursor && map.has(cursor)) {
