@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/service"
 )
 
 func TestBuildMeasurePercent(t *testing.T) {
@@ -81,7 +82,6 @@ func TestBuildMeasureProject(t *testing.T) {
 	}
 }
 
-
 func TestCalculatePeriodForecastBounds(t *testing.T) {
 	period := domain.Period{
 		StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -121,5 +121,29 @@ func TestBuildProgressBarInfoStatusByDelta(t *testing.T) {
 	infoOnTrack := buildProgressBarInfo(onTrackActual, period)
 	if infoOnTrack.Status != "on_track" {
 		t.Fatalf("expected on_track status, got %s (actual=%d forecast=%d delta=%d)", infoOnTrack.Status, infoOnTrack.Actual, infoOnTrack.Forecast, infoOnTrack.Delta)
+	}
+}
+
+func TestMapGoalDetailsIncludesProgressMeta(t *testing.T) {
+	period := domain.Period{
+		StartDate: time.Now().Add(-24 * time.Hour),
+		EndDate:   time.Now().Add(24 * time.Hour),
+	}
+	detail := service.GoalDetails{
+		Goal: domain.Goal{
+			ID:       10,
+			Progress: 40,
+		},
+	}
+
+	result := mapGoalDetails(detail, period)
+	if result.ProgressMeta.Actual != 40 {
+		t.Fatalf("expected progress_meta.actual=40, got %d", result.ProgressMeta.Actual)
+	}
+	if result.ProgressMeta.Forecast < 0 || result.ProgressMeta.Forecast > 100 {
+		t.Fatalf("expected progress_meta.forecast in [0,100], got %d", result.ProgressMeta.Forecast)
+	}
+	if result.ProgressMeta.Status == "" {
+		t.Fatalf("expected non-empty progress_meta.status")
 	}
 }

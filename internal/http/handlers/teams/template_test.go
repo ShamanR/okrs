@@ -15,12 +15,24 @@ func TestTeamOKRTemplateHasDataAttributes(t *testing.T) {
 	required := []string{
 		"data-page=\"team-okr\"",
 		"data-team-id",
-		"data-okr-summary",
+		"data-period-name",
+		"data-okr-breadcrumbs",
+		"data-okr-actions",
 		"data-okr-goals",
 	}
 	for _, token := range required {
 		if !strings.Contains(content, token) {
 			t.Fatalf("expected template to include %q", token)
+		}
+	}
+	forbidden := []string{
+		"Сводка периода",
+		"Цели периода",
+		"data-okr-summary",
+	}
+	for _, token := range forbidden {
+		if strings.Contains(content, token) {
+			t.Fatalf("expected template not to include %q", token)
 		}
 	}
 }

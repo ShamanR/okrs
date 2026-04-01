@@ -619,7 +619,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.deps.Store.CreateGoal(ctx, store.GoalInput{
+	goalID, err := h.deps.Store.CreateGoal(ctx, store.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       common.TrimmedFormValue(r, "title"),
@@ -641,7 +641,15 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", teamID, periodID), http.StatusSeeOther)
+	http.Redirect(w, r, buildTeamOKRURL(teamID, periodID, goalID), http.StatusSeeOther)
+}
+
+func buildTeamOKRURL(teamID, periodID, goalID int64) string {
+	base := fmt.Sprintf("/teams/%d/okr?period_id=%d", teamID, periodID)
+	if goalID <= 0 {
+		return base
+	}
+	return fmt.Sprintf("%s#goal-%d", base, goalID)
 }
 
 func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request, teamID, periodID int64, message string) {

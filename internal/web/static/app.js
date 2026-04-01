@@ -115,6 +115,19 @@
     }
   };
 
+  const loadHierarchyForPeriod = async (periodID) => {
+    const cacheKey = String(periodID || '');
+    if (state.hierarchyByPeriod[cacheKey]) return state.hierarchyByPeriod[cacheKey];
+    const url = new URL('/api/v1/hierarchy', window.location.origin);
+    if (periodID) {
+      url.searchParams.set('period_id', periodID);
+    }
+    const payload = await fetchJSON(url.toString());
+    state.hierarchy = payload.items || [];
+    state.hierarchyByPeriod[cacheKey] = state.hierarchy;
+    return state.hierarchyByPeriod[cacheKey];
+  };
+
   const renderPeriodSelect = (select, periods, selectedID) => {
     select.innerHTML = '';
     if (!periods.length) {
@@ -175,9 +188,8 @@
     });
   };
 
-  const renderOKRPage = (data, summaryEl, goalsEl, actionsEl) => {
+  const renderOKRPage = (data, goalsEl, actionsEl) => {
     state.teamOKR = data;
-    renderSummary(data, summaryEl);
     if (actionsEl) {
       renderOKRActions(data, actionsEl);
     }
@@ -193,6 +205,14 @@
       goalsEl.appendChild(renderGoalCard(goal));
     });
     initPopovers();
+    if (window.location.hash) {
+      window.setTimeout(() => {
+        const target = document.querySelector(window.location.hash);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 0);
+    }
   };
 
   const renderGoalCard = (goal) => {
@@ -249,24 +269,13 @@
     description.textContent = goal.description || '';
 
     const progressWrap = document.createElement('div');
-    progressWrap.className = 'd-flex flex-wrap align-items-center gap-3 mb-3';
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress flex-grow-1';
-    progressBar.setAttribute('role', 'progressbar');
-    progressBar.setAttribute('aria-valuenow', goal.progress);
-    progressBar.setAttribute('aria-valuemin', '0');
-    progressBar.setAttribute('aria-valuemax', '100');
-
-    const progressFill = document.createElement('div');
-    progressFill.className = 'progress-bar';
-    progressFill.style.width = `${goal.progress}%`;
-    progressBar.appendChild(progressFill);
-
-    const progressValue = document.createElement('span');
-    progressValue.className = 'fw-semibold';
-    progressValue.textContent = `${goal.progress}%`;
-
-    progressWrap.append(progressBar, progressValue);
+    progressWrap.className = 'mb-3';
+    progressWrap.appendChild(renderForecastProgress(goal.progress_meta || {
+      actual: Number(goal.progress || 0),
+      forecast: Number(goal.progress || 0),
+      delta: 0,
+      status: 'on_track',
+    }));
 
     const meta = document.createElement('div');
     meta.className = 'd-flex flex-wrap align-items-center gap-2 mb-3';
@@ -279,36 +288,75 @@
     focusBadge.className = 'badge text-bg-light border';
     focusBadge.textContent = goal.focus_type;
 
+    const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
+    const updated = document.createElement('span');
+    updated.className = 'badge';
+    if (!goalUpdateMeta.hasDate) {
+      updated.classList.add('text-bg-secondary');
+      updated.textContent = 'Обновлено: —';
+    } else {
+      updated.classList.add(goalUpdateMeta.isStale ? 'text-bg-warning' : 'text-bg-success');
+      updated.textContent = `Обновлено: ${goalUpdateMeta.relativeText}`;
+      updated.title = goalUpdateMeta.absoluteText;
+    }
+
     const owner = document.createElement('span');
     owner.innerHTML = `Владелец: <span class="text-decoration-underline">${goal.owner_text}</span>`;
 
-    meta.append(workBadge, focusBadge, owner);
+    meta.append(workBadge, focusBadge, updated, owner);
 
-    const krWrap = renderKRTable(goal);
+    const isGoalFromHash = window.location.hash === `#goal-${goal.id}`;
+    const krWrap = renderKRTable(goal, { expanded: isGoalFromHash });
 
-    const actions = document.createElement('div');
-    actions.className = 'mt-3';
-    if (!isPeriodLocked()) {
+    body.append(header, description, progressWrap, meta, krWrap);
+    card.appendChild(body);
+    return card;
+  };
+
+  const renderKRTable = (goal, options = {}) => {
+    const hasKeyResults = Array.isArray(goal.key_results) && goal.key_results.length > 0;
+    const isExpanded = options.expanded === true || !hasKeyResults;
+    const wrapper = document.createElement('div');
+    const collapseID = `goal-${goal.id || 'new'}-krs`;
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'btn btn-outline-secondary btn-sm mb-2';
+    toggle.setAttribute('data-bs-toggle', 'collapse');
+    toggle.setAttribute('data-bs-target', `#${collapseID}`);
+    toggle.setAttribute('aria-expanded', isExpanded ? 'true' : 'false');
+    toggle.setAttribute('aria-controls', collapseID);
+    const setToggleText = (expanded) => {
+      toggle.textContent = expanded ? 'Скрыть KR' : 'Показать KR';
+    };
+    setToggleText(isExpanded);
+    wrapper.appendChild(toggle);
+
+    const collapse = document.createElement('div');
+    collapse.id = collapseID;
+    collapse.className = `collapse${isExpanded ? ' show' : ''}`;
+    collapse.addEventListener('shown.bs.collapse', () => setToggleText(true));
+    collapse.addEventListener('hidden.bs.collapse', () => setToggleText(false));
+
+    const appendAddKRButton = () => {
+      if (isPeriodLocked()) return;
+      const actions = document.createElement('div');
+      actions.className = 'mt-3';
       const addKRButton = document.createElement('button');
       addKRButton.type = 'button';
       addKRButton.className = 'btn btn-outline-primary btn-sm align-self-start';
       addKRButton.textContent = 'Добавить KR';
       addKRButton.addEventListener('click', () => openKRCreateModal(goal));
       actions.appendChild(addKRButton);
-    }
+      collapse.appendChild(actions);
+    };
 
-    body.append(header, description, progressWrap, meta, krWrap, actions);
-    card.appendChild(body);
-    return card;
-  };
-
-  const renderKRTable = (goal) => {
-    const wrapper = document.createElement('div');
-    if (!goal.key_results || goal.key_results.length === 0) {
+    if (!hasKeyResults) {
       const empty = document.createElement('div');
       empty.className = 'text-muted';
       empty.textContent = 'Ключевые результаты не заданы.';
-      wrapper.appendChild(empty);
+      collapse.appendChild(empty);
+      appendAddKRButton();
+      wrapper.appendChild(collapse);
       return wrapper;
     }
 
@@ -338,7 +386,9 @@
       body.appendChild(detailRow);
     });
     table.appendChild(body);
-    wrapper.appendChild(table);
+    collapse.appendChild(table);
+    appendAddKRButton();
+    wrapper.appendChild(collapse);
     return wrapper;
   };
 
@@ -627,76 +677,6 @@
     form.appendChild(status);
     panel.appendChild(form);
     return panel;
-  };
-
-  const renderSummary = (data, summaryEl) => {
-    summaryEl.innerHTML = '';
-    const title = document.createElement('h2');
-    title.className = 'h5';
-    title.textContent = 'Сводка периода';
-
-    const progressRow = document.createElement('div');
-    progressRow.className = 'mb-3';
-
-    const progressHeader = document.createElement('div');
-    progressHeader.className = 'd-flex justify-content-between';
-    const progressLabel = document.createElement('span');
-    progressLabel.className = 'text-muted';
-    progressLabel.textContent = 'Прогресс';
-    const progressValue = document.createElement('strong');
-    progressValue.textContent = `${data.period_progress}%`;
-    progressHeader.append(progressLabel, progressValue);
-
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress';
-    progressBar.setAttribute('role', 'progressbar');
-    progressBar.setAttribute('aria-valuenow', data.period_progress);
-    progressBar.setAttribute('aria-valuemin', '0');
-    progressBar.setAttribute('aria-valuemax', '100');
-    const progressFill = document.createElement('div');
-    progressFill.className = 'progress-bar';
-    progressFill.style.width = `${data.period_progress}%`;
-    progressBar.appendChild(progressFill);
-
-    progressRow.append(progressHeader, progressBar);
-
-    const counts = document.createElement('div');
-    counts.className = 'd-flex justify-content-between';
-    counts.innerHTML = `<span class="text-muted">Целей</span><span class="fw-semibold">${data.goals_count}</span>`;
-
-    const weight = document.createElement('div');
-    weight.className = 'd-flex justify-content-between';
-    weight.innerHTML = `<span class="text-muted">Суммарный вес</span><span class="fw-semibold">${data.goals_weight}</span>`;
-
-    const status = document.createElement('div');
-    status.className = 'mt-3';
-    const statusLabel = document.createElement('h3');
-    statusLabel.className = 'h6 mb-2';
-    statusLabel.textContent = 'Статус периода';
-
-    const statusSelect = document.createElement('select');
-    statusSelect.className = 'form-select';
-    const statusOptions = [
-      { value: 'no_goals', label: 'Нет целей' },
-      { value: 'forming', label: 'Черновик целей' },
-      { value: 'in_progress', label: 'Готовы к валидации' },
-      { value: 'validated', label: 'Провалидировано' },
-      { value: 'closed', label: 'Цели закрыты' },
-    ];
-    statusOptions.forEach((option) => {
-      const opt = document.createElement('option');
-      opt.value = option.value;
-      opt.textContent = option.label;
-      if (option.value === data.period_status) {
-        opt.selected = true;
-      }
-      statusSelect.appendChild(opt);
-    });
-    statusSelect.addEventListener('change', () => updatePeriodStatus(statusSelect.value));
-
-    status.append(statusLabel, statusSelect);
-
-    summaryEl.append(title, progressRow, counts, weight, status);
   };
 
   const renderOKRActions = (data, actionsEl) => {
@@ -1051,7 +1031,11 @@
     const form = modalEl.querySelector('[data-goal-edit-form]');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
-      await submitFormXHR(form);
+      const response = await submitFormXHR(form);
+      const responseURL = response?.url ? new URL(response.url, window.location.origin) : null;
+      if (responseURL?.hash) {
+        window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}${responseURL.hash}`);
+      }
       await reloadTeamOKR();
       bootstrap.Modal.getInstance(modalEl)?.hide();
     });
@@ -2027,19 +2011,7 @@
     const initialTeam = page.dataset.selectedTeam || '';
     const expandedNodes = new Set();
 
-    const loadHierarchy = async () => {
-      const periodID = periodSelect?.value || page.dataset.periodId || '';
-      const cacheKey = String(periodID);
-      if (state.hierarchyByPeriod[cacheKey]) return state.hierarchyByPeriod[cacheKey];
-      const url = new URL('/api/v1/hierarchy', window.location.origin);
-      if (periodID) {
-        url.searchParams.set('period_id', periodID);
-      }
-      const payload = await fetchJSON(url.toString());
-      state.hierarchy = payload.items || [];
-      state.hierarchyByPeriod[cacheKey] = state.hierarchy;
-      return state.hierarchyByPeriod[cacheKey];
-    };
+    const loadHierarchy = async () => loadHierarchyForPeriod(periodSelect?.value || page.dataset.periodId || '');
 
     const getVisibleHierarchy = (teamSummaryMap = new Map()) => {
       const visibleIDs = new Set(Array.from(teamSummaryMap.keys()));
@@ -2374,23 +2346,62 @@
   const initTeamOKRPage = () => {
     const page = document.querySelector('[data-page="team-okr"]');
     if (!page) return;
-    const summaryEl = page.querySelector('[data-okr-summary]');
     const actionsEl = page.querySelector('[data-okr-actions]');
     const goalsEl = page.querySelector('[data-okr-goals]');
+    const breadcrumbsEl = document.querySelector('[data-okr-breadcrumbs]');
     const teamID = page.dataset.teamId;
     const periodID = page.dataset.periodId;
+    const periodName = page.dataset.periodName || '';
+
+    const loadTeamAncestry = async (selectedTeamID) => {
+      const chain = [];
+      const seen = new Set();
+      let cursor = selectedTeamID;
+      while (cursor && !seen.has(String(cursor))) {
+        seen.add(String(cursor));
+        const team = await fetchJSON(`/api/v1/teams/${cursor}`);
+        chain.unshift(team);
+        cursor = team.parent_id;
+      }
+      return chain;
+    };
+
+    const renderTeamBreadcrumbs = async () => {
+      if (!breadcrumbsEl) return;
+      const chain = await loadTeamAncestry(teamID);
+      const fragment = document.createDocumentFragment();
+      const rootCrumb = document.createElement('li');
+      rootCrumb.className = 'breadcrumb-item';
+      const rootLink = document.createElement('a');
+      rootLink.href = '/teamOkrs';
+      rootLink.textContent = 'teamOkrs';
+      rootCrumb.appendChild(rootLink);
+      fragment.appendChild(rootCrumb);
+
+      chain.forEach((node, index) => {
+        const item = document.createElement('li');
+        const isLast = index === chain.length - 1;
+        item.className = `breadcrumb-item${isLast ? ' active' : ''}`;
+        const link = document.createElement('a');
+        link.href = `/teamOkrs?period_id=${periodID}&team=${node.id}`;
+        link.textContent = isLast ? `${node.name}${periodName ? ` · ${periodName}` : ''}` : node.name;
+        item.appendChild(link);
+        fragment.appendChild(item);
+      });
+      breadcrumbsEl.replaceChildren(fragment);
+    };
 
     const load = async () => {
       const url = new URL(`/api/v1/teams/${teamID}/okrs`, window.location.origin);
       url.searchParams.set('period_id', periodID);
       const payload = await fetchJSON(url.toString());
-      renderOKRPage(payload, summaryEl, goalsEl, actionsEl);
+      renderOKRPage(payload, goalsEl, actionsEl);
+      await renderTeamBreadcrumbs();
     };
 
     reloadTeamOKR = load;
 
     load().catch((error) => {
-      summaryEl.innerHTML = `<p class="text-danger mb-0">${error.message}</p>`;
       goalsEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
     });
   };
