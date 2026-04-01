@@ -10,6 +10,17 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+type TeamOverviewStats struct {
+	TeamID     int64
+	Goals      int
+	PriorityP0 int
+	PriorityP1 int
+	PriorityP2 int
+	PriorityP3 int
+	Discovery  int
+	Delivery   int
+}
+
 func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
 	var id int64
 	err := s.DB.QueryRow(ctx, `
@@ -19,6 +30,57 @@ func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) 
 		input.TeamID, input.PeriodID, input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText,
 	).Scan(&id)
 	return id, err
+}
+
+func (s *Store) ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]TeamOverviewStats, error) {
+	stats := make(map[int64]TeamOverviewStats, len(teamIDs))
+	if len(teamIDs) == 0 {
+		return stats, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT
+			t.team_id,
+			COUNT(*)::bigint AS goals_count,
+			COUNT(*) FILTER (WHERE g.priority = 'P0')::bigint AS p0_count,
+			COUNT(*) FILTER (WHERE g.priority = 'P1')::bigint AS p1_count,
+			COUNT(*) FILTER (WHERE g.priority = 'P2')::bigint AS p2_count,
+			COUNT(*) FILTER (WHERE g.priority = 'P3')::bigint AS p3_count,
+			COUNT(*) FILTER (WHERE g.work_type = 'discovery')::bigint AS discovery_count,
+			COUNT(*) FILTER (WHERE g.work_type = 'delivery')::bigint AS delivery_count
+		FROM (
+			SELECT g.id, g.team_id
+			FROM goals g
+			WHERE g.period_id = $1 AND g.team_id = ANY($2)
+			UNION
+			SELECT g.id, gs.team_id
+			FROM goals g
+			JOIN goal_shares gs ON gs.goal_id = g.id
+			WHERE g.period_id = $1 AND gs.team_id = ANY($2)
+		) t
+		JOIN goals g ON g.id = t.id
+		GROUP BY t.team_id`, periodID, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item TeamOverviewStats
+		if err := rows.Scan(
+			&item.TeamID,
+			&item.Goals,
+			&item.PriorityP0,
+			&item.PriorityP1,
+			&item.PriorityP2,
+			&item.PriorityP3,
+			&item.Discovery,
+			&item.Delivery,
+		); err != nil {
+			return nil, err
+		}
+		stats[item.TeamID] = item
+	}
+	return stats, rows.Err()
 }
 
 func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error) {

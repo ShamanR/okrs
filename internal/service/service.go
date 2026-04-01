@@ -20,6 +20,7 @@ type Store interface {
 	ListPeriods(ctx context.Context) ([]domain.Period, error)
 	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
+	ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
 	ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
@@ -363,6 +364,10 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 		}
 	}
 	descendantIDs := collectDescendantIDs(teamID, hierarchy)
+	overviewStats, err := s.store.ListTeamOverviewStats(ctx, periodID, descendantIDs)
+	if err != nil {
+		return TeamOverview{}, err
+	}
 
 	totalProgress := 0
 	teamsWithGoals := 0
@@ -376,23 +381,13 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 		}
 		teamsWithGoals++
 		totalProgress += summary.PeriodProgress
-		for _, goal := range summary.Goals {
-			switch goal.Priority {
-			case string(domain.PriorityP0):
-				priorities.P0++
-			case string(domain.PriorityP1):
-				priorities.P1++
-			case string(domain.PriorityP2):
-				priorities.P2++
-			case string(domain.PriorityP3):
-				priorities.P3++
-			}
-			switch goal.WorkType {
-			case domain.WorkTypeDiscovery:
-				workBalance.Discovery++
-			case domain.WorkTypeDelivery:
-				workBalance.Delivery++
-			}
+		if stat, exists := overviewStats[id]; exists {
+			priorities.P0 += stat.PriorityP0
+			priorities.P1 += stat.PriorityP1
+			priorities.P2 += stat.PriorityP2
+			priorities.P3 += stat.PriorityP3
+			workBalance.Discovery += stat.Discovery
+			workBalance.Delivery += stat.Delivery
 		}
 	}
 
