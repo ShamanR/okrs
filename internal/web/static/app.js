@@ -1,6 +1,7 @@
 (() => {
   const state = {
     hierarchy: null,
+    hierarchyByPeriod: {},
     teamOKR: null,
     teamsSummaryByPeriod: {},
   };
@@ -1470,7 +1471,7 @@
 
     const table = document.createElement('table');
     table.className = 'table table-hover';
-    table.style.fontSize = 'x-small';
+    table.style.fontSize = 'small';
     const thead = document.createElement('thead');
     const theadTR = document.createElement('tr');
 
@@ -1485,9 +1486,14 @@
     theadTR.append(theadTRP)
 
     const theadTRT = document.createElement('td')
-    theadTRT.textContent = "Название"
-    theadTRT.className = 'teams-goals-col-title';
+    theadTRT.textContent = ""
+    theadTRT.className = 'text-center';
     theadTR.append(theadTRT)
+
+    const theadTRN = document.createElement('td')
+    theadTRN.textContent = "Название"
+    theadTRN.className = 'teams-goals-col-title';
+    theadTR.append(theadTRN)
 
     const theadTRPR = document.createElement('td')
     theadTRPR.textContent = "Прогресс"
@@ -1514,13 +1520,16 @@
       priorityBadge.textContent = goal.priority;
       priority.appendChild(priorityBadge);
 
+      const shared = document.createElement('td');
+      shared.className = 'text-center';
+      if (goal.share_teams && goal.share_teams.length > 1) {
+        shared.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
+      }
+
       const title = document.createElement('td');
       title.className = 'teams-goals-col-title text-break';
       const titleWrapper = document.createElement('div');
       titleWrapper.className = 'd-flex align-items-center gap-2';
-      if (goal.share_teams && goal.share_teams.length > 1) {
-        titleWrapper.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
-      }
       const titleText = document.createElement('span');
       titleText.textContent = goal.title;
       titleWrapper.appendChild(titleText);
@@ -1533,7 +1542,7 @@
       progressBadge.textContent = `${goal.progress}%`;
       progress.appendChild(progressBadge);
 
-      row.append(weight, priority, title, progress);
+      row.append(weight, priority, shared, title, progress);
       tbody.appendChild(row);
     });
 
@@ -1609,12 +1618,13 @@
 
     const table = document.createElement('table');
     table.className = 'table table-hover';
-    table.style.fontSize = 'x-small';
+    table.style.fontSize = 'small';
     table.innerHTML = `
       <thead>
         <tr>
           <td class="teams-goals-col-weight">Вес</td>
           <td class="teams-goals-col-priority">Prio</td>
+          <td class="text-center"></td>
           <td class="teams-goals-col-title">Название</td>
           <td>Владелец</td>
           <td>Тип</td>
@@ -1633,13 +1643,16 @@
       priority.className = 'teams-goals-col-priority';
       priority.innerHTML = `<span class="badge ${priorityBadgeClass(goal.priority)}">${escapeHTML(goal.priority)}</span>`;
 
+      const shared = document.createElement('td');
+      shared.className = 'text-center';
+      if (goal.share_teams && goal.share_teams.length > 1) {
+        shared.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
+      }
+
       const title = document.createElement('td');
       title.className = 'teams-goals-col-title text-break';
       const titleWrap = document.createElement('div');
       titleWrap.className = 'd-flex align-items-center gap-2';
-      if (goal.share_teams && goal.share_teams.length > 1) {
-        titleWrap.appendChild(renderSharedGoalBadge(goal, { period_id: periodID, showBadge: false }));
-      }
       const titleLink = document.createElement('a');
       titleLink.className = 'link-primary';
       const targetTeamID = currentTeamID || goal.team_id;
@@ -1676,7 +1689,7 @@
         updated.appendChild(freshness);
       }
 
-      row.append(weight, priority, title, owner, work, progress, updated);
+      row.append(weight, priority, shared, title, owner, work, progress, updated);
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
@@ -2015,10 +2028,17 @@
     const expandedNodes = new Set();
 
     const loadHierarchy = async () => {
-      if (state.hierarchy) return state.hierarchy;
-      const payload = await fetchJSON('/api/v1/hierarchy');
+      const periodID = periodSelect?.value || page.dataset.periodId || '';
+      const cacheKey = String(periodID);
+      if (state.hierarchyByPeriod[cacheKey]) return state.hierarchyByPeriod[cacheKey];
+      const url = new URL('/api/v1/hierarchy', window.location.origin);
+      if (periodID) {
+        url.searchParams.set('period_id', periodID);
+      }
+      const payload = await fetchJSON(url.toString());
       state.hierarchy = payload.items || [];
-      return state.hierarchy;
+      state.hierarchyByPeriod[cacheKey] = state.hierarchy;
+      return state.hierarchyByPeriod[cacheKey];
     };
 
     const getVisibleHierarchy = (teamSummaryMap = new Map()) => {
