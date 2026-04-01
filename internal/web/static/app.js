@@ -269,24 +269,13 @@
     description.textContent = goal.description || '';
 
     const progressWrap = document.createElement('div');
-    progressWrap.className = 'd-flex flex-wrap align-items-center gap-3 mb-3';
-    const progressBar = document.createElement('div');
-    progressBar.className = 'progress flex-grow-1';
-    progressBar.setAttribute('role', 'progressbar');
-    progressBar.setAttribute('aria-valuenow', goal.progress);
-    progressBar.setAttribute('aria-valuemin', '0');
-    progressBar.setAttribute('aria-valuemax', '100');
-
-    const progressFill = document.createElement('div');
-    progressFill.className = 'progress-bar';
-    progressFill.style.width = `${goal.progress}%`;
-    progressBar.appendChild(progressFill);
-
-    const progressValue = document.createElement('span');
-    progressValue.className = 'fw-semibold';
-    progressValue.textContent = `${goal.progress}%`;
-
-    progressWrap.append(progressBar, progressValue);
+    progressWrap.className = 'mb-3';
+    progressWrap.appendChild(renderForecastProgress(goal.progress_meta || {
+      actual: Number(goal.progress || 0),
+      forecast: Number(goal.progress || 0),
+      delta: 0,
+      status: 'on_track',
+    }));
 
     const meta = document.createElement('div');
     meta.className = 'd-flex flex-wrap align-items-center gap-2 mb-3';
@@ -302,7 +291,17 @@
     const owner = document.createElement('span');
     owner.innerHTML = `Владелец: <span class="text-decoration-underline">${goal.owner_text}</span>`;
 
-    meta.append(workBadge, focusBadge, owner);
+    const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
+    const updated = document.createElement('span');
+    updated.className = 'ms-auto text-muted small';
+    if (!goalUpdateMeta.hasDate) {
+      updated.textContent = 'Обновлено: —';
+    } else {
+      updated.textContent = `Обновлено: ${goalUpdateMeta.relativeText}`;
+      updated.title = goalUpdateMeta.absoluteText;
+    }
+
+    meta.append(workBadge, focusBadge, owner, updated);
 
     const isGoalFromHash = window.location.hash === `#goal-${goal.id}`;
     const krWrap = renderKRTable(goal, { expanded: isGoalFromHash });

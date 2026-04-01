@@ -117,21 +117,22 @@ type teamInfo struct {
 }
 
 type goalDetails struct {
-	ID          int64       `json:"id"`
-	TeamID      int64       `json:"team_id"`
-	PeriodID    int64       `json:"period_id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Priority    string      `json:"priority"`
-	Weight      int         `json:"weight"`
-	WorkType    string      `json:"work_type"`
-	FocusType   string      `json:"focus_type"`
-	OwnerText   string      `json:"owner_text"`
-	Progress    int         `json:"progress"`
-	KeyResults  []keyResult `json:"key_results"`
-	ShareTeams  []shareTeam `json:"share_teams"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID           int64           `json:"id"`
+	TeamID       int64           `json:"team_id"`
+	PeriodID     int64           `json:"period_id"`
+	Title        string          `json:"title"`
+	Description  string          `json:"description"`
+	Priority     string          `json:"priority"`
+	Weight       int             `json:"weight"`
+	WorkType     string          `json:"work_type"`
+	FocusType    string          `json:"focus_type"`
+	OwnerText    string          `json:"owner_text"`
+	Progress     int             `json:"progress"`
+	ProgressMeta progressBarInfo `json:"progress_meta"`
+	KeyResults   []keyResult     `json:"key_results"`
+	ShareTeams   []shareTeam     `json:"share_teams"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }
 
 type keyResult struct {
@@ -284,7 +285,7 @@ func mapTeamsResponse(period domain.Period, teams []service.TeamSummary) teamsRe
 func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 	goals := make([]goalDetails, 0, len(data.Goals))
 	for _, goal := range data.Goals {
-		goals = append(goals, mapGoalDetails(goal))
+		goals = append(goals, mapGoalDetails(goal, data.Period))
 	}
 	return teamOKRResponse{
 		Team: teamInfo{
@@ -347,7 +348,7 @@ func calculatePeriodForecast(period domain.Period, now time.Time) int {
 	return value
 }
 
-func mapGoalDetails(detail service.GoalDetails) goalDetails {
+func mapGoalDetails(detail service.GoalDetails, period domain.Period) goalDetails {
 	krList := make([]keyResult, 0, len(detail.Goal.KeyResults))
 	for _, kr := range detail.Goal.KeyResults {
 		krList = append(krList, mapKeyResult(kr))
@@ -364,21 +365,22 @@ func mapGoalDetails(detail service.GoalDetails) goalDetails {
 	}
 	goal := detail.Goal
 	return goalDetails{
-		ID:          goal.ID,
-		TeamID:      goal.TeamID,
-		PeriodID:    goal.PeriodID,
-		Title:       goal.Title,
-		Description: goal.Description,
-		Priority:    string(goal.Priority),
-		Weight:      goal.Weight,
-		WorkType:    string(goal.WorkType),
-		FocusType:   string(goal.FocusType),
-		OwnerText:   goal.OwnerText,
-		Progress:    goal.Progress,
-		KeyResults:  krList,
-		ShareTeams:  shareTeams,
-		CreatedAt:   goal.CreatedAt,
-		UpdatedAt:   goal.UpdatedAt,
+		ID:           goal.ID,
+		TeamID:       goal.TeamID,
+		PeriodID:     goal.PeriodID,
+		Title:        goal.Title,
+		Description:  goal.Description,
+		Priority:     string(goal.Priority),
+		Weight:       goal.Weight,
+		WorkType:     string(goal.WorkType),
+		FocusType:    string(goal.FocusType),
+		OwnerText:    goal.OwnerText,
+		Progress:     goal.Progress,
+		ProgressMeta: buildProgressBarInfo(goal.Progress, period),
+		KeyResults:   krList,
+		ShareTeams:   shareTeams,
+		CreatedAt:    goal.CreatedAt,
+		UpdatedAt:    goal.UpdatedAt,
 	}
 }
 
