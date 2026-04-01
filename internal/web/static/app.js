@@ -2337,7 +2337,7 @@
     if (!page) return;
     const actionsEl = page.querySelector('[data-okr-actions]');
     const goalsEl = page.querySelector('[data-okr-goals]');
-    const breadcrumbsEl = page.querySelector('[data-okr-breadcrumbs]');
+    const breadcrumbsEl = document.querySelector('[data-okr-breadcrumbs]');
     const teamID = page.dataset.teamId;
     const periodID = page.dataset.periodId;
     const periodName = page.dataset.periodName || '';
