@@ -450,6 +450,110 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}
 }
 
+func TestTeamChildrenSummaryIntegration(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	repo := store.New(pool)
+	var parentID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Parent') RETURNING id`).Scan(&parentID); err != nil {
+		t.Fatalf("insert parent team: %v", err)
+	}
+	var childID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, parent_id) VALUES ('Child', $1) RETURNING id`, parentID).Scan(&childID); err != nil {
+		t.Fatalf("insert child team: %v", err)
+	}
+	var periodID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+		TeamID:      childID,
+		PeriodID:    periodID,
+		Title:       "Child goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	}); err != nil {
+		t.Fatalf("create child goal: %v", err)
+	}
+	if err := repo.SetTeamPeriodStatus(ctx, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
+		t.Fatalf("set status: %v", err)
+	}
+
+	svc := service.New(repo)
+	handler := NewHandler(svc)
+	router := chi.NewRouter()
+	router.Mount("/api/v1", handler.Routes())
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/children-summary?period_id=%d", server.URL, parentID, periodID))
+	if err != nil {
+		t.Fatalf("get children summary: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var payload teamChildrenSummaryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode children summary: %v", err)
+	}
+	if len(payload.Items) != 1 {
+		t.Fatalf("expected one child summary row, got %d", len(payload.Items))
+	}
+	item := payload.Items[0]
+	if item.Team.ID != childID {
+		t.Fatalf("expected child team id %d, got %d", childID, item.Team.ID)
+	}
+	if !item.HasGoals {
+		t.Fatalf("expected has_goals=true for child team with goal")
+	}
+	if item.ProgressMeta == nil {
+		t.Fatalf("expected progress_meta for child team with goals")
+	}
+	if item.Status != string(domain.TeamPeriodStatusInProgress) {
+		t.Fatalf("expected status in_progress, got %s", item.Status)
+	}
+	if item.LastUpdated == nil {
+		t.Fatalf("expected last_updated to be present")
+	}
+}
+
 func flattenHierarchyIDs(nodes []teamNode) map[int64]struct{} {
 	ids := make(map[int64]struct{})
 	var walk func(items []teamNode)

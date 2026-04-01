@@ -139,3 +139,33 @@ Idempotency / side effects:
 
 - endpoint read-only;
 - не изменяет доменные агрегаты, только рассчитывает производные метрики для UI.
+
+### `GET /api/v1/teams/{teamID}/children-summary?period_id={id}`
+
+Назначение: вернуть **готовые данные** для таблицы дочерних команд выбранной команды за период, без дополнительной агрегации на frontend.
+
+Request:
+
+- path param: `teamID` (обязательный, int64)
+- query param: `period_id` (обязательный, int64)
+
+Success response (`200`):
+
+- `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `sort_order`);
+- `items[]`:
+  - `team` (`id`, `name`, `type`, `type_label`, `parent_id`);
+  - `status`, `status_label`;
+  - `has_goals` (bool);
+  - `progress_meta` (optional; возвращается при `has_goals=true`);
+  - `last_updated` (optional; timestamp последнего обновления goals/OKR команды в периоде).
+
+Validation and errors:
+
+- `VALIDATION_ERROR` при невалидных `teamID` / `period_id`;
+- `NOT_FOUND` если период не найден;
+- `INTERNAL` при ошибках загрузки агрегатов.
+
+Idempotency / side effects:
+
+- endpoint read-only;
+- не изменяет доменные агрегаты.
