@@ -2152,12 +2152,6 @@
       url.searchParams.set('period_id', periodID);
       return fetchJSON(url.toString());
     };
-    const loadTeamChildrenSummary = async (teamID) => {
-      const periodID = periodSelect?.value || page.dataset.periodId;
-      const url = new URL(`/api/v1/teams/${teamID}/children-summary`, window.location.origin);
-      url.searchParams.set('period_id', periodID);
-      return fetchJSON(url.toString());
-    };
 
     const renderContentForSelection = async (teamID) => {
       mainEl.innerHTML = '<div class="card"><div class="card-body text-muted">Загрузка данных команды…</div></div>';
@@ -2199,7 +2193,7 @@
         const overviewData = await loadTeamOverview(teamID);
         renderChildrenOverview(childContainer, overviewData);
 
-        const childrenSummaryData = await loadTeamChildrenSummary(teamID);
+        const childrenSummaryData = overviewData.children_summary || { items: [] };
         const childResults = childrenSummaryData.items || [];
 
         const childTableWrap = document.createElement('div');

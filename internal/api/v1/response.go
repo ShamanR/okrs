@@ -56,11 +56,12 @@ type teamOKRResponse struct {
 }
 
 type teamOverviewResponse struct {
-	AverageProgress int                 `json:"average_progress"`
-	TeamsWithGoals  int                 `json:"teams_with_goals"`
-	ProgressMeta    progressBarInfo     `json:"progress_meta"`
-	Priorities      prioritySummaryInfo `json:"priorities"`
-	WorkBalance     workBalanceInfo     `json:"work_balance"`
+	AverageProgress int                         `json:"average_progress"`
+	TeamsWithGoals  int                         `json:"teams_with_goals"`
+	ProgressMeta    progressBarInfo             `json:"progress_meta"`
+	Priorities      prioritySummaryInfo         `json:"priorities"`
+	WorkBalance     workBalanceInfo             `json:"work_balance"`
+	ChildrenSummary teamChildrenSummaryResponse `json:"children_summary"`
 }
 
 type teamChildrenSummaryResponse struct {
@@ -265,6 +266,25 @@ func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 		GoalsWeight:    data.GoalsWeight,
 		ProgressMeta:   buildProgressBarInfo(data.PeriodProgress, data.Period),
 		Goals:          goals,
+	}
+}
+
+func mapTeamOverviewResponse(period domain.Period, overview service.TeamOverview) teamOverviewResponse {
+	return teamOverviewResponse{
+		AverageProgress: overview.AverageProgress,
+		TeamsWithGoals:  overview.TeamsWithGoals,
+		ProgressMeta:    buildProgressBarInfo(overview.AverageProgress, period),
+		Priorities: prioritySummaryInfo{
+			P0: overview.Priorities.P0,
+			P1: overview.Priorities.P1,
+			P2: overview.Priorities.P2,
+			P3: overview.Priorities.P3,
+		},
+		WorkBalance: workBalanceInfo{
+			Discovery: overview.WorkBalance.Discovery,
+			Delivery:  overview.WorkBalance.Delivery,
+		},
+		ChildrenSummary: mapTeamChildrenSummaryResponse(period, overview.ChildrenSummary),
 	}
 }
 

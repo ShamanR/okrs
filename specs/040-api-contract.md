@@ -24,7 +24,6 @@ SSR-страницы должны опираться на те же правил
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
-- `GET /api/v1/teams/{teamID}/children-summary`
 - `GET /api/v1/goals/{goalID}`
 
 ## Write endpoints
@@ -128,6 +127,14 @@ Success response (`200`):
   - `p0`, `p1`, `p2`, `p3` — счётчики целей по приоритетам;
 - `work_balance`:
   - `discovery`, `delivery` — счётчики целей по типу работы.
+- `children_summary`:
+  - `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `sort_order`);
+  - `items[]`:
+    - `team` (`id`, `name`, `type`, `type_label`, `parent_id`);
+    - `status`, `status_label`;
+    - `has_goals` (bool);
+    - `progress_meta` (optional; возвращается при `has_goals=true`);
+    - `last_updated` (optional; timestamp последнего обновления goals/OKR команды в периоде).
 
 Validation and errors:
 
@@ -139,33 +146,3 @@ Idempotency / side effects:
 
 - endpoint read-only;
 - не изменяет доменные агрегаты, только рассчитывает производные метрики для UI.
-
-### `GET /api/v1/teams/{teamID}/children-summary?period_id={id}`
-
-Назначение: вернуть **готовые данные** для таблицы дочерних команд выбранной команды за период, без дополнительной агрегации на frontend.
-
-Request:
-
-- path param: `teamID` (обязательный, int64)
-- query param: `period_id` (обязательный, int64)
-
-Success response (`200`):
-
-- `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `sort_order`);
-- `items[]`:
-  - `team` (`id`, `name`, `type`, `type_label`, `parent_id`);
-  - `status`, `status_label`;
-  - `has_goals` (bool);
-  - `progress_meta` (optional; возвращается при `has_goals=true`);
-  - `last_updated` (optional; timestamp последнего обновления goals/OKR команды в периоде).
-
-Validation and errors:
-
-- `VALIDATION_ERROR` при невалидных `teamID` / `period_id`;
-- `NOT_FOUND` если период не найден;
-- `INTERNAL` при ошибках загрузки агрегатов.
-
-Idempotency / side effects:
-
-- endpoint read-only;
-- не изменяет доменные агрегаты.
