@@ -293,11 +293,14 @@
 
     const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
     const updated = document.createElement('span');
-    updated.className = 'ms-auto text-muted small';
+    updated.className = 'small';
     if (!goalUpdateMeta.hasDate) {
+      updated.classList.add('text-muted');
       updated.textContent = 'Обновлено: —';
     } else {
-      updated.textContent = `Обновлено: ${goalUpdateMeta.relativeText}`;
+      updated.classList.add(goalUpdateMeta.isStale ? 'text-danger' : 'text-success');
+      const emoji = goalUpdateMeta.isStale ? '⏰' : '✅';
+      updated.textContent = `Обновлено: ${emoji} ${goalUpdateMeta.relativeText}`;
       updated.title = goalUpdateMeta.absoluteText;
     }
 
