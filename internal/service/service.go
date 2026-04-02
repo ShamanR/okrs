@@ -20,6 +20,8 @@ type Store interface {
 	ListPeriods(ctx context.Context) ([]domain.Period, error)
 	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
+	ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
+	ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
 	ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
@@ -346,15 +348,31 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 	if err != nil {
 		return TeamOverview{}, err
 	}
-	summaries, err := s.getTeamsWithPeriodSummaryFromTeams(ctx, teams, periodID, nil)
+	children := findDirectChildren(teamID, hierarchy)
+	descendantIDs := collectDescendantIDs(teamID, hierarchy)
+	goalsByTeam, err := s.store.ListGoalsByTeamsPeriod(ctx, periodID, descendantIDs)
 	if err != nil {
 		return TeamOverview{}, err
 	}
-	summaryByID := make(map[int64]TeamSummary, len(summaries))
-	for _, summary := range summaries {
-		summaryByID[summary.ID] = summary
+	overviewStats, err := s.store.ListTeamOverviewStats(ctx, periodID, descendantIDs)
+	if err != nil {
+		return TeamOverview{}, err
 	}
-	children := findDirectChildren(teamID, hierarchy)
+	summaryByID := make(map[int64]TeamSummary, len(descendantIDs))
+	for _, id := range descendantIDs {
+		goals := goalsByTeam[id]
+		if len(goals) == 0 {
+			continue
+		}
+		for i := range goals {
+			goals[i].Progress = CalculateGoalProgress(&goals[i])
+		}
+		summaryByID[id] = TeamSummary{
+			ID:             id,
+			GoalsCount:     len(goals),
+			PeriodProgress: okr.PeriodProgress(goals),
+		}
+	}
 	childrenSummary := []TeamChildSummary{}
 	if len(children) > 0 {
 		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, summaryByID)
@@ -362,7 +380,6 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 			return TeamOverview{}, err
 		}
 	}
-	descendantIDs := collectDescendantIDs(teamID, hierarchy)
 
 	totalProgress := 0
 	teamsWithGoals := 0
@@ -376,23 +393,13 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 		}
 		teamsWithGoals++
 		totalProgress += summary.PeriodProgress
-		for _, goal := range summary.Goals {
-			switch goal.Priority {
-			case string(domain.PriorityP0):
-				priorities.P0++
-			case string(domain.PriorityP1):
-				priorities.P1++
-			case string(domain.PriorityP2):
-				priorities.P2++
-			case string(domain.PriorityP3):
-				priorities.P3++
-			}
-			switch goal.WorkType {
-			case domain.WorkTypeDiscovery:
-				workBalance.Discovery++
-			case domain.WorkTypeDelivery:
-				workBalance.Delivery++
-			}
+		if stat, exists := overviewStats[id]; exists {
+			priorities.P0 += stat.PriorityP0
+			priorities.P1 += stat.PriorityP1
+			priorities.P2 += stat.PriorityP2
+			priorities.P3 += stat.PriorityP3
+			workBalance.Discovery += stat.Discovery
+			workBalance.Delivery += stat.Delivery
 		}
 	}
 

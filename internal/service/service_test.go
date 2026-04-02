@@ -88,6 +88,48 @@ func (f *fakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID in
 	}
 	return f.goalsByTeam[teamID][periodID], nil
 }
+func (f *fakeStore) ListGoalsByTeamsPeriod(_ context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
+	result := make(map[int64][]domain.Goal, len(teamIDs))
+	for _, teamID := range teamIDs {
+		if f.goalsByTeam[teamID] == nil {
+			continue
+		}
+		goals := f.goalsByTeam[teamID][periodID]
+		copied := make([]domain.Goal, len(goals))
+		copy(copied, goals)
+		result[teamID] = copied
+	}
+	return result, nil
+}
+func (f *fakeStore) ListTeamOverviewStats(_ context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error) {
+	result := make(map[int64]store.TeamOverviewStats, len(teamIDs))
+	for _, teamID := range teamIDs {
+		item := store.TeamOverviewStats{TeamID: teamID}
+		for _, goal := range f.goalsByTeam[teamID][periodID] {
+			item.Goals++
+			switch goal.Priority {
+			case domain.PriorityP0:
+				item.PriorityP0++
+			case domain.PriorityP1:
+				item.PriorityP1++
+			case domain.PriorityP2:
+				item.PriorityP2++
+			case domain.PriorityP3:
+				item.PriorityP3++
+			}
+			switch goal.WorkType {
+			case domain.WorkTypeDiscovery:
+				item.Discovery++
+			case domain.WorkTypeDelivery:
+				item.Delivery++
+			}
+		}
+		if item.Goals > 0 {
+			result[teamID] = item
+		}
+	}
+	return result, nil
+}
 func (f *fakeStore) ListGoalShares(context.Context, int64) ([]store.GoalShare, error) {
 	return nil, nil
 }

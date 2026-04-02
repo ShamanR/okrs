@@ -106,6 +106,185 @@ func TestStoreCRUD(t *testing.T) {
 	}
 }
 
+func TestListTeamOverviewStatsWorkBalance(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	s := New(pool)
+	var teamID, periodID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Team A') RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("insert team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2025 Q1', '2025-01-01', '2025-03-31', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+
+	if _, err := s.CreateGoal(ctx, GoalInput{
+		TeamID:      teamID,
+		PeriodID:    periodID,
+		Title:       "Discovery goal",
+		Description: "d",
+		Priority:    domain.PriorityP1,
+		Weight:      50,
+		WorkType:    domain.WorkTypeDiscovery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "owner",
+	}); err != nil {
+		t.Fatalf("create discovery goal: %v", err)
+	}
+	if _, err := s.CreateGoal(ctx, GoalInput{
+		TeamID:      teamID,
+		PeriodID:    periodID,
+		Title:       "Delivery goal",
+		Description: "d",
+		Priority:    domain.PriorityP2,
+		Weight:      50,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusSpeedEfficiency,
+		OwnerText:   "owner",
+	}); err != nil {
+		t.Fatalf("create delivery goal: %v", err)
+	}
+
+	stats, err := s.ListTeamOverviewStats(ctx, periodID, []int64{teamID})
+	if err != nil {
+		t.Fatalf("list overview stats: %v", err)
+	}
+	item, ok := stats[teamID]
+	if !ok {
+		t.Fatalf("expected stats for team %d", teamID)
+	}
+	if item.Discovery != 1 || item.Delivery != 1 {
+		t.Fatalf("expected work balance discovery=1, delivery=1; got %+v", item)
+	}
+}
+
+func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	s := New(pool)
+	var ownerID, sharedTeamID, periodID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Owner') RETURNING id`).Scan(&ownerID); err != nil {
+		t.Fatalf("insert owner team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Shared') RETURNING id`).Scan(&sharedTeamID); err != nil {
+		t.Fatalf("insert shared team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2025 Q2', '2025-04-01', '2025-06-30', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+
+	goalID, err := s.CreateGoal(ctx, GoalInput{
+		TeamID:      ownerID,
+		PeriodID:    periodID,
+		Title:       "Shared goal",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "owner",
+	})
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight, sort_order) VALUES ($1,$2,100,1)`, goalID, sharedTeamID); err != nil {
+		t.Fatalf("insert goal share: %v", err)
+	}
+
+	krID, err := s.CreateKeyResult(ctx, KeyResultInput{
+		GoalID:      goalID,
+		Title:       "KR bool",
+		Description: "",
+		Weight:      100,
+		Kind:        domain.KRKindBoolean,
+	})
+	if err != nil {
+		t.Fatalf("create key result: %v", err)
+	}
+	if err := s.UpsertBooleanMeta(ctx, krID, true); err != nil {
+		t.Fatalf("upsert boolean meta: %v", err)
+	}
+
+	goalsByTeam, err := s.ListGoalsByTeamsPeriod(ctx, periodID, []int64{ownerID, sharedTeamID})
+	if err != nil {
+		t.Fatalf("list goals by teams period: %v", err)
+	}
+	for _, teamID := range []int64{ownerID, sharedTeamID} {
+		goals := goalsByTeam[teamID]
+		if len(goals) != 1 {
+			t.Fatalf("team %d expected exactly one goal, got %d", teamID, len(goals))
+		}
+		if len(goals[0].KeyResults) != 1 {
+			t.Fatalf("team %d expected one key result, got %d", teamID, len(goals[0].KeyResults))
+		}
+		if goals[0].KeyResults[0].Boolean == nil || !goals[0].KeyResults[0].Boolean.IsDone {
+			t.Fatalf("team %d expected boolean KR meta to be loaded for shared goal", teamID)
+		}
+	}
+}
+
 func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
