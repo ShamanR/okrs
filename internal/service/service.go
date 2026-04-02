@@ -20,6 +20,7 @@ type Store interface {
 	ListPeriods(ctx context.Context) ([]domain.Period, error)
 	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
+	ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
 	ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
@@ -347,26 +348,37 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 	if err != nil {
 		return TeamOverview{}, err
 	}
-	summaries, err := s.getTeamsWithPeriodSummaryFromTeams(ctx, teams, periodID, nil)
+	children := findDirectChildren(teamID, hierarchy)
+	descendantIDs := collectDescendantIDs(teamID, hierarchy)
+	goalsByTeam, err := s.store.ListGoalsByTeamsPeriod(ctx, periodID, descendantIDs)
 	if err != nil {
 		return TeamOverview{}, err
 	}
-	summaryByID := make(map[int64]TeamSummary, len(summaries))
-	for _, summary := range summaries {
-		summaryByID[summary.ID] = summary
+	overviewStats, err := s.store.ListTeamOverviewStats(ctx, periodID, descendantIDs)
+	if err != nil {
+		return TeamOverview{}, err
 	}
-	children := findDirectChildren(teamID, hierarchy)
+	summaryByID := make(map[int64]TeamSummary, len(descendantIDs))
+	for _, id := range descendantIDs {
+		goals := goalsByTeam[id]
+		if len(goals) == 0 {
+			continue
+		}
+		for i := range goals {
+			goals[i].Progress = CalculateGoalProgress(&goals[i])
+		}
+		summaryByID[id] = TeamSummary{
+			ID:             id,
+			GoalsCount:     len(goals),
+			PeriodProgress: okr.PeriodProgress(goals),
+		}
+	}
 	childrenSummary := []TeamChildSummary{}
 	if len(children) > 0 {
 		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, summaryByID)
 		if err != nil {
 			return TeamOverview{}, err
 		}
-	}
-	descendantIDs := collectDescendantIDs(teamID, hierarchy)
-	overviewStats, err := s.store.ListTeamOverviewStats(ctx, periodID, descendantIDs)
-	if err != nil {
-		return TeamOverview{}, err
 	}
 
 	totalProgress := 0

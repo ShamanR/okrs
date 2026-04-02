@@ -21,6 +21,219 @@ type TeamOverviewStats struct {
 	Delivery   int
 }
 
+func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
+	result := make(map[int64][]domain.Goal, len(teamIDs))
+	if len(teamIDs) == 0 {
+		return result, nil
+	}
+
+	goalRows, err := s.DB.Query(ctx, `
+		SELECT g.id, t.team_id, g.period_id, g.title, g.description, g.priority,
+		       COALESCE(gs.weight, g.weight) AS weight,
+		       g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at
+		FROM (
+			SELECT g.id, g.team_id
+			FROM goals g
+			WHERE g.period_id = $1 AND g.team_id = ANY($2)
+			UNION
+			SELECT g.id, gs.team_id
+			FROM goals g
+			JOIN goal_shares gs ON gs.goal_id = g.id
+			WHERE g.period_id = $1 AND gs.team_id = ANY($2)
+		) t
+		JOIN goals g ON g.id = t.id
+		LEFT JOIN goal_shares gs ON gs.goal_id = g.id AND gs.team_id = t.team_id
+		ORDER BY t.team_id, g.id`, periodID, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer goalRows.Close()
+
+	goalsByID := map[int64]*domain.Goal{}
+	goalIDs := make([]int64, 0)
+	for goalRows.Next() {
+		var goal domain.Goal
+		if err := goalRows.Scan(
+			&goal.ID,
+			&goal.TeamID,
+			&goal.PeriodID,
+			&goal.Title,
+			&goal.Description,
+			&goal.Priority,
+			&goal.Weight,
+			&goal.WorkType,
+			&goal.FocusType,
+			&goal.OwnerText,
+			&goal.CreatedAt,
+			&goal.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		copied := goal
+		result[goal.TeamID] = append(result[goal.TeamID], copied)
+		goalRef := &result[goal.TeamID][len(result[goal.TeamID])-1]
+		goalsByID[goalRef.ID] = goalRef
+		goalIDs = append(goalIDs, goalRef.ID)
+	}
+	if err := goalRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(goalIDs) == 0 {
+		return result, nil
+	}
+
+	krRows, err := s.DB.Query(ctx, `
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		FROM key_results
+		WHERE goal_id = ANY($1)
+		ORDER BY goal_id, sort_order, id`, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer krRows.Close()
+
+	krByID := map[int64]*domain.KeyResult{}
+	krIDs := make([]int64, 0)
+	for krRows.Next() {
+		var kr domain.KeyResult
+		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+			return nil, err
+		}
+		goal, ok := goalsByID[kr.GoalID]
+		if !ok {
+			continue
+		}
+		goal.KeyResults = append(goal.KeyResults, kr)
+		krRef := &goal.KeyResults[len(goal.KeyResults)-1]
+		krByID[krRef.ID] = krRef
+		krIDs = append(krIDs, krRef.ID)
+	}
+	if err := krRows.Err(); err != nil {
+		return nil, err
+	}
+	if len(krIDs) == 0 {
+		return result, nil
+	}
+
+	projectRows, err := s.DB.Query(ctx, `
+		SELECT id, key_result_id, title, weight, is_done, sort_order
+		FROM kr_project_stages
+		WHERE key_result_id = ANY($1)
+		ORDER BY key_result_id, sort_order`, krIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer projectRows.Close()
+	for projectRows.Next() {
+		var stage domain.KRProjectStage
+		if err := projectRows.Scan(&stage.ID, &stage.KeyResultID, &stage.Title, &stage.Weight, &stage.IsDone, &stage.SortOrder); err != nil {
+			return nil, err
+		}
+		if kr, ok := krByID[stage.KeyResultID]; ok {
+			if kr.Project == nil {
+				kr.Project = &domain.KRProject{}
+			}
+			kr.Project.Stages = append(kr.Project.Stages, stage)
+		}
+	}
+	if err := projectRows.Err(); err != nil {
+		return nil, err
+	}
+
+	percentRows, err := s.DB.Query(ctx, `
+		SELECT key_result_id, start_value, target_value, current_value
+		FROM kr_percent_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer percentRows.Close()
+	for percentRows.Next() {
+		var keyResultID int64
+		var meta domain.KRPercent
+		if err := percentRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+			return nil, err
+		}
+		if kr, ok := krByID[keyResultID]; ok {
+			kr.Percent = &meta
+		}
+	}
+	if err := percentRows.Err(); err != nil {
+		return nil, err
+	}
+
+	checkpointRows, err := s.DB.Query(ctx, `
+		SELECT id, key_result_id, metric_value, kr_percent
+		FROM kr_percent_checkpoints
+		WHERE key_result_id = ANY($1)
+		ORDER BY key_result_id, metric_value`, krIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer checkpointRows.Close()
+	for checkpointRows.Next() {
+		var cp domain.KRPercentCheckpoint
+		if err := checkpointRows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
+			return nil, err
+		}
+		if kr, ok := krByID[cp.KeyResultID]; ok {
+			if kr.Percent == nil {
+				kr.Percent = &domain.KRPercent{}
+			}
+			kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
+		}
+	}
+	if err := checkpointRows.Err(); err != nil {
+		return nil, err
+	}
+
+	linearRows, err := s.DB.Query(ctx, `
+		SELECT key_result_id, start_value, target_value, current_value
+		FROM kr_linear_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer linearRows.Close()
+	for linearRows.Next() {
+		var keyResultID int64
+		var meta domain.KRLinear
+		if err := linearRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+			return nil, err
+		}
+		if kr, ok := krByID[keyResultID]; ok {
+			kr.Linear = &meta
+		}
+	}
+	if err := linearRows.Err(); err != nil {
+		return nil, err
+	}
+
+	booleanRows, err := s.DB.Query(ctx, `
+		SELECT key_result_id, is_done
+		FROM kr_boolean_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer booleanRows.Close()
+	for booleanRows.Next() {
+		var keyResultID int64
+		var meta domain.KRBoolean
+		if err := booleanRows.Scan(&keyResultID, &meta.IsDone); err != nil {
+			return nil, err
+		}
+		if kr, ok := krByID[keyResultID]; ok {
+			kr.Boolean = &meta
+		}
+	}
+	if err := booleanRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
 	var id int64
 	err := s.DB.QueryRow(ctx, `

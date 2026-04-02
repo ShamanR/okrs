@@ -88,6 +88,19 @@ func (f *fakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID in
 	}
 	return f.goalsByTeam[teamID][periodID], nil
 }
+func (f *fakeStore) ListGoalsByTeamsPeriod(_ context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
+	result := make(map[int64][]domain.Goal, len(teamIDs))
+	for _, teamID := range teamIDs {
+		if f.goalsByTeam[teamID] == nil {
+			continue
+		}
+		goals := f.goalsByTeam[teamID][periodID]
+		copied := make([]domain.Goal, len(goals))
+		copy(copied, goals)
+		result[teamID] = copied
+	}
+	return result, nil
+}
 func (f *fakeStore) ListTeamOverviewStats(_ context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error) {
 	result := make(map[int64]store.TeamOverviewStats, len(teamIDs))
 	for _, teamID := range teamIDs {
