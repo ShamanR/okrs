@@ -258,8 +258,8 @@ func (s *Store) ListTeamOverviewStats(ctx context.Context, periodID int64, teamI
 			COUNT(*) FILTER (WHERE g.priority = 'P1')::bigint AS p1_count,
 			COUNT(*) FILTER (WHERE g.priority = 'P2')::bigint AS p2_count,
 			COUNT(*) FILTER (WHERE g.priority = 'P3')::bigint AS p3_count,
-			COUNT(*) FILTER (WHERE g.work_type = 'discovery')::bigint AS discovery_count,
-			COUNT(*) FILTER (WHERE g.work_type = 'delivery')::bigint AS delivery_count
+			COUNT(*) FILTER (WHERE g.work_type = 'Discovery')::bigint AS discovery_count,
+			COUNT(*) FILTER (WHERE g.work_type = 'Delivery')::bigint AS delivery_count
 		FROM (
 			SELECT g.id, g.team_id
 			FROM goals g
