@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/okr"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -246,7 +247,44 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
+	for teamID := range result {
+		for i := range result[teamID] {
+			goal := &result[teamID][i]
+			for j := range goal.KeyResults {
+				goal.KeyResults[j].Progress = calculateKeyResultProgress(goal.KeyResults[j])
+			}
+			goal.Progress = okr.GoalProgress(goal.KeyResults)
+		}
+	}
+
 	return result, nil
+}
+
+func calculateKeyResultProgress(kr domain.KeyResult) int {
+	switch kr.Kind {
+	case domain.KRKindProject:
+		if kr.Project == nil {
+			return 0
+		}
+		return okr.ProjectProgress(kr.Project.Stages)
+	case domain.KRKindPercent:
+		if kr.Percent == nil {
+			return 0
+		}
+		return okr.PercentProgress(kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue, kr.Percent.Checkpoints)
+	case domain.KRKindLinear:
+		if kr.Linear == nil {
+			return 0
+		}
+		return okr.LinearProgress(kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
+	case domain.KRKindBoolean:
+		if kr.Boolean == nil {
+			return 0
+		}
+		return okr.BooleanProgress(kr.Boolean.IsDone)
+	default:
+		return 0
+	}
 }
 
 func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
