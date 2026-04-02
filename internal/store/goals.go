@@ -27,6 +27,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	if len(teamIDs) == 0 {
 		return result, nil
 	}
+	teamGoalOrder := make(map[int64][]int64, len(teamIDs))
+	teamGoals := make(map[int64]map[int64]*domain.Goal, len(teamIDs))
 
 	goalRows, err := s.DB.Query(ctx, `
 		SELECT g.id, t.team_id, g.period_id, g.title, g.description, g.priority,
@@ -52,6 +54,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 
 	goalsByID := map[int64][]*domain.Goal{}
 	goalIDs := make([]int64, 0)
+	goalSeen := map[int64]struct{}{}
 	for goalRows.Next() {
 		var goal domain.Goal
 		if err := goalRows.Scan(
@@ -70,17 +73,24 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		); err != nil {
 			return nil, err
 		}
-		copied := goal
-		result[goal.TeamID] = append(result[goal.TeamID], copied)
-		goalRef := &result[goal.TeamID][len(result[goal.TeamID])-1]
+		if teamGoals[goal.TeamID] == nil {
+			teamGoals[goal.TeamID] = make(map[int64]*domain.Goal)
+		}
+		goalValue := goal
+		goalRef := &goalValue
+		teamGoals[goal.TeamID][goal.ID] = goalRef
+		teamGoalOrder[goal.TeamID] = append(teamGoalOrder[goal.TeamID], goal.ID)
 		goalsByID[goalRef.ID] = append(goalsByID[goalRef.ID], goalRef)
-		goalIDs = append(goalIDs, goalRef.ID)
+		if _, exists := goalSeen[goalRef.ID]; !exists {
+			goalIDs = append(goalIDs, goalRef.ID)
+			goalSeen[goalRef.ID] = struct{}{}
+		}
 	}
 	if err := goalRows.Err(); err != nil {
 		return nil, err
 	}
 	if len(goalIDs) == 0 {
-		return result, nil
+		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
 
 	krRows, err := s.DB.Query(ctx, `
@@ -115,7 +125,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 	if len(krIDs) == 0 {
-		return result, nil
+		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
 
 	projectRows, err := s.DB.Query(ctx, `
@@ -247,9 +257,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
-	for teamID := range result {
-		for i := range result[teamID] {
-			goal := &result[teamID][i]
+	for _, goals := range teamGoals {
+		for _, goal := range goals {
 			for j := range goal.KeyResults {
 				goal.KeyResults[j].Progress = calculateKeyResultProgress(goal.KeyResults[j])
 			}
@@ -257,7 +266,21 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		}
 	}
 
-	return result, nil
+	return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
+}
+
+func resultFromGoalPointers(teamGoals map[int64]map[int64]*domain.Goal, teamGoalOrder map[int64][]int64) map[int64][]domain.Goal {
+	result := make(map[int64][]domain.Goal, len(teamGoals))
+	for teamID, ids := range teamGoalOrder {
+		for _, goalID := range ids {
+			goalRef, ok := teamGoals[teamID][goalID]
+			if !ok {
+				continue
+			}
+			result[teamID] = append(result[teamID], *goalRef)
+		}
+	}
+	return result
 }
 
 func calculateKeyResultProgress(kr domain.KeyResult) int {
