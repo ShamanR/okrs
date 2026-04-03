@@ -105,6 +105,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 
 	krByID := map[int64][]*domain.KeyResult{}
 	krIDs := make([]int64, 0)
+	krIDSeen := map[int64]struct{}{}
 	for krRows.Next() {
 		var kr domain.KeyResult
 		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
@@ -116,13 +117,25 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		}
 		for _, goal := range goals {
 			goal.KeyResults = append(goal.KeyResults, kr)
-			krRef := &goal.KeyResults[len(goal.KeyResults)-1]
-			krByID[krRef.ID] = append(krByID[krRef.ID], krRef)
-			krIDs = append(krIDs, krRef.ID)
+		}
+		if _, exists := krIDSeen[kr.ID]; !exists {
+			krIDs = append(krIDs, kr.ID)
+			krIDSeen[kr.ID] = struct{}{}
 		}
 	}
 	if err := krRows.Err(); err != nil {
 		return nil, err
+	}
+
+	// Build pointers in a separate pass after all appends are complete.
+	// This avoids stale pointers when goal.KeyResults backing arrays reallocate.
+	for _, goals := range goalsByID {
+		for _, goal := range goals {
+			for i := range goal.KeyResults {
+				krRef := &goal.KeyResults[i]
+				krByID[krRef.ID] = append(krByID[krRef.ID], krRef)
+			}
+		}
 	}
 	if len(krIDs) == 0 {
 		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
