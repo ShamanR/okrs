@@ -257,11 +257,13 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
+	for _, keyResults := range krByID {
+		for _, kr := range keyResults {
+			kr.Progress = calculateKeyResultProgress(*kr)
+		}
+	}
 	for _, goals := range teamGoals {
 		for _, goal := range goals {
-			for j := range goal.KeyResults {
-				goal.KeyResults[j].Progress = calculateKeyResultProgress(goal.KeyResults[j])
-			}
 			goal.Progress = okr.GoalProgress(goal.KeyResults)
 		}
 	}
