@@ -458,7 +458,7 @@ func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (ma
 		SELECT
 			kr.goal_id,
 			GREATEST(
-				COALESCE(MAX(kr.updated_at), '-infinity'::timestamptz),
+				COALESCE(MAX(kr.progress_updated_at), '-infinity'::timestamptz),
 				COALESCE(MAX(krc.created_at), '-infinity'::timestamptz)
 			) AS last_updated
 		FROM key_results kr
@@ -565,14 +565,14 @@ func (s *Store) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int
 			JOIN goal_shares gs ON gs.goal_id = g.id
 			WHERE g.period_id = $1 AND gs.team_id = ANY($2)
 		),
-		goal_updates AS (
-			SELECT
-				kr.goal_id,
-				GREATEST(
-					COALESCE(MAX(kr.updated_at), '-infinity'::timestamptz),
-					COALESCE(MAX(krc.created_at), '-infinity'::timestamptz)
-				) AS last_update_at
-			FROM key_results kr
+			goal_updates AS (
+				SELECT
+					kr.goal_id,
+					GREATEST(
+						COALESCE(MAX(kr.progress_updated_at), '-infinity'::timestamptz),
+						COALESCE(MAX(krc.created_at), '-infinity'::timestamptz)
+					) AS last_update_at
+				FROM key_results kr
 			LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
 			WHERE kr.goal_id IN (SELECT DISTINCT goal_id FROM team_goals)
 			GROUP BY kr.goal_id

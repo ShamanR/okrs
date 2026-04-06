@@ -485,7 +485,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE goals SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 1, 8, 0, 0, 0, time.UTC), goalID); err != nil {
 		t.Fatalf("set goal updated_at: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), krID); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set key result updated_at: %v", err)
 	}
 	if _, err := pool.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, created_at) VALUES ($1, 'latest comment', $2)`, krID, commentTime); err != nil {
@@ -503,8 +503,19 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("expected goal updated_at from latest KR comment %s, got %s", commentTime, goals[0].UpdatedAt)
 	}
 
-	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, progressTime, krID); err != nil {
-		t.Fatalf("set newer key result updated_at: %v", err)
+	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
+		t.Fatalf("set metadata-only key result updated_at: %v", err)
+	}
+	updatesAfterMetadataEdit, err := s.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	if err != nil {
+		t.Fatalf("list team last update after metadata edit: %v", err)
+	}
+	if !updatesAfterMetadataEdit[ownerID].Equal(commentTime) {
+		t.Fatalf("expected owner update to ignore metadata edit and remain %s, got %s", commentTime, updatesAfterMetadataEdit[ownerID])
+	}
+
+	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {
+		t.Fatalf("set newer key result progress_updated_at: %v", err)
 	}
 	updates, err := s.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
 	if err != nil {

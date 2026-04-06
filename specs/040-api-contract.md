@@ -136,7 +136,7 @@ Success response (`200`):
     - `progress_meta` (optional; возвращается при `has_goals=true`);
   - `last_updated` (optional; timestamp последнего обновления goals/OKR команды в периоде).
     - вычисляется сервером как максимум по всем KR команды в периоде из:
-      - `key_results.updated_at` (последнее обновление прогресса KR);
+      - `key_results.progress_updated_at` (последнее обновление прогресса KR);
       - `key_result_comments.created_at` (время последнего комментария к KR).
 
 Validation and errors:
