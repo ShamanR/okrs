@@ -89,6 +89,17 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	if err := goalRows.Err(); err != nil {
 		return nil, err
 	}
+	goalLastKRActivity, err := s.listGoalLastKRActivity(ctx, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, goals := range teamGoals {
+		for _, goal := range goals {
+			if updatedAt, ok := goalLastKRActivity[goal.ID]; ok {
+				goal.UpdatedAt = updatedAt
+			}
+		}
+	}
 	if len(goalIDs) == 0 {
 		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
@@ -414,6 +425,19 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	goalIDs := make([]int64, 0, len(goals))
+	for _, goal := range goals {
+		goalIDs = append(goalIDs, goal.ID)
+	}
+	goalLastKRActivity, err := s.listGoalLastKRActivity(ctx, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range goals {
+		if updatedAt, ok := goalLastKRActivity[goals[i].ID]; ok {
+			goals[i].UpdatedAt = updatedAt
+		}
+	}
 
 	for i := range goals {
 		krs, err := s.ListKeyResultsByGoal(ctx, goals[i].ID)
@@ -423,6 +447,39 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 		goals[i].KeyResults = krs
 	}
 	return goals, nil
+}
+
+func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (map[int64]time.Time, error) {
+	result := make(map[int64]time.Time, len(goalIDs))
+	if len(goalIDs) == 0 {
+		return result, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT
+			kr.goal_id,
+			CASE
+				WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krc.created_at)
+				WHEN MAX(krc.created_at) IS NULL THEN MAX(kr.progress_updated_at)
+				ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krc.created_at))
+			END AS last_updated
+		FROM key_results kr
+		LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
+		WHERE kr.goal_id = ANY($1)
+		GROUP BY kr.goal_id
+		HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krc.created_at) IS NOT NULL`, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var goalID int64
+		var updatedAt time.Time
+		if err := rows.Scan(&goalID, &updatedAt); err != nil {
+			return nil, err
+		}
+		result[goalID] = updatedAt
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) MoveGoal(ctx context.Context, goalID int64, direction int) error {
@@ -500,18 +557,34 @@ func (s *Store) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int
 		return updates, nil
 	}
 	rows, err := s.DB.Query(ctx, `
-		SELECT t.team_id, MAX(t.updated_at) AS last_update_at
-		FROM (
-			SELECT g.team_id AS team_id, g.updated_at
+		WITH team_goals AS (
+			SELECT g.id AS goal_id, g.team_id AS team_id
 			FROM goals g
 			WHERE g.period_id = $1 AND g.team_id = ANY($2)
-			UNION ALL
-			SELECT gs.team_id AS team_id, g.updated_at
-			FROM goal_shares gs
-			JOIN goals g ON g.id = gs.goal_id
+			UNION
+			SELECT g.id AS goal_id, gs.team_id AS team_id
+			FROM goals g
+			JOIN goal_shares gs ON gs.goal_id = g.id
 			WHERE g.period_id = $1 AND gs.team_id = ANY($2)
-		) t
-		GROUP BY t.team_id`, periodID, teamIDs)
+		),
+			goal_updates AS (
+				SELECT
+					kr.goal_id,
+					CASE
+						WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krc.created_at)
+						WHEN MAX(krc.created_at) IS NULL THEN MAX(kr.progress_updated_at)
+						ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krc.created_at))
+					END AS last_update_at
+					FROM key_results kr
+				LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
+				WHERE kr.goal_id IN (SELECT DISTINCT goal_id FROM team_goals)
+				GROUP BY kr.goal_id
+				HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krc.created_at) IS NOT NULL
+			)
+		SELECT tg.team_id, MAX(gu.last_update_at) AS last_update_at
+		FROM team_goals tg
+		JOIN goal_updates gu ON gu.goal_id = tg.goal_id
+		GROUP BY tg.team_id`, periodID, teamIDs)
 	if err != nil {
 		return nil, err
 	}

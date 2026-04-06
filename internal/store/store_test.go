@@ -406,6 +406,129 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 	}
 }
 
+func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	s := New(pool)
+	var ownerID, sharedID, periodID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Owner last update') RETURNING id`).Scan(&ownerID); err != nil {
+		t.Fatalf("insert owner team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Shared last update') RETURNING id`).Scan(&sharedID); err != nil {
+		t.Fatalf("insert shared team: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO periods (name, start_date, end_date, sort_order)
+		VALUES ('2026 Q2 last update', '2026-04-01', '2026-06-30', 1)
+		RETURNING id`).Scan(&periodID); err != nil {
+		t.Fatalf("insert period: %v", err)
+	}
+
+	goalID, err := s.CreateGoal(ctx, GoalInput{
+		TeamID:      ownerID,
+		PeriodID:    periodID,
+		Title:       "Goal with KR activity",
+		Description: "desc",
+		Priority:    domain.PriorityP1,
+		Weight:      100,
+		WorkType:    domain.WorkTypeDelivery,
+		FocusType:   domain.FocusStability,
+		OwnerText:   "Owner",
+	})
+	if err != nil {
+		t.Fatalf("create goal: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight) VALUES ($1, $2, 100)`, goalID, sharedID); err != nil {
+		t.Fatalf("insert goal share: %v", err)
+	}
+	krID, err := s.CreateKeyResult(ctx, KeyResultInput{
+		GoalID:      goalID,
+		Title:       "KR for timestamp aggregation",
+		Description: "desc",
+		Weight:      100,
+		Kind:        domain.KRKindBoolean,
+	})
+	if err != nil {
+		t.Fatalf("create key result: %v", err)
+	}
+
+	commentTime := time.Date(2026, 4, 6, 10, 0, 0, 0, time.UTC)
+	progressTime := time.Date(2026, 4, 7, 9, 0, 0, 0, time.UTC)
+	if _, err := pool.Exec(ctx, `UPDATE goals SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 1, 8, 0, 0, 0, time.UTC), goalID); err != nil {
+		t.Fatalf("set goal updated_at: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), krID); err != nil {
+		t.Fatalf("set key result updated_at: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, created_at) VALUES ($1, 'latest comment', $2)`, krID, commentTime); err != nil {
+		t.Fatalf("insert key result comment: %v", err)
+	}
+
+	goals, err := s.ListGoalsByTeamPeriod(ctx, ownerID, periodID)
+	if err != nil {
+		t.Fatalf("list goals by team period: %v", err)
+	}
+	if len(goals) != 1 {
+		t.Fatalf("expected one goal, got %d", len(goals))
+	}
+	if !goals[0].UpdatedAt.Equal(commentTime) {
+		t.Fatalf("expected goal updated_at from latest KR comment %s, got %s", commentTime, goals[0].UpdatedAt)
+	}
+
+	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
+		t.Fatalf("set metadata-only key result updated_at: %v", err)
+	}
+	updatesAfterMetadataEdit, err := s.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	if err != nil {
+		t.Fatalf("list team last update after metadata edit: %v", err)
+	}
+	if !updatesAfterMetadataEdit[ownerID].Equal(commentTime) {
+		t.Fatalf("expected owner update to ignore metadata edit and remain %s, got %s", commentTime, updatesAfterMetadataEdit[ownerID])
+	}
+
+	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {
+		t.Fatalf("set newer key result progress_updated_at: %v", err)
+	}
+	updates, err := s.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	if err != nil {
+		t.Fatalf("list team last update: %v", err)
+	}
+	if !updates[ownerID].Equal(progressTime) {
+		t.Fatalf("expected owner update %s, got %s", progressTime, updates[ownerID])
+	}
+	if !updates[sharedID].Equal(progressTime) {
+		t.Fatalf("expected shared update %s, got %s", progressTime, updates[sharedID])
+	}
+}
+
 func runMigrations(databaseURL string) error {
 	db, err := sql.Open("pgx", databaseURL)
 	if err != nil {

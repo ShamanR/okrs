@@ -133,7 +133,7 @@ func (s *Store) UpdateProjectStageDone(ctx context.Context, stageID int64, done 
 	}
 	_, err = s.DB.Exec(ctx, `
 		UPDATE key_results
-		SET updated_at=NOW()
+		SET updated_at=NOW(), progress_updated_at=NOW()
 		WHERE id=(SELECT key_result_id FROM kr_project_stages WHERE id=$1)`, stageID)
 	return err
 }
@@ -215,7 +215,7 @@ func (s *Store) UpdatePercentCurrent(ctx context.Context, krID int64, current fl
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, krID)
+	return s.touchKeyResultProgressUpdatedAt(ctx, krID)
 }
 
 func (s *Store) UpsertLinearMeta(ctx context.Context, input LinearMetaInput) error {
@@ -239,11 +239,14 @@ func (s *Store) UpdateLinearCurrent(ctx context.Context, krID int64, current flo
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, krID)
+	return s.touchKeyResultProgressUpdatedAt(ctx, krID)
 }
 
 func (s *Store) UpdateBoolean(ctx context.Context, krID int64, done bool) error {
-	return s.UpsertBooleanMeta(ctx, krID, done)
+	if err := s.UpsertBooleanMeta(ctx, krID, done); err != nil {
+		return err
+	}
+	return s.touchKeyResultProgressUpdatedAt(ctx, krID)
 }
 
 func (s *Store) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
@@ -385,5 +388,10 @@ func (s *Store) MoveKeyResult(ctx context.Context, krID int64, direction int) er
 
 func (s *Store) touchKeyResultUpdatedAt(ctx context.Context, krID int64) error {
 	_, err := s.DB.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1`, krID)
+	return err
+}
+
+func (s *Store) touchKeyResultProgressUpdatedAt(ctx context.Context, krID int64) error {
+	_, err := s.DB.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
 	return err
 }

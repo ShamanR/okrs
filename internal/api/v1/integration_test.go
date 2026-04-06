@@ -497,7 +497,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
 		TeamID:      childID,
 		PeriodID:    periodID,
 		Title:       "Child goal",
@@ -507,8 +507,22 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 		WorkType:    domain.WorkTypeDelivery,
 		FocusType:   domain.FocusStability,
 		OwnerText:   "Owner",
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create child goal: %v", err)
+	}
+	krID, err := repo.CreateKeyResult(ctx, store.KeyResultInput{
+		GoalID:      goalID,
+		Title:       "KR bool",
+		Description: "",
+		Weight:      100,
+		Kind:        domain.KRKindBoolean,
+	})
+	if err != nil {
+		t.Fatalf("create child key result: %v", err)
+	}
+	if err := repo.UpdateBoolean(ctx, krID, true); err != nil {
+		t.Fatalf("update child key result progress: %v", err)
 	}
 	if err := repo.SetTeamPeriodStatus(ctx, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
 		t.Fatalf("set status: %v", err)
