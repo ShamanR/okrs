@@ -457,14 +457,16 @@ func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (ma
 	rows, err := s.DB.Query(ctx, `
 		SELECT
 			kr.goal_id,
-			GREATEST(
-				COALESCE(MAX(kr.progress_updated_at), '-infinity'::timestamptz),
-				COALESCE(MAX(krc.created_at), '-infinity'::timestamptz)
-			) AS last_updated
+			CASE
+				WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krc.created_at)
+				WHEN MAX(krc.created_at) IS NULL THEN MAX(kr.progress_updated_at)
+				ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krc.created_at))
+			END AS last_updated
 		FROM key_results kr
 		LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
 		WHERE kr.goal_id = ANY($1)
-		GROUP BY kr.goal_id`, goalIDs)
+		GROUP BY kr.goal_id
+		HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krc.created_at) IS NOT NULL`, goalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -568,15 +570,17 @@ func (s *Store) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int
 			goal_updates AS (
 				SELECT
 					kr.goal_id,
-					GREATEST(
-						COALESCE(MAX(kr.progress_updated_at), '-infinity'::timestamptz),
-						COALESCE(MAX(krc.created_at), '-infinity'::timestamptz)
-					) AS last_update_at
-				FROM key_results kr
-			LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
-			WHERE kr.goal_id IN (SELECT DISTINCT goal_id FROM team_goals)
-			GROUP BY kr.goal_id
-		)
+					CASE
+						WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krc.created_at)
+						WHEN MAX(krc.created_at) IS NULL THEN MAX(kr.progress_updated_at)
+						ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krc.created_at))
+					END AS last_update_at
+					FROM key_results kr
+				LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
+				WHERE kr.goal_id IN (SELECT DISTINCT goal_id FROM team_goals)
+				GROUP BY kr.goal_id
+				HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krc.created_at) IS NOT NULL
+			)
 		SELECT tg.team_id, MAX(gu.last_update_at) AS last_update_at
 		FROM team_goals tg
 		JOIN goal_updates gu ON gu.goal_id = tg.goal_id
