@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/okr"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -26,6 +27,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	if len(teamIDs) == 0 {
 		return result, nil
 	}
+	teamGoalOrder := make(map[int64][]int64, len(teamIDs))
+	teamGoals := make(map[int64]map[int64]*domain.Goal, len(teamIDs))
 
 	goalRows, err := s.DB.Query(ctx, `
 		SELECT g.id, t.team_id, g.period_id, g.title, g.description, g.priority,
@@ -49,8 +52,9 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	}
 	defer goalRows.Close()
 
-	goalsByID := map[int64]*domain.Goal{}
+	goalsByID := map[int64][]*domain.Goal{}
 	goalIDs := make([]int64, 0)
+	goalSeen := map[int64]struct{}{}
 	for goalRows.Next() {
 		var goal domain.Goal
 		if err := goalRows.Scan(
@@ -69,17 +73,24 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		); err != nil {
 			return nil, err
 		}
-		copied := goal
-		result[goal.TeamID] = append(result[goal.TeamID], copied)
-		goalRef := &result[goal.TeamID][len(result[goal.TeamID])-1]
-		goalsByID[goalRef.ID] = goalRef
-		goalIDs = append(goalIDs, goalRef.ID)
+		if teamGoals[goal.TeamID] == nil {
+			teamGoals[goal.TeamID] = make(map[int64]*domain.Goal)
+		}
+		goalValue := goal
+		goalRef := &goalValue
+		teamGoals[goal.TeamID][goal.ID] = goalRef
+		teamGoalOrder[goal.TeamID] = append(teamGoalOrder[goal.TeamID], goal.ID)
+		goalsByID[goalRef.ID] = append(goalsByID[goalRef.ID], goalRef)
+		if _, exists := goalSeen[goalRef.ID]; !exists {
+			goalIDs = append(goalIDs, goalRef.ID)
+			goalSeen[goalRef.ID] = struct{}{}
+		}
 	}
 	if err := goalRows.Err(); err != nil {
 		return nil, err
 	}
 	if len(goalIDs) == 0 {
-		return result, nil
+		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
 
 	krRows, err := s.DB.Query(ctx, `
@@ -92,27 +103,42 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	}
 	defer krRows.Close()
 
-	krByID := map[int64]*domain.KeyResult{}
+	krByID := map[int64][]*domain.KeyResult{}
 	krIDs := make([]int64, 0)
+	krIDSeen := map[int64]struct{}{}
 	for krRows.Next() {
 		var kr domain.KeyResult
 		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
 			return nil, err
 		}
-		goal, ok := goalsByID[kr.GoalID]
+		goals, ok := goalsByID[kr.GoalID]
 		if !ok {
 			continue
 		}
-		goal.KeyResults = append(goal.KeyResults, kr)
-		krRef := &goal.KeyResults[len(goal.KeyResults)-1]
-		krByID[krRef.ID] = krRef
-		krIDs = append(krIDs, krRef.ID)
+		for _, goal := range goals {
+			goal.KeyResults = append(goal.KeyResults, kr)
+		}
+		if _, exists := krIDSeen[kr.ID]; !exists {
+			krIDs = append(krIDs, kr.ID)
+			krIDSeen[kr.ID] = struct{}{}
+		}
 	}
 	if err := krRows.Err(); err != nil {
 		return nil, err
 	}
+
+	// Build pointers in a separate pass after all appends are complete.
+	// This avoids stale pointers when goal.KeyResults backing arrays reallocate.
+	for _, goals := range goalsByID {
+		for _, goal := range goals {
+			for i := range goal.KeyResults {
+				krRef := &goal.KeyResults[i]
+				krByID[krRef.ID] = append(krByID[krRef.ID], krRef)
+			}
+		}
+	}
 	if len(krIDs) == 0 {
-		return result, nil
+		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
 
 	projectRows, err := s.DB.Query(ctx, `
@@ -129,11 +155,13 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := projectRows.Scan(&stage.ID, &stage.KeyResultID, &stage.Title, &stage.Weight, &stage.IsDone, &stage.SortOrder); err != nil {
 			return nil, err
 		}
-		if kr, ok := krByID[stage.KeyResultID]; ok {
-			if kr.Project == nil {
-				kr.Project = &domain.KRProject{}
+		if krs, ok := krByID[stage.KeyResultID]; ok {
+			for _, kr := range krs {
+				if kr.Project == nil {
+					kr.Project = &domain.KRProject{}
+				}
+				kr.Project.Stages = append(kr.Project.Stages, stage)
 			}
-			kr.Project.Stages = append(kr.Project.Stages, stage)
 		}
 	}
 	if err := projectRows.Err(); err != nil {
@@ -154,8 +182,11 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := percentRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
 			return nil, err
 		}
-		if kr, ok := krByID[keyResultID]; ok {
-			kr.Percent = &meta
+		if krs, ok := krByID[keyResultID]; ok {
+			for _, kr := range krs {
+				value := meta
+				kr.Percent = &value
+			}
 		}
 	}
 	if err := percentRows.Err(); err != nil {
@@ -176,11 +207,13 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := checkpointRows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
 			return nil, err
 		}
-		if kr, ok := krByID[cp.KeyResultID]; ok {
-			if kr.Percent == nil {
-				kr.Percent = &domain.KRPercent{}
+		if krs, ok := krByID[cp.KeyResultID]; ok {
+			for _, kr := range krs {
+				if kr.Percent == nil {
+					kr.Percent = &domain.KRPercent{}
+				}
+				kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
 			}
-			kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
 		}
 	}
 	if err := checkpointRows.Err(); err != nil {
@@ -201,8 +234,11 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := linearRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
 			return nil, err
 		}
-		if kr, ok := krByID[keyResultID]; ok {
-			kr.Linear = &meta
+		if krs, ok := krByID[keyResultID]; ok {
+			for _, kr := range krs {
+				value := meta
+				kr.Linear = &value
+			}
 		}
 	}
 	if err := linearRows.Err(); err != nil {
@@ -223,15 +259,70 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := booleanRows.Scan(&keyResultID, &meta.IsDone); err != nil {
 			return nil, err
 		}
-		if kr, ok := krByID[keyResultID]; ok {
-			kr.Boolean = &meta
+		if krs, ok := krByID[keyResultID]; ok {
+			for _, kr := range krs {
+				value := meta
+				kr.Boolean = &value
+			}
 		}
 	}
 	if err := booleanRows.Err(); err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	for _, keyResults := range krByID {
+		for _, kr := range keyResults {
+			kr.Progress = calculateKeyResultProgress(*kr)
+		}
+	}
+	for _, goals := range teamGoals {
+		for _, goal := range goals {
+			goal.Progress = okr.GoalProgress(goal.KeyResults)
+		}
+	}
+
+	return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
+}
+
+func resultFromGoalPointers(teamGoals map[int64]map[int64]*domain.Goal, teamGoalOrder map[int64][]int64) map[int64][]domain.Goal {
+	result := make(map[int64][]domain.Goal, len(teamGoals))
+	for teamID, ids := range teamGoalOrder {
+		for _, goalID := range ids {
+			goalRef, ok := teamGoals[teamID][goalID]
+			if !ok {
+				continue
+			}
+			result[teamID] = append(result[teamID], *goalRef)
+		}
+	}
+	return result
+}
+
+func calculateKeyResultProgress(kr domain.KeyResult) int {
+	switch kr.Kind {
+	case domain.KRKindProject:
+		if kr.Project == nil {
+			return 0
+		}
+		return okr.ProjectProgress(kr.Project.Stages)
+	case domain.KRKindPercent:
+		if kr.Percent == nil {
+			return 0
+		}
+		return okr.PercentProgress(kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue, kr.Percent.Checkpoints)
+	case domain.KRKindLinear:
+		if kr.Linear == nil {
+			return 0
+		}
+		return okr.LinearProgress(kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
+	case domain.KRKindBoolean:
+		if kr.Boolean == nil {
+			return 0
+		}
+		return okr.BooleanProgress(kr.Boolean.IsDone)
+	default:
+		return 0
+	}
 }
 
 func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
