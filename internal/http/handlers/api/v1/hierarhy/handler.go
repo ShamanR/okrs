@@ -44,5 +44,5 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 			metrics[summary.ID] = summary
 		}
 	}
-	v1.WriteJSON(w, http.StatusOK, v1.NewHierarchyResponse(nodes, metrics))
+	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics))
 }

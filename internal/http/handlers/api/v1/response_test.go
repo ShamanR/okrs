@@ -20,7 +20,7 @@ func TestBuildMeasurePercent(t *testing.T) {
 			},
 		},
 	}
-	measure := buildMeasure(kr)
+	measure := BuildMeasure(kr)
 	if measure.Kind != string(domain.KRKindPercent) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindPercent, measure.Kind)
 	}
@@ -41,7 +41,7 @@ func TestBuildMeasureLinear(t *testing.T) {
 			CurrentValue: 12,
 		},
 	}
-	measure := buildMeasure(kr)
+	measure := BuildMeasure(kr)
 	if measure.Kind != string(domain.KRKindLinear) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindLinear, measure.Kind)
 	}
@@ -57,7 +57,7 @@ func TestBuildMeasureBoolean(t *testing.T) {
 			IsDone: true,
 		},
 	}
-	measure := buildMeasure(kr)
+	measure := BuildMeasure(kr)
 	if measure.Kind != string(domain.KRKindBoolean) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindBoolean, measure.Kind)
 	}
@@ -73,7 +73,7 @@ func TestBuildMeasureProject(t *testing.T) {
 			Stages: []domain.KRProjectStage{{ID: 1, Title: "Stage", Weight: 50, IsDone: true}},
 		},
 	}
-	measure := buildMeasure(kr)
+	measure := BuildMeasure(kr)
 	if measure.Kind != string(domain.KRKindProject) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindProject, measure.Kind)
 	}
@@ -88,15 +88,15 @@ func TestCalculatePeriodForecastBounds(t *testing.T) {
 		EndDate:   time.Date(2026, 1, 11, 0, 0, 0, 0, time.UTC),
 	}
 
-	if got := calculatePeriodForecast(period, time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)); got != 0 {
+	if got := CalculatePeriodForecast(period, time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC)); got != 0 {
 		t.Fatalf("before start: want 0, got %d", got)
 	}
-	if got := calculatePeriodForecast(period, time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)); got != 100 {
+	if got := CalculatePeriodForecast(period, time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)); got != 100 {
 		t.Fatalf("after end: want 100, got %d", got)
 	}
 
 	mid := time.Date(2026, 1, 6, 0, 0, 0, 0, time.UTC)
-	if got := calculatePeriodForecast(period, mid); got < 49 || got > 51 {
+	if got := CalculatePeriodForecast(period, mid); got < 49 || got > 51 {
 		t.Fatalf("mid period: want ~50, got %d", got)
 	}
 }
@@ -107,18 +107,18 @@ func TestBuildProgressBarInfoStatusByDelta(t *testing.T) {
 		EndDate:   time.Now().Add(100 * time.Hour),
 	}
 
-	infoBelow := buildProgressBarInfo(0, period)
+	infoBelow := BuildProgressBarInfo(0, period)
 	if infoBelow.Status != "below" {
 		t.Fatalf("expected below status, got %s (actual=%d forecast=%d delta=%d)", infoBelow.Status, infoBelow.Actual, infoBelow.Forecast, infoBelow.Delta)
 	}
 
-	infoAbove := buildProgressBarInfo(100, period)
+	infoAbove := BuildProgressBarInfo(100, period)
 	if infoAbove.Status != "above" {
 		t.Fatalf("expected above status, got %s (actual=%d forecast=%d delta=%d)", infoAbove.Status, infoAbove.Actual, infoAbove.Forecast, infoAbove.Delta)
 	}
 
 	onTrackActual := infoAbove.Forecast
-	infoOnTrack := buildProgressBarInfo(onTrackActual, period)
+	infoOnTrack := BuildProgressBarInfo(onTrackActual, period)
 	if infoOnTrack.Status != "on_track" {
 		t.Fatalf("expected on_track status, got %s (actual=%d forecast=%d delta=%d)", infoOnTrack.Status, infoOnTrack.Actual, infoOnTrack.Forecast, infoOnTrack.Delta)
 	}
@@ -136,7 +136,7 @@ func TestMapGoalDetailsIncludesProgressMeta(t *testing.T) {
 		},
 	}
 
-	result := mapGoalDetails(detail, period)
+	result := MapGoalDetails(detail, period)
 	if result.ProgressMeta.Actual != 40 {
 		t.Fatalf("expected progress_meta.actual=40, got %d", result.ProgressMeta.Actual)
 	}

@@ -60,7 +60,7 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, v1.NewTeamOKRResponse(okr))
+	v1.WriteJSON(w, http.StatusOK, newTeamOKRResponse(okr))
 }
 
 func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +84,7 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load team overview", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, v1.NewTeamOverviewResponse(period, overview))
+	v1.WriteJSON(w, http.StatusOK, newTeamOverviewResponse(period, overview))
 }
 
 func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {

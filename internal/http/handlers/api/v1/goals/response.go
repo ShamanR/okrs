@@ -1,0 +1,35 @@
+package goals
+
+import (
+	"okrs/internal/domain"
+	"okrs/internal/http/dto"
+	v1 "okrs/internal/http/handlers/api/v1"
+)
+
+func newGoalResponse(goal domain.Goal) dto.GoalResponse {
+	comments := make([]dto.GoalComment, 0, len(goal.Comments))
+	for _, comment := range goal.Comments {
+		comments = append(comments, dto.GoalComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
+	}
+	krList := make([]dto.KeyResult, 0, len(goal.KeyResults))
+	for _, kr := range goal.KeyResults {
+		krList = append(krList, v1.MapKeyResult(kr))
+	}
+	goalDetail := dto.GoalDetails{
+		ID:          goal.ID,
+		TeamID:      goal.TeamID,
+		PeriodID:    goal.PeriodID,
+		Title:       goal.Title,
+		Description: goal.Description,
+		Priority:    string(goal.Priority),
+		Weight:      goal.Weight,
+		WorkType:    string(goal.WorkType),
+		FocusType:   string(goal.FocusType),
+		OwnerText:   goal.OwnerText,
+		Progress:    goal.Progress,
+		KeyResults:  krList,
+		CreatedAt:   goal.CreatedAt,
+		UpdatedAt:   goal.UpdatedAt,
+	}
+	return dto.GoalResponse{Goal: goalDetail, Comments: comments}
+}

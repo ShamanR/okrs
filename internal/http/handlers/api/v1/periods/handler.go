@@ -22,5 +22,5 @@ func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load periods", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, v1.NewPeriodsResponse(periods))
+	v1.WriteJSON(w, http.StatusOK, newPeriodsResponse(periods))
 }

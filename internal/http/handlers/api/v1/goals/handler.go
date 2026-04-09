@@ -32,7 +32,7 @@ func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, v1.NewGoalResponse(goal))
+	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal))
 }
 
 func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
