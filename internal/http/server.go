@@ -193,7 +193,11 @@ func (s *Server) Routes() http.Handler {
 	goalsHandler := goals.New(deps)
 	krHandler := keyresults.New(deps)
 	periodsHandler := periods.New(deps)
-	apiV1Handler := apiv1.NewHandler(s.service)
+	apiHierarchyHandler := apihierarhy.New(s.service)
+	apiPeriodsHandler := apiperiods.New(s.service)
+	apiTeamsHandler := apiteams.New(s.service)
+	apiGoalsHandler := apigoals.New(s.service)
+	apiKRsHandler := apikrs.New(s.service)
 
 	r := chi.NewRouter()
 
@@ -238,11 +242,11 @@ func (s *Server) Routes() http.Handler {
 
 	// Canonical JSON/form API consumed by frontend.
 	r.Route("/api/v1", func(api chi.Router) {
-		apihierarhy.RegisterRoutes(api, apiV1Handler)
-		apiperiods.RegisterRoutes(api, apiV1Handler)
-		apiteams.RegisterRoutes(api, apiV1Handler)
-		apigoals.RegisterRoutes(api, apiV1Handler)
-		apikrs.RegisterRoutes(api, apiV1Handler)
+		apihierarhy.RegisterRoutes(api, apiHierarchyHandler)
+		apiperiods.RegisterRoutes(api, apiPeriodsHandler)
+		apiteams.RegisterRoutes(api, apiTeamsHandler)
+		apigoals.RegisterRoutes(api, apiGoalsHandler)
+		apikrs.RegisterRoutes(api, apiKRsHandler)
 		apiv1.RegisterMethodNotAllowed(api)
 	})
 

@@ -12,7 +12,7 @@ import (
 
 func TestRegisterRoutes(t *testing.T) {
 	r := chi.NewRouter()
-	RegisterRoutes(r, v1.NewHandler(nil))
+	RegisterRoutes(r, New(nil))
 	v1.RegisterMethodNotAllowed(r)
 
 	req := httptest.NewRequest(http.MethodGet, "/teams/1/status", nil)

@@ -1,11 +1,7 @@
 package periods
 
-import (
-	"okrs/internal/http/handlers/api/v1"
+import "github.com/go-chi/chi/v5"
 
-	"github.com/go-chi/chi/v5"
-)
-
-func RegisterRoutes(r chi.Router, h *v1.Handler) {
-	r.Get("/periods", h.HandlePeriods())
+func RegisterRoutes(r chi.Router, h *Handler) {
+	r.Get("/periods", h.HandlePeriods)
 }
