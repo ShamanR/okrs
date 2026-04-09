@@ -20,7 +20,7 @@ AI должен сохранять разделение ответственно
 - internal/store — SQL и persistence;
 - internal/service — доменные сценарии и orchestration;
 - internal/http — SSR handlers и templates;
-- internal/api/v1 — API-контракт для JSON/form-data.
+- internal/http/handlers/api/v1 — API-контракт для JSON/form-data.
 
 ## Жёсткие правила для AI-реализации
 

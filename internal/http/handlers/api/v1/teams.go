@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"okrs/internal/domain"
-	"okrs/internal/http/handlers/common"
+	"okrs/internal/http/handlers/web/common"
 
 	"github.com/go-chi/chi/v5"
 )

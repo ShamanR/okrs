@@ -7,7 +7,7 @@ import (
 )
 
 func TestTeamOKRTemplateHasDataAttributes(t *testing.T) {
-	data, err := os.ReadFile("../../templates/team_okr.html")
+	data, err := os.ReadFile("../../../templates/team_okr.html")
 	if err != nil {
 		t.Fatalf("read template: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestTeamOKRTemplateHasDataAttributes(t *testing.T) {
 }
 
 func TestTeamManageTemplateHasDeletedTeamsSection(t *testing.T) {
-	data, err := os.ReadFile("../../templates/team_manage.html")
+	data, err := os.ReadFile("../../../templates/team_manage.html")
 	if err != nil {
 		t.Fatalf("read template: %v", err)
 	}

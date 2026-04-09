@@ -3,7 +3,7 @@ package v1
 import (
 	"net/http"
 
-	"okrs/internal/http/handlers/common"
+	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 )
 

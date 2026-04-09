@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"okrs/internal/domain"
-	"okrs/internal/http/handlers/common"
+	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 	"okrs/internal/store"
 )

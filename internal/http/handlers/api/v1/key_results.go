@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"okrs/internal/domain"
-	"okrs/internal/http/handlers/common"
+	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"

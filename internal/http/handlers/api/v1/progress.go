@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"okrs/internal/http/handlers/common"
+	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 
 	"github.com/go-chi/chi/v5"
