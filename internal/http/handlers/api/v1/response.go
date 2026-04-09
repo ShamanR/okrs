@@ -4,217 +4,29 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 )
 
-type hierarchyResponse struct {
-	Items []teamNode `json:"items"`
-}
-
-type teamNode struct {
-	ID        int64      `json:"id"`
-	Name      string     `json:"name"`
-	Type      string     `json:"type"`
-	TypeLabel string     `json:"type_label"`
-	Lead      string     `json:"lead"`
-	HasGoals  bool       `json:"has_goals"`
-	Progress  *int       `json:"progress,omitempty"`
-	Children  []teamNode `json:"children"`
-}
-
-type periodsResponse struct {
-	Items []periodInfo `json:"items"`
-}
-
-type periodInfo struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	StartDate time.Time `json:"start_date"`
-	EndDate   time.Time `json:"end_date"`
-	SortOrder int       `json:"sort_order"`
-}
-
-type shareTeam struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	TypeLabel string `json:"type_label"`
-	Weight    int    `json:"weight"`
-}
-
-type teamOKRResponse struct {
-	Team           teamInfo        `json:"team"`
-	Period         periodInfo      `json:"period"`
-	PeriodStatus   string          `json:"period_status"`
-	StatusLabel    string          `json:"status_label"`
-	PeriodProgress int             `json:"period_progress"`
-	GoalsCount     int             `json:"goals_count"`
-	GoalsWeight    int             `json:"goals_weight"`
-	ProgressMeta   progressBarInfo `json:"progress_meta"`
-	Goals          []goalDetails   `json:"goals"`
-}
-
-type teamOverviewResponse struct {
-	AverageProgress int                         `json:"average_progress"`
-	TeamsWithGoals  int                         `json:"teams_with_goals"`
-	ProgressMeta    progressBarInfo             `json:"progress_meta"`
-	Priorities      prioritySummaryInfo         `json:"priorities"`
-	WorkBalance     workBalanceInfo             `json:"work_balance"`
-	ChildrenSummary teamChildrenSummaryResponse `json:"children_summary"`
-}
-
-type teamChildrenSummaryResponse struct {
-	Period periodInfo               `json:"period"`
-	Items  []teamChildSummaryResult `json:"items"`
-}
-
-type teamChildSummaryResult struct {
-	Team         teamInfo         `json:"team"`
-	Status       string           `json:"status"`
-	StatusLabel  string           `json:"status_label"`
-	HasGoals     bool             `json:"has_goals"`
-	ProgressMeta *progressBarInfo `json:"progress_meta,omitempty"`
-	LastUpdated  *time.Time       `json:"last_updated,omitempty"`
-}
-
-type prioritySummaryInfo struct {
-	P0 int `json:"p0"`
-	P1 int `json:"p1"`
-	P2 int `json:"p2"`
-	P3 int `json:"p3"`
-}
-
-type workBalanceInfo struct {
-	Discovery int `json:"discovery"`
-	Delivery  int `json:"delivery"`
-}
-
-type progressBarInfo struct {
-	Actual   int    `json:"actual"`
-	Forecast int    `json:"forecast"`
-	Delta    int    `json:"delta"`
-	Status   string `json:"status"`
-}
-
-type teamInfo struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	TypeLabel string `json:"type_label"`
-	ParentID  *int64 `json:"parent_id,omitempty"`
-}
-
-type goalDetails struct {
-	ID           int64           `json:"id"`
-	TeamID       int64           `json:"team_id"`
-	PeriodID     int64           `json:"period_id"`
-	Title        string          `json:"title"`
-	Description  string          `json:"description"`
-	Priority     string          `json:"priority"`
-	Weight       int             `json:"weight"`
-	WorkType     string          `json:"work_type"`
-	FocusType    string          `json:"focus_type"`
-	OwnerText    string          `json:"owner_text"`
-	Progress     int             `json:"progress"`
-	ProgressMeta progressBarInfo `json:"progress_meta"`
-	KeyResults   []keyResult     `json:"key_results"`
-	ShareTeams   []shareTeam     `json:"share_teams"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
-}
-
-type keyResult struct {
-	ID          int64       `json:"id"`
-	GoalID      int64       `json:"goal_id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Weight      int         `json:"weight"`
-	Kind        string      `json:"kind"`
-	Progress    int         `json:"progress"`
-	Measure     measure     `json:"measure"`
-	Comments    []krComment `json:"comments"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
-}
-
-type krComment struct {
-	ID        int64     `json:"id"`
-	Text      string    `json:"text"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type goalComment struct {
-	ID        int64     `json:"id"`
-	Text      string    `json:"text"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type goalResponse struct {
-	Goal     goalDetails   `json:"goal"`
-	Comments []goalComment `json:"comments"`
-}
-
-type measure struct {
-	Kind        string              `json:"kind"`
-	Percent     *percentMeasure     `json:"percent,omitempty"`
-	Linear      *linearMeasure      `json:"linear,omitempty"`
-	Boolean     *booleanMeasure     `json:"boolean,omitempty"`
-	Project     *projectMeasure     `json:"project,omitempty"`
-	Checkpoints []percentCheckpoint `json:"checkpoints,omitempty"`
-}
-
-type percentMeasure struct {
-	StartValue   float64 `json:"start_value"`
-	TargetValue  float64 `json:"target_value"`
-	CurrentValue float64 `json:"current_value"`
-}
-
-type linearMeasure struct {
-	StartValue   float64 `json:"start_value"`
-	TargetValue  float64 `json:"target_value"`
-	CurrentValue float64 `json:"current_value"`
-}
-
-type booleanMeasure struct {
-	IsDone bool `json:"is_done"`
-}
-
-type projectMeasure struct {
-	Stages []projectStage `json:"stages"`
-}
-
-type projectStage struct {
-	ID     int64  `json:"id"`
-	Title  string `json:"title"`
-	Weight int    `json:"weight"`
-	IsDone bool   `json:"is_done"`
-}
-
-type percentCheckpoint struct {
-	ID          int64   `json:"id"`
-	MetricValue float64 `json:"metric_value"`
-	Percent     int     `json:"percent"`
-}
-
-func mapHierarchy(nodes []service.TeamNode) []teamNode {
+func mapHierarchy(nodes []service.TeamNode) []dto.TeamNode {
 	return mapHierarchyWithMetrics(nodes, nil)
 }
 
 func NewHierarchyResponse(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) any {
-	return hierarchyResponse{Items: mapHierarchyWithMetrics(nodes, metrics)}
+	return dto.HierarchyResponse{Items: mapHierarchyWithMetrics(nodes, metrics)}
 }
 
-func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) []teamNode {
-	result := make([]teamNode, 0, len(nodes))
+func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) []dto.TeamNode {
+	result := make([]dto.TeamNode, 0, len(nodes))
 	for _, node := range nodes {
 		result = append(result, mapTeamNode(node, metrics))
 	}
 	return result
 }
 
-func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary) teamNode {
-	children := make([]teamNode, 0, len(node.Children))
+func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary) dto.TeamNode {
+	children := make([]dto.TeamNode, 0, len(node.Children))
 	for _, child := range node.Children {
 		children = append(children, mapTeamNode(child, metrics))
 	}
@@ -227,7 +39,7 @@ func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary) t
 			progress = &value
 		}
 	}
-	return teamNode{
+	return dto.TeamNode{
 		ID:        node.Team.ID,
 		Name:      node.Team.Name,
 		Type:      string(node.Team.Type),
@@ -239,8 +51,8 @@ func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary) t
 	}
 }
 
-func mapPeriodInfo(period domain.Period) periodInfo {
-	return periodInfo{
+func mapPeriodInfo(period domain.Period) dto.PeriodInfo {
+	return dto.PeriodInfo{
 		ID:        period.ID,
 		Name:      period.Name,
 		StartDate: period.StartDate,
@@ -250,20 +62,20 @@ func mapPeriodInfo(period domain.Period) periodInfo {
 }
 
 func NewPeriodsResponse(periods []domain.Period) any {
-	items := make([]periodInfo, 0, len(periods))
+	items := make([]dto.PeriodInfo, 0, len(periods))
 	for _, period := range periods {
 		items = append(items, mapPeriodInfo(period))
 	}
-	return periodsResponse{Items: items}
+	return dto.PeriodsResponse{Items: items}
 }
 
-func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
-	goals := make([]goalDetails, 0, len(data.Goals))
+func mapTeamOKRResponse(data service.TeamOKR) dto.TeamOKRResponse {
+	goals := make([]dto.GoalDetails, 0, len(data.Goals))
 	for _, goal := range data.Goals {
 		goals = append(goals, mapGoalDetails(goal, data.Period))
 	}
-	return teamOKRResponse{
-		Team: teamInfo{
+	return dto.TeamOKRResponse{
+		Team: dto.TeamInfo{
 			ID:        data.Team.ID,
 			Name:      data.Team.Name,
 			Type:      string(data.Team.Type),
@@ -285,18 +97,18 @@ func NewTeamOKRResponse(data service.TeamOKR) any {
 	return mapTeamOKRResponse(data)
 }
 
-func mapTeamOverviewResponse(period domain.Period, overview service.TeamOverview) teamOverviewResponse {
-	return teamOverviewResponse{
+func mapTeamOverviewResponse(period domain.Period, overview service.TeamOverview) dto.TeamOverviewResponse {
+	return dto.TeamOverviewResponse{
 		AverageProgress: overview.AverageProgress,
 		TeamsWithGoals:  overview.TeamsWithGoals,
 		ProgressMeta:    buildProgressBarInfo(overview.AverageProgress, period),
-		Priorities: prioritySummaryInfo{
+		Priorities: dto.PrioritySummaryInfo{
 			P0: overview.Priorities.P0,
 			P1: overview.Priorities.P1,
 			P2: overview.Priorities.P2,
 			P3: overview.Priorities.P3,
 		},
-		WorkBalance: workBalanceInfo{
+		WorkBalance: dto.WorkBalanceInfo{
 			Discovery: overview.WorkBalance.Discovery,
 			Delivery:  overview.WorkBalance.Delivery,
 		},
@@ -308,16 +120,16 @@ func NewTeamOverviewResponse(period domain.Period, overview service.TeamOverview
 	return mapTeamOverviewResponse(period, overview)
 }
 
-func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamChildSummary) teamChildrenSummaryResponse {
-	rows := make([]teamChildSummaryResult, 0, len(items))
+func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamChildSummary) dto.TeamChildrenSummaryResponse {
+	rows := make([]dto.TeamChildSummaryResult, 0, len(items))
 	for _, item := range items {
-		var progressMeta *progressBarInfo
+		var progressMeta *dto.ProgressBarInfo
 		if item.HasGoals {
 			meta := buildProgressBarInfo(item.Progress, period)
 			progressMeta = &meta
 		}
-		rows = append(rows, teamChildSummaryResult{
-			Team: teamInfo{
+		rows = append(rows, dto.TeamChildSummaryResult{
+			Team: dto.TeamInfo{
 				ID:        item.Team.ID,
 				Name:      item.Team.Name,
 				Type:      string(item.Team.Type),
@@ -331,13 +143,13 @@ func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamCh
 			LastUpdated:  item.LastUpdateAt,
 		})
 	}
-	return teamChildrenSummaryResponse{
+	return dto.TeamChildrenSummaryResponse{
 		Period: mapPeriodInfo(period),
 		Items:  rows,
 	}
 }
 
-func buildProgressBarInfo(actual int, period domain.Period) progressBarInfo {
+func buildProgressBarInfo(actual int, period domain.Period) dto.ProgressBarInfo {
 	forecast := calculatePeriodForecast(period, time.Now())
 	delta := actual - forecast
 	status := "on_track"
@@ -346,7 +158,7 @@ func buildProgressBarInfo(actual int, period domain.Period) progressBarInfo {
 	} else if delta < -10 {
 		status = "below"
 	}
-	return progressBarInfo{
+	return dto.ProgressBarInfo{
 		Actual:   actual,
 		Forecast: forecast,
 		Delta:    delta,
@@ -379,14 +191,14 @@ func calculatePeriodForecast(period domain.Period, now time.Time) int {
 	return value
 }
 
-func mapGoalDetails(detail service.GoalDetails, period domain.Period) goalDetails {
-	krList := make([]keyResult, 0, len(detail.Goal.KeyResults))
+func mapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDetails {
+	krList := make([]dto.KeyResult, 0, len(detail.Goal.KeyResults))
 	for _, kr := range detail.Goal.KeyResults {
 		krList = append(krList, mapKeyResult(kr))
 	}
-	shareTeams := make([]shareTeam, 0, len(detail.ShareTeams))
+	shareTeams := make([]dto.ShareTeam, 0, len(detail.ShareTeams))
 	for _, share := range detail.ShareTeams {
-		shareTeams = append(shareTeams, shareTeam{
+		shareTeams = append(shareTeams, dto.ShareTeam{
 			ID:        share.ID,
 			Name:      share.Name,
 			Type:      string(share.Type),
@@ -395,7 +207,7 @@ func mapGoalDetails(detail service.GoalDetails, period domain.Period) goalDetail
 		})
 	}
 	goal := detail.Goal
-	return goalDetails{
+	return dto.GoalDetails{
 		ID:           goal.ID,
 		TeamID:       goal.TeamID,
 		PeriodID:     goal.PeriodID,
@@ -415,16 +227,16 @@ func mapGoalDetails(detail service.GoalDetails, period domain.Period) goalDetail
 	}
 }
 
-func mapGoalResponse(goal domain.Goal) goalResponse {
-	comments := make([]goalComment, 0, len(goal.Comments))
+func mapGoalResponse(goal domain.Goal) dto.GoalResponse {
+	comments := make([]dto.GoalComment, 0, len(goal.Comments))
 	for _, comment := range goal.Comments {
-		comments = append(comments, goalComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
+		comments = append(comments, dto.GoalComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
 	}
-	krList := make([]keyResult, 0, len(goal.KeyResults))
+	krList := make([]dto.KeyResult, 0, len(goal.KeyResults))
 	for _, kr := range goal.KeyResults {
 		krList = append(krList, mapKeyResult(kr))
 	}
-	goalDetail := goalDetails{
+	goalDetail := dto.GoalDetails{
 		ID:          goal.ID,
 		TeamID:      goal.TeamID,
 		PeriodID:    goal.PeriodID,
@@ -440,19 +252,19 @@ func mapGoalResponse(goal domain.Goal) goalResponse {
 		CreatedAt:   goal.CreatedAt,
 		UpdatedAt:   goal.UpdatedAt,
 	}
-	return goalResponse{Goal: goalDetail, Comments: comments}
+	return dto.GoalResponse{Goal: goalDetail, Comments: comments}
 }
 
 func NewGoalResponse(goal domain.Goal) any {
 	return mapGoalResponse(goal)
 }
 
-func mapKeyResult(kr domain.KeyResult) keyResult {
-	comments := make([]krComment, 0, len(kr.Comments))
+func mapKeyResult(kr domain.KeyResult) dto.KeyResult {
+	comments := make([]dto.KRComment, 0, len(kr.Comments))
 	for _, comment := range kr.Comments {
-		comments = append(comments, krComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
+		comments = append(comments, dto.KRComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
 	}
-	return keyResult{
+	return dto.KeyResult{
 		ID:          kr.ID,
 		GoalID:      kr.GoalID,
 		Title:       kr.Title,
@@ -467,45 +279,45 @@ func mapKeyResult(kr domain.KeyResult) keyResult {
 	}
 }
 
-func buildMeasure(kr domain.KeyResult) measure {
+func buildMeasure(kr domain.KeyResult) dto.Measure {
 	switch kr.Kind {
 	case domain.KRKindPercent:
 		if kr.Percent == nil {
-			return measure{Kind: string(kr.Kind)}
+			return dto.Measure{Kind: string(kr.Kind)}
 		}
-		checkpoints := make([]percentCheckpoint, 0, len(kr.Percent.Checkpoints))
+		checkpoints := make([]dto.PercentCheckpoint, 0, len(kr.Percent.Checkpoints))
 		for _, cp := range kr.Percent.Checkpoints {
-			checkpoints = append(checkpoints, percentCheckpoint{
+			checkpoints = append(checkpoints, dto.PercentCheckpoint{
 				ID:          cp.ID,
 				MetricValue: cp.MetricValue,
 				Percent:     cp.KRPercent,
 			})
 		}
-		return measure{
+		return dto.Measure{
 			Kind:        string(kr.Kind),
-			Percent:     &percentMeasure{StartValue: kr.Percent.StartValue, TargetValue: kr.Percent.TargetValue, CurrentValue: kr.Percent.CurrentValue},
+			Percent:     &dto.PercentMeasure{StartValue: kr.Percent.StartValue, TargetValue: kr.Percent.TargetValue, CurrentValue: kr.Percent.CurrentValue},
 			Checkpoints: checkpoints,
 		}
 	case domain.KRKindLinear:
 		if kr.Linear == nil {
-			return measure{Kind: string(kr.Kind)}
+			return dto.Measure{Kind: string(kr.Kind)}
 		}
-		return measure{Kind: string(kr.Kind), Linear: &linearMeasure{StartValue: kr.Linear.StartValue, TargetValue: kr.Linear.TargetValue, CurrentValue: kr.Linear.CurrentValue}}
+		return dto.Measure{Kind: string(kr.Kind), Linear: &dto.LinearMeasure{StartValue: kr.Linear.StartValue, TargetValue: kr.Linear.TargetValue, CurrentValue: kr.Linear.CurrentValue}}
 	case domain.KRKindBoolean:
 		if kr.Boolean == nil {
-			return measure{Kind: string(kr.Kind)}
+			return dto.Measure{Kind: string(kr.Kind)}
 		}
-		return measure{Kind: string(kr.Kind), Boolean: &booleanMeasure{IsDone: kr.Boolean.IsDone}}
+		return dto.Measure{Kind: string(kr.Kind), Boolean: &dto.BooleanMeasure{IsDone: kr.Boolean.IsDone}}
 	case domain.KRKindProject:
 		if kr.Project == nil {
-			return measure{Kind: string(kr.Kind)}
+			return dto.Measure{Kind: string(kr.Kind)}
 		}
-		stages := make([]projectStage, 0, len(kr.Project.Stages))
+		stages := make([]dto.ProjectStage, 0, len(kr.Project.Stages))
 		for _, stage := range kr.Project.Stages {
-			stages = append(stages, projectStage{ID: stage.ID, Title: stage.Title, Weight: stage.Weight, IsDone: stage.IsDone})
+			stages = append(stages, dto.ProjectStage{ID: stage.ID, Title: stage.Title, Weight: stage.Weight, IsDone: stage.IsDone})
 		}
-		return measure{Kind: string(kr.Kind), Project: &projectMeasure{Stages: stages}}
+		return dto.Measure{Kind: string(kr.Kind), Project: &dto.ProjectMeasure{Stages: stages}}
 	default:
-		return measure{Kind: string(kr.Kind)}
+		return dto.Measure{Kind: string(kr.Kind)}
 	}
 }
