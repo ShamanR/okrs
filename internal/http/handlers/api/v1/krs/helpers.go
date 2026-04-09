@@ -1,15 +1,13 @@
-package v1
+package krs
 
 import (
 	"fmt"
 	"net/http"
-	"strconv"
-	"strings"
-
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 	"okrs/internal/store"
+	"strings"
 )
 
 // parseKeyResultMeta parses meta fields for a key result based on kind.
@@ -89,24 +87,4 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
 	}
 	return stages, nil
-}
-
-// parseOptionalID returns an optional int64 pointer from a string.
-func parseOptionalID(value string) (*int64, error) {
-	if value == "" {
-		return nil, nil
-	}
-	id, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-	return &id, nil
-}
-
-func ParseOptionalID(value string) (*int64, error) {
-	return parseOptionalID(value)
-}
-
-func ParseKeyResultMeta(r *http.Request, kind domain.KRKind) (service.KeyResultMetaInput, error) {
-	return parseKeyResultMeta(r, kind)
 }

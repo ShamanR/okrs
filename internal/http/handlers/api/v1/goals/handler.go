@@ -140,7 +140,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	priority := domain.Priority(r.FormValue("priority"))
 	workType := domain.WorkType(r.FormValue("work_type"))
 	focusType := domain.FocusType(r.FormValue("focus_type"))
-	teamID, err := v1.ParseOptionalID(r.FormValue("team_id"))
+	teamID, err := parseOptionalID(r.FormValue("team_id"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team_id", map[string]string{"team_id": "invalid"})
 		return
@@ -182,42 +182,6 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) {
-	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
-		return
-	}
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
-		return
-	}
-	kind := domain.KRKind(r.FormValue("kind"))
-	if !common.ValidKRKind(kind) {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr kind", map[string]string{"kind": "invalid"})
-		return
-	}
-	weight := common.ParseIntField(r.FormValue("weight"))
-	if weight < 0 || weight > 100 {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid weight", map[string]string{"weight": "0..100"})
-		return
-	}
-	meta, err := v1.ParseKeyResultMeta(r, kind)
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
-		return
-	}
-	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), store.KeyResultInput{
-		GoalID:      goalID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        kind,
-	}, meta)
-	if err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create key result", nil)
-		return
-	}
-	v1.WriteJSON(w, http.StatusOK, map[string]int64{"id": krID})
 }
 
 func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {

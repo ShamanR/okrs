@@ -105,14 +105,14 @@ func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 		Weight:      kr.Weight,
 		Kind:        string(kr.Kind),
 		Progress:    kr.Progress,
-		Measure:     BuildMeasure(kr),
+		Measure:     buildMeasure(kr),
 		Comments:    comments,
 		CreatedAt:   kr.CreatedAt,
 		UpdatedAt:   kr.UpdatedAt,
 	}
 }
 
-func BuildMeasure(kr domain.KeyResult) dto.Measure {
+func buildMeasure(kr domain.KeyResult) dto.Measure {
 	switch kr.Kind {
 	case domain.KRKindPercent:
 		if kr.Percent == nil {

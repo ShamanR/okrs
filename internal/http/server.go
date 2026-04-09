@@ -2,16 +2,13 @@ package http
 
 import (
 	"embed"
-	"fmt"
 	"html/template"
 	"log/slog"
-	"math"
 	"net/http"
-	"strings"
 	"time"
 
 	"okrs/internal/domain"
-	apiv1 "okrs/internal/http/handlers/api/v1"
+	v1 "okrs/internal/http/handlers/api/v1"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
@@ -55,13 +52,6 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 			}
 			return total
 		},
-		"stageAt": func(stages []domain.KRProjectStage, index int) *domain.KRProjectStage {
-			if index < 0 || index >= len(stages) {
-				return nil
-			}
-			stage := stages[index]
-			return &stage
-		},
 		"priorityBadgeClass": func(priority domain.Priority) string {
 			switch priority {
 			case domain.PriorityP0:
@@ -74,112 +64,6 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 				return "text-bg-secondary"
 			}
 		},
-		"objectiveStatus": func(weight, progress int) int {
-			return int(math.Round(float64(weight*progress) / 100.0))
-		},
-		"relativeTime": func(t time.Time) string {
-			if t.IsZero() {
-				return "нет данных"
-			}
-			now := time.Now()
-			if now.Before(t) {
-				return "только что"
-			}
-			diff := now.Sub(t)
-			if diff < time.Minute {
-				return "только что"
-			}
-			if diff < time.Hour {
-				minutes := int(diff.Minutes())
-				return fmt.Sprintf("%d %s назад", minutes, pluralizeRu(minutes, "минуту", "минуты", "минут"))
-			}
-			if diff < 24*time.Hour {
-				hours := int(diff.Hours())
-				return fmt.Sprintf("%d %s назад", hours, pluralizeRu(hours, "час", "часа", "часов"))
-			}
-			days := int(diff.Hours() / 24)
-			return fmt.Sprintf("%d %s назад", days, pluralizeRu(days, "день", "дня", "дней"))
-		},
-		"absoluteTime": func(t time.Time) string {
-			if t.IsZero() {
-				return ""
-			}
-			return t.Format("02.01.2006 15:04")
-		},
-		"goalStatusLabel": func(goal domain.Goal, period domain.Period) string {
-			if len(goal.KeyResults) == 0 {
-				return "Нет данных"
-			}
-			totalWeight := 0
-			latestUpdate := goal.UpdatedAt
-			for _, kr := range goal.KeyResults {
-				totalWeight += kr.Weight
-				if kr.UpdatedAt.After(latestUpdate) {
-					latestUpdate = kr.UpdatedAt
-				}
-			}
-			if totalWeight == 0 {
-				return "Нет данных"
-			}
-			start, end := periodBounds(period, zone)
-			planned := plannedProgress(nowInZone(zone), start, end)
-			status := progressToStatus(goal.Progress, planned)
-			if time.Since(latestUpdate) > 21*24*time.Hour && status == "В норме" {
-				return "Риск"
-			}
-			return status
-		},
-		"goalStatusClass": func(label string) string {
-			switch strings.ToLower(label) {
-			case strings.ToLower("В норме"):
-				return "text-bg-success"
-			case strings.ToLower("Риск"):
-				return "text-bg-warning"
-			case strings.ToLower("Отставание"):
-				return "text-bg-danger"
-			default:
-				return "text-bg-secondary"
-			}
-		},
-		"plannedProgress": func(period domain.Period) int {
-			start, end := periodBounds(period, zone)
-			return plannedProgress(nowInZone(zone), start, end)
-		},
-		"krContribution": func(weight, progress, totalWeight int) float64 {
-			if totalWeight == 0 {
-				return 0
-			}
-			return float64(weight*progress) / float64(totalWeight)
-		},
-		"krMetricSummary": func(kr domain.KeyResult) string {
-			switch kr.Kind {
-			case domain.KRKindPercent:
-				if kr.Percent != nil {
-					return fmt.Sprintf("Число: Start %.2f → Target %.2f (текущее %.2f)", kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue)
-				}
-				return "Число: Start → Target"
-			case domain.KRKindLinear:
-				if kr.Linear != nil {
-					return fmt.Sprintf("Число: Start %.2f → Target %.2f (текущее %.2f)", kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
-				}
-				return "Число: Start → Target"
-			case domain.KRKindBoolean:
-				if kr.Boolean != nil {
-					if kr.Boolean.IsDone {
-						return "Бинарный: Выполнено — Да"
-					}
-					return "Бинарный: Выполнено — Нет"
-				}
-				return "Бинарный: Выполнено — Нет"
-			case domain.KRKindProject:
-				if kr.Project != nil {
-					return fmt.Sprintf("Проект: этапов %d", len(kr.Project.Stages))
-				}
-				return "Проект: этапы не заданы"
-			default:
-				return ""
-			}
-		},
 	}).ParseFS(templatesFS, "templates/*.html")
 	if err != nil {
 		return nil, err
@@ -189,19 +73,19 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 
 func (s *Server) Routes() http.Handler {
 	deps := common.Dependencies{Store: s.store, Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
+	r := chi.NewRouter()
+
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
+	s.registerWebRoutes(r, deps)
+	s.registerApiRoutes(r)
+	return r
+}
+
+func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	teamsHandler := teams.New(deps)
 	goalsHandler := goals.New(deps)
 	krHandler := keyresults.New(deps)
 	periodsHandler := periods.New(deps)
-	apiHierarchyHandler := apihierarhy.New(s.service)
-	apiPeriodsHandler := apiperiods.New(s.service)
-	apiTeamsHandler := apiteams.New(s.service)
-	apiGoalsHandler := apigoals.New(s.service)
-	apiKRsHandler := apikrs.New(s.service)
-
-	r := chi.NewRouter()
-
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
 
 	// Teams and OKR pages (SSR + form actions).
 	r.Get("/teams", teamsHandler.HandleTeamManagement)
@@ -239,80 +123,41 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/move-down", krHandler.HandleMoveKeyResultDown)
 	r.Post("/key-results/{krID}/delete", krHandler.HandleDeleteKeyResult)
 	r.Post("/key-results/{krID}/update", krHandler.HandleUpdateKeyResult)
+}
 
-	// Canonical JSON/form API consumed by frontend.
-	r.Route("/api/v1", func(api chi.Router) {
-		apihierarhy.RegisterRoutes(api, apiHierarchyHandler)
-		apiperiods.RegisterRoutes(api, apiPeriodsHandler)
-		apiteams.RegisterRoutes(api, apiTeamsHandler)
-		apigoals.RegisterRoutes(api, apiGoalsHandler)
-		apikrs.RegisterRoutes(api, apiKRsHandler)
-		apiv1.RegisterMethodNotAllowed(api)
+func (s *Server) registerApiRoutes(r chi.Router) {
+	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
+	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
+
+	// teamHandlers
+	teamHandlers := apiteams.New(s.service)
+	r.Get("/api/v1/teams/{teamID}", teamHandlers.HandleTeam)
+	r.Get("/api/v1/teams/{teamID}/okrs", teamHandlers.HandleTeamOKRs)
+	r.Get("/api/v1/teams/{teamID}/overview", teamHandlers.HandleTeamOverview)
+	r.Post("/api/v1/teams/{teamID}/status", teamHandlers.HandleUpdateTeamPeriodStatus)
+
+	// goals
+	goalsHandler := apigoals.New(s.service)
+	r.Get("/api/v1/goals/{goalID}", goalsHandler.HandleGoal)
+	r.Post("/api/v1/goals/{goalID}/share", goalsHandler.HandleShareGoal)
+	r.Post("/api/v1/goals/{goalID}/weight", goalsHandler.HandleUpdateGoalWeight)
+	r.Post("/api/v1/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
+	r.Post("/api/v1/goals/{goalID}", goalsHandler.HandleUpdateGoal)
+	r.Post("/api/v1/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
+	r.Post("/api/v1/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
+
+	// krs
+	krsHandler := apikrs.New(s.service)
+	r.Post("/api/v1/goals/{goalID}/key-results", krsHandler.HandleCreateKeyResult)
+	r.Post("/api/v1/krs/{krID}/progress/percent", krsHandler.HandleUpdatePercentProgress)
+	r.Post("/api/v1/krs/{krID}/progress/boolean", krsHandler.HandleUpdateBooleanProgress)
+	r.Post("/api/v1/krs/{krID}/progress/project", krsHandler.HandleUpdateProjectProgress)
+	r.Post("/api/v1/krs/{krID}/comments", krsHandler.HandleAddKRComment)
+	r.Post("/api/v1/krs/{krID}", krsHandler.HandleUpdateKeyResult)
+	r.Post("/api/v1/krs/{krID}/move-up", krsHandler.HandleMoveKeyResultUp)
+	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
+
+	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
+		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)
 	})
-
-	return r
-}
-
-func pluralizeRu(value int, singular, few, many string) string {
-	if value%100 >= 11 && value%100 <= 14 {
-		return many
-	}
-	switch value % 10 {
-	case 1:
-		return singular
-	case 2, 3, 4:
-		return few
-	default:
-		return many
-	}
-}
-
-func periodBounds(period domain.Period, zone *time.Location) (time.Time, time.Time) {
-	if zone == nil {
-		zone = time.Local
-	}
-	start := time.Date(period.StartDate.Year(), period.StartDate.Month(), period.StartDate.Day(), 0, 0, 0, 0, zone)
-	end := time.Date(period.EndDate.Year(), period.EndDate.Month(), period.EndDate.Day(), 23, 59, 59, 0, zone)
-	if end.Before(start) {
-		end = start
-	}
-	return start, end
-}
-
-func nowInZone(zone *time.Location) time.Time {
-	if zone != nil {
-		return time.Now().In(zone)
-	}
-	return time.Now()
-}
-
-func plannedProgress(now, start, end time.Time) int {
-	if end.Before(start) {
-		return 0
-	}
-	if now.Before(start) {
-		return 0
-	}
-	if now.After(end) {
-		return 100
-	}
-	total := end.Sub(start).Seconds()
-	elapsed := now.Sub(start).Seconds()
-	if total <= 0 {
-		return 0
-	}
-	return int(math.Round((elapsed / total) * 100))
-}
-
-func progressToStatus(progress, planned int) string {
-	switch {
-	case planned == 0 && progress == 0:
-		return "Нет данных"
-	case progress >= planned-10:
-		return "В норме"
-	case progress >= planned-25:
-		return "Риск"
-	default:
-		return "Отставание"
-	}
 }

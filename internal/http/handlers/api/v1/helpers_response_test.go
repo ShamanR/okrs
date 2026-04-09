@@ -20,7 +20,7 @@ func TestBuildMeasurePercent(t *testing.T) {
 			},
 		},
 	}
-	measure := BuildMeasure(kr)
+	measure := buildMeasure(kr)
 	if measure.Kind != string(domain.KRKindPercent) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindPercent, measure.Kind)
 	}
@@ -41,7 +41,7 @@ func TestBuildMeasureLinear(t *testing.T) {
 			CurrentValue: 12,
 		},
 	}
-	measure := BuildMeasure(kr)
+	measure := buildMeasure(kr)
 	if measure.Kind != string(domain.KRKindLinear) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindLinear, measure.Kind)
 	}
@@ -57,7 +57,7 @@ func TestBuildMeasureBoolean(t *testing.T) {
 			IsDone: true,
 		},
 	}
-	measure := BuildMeasure(kr)
+	measure := buildMeasure(kr)
 	if measure.Kind != string(domain.KRKindBoolean) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindBoolean, measure.Kind)
 	}
@@ -73,7 +73,7 @@ func TestBuildMeasureProject(t *testing.T) {
 			Stages: []domain.KRProjectStage{{ID: 1, Title: "Stage", Weight: 50, IsDone: true}},
 		},
 	}
-	measure := BuildMeasure(kr)
+	measure := buildMeasure(kr)
 	if measure.Kind != string(domain.KRKindProject) {
 		t.Fatalf("expected kind %s, got %s", domain.KRKindProject, measure.Kind)
 	}
