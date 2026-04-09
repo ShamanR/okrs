@@ -232,7 +232,14 @@ func (s *Server) Routes() http.Handler {
 	r.Post("/key-results/{krID}/update", krHandler.HandleUpdateKeyResult)
 
 	// Canonical JSON/form API consumed by frontend.
-	r.Mount("/api/v1", apiV1Handler.Routes())
+	r.Route("/api/v1", func(api chi.Router) {
+		apiv1.RegisterHierarchyRoutes(api, apiV1Handler)
+		apiv1.RegisterPeriodsRoutes(api, apiV1Handler)
+		apiv1.RegisterTeamsRoutes(api, apiV1Handler)
+		apiv1.RegisterGoalsRoutes(api, apiV1Handler)
+		apiv1.RegisterKeyResultsRoutes(api, apiV1Handler)
+		apiv1.RegisterMethodNotAllowed(api)
+	})
 
 	return r
 }
