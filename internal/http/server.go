@@ -12,6 +12,11 @@ import (
 
 	"okrs/internal/domain"
 	apiv1 "okrs/internal/http/handlers/api/v1"
+	apigoals "okrs/internal/http/handlers/api/v1/goals"
+	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
+	apikrs "okrs/internal/http/handlers/api/v1/krs"
+	apiperiods "okrs/internal/http/handlers/api/v1/periods"
+	apiteams "okrs/internal/http/handlers/api/v1/teams"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/http/handlers/web/goals"
 	"okrs/internal/http/handlers/web/keyresults"
@@ -233,11 +238,11 @@ func (s *Server) Routes() http.Handler {
 
 	// Canonical JSON/form API consumed by frontend.
 	r.Route("/api/v1", func(api chi.Router) {
-		apiv1.RegisterHierarchyRoutes(api, apiV1Handler)
-		apiv1.RegisterPeriodsRoutes(api, apiV1Handler)
-		apiv1.RegisterTeamsRoutes(api, apiV1Handler)
-		apiv1.RegisterGoalsRoutes(api, apiV1Handler)
-		apiv1.RegisterKeyResultsRoutes(api, apiV1Handler)
+		apihierarhy.RegisterRoutes(api, apiV1Handler)
+		apiperiods.RegisterRoutes(api, apiV1Handler)
+		apiteams.RegisterRoutes(api, apiV1Handler)
+		apigoals.RegisterRoutes(api, apiV1Handler)
+		apikrs.RegisterRoutes(api, apiV1Handler)
 		apiv1.RegisterMethodNotAllowed(api)
 	})
 
