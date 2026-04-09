@@ -1,4 +1,4 @@
-package v1
+package teams_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"
 
@@ -31,14 +32,14 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 				WithStartupTimeout(10*time.Second),
 		),
 	)
-	requireDockerOrSkip(t, err)
+	testutil.RequireDockerOrSkip(t, err)
 	defer func() { _ = container.Terminate(ctx) }()
 
 	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatalf("conn string: %v", err)
 	}
-	if err := runMigrations(dbURL); err != nil {
+	if err := testutil.RunMigrations(dbURL); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -87,7 +88,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}
 
 	svc := service.New(repo)
-	server := httptest.NewServer(newAPIV1TestRouter(svc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
 	currentHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
@@ -230,14 +231,14 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 				WithStartupTimeout(10*time.Second),
 		),
 	)
-	requireDockerOrSkip(t, err)
+	testutil.RequireDockerOrSkip(t, err)
 	defer func() { _ = container.Terminate(ctx) }()
 
 	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatalf("conn string: %v", err)
 	}
-	if err := runMigrations(dbURL); err != nil {
+	if err := testutil.RunMigrations(dbURL); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -295,7 +296,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	}
 
 	svc := service.New(repo)
-	server := httptest.NewServer(newAPIV1TestRouter(svc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/overview?period_id=%d", server.URL, parentID, periodID))
@@ -306,7 +307,19 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	var payload teamOverviewResponse
+	var payload struct {
+		ChildrenSummary struct {
+			Items []struct {
+				Team struct {
+					ID int64 `json:"id"`
+				} `json:"team"`
+				HasGoals     bool        `json:"has_goals"`
+				ProgressMeta interface{} `json:"progress_meta"`
+				Status       string      `json:"status"`
+				LastUpdated  *time.Time  `json:"last_updated"`
+			} `json:"items"`
+		} `json:"children_summary"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
 		t.Fatalf("decode overview: %v", err)
 	}
@@ -329,6 +342,17 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if item.LastUpdated == nil {
 		t.Fatalf("expected last_updated to be present")
 	}
+}
+
+type hierarchyResponse struct {
+	Items []teamNode `json:"items"`
+}
+
+type teamNode struct {
+	ID       int64      `json:"id"`
+	HasGoals bool       `json:"has_goals"`
+	Progress *int       `json:"progress,omitempty"`
+	Children []teamNode `json:"children"`
 }
 
 func flattenHierarchyIDs(nodes []teamNode) map[int64]struct{} {

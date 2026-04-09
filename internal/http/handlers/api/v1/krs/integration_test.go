@@ -1,4 +1,4 @@
-package v1
+package krs_test
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"
 
@@ -32,14 +33,14 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 				WithStartupTimeout(10*time.Second),
 		),
 	)
-	requireDockerOrSkip(t, err)
+	testutil.RequireDockerOrSkip(t, err)
 	defer func() { _ = container.Terminate(ctx) }()
 
 	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatalf("conn string: %v", err)
 	}
-	if err := runMigrations(dbURL); err != nil {
+	if err := testutil.RunMigrations(dbURL); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -92,7 +93,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	}
 
 	svc := service.New(repo)
-	server := httptest.NewServer(newAPIV1TestRouter(svc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
 	payload, _ := json.Marshal(map[string]float64{"current_value": 50})
@@ -114,7 +115,14 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("expected 200, got %d", getResp.StatusCode)
 	}
 
-	var okrResponse teamOKRResponse
+	var okrResponse struct {
+		Goals []struct {
+			Progress   int `json:"progress"`
+			KeyResults []struct {
+				Progress int `json:"progress"`
+			} `json:"key_results"`
+		} `json:"goals"`
+	}
 	if err := json.NewDecoder(getResp.Body).Decode(&okrResponse); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
@@ -141,14 +149,14 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 				WithStartupTimeout(10*time.Second),
 		),
 	)
-	requireDockerOrSkip(t, err)
+	testutil.RequireDockerOrSkip(t, err)
 	defer func() { _ = container.Terminate(ctx) }()
 
 	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
 		t.Fatalf("conn string: %v", err)
 	}
-	if err := runMigrations(dbURL); err != nil {
+	if err := testutil.RunMigrations(dbURL); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
@@ -198,7 +206,7 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 	}
 
 	svc := service.New(repo)
-	server := httptest.NewServer(newAPIV1TestRouter(svc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
 	commentText := "Первая строка\r\nВторая строка\r\nТретья строка"
