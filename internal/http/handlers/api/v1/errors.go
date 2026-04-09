@@ -24,3 +24,11 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func writeError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
 	writeJSON(w, status, ErrorResponse{Error: ErrorDetail{Code: code, Message: message, Fields: fields}})
 }
+
+func WriteJSON(w http.ResponseWriter, status int, payload any) {
+	writeJSON(w, status, payload)
+}
+
+func WriteError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	writeError(w, status, code, message, fields)
+}

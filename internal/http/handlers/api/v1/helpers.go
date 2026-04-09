@@ -102,3 +102,11 @@ func parseOptionalID(value string) (*int64, error) {
 	}
 	return &id, nil
 }
+
+func ParseOptionalID(value string) (*int64, error) {
+	return parseOptionalID(value)
+}
+
+func ParseKeyResultMeta(r *http.Request, kind domain.KRKind) (service.KeyResultMetaInput, error) {
+	return parseKeyResultMeta(r, kind)
+}

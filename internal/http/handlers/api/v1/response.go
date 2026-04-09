@@ -201,6 +201,10 @@ func mapHierarchy(nodes []service.TeamNode) []teamNode {
 	return mapHierarchyWithMetrics(nodes, nil)
 }
 
+func NewHierarchyResponse(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) any {
+	return hierarchyResponse{Items: mapHierarchyWithMetrics(nodes, metrics)}
+}
+
 func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary) []teamNode {
 	result := make([]teamNode, 0, len(nodes))
 	for _, node := range nodes {
@@ -245,6 +249,14 @@ func mapPeriodInfo(period domain.Period) periodInfo {
 	}
 }
 
+func NewPeriodsResponse(periods []domain.Period) any {
+	items := make([]periodInfo, 0, len(periods))
+	for _, period := range periods {
+		items = append(items, mapPeriodInfo(period))
+	}
+	return periodsResponse{Items: items}
+}
+
 func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 	goals := make([]goalDetails, 0, len(data.Goals))
 	for _, goal := range data.Goals {
@@ -269,6 +281,10 @@ func mapTeamOKRResponse(data service.TeamOKR) teamOKRResponse {
 	}
 }
 
+func NewTeamOKRResponse(data service.TeamOKR) any {
+	return mapTeamOKRResponse(data)
+}
+
 func mapTeamOverviewResponse(period domain.Period, overview service.TeamOverview) teamOverviewResponse {
 	return teamOverviewResponse{
 		AverageProgress: overview.AverageProgress,
@@ -286,6 +302,10 @@ func mapTeamOverviewResponse(period domain.Period, overview service.TeamOverview
 		},
 		ChildrenSummary: mapTeamChildrenSummaryResponse(period, overview.ChildrenSummary),
 	}
+}
+
+func NewTeamOverviewResponse(period domain.Period, overview service.TeamOverview) any {
+	return mapTeamOverviewResponse(period, overview)
 }
 
 func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamChildSummary) teamChildrenSummaryResponse {
@@ -421,6 +441,10 @@ func mapGoalResponse(goal domain.Goal) goalResponse {
 		UpdatedAt:   goal.UpdatedAt,
 	}
 	return goalResponse{Goal: goalDetail, Comments: comments}
+}
+
+func NewGoalResponse(goal domain.Goal) any {
+	return mapGoalResponse(goal)
 }
 
 func mapKeyResult(kr domain.KeyResult) keyResult {
