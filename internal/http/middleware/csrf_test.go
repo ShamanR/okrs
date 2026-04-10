@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -31,6 +32,22 @@ func TestCSRFMiddlewareSetsCookieOnSafeRequest(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected csrf cookie to be set")
+	}
+}
+
+func TestCSRFMiddlewareRejectsWebPostWithoutCookie(t *testing.T) {
+	mw := NewCSRF()
+	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/teams", strings.NewReader("name=test"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
 	}
 }
 
@@ -86,5 +103,45 @@ func TestCSRFMiddlewareAllowsFormToken(t *testing.T) {
 
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d", rr.Code)
+	}
+}
+
+func TestCSRFMiddlewareAllowsAPIPostWithoutCookie(t *testing.T) {
+	mw := NewCSRF()
+	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/krs/1/comments", strings.NewReader(`{"text":"ok"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+}
+
+func TestCSRFMiddlewareReturnsJSONErrorForAPI(t *testing.T) {
+	mw := NewCSRF()
+	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/krs/1/comments", strings.NewReader(`{"text":"ok"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "cookie-token"})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("expected json content type, got %q", ct)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("expected JSON body, got error: %v", err)
 	}
 }
