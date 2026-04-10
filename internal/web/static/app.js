@@ -6,7 +6,13 @@
     teamsSummaryByPeriod: {},
   };
 
-  const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8' };
+  const getCSRFToken = () => (typeof window.getCSRFToken === 'function' ? window.getCSRFToken() : '');
+  const withCSRFHeader = (headers = {}) => {
+    const token = getCSRFToken();
+    if (!token) return headers;
+    return { ...headers, 'X-CSRF-Token': token };
+  };
+  const jsonHeaders = withCSRFHeader({ 'Content-Type': 'application/json; charset=utf-8' });
   const goalPriorityOptions = ['P0', 'P1', 'P2', 'P3'];
   const goalWorkOptions = ['Discovery', 'Delivery'];
   const goalFocusOptions = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
@@ -67,7 +73,7 @@
   };
 
   const fetchJSON = async (url, options = {}) => {
-    const response = await fetch(url, options);
+    const response = await fetch(url, { ...options, headers: withCSRFHeader(options.headers || {}) });
     const payload = await response.json();
     if (!response.ok) {
       const message = payload?.error?.message || 'Request failed';
@@ -301,7 +307,11 @@
     }
 
     const owner = document.createElement('span');
-    owner.innerHTML = `Владелец: <span class="text-decoration-underline">${goal.owner_text}</span>`;
+    owner.append('Владелец: ');
+    const ownerValue = document.createElement('span');
+    ownerValue.className = 'text-decoration-underline';
+    ownerValue.textContent = goal.owner_text || '—';
+    owner.appendChild(ownerValue);
 
     meta.append(workBadge, focusBadge, updated, owner);
 
@@ -773,6 +783,9 @@
         }
       });
     }
+    if (typeof window.ensureCSRFTokenInput === 'function') {
+      window.ensureCSRFTokenInput(form);
+    }
     hiddenFields.forEach(({ name, value }) => {
       const input = document.createElement('input');
       input.type = 'hidden';
@@ -861,13 +874,24 @@
     const popover = document.createElement('div');
     popover.id = `share-goal-${goal.id}`;
     popover.className = 'd-none';
-    const list = goal.share_teams
-      .map(
-        (team) =>
-          `<li><a class="text-decoration-none" href="/teams/${team.id}/okr?period_id=${sharePeriodID}"><span class="text-muted">${team.type_label}</span> ${escapeHTML(team.name)}</a></li>`,
-      )
-      .join('');
-    popover.innerHTML = `<div class="small fw-semibold mb-1">Команды с целью</div><ul class="list-unstyled mb-0">${list}</ul>`;
+    const title = document.createElement('div');
+    title.className = 'small fw-semibold mb-1';
+    title.textContent = 'Команды с целью';
+    const list = document.createElement('ul');
+    list.className = 'list-unstyled mb-0';
+    (goal.share_teams || []).forEach((team) => {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.className = 'text-decoration-none';
+      link.href = `/teams/${team.id}/okr?period_id=${sharePeriodID}`;
+      const type = document.createElement('span');
+      type.className = 'text-muted';
+      type.textContent = team.type_label;
+      link.append(type, document.createTextNode(` ${team.name}`));
+      item.appendChild(link);
+      list.appendChild(item);
+    });
+    popover.append(title, list);
     wrapper.appendChild(popover);
     return wrapper;
   };
@@ -876,7 +900,7 @@
     const body = new URLSearchParams(data);
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' },
+      headers: withCSRFHeader({ 'Content-Type': 'application/x-www-form-urlencoded; charset=utf-8' }),
       body,
     });
     if (!response.ok) {
@@ -889,6 +913,10 @@
     Object.entries(data).forEach(([key, value]) => {
       body.append(key, value);
     });
+    const csrfToken = getCSRFToken();
+    if (csrfToken) {
+      body.append('csrf_token', csrfToken);
+    }
     const response = await fetch(url, { method: 'POST', body });
     if (!response.ok) {
       throw new Error('Request failed');
@@ -914,7 +942,10 @@
   };
 
   const submitFormXHR = async (form) => {
-    const response = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+    if (typeof window.ensureCSRFTokenInput === 'function') {
+      window.ensureCSRFTokenInput(form);
+    }
+    const response = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: withCSRFHeader({}) });
     if (!response.ok) {
       throw new Error('Request failed');
     }
@@ -1168,9 +1199,14 @@
       });
       payload.append('return', `${window.location.pathname}${window.location.search}`);
 
+      const csrfToken = getCSRFToken();
+      if (csrfToken) {
+        payload.append('csrf_token', csrfToken);
+      }
       const response = await fetch(`/goals/${goal.id}/share`, {
         method: 'POST',
         body: payload,
+        headers: withCSRFHeader({}),
       });
       if (!response.ok) {
         throw new Error('Не удалось обновить список команд для цели');
@@ -2272,7 +2308,14 @@
         childContainer.appendChild(childTableWrap);
         initPopovers();
       } catch (error) {
-        mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
+        mainEl.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'card';
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body text-danger';
+        cardBody.textContent = error.message;
+        card.appendChild(cardBody);
+        mainEl.appendChild(card);
       }
     };
 
@@ -2289,8 +2332,19 @@
         renderTree(tree, selected, teamSummaryMap);
         await renderContentForSelection(selected);
       } catch (error) {
-        treeEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
-        mainEl.innerHTML = `<div class="card"><div class="card-body text-danger">${error.message}</div></div>`;
+        treeEl.innerHTML = '';
+        const treeError = document.createElement('div');
+        treeError.className = 'text-danger';
+        treeError.textContent = error.message;
+        treeEl.appendChild(treeError);
+        mainEl.innerHTML = '';
+        const card = document.createElement('div');
+        card.className = 'card';
+        const cardBody = document.createElement('div');
+        cardBody.className = 'card-body text-danger';
+        cardBody.textContent = error.message;
+        card.appendChild(cardBody);
+        mainEl.appendChild(card);
       }
     };
 
@@ -2372,7 +2426,11 @@
     reloadTeamOKR = load;
 
     load().catch((error) => {
-      goalsEl.innerHTML = `<div class="text-danger">${error.message}</div>`;
+      goalsEl.innerHTML = '';
+      const errorEl = document.createElement('div');
+      errorEl.className = 'text-danger';
+      errorEl.textContent = error.message;
+      goalsEl.appendChild(errorEl);
     });
   };
 
