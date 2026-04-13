@@ -26,6 +26,17 @@ SSR-страницы должны опираться на те же правил
 - `GET /api/v1/teams/{teamID}/overview`
 - `GET /api/v1/goals/{goalID}`
 
+## CSRF requirements for browser mutations
+
+Для вызовов write endpoint'ов из браузера требуется CSRF token:
+
+- через заголовок `X-CSRF-Token`; или
+- через form field `csrf_token`.
+
+Токен должен совпадать с CSRF cookie приложения; при несовпадении сервер возвращает `403` и не выполняет мутацию.
+
+CSRF token должен быть ротационным (не постоянным) и обновляться сервером на safe browser requests; клиент обязан подставлять актуальный token при submit/POST.
+
 ## Write endpoints
 
 Обязательные write endpoints:

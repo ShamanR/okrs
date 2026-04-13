@@ -410,6 +410,46 @@
   </main>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
   <script>
+    function readCSRFCookie() {
+      const target = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith('okr_csrf_token='));
+      if (!target) return "";
+      return decodeURIComponent(target.split('=').slice(1).join('='));
+    }
+
+    function ensureCSRFTokenInput(form) {
+      if (!form || form.method.toLowerCase() !== "post") return;
+      const token = readCSRFCookie();
+      if (!token) return;
+      let input = form.querySelector('input[name="csrf_token"]');
+      if (!input) {
+        input = document.createElement('input');
+        input.type = "hidden";
+        input.name = "csrf_token";
+        form.appendChild(input);
+      }
+      input.value = token;
+    }
+
+    function ensureAllCSRFForms(root = document) {
+      root.querySelectorAll('form[method="post"], form[method="POST"]').forEach((form) => {
+        ensureCSRFTokenInput(form);
+        if (form.dataset.csrfBound === 'true') return;
+        form.dataset.csrfBound = 'true';
+        form.addEventListener('submit', () => ensureCSRFTokenInput(form));
+      });
+    }
+
+    window.getCSRFToken = () => readCSRFCookie();
+    window.ensureCSRFTokenInput = ensureCSRFTokenInput;
+
+    ensureAllCSRFForms();
+    document.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (form.method.toLowerCase() !== 'post') return;
+      ensureCSRFTokenInput(form);
+    }, true);
+
     const autosaveTimers = new WeakMap();
 
     function updateAutosaveStatus(statusEl, text, className) {

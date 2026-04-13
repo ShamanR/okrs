@@ -19,6 +19,7 @@ import (
 	"okrs/internal/http/handlers/web/keyresults"
 	"okrs/internal/http/handlers/web/periods"
 	"okrs/internal/http/handlers/web/teams"
+	"okrs/internal/http/middleware"
 	"okrs/internal/service"
 	"okrs/internal/store"
 
@@ -74,6 +75,9 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 func (s *Server) Routes() http.Handler {
 	deps := common.Dependencies{Store: s.store, Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
+
+	csrf := middleware.NewCSRF()
+	r.Use(csrf.Handler)
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
 	s.registerWebRoutes(r, deps)
