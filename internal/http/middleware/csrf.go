@@ -28,10 +28,6 @@ func (m *CSRFMiddleware) Handler(next http.Handler) http.Handler {
 
 		if isUnsafeMethod(r.Method) {
 			if !hasCookie {
-				if isAPIRoute(r) {
-					next.ServeHTTP(w, r)
-					return
-				}
 				writeCSRFError(w, r)
 				return
 			}

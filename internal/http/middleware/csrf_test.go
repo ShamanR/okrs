@@ -138,10 +138,10 @@ func TestCSRFMiddlewareAllowsFormToken(t *testing.T) {
 	}
 }
 
-func TestCSRFMiddlewareAllowsAPIPostWithoutCookie(t *testing.T) {
+func TestCSRFMiddlewareRejectsAPIPostWithoutCookie(t *testing.T) {
 	mw := NewCSRF()
 	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 	}))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/krs/1/comments", strings.NewReader(`{"text":"ok"}`))
@@ -149,8 +149,11 @@ func TestCSRFMiddlewareAllowsAPIPostWithoutCookie(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d", rr.Code)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("expected json content type, got %q", ct)
 	}
 }
 
