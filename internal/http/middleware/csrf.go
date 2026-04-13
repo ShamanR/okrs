@@ -28,10 +28,6 @@ func (m *CSRFMiddleware) Handler(next http.Handler) http.Handler {
 
 		if isUnsafeMethod(r.Method) {
 			if !hasCookie {
-				if isAPIRoute(r) {
-					next.ServeHTTP(w, r)
-					return
-				}
 				writeCSRFError(w, r)
 				return
 			}
@@ -47,7 +43,7 @@ func (m *CSRFMiddleware) Handler(next http.Handler) http.Handler {
 			return
 		}
 
-		ensureCSRFCookie(w, r)
+		rotateCSRFCookie(w, r)
 		next.ServeHTTP(w, r)
 	})
 }
@@ -64,10 +60,7 @@ func readCSRFCookie(r *http.Request) (string, bool) {
 	return value, true
 }
 
-func ensureCSRFCookie(w http.ResponseWriter, r *http.Request) string {
-	if cookie, ok := readCSRFCookie(r); ok {
-		return cookie
-	}
+func rotateCSRFCookie(w http.ResponseWriter, r *http.Request) string {
 	token := generateCSRFToken()
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
@@ -76,6 +69,7 @@ func ensureCSRFCookie(w http.ResponseWriter, r *http.Request) string {
 		HttpOnly: false,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil,
+		MaxAge:   3600,
 	})
 	return token
 }

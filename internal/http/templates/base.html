@@ -431,13 +431,24 @@
     }
 
     function ensureAllCSRFForms(root = document) {
-      root.querySelectorAll('form[method="post"], form[method="POST"]').forEach((form) => ensureCSRFTokenInput(form));
+      root.querySelectorAll('form[method="post"], form[method="POST"]').forEach((form) => {
+        ensureCSRFTokenInput(form);
+        if (form.dataset.csrfBound === 'true') return;
+        form.dataset.csrfBound = 'true';
+        form.addEventListener('submit', () => ensureCSRFTokenInput(form));
+      });
     }
 
     window.getCSRFToken = () => readCSRFCookie();
     window.ensureCSRFTokenInput = ensureCSRFTokenInput;
 
     ensureAllCSRFForms();
+    document.addEventListener('submit', (event) => {
+      const form = event.target;
+      if (!(form instanceof HTMLFormElement)) return;
+      if (form.method.toLowerCase() !== 'post') return;
+      ensureCSRFTokenInput(form);
+    }, true);
 
     const autosaveTimers = new WeakMap();
 

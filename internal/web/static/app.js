@@ -12,7 +12,7 @@
     if (!token) return headers;
     return { ...headers, 'X-CSRF-Token': token };
   };
-  const jsonHeaders = withCSRFHeader({ 'Content-Type': 'application/json; charset=utf-8' });
+  const jsonHeaders = () => withCSRFHeader({ 'Content-Type': 'application/json; charset=utf-8' });
   const goalPriorityOptions = ['P0', 'P1', 'P2', 'P3'];
   const goalWorkOptions = ['Discovery', 'Delivery'];
   const goalFocusOptions = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
@@ -557,14 +557,14 @@
         try {
           await fetchJSON(`/api/v1/krs/${kr.id}/progress/percent`, {
             method: 'POST',
-            headers: jsonHeaders,
+            headers: jsonHeaders(),
             body: JSON.stringify({ current_value: parseFloat(currentInput.value) }),
           });
           const { normalized: comment, trimmed } = prepareCommentForSave(commentInput.value);
           if (trimmed && comment !== (kr.comments[0]?.text ?? '')) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
-              headers: jsonHeaders,
+              headers: jsonHeaders(),
               body: JSON.stringify({ text: comment }),
             });
           }
@@ -606,14 +606,14 @@
         try {
           await fetchJSON(`/api/v1/krs/${kr.id}/progress/boolean`, {
             method: 'POST',
-            headers: jsonHeaders,
+            headers: jsonHeaders(),
             body: JSON.stringify({ done: checkbox.checked }),
           });
           const { normalized: comment, trimmed } = prepareCommentForSave(commentInput.value);
           if (trimmed && comment !== (kr.comments[0]?.text ?? '')) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
-              headers: jsonHeaders,
+              headers: jsonHeaders(),
               body: JSON.stringify({ text: comment }),
             });
           }
@@ -663,14 +663,14 @@
           }));
           await fetchJSON(`/api/v1/krs/${kr.id}/progress/project`, {
             method: 'POST',
-            headers: jsonHeaders,
+            headers: jsonHeaders(),
             body: JSON.stringify({ stages: stagesPayload }),
           });
           const { normalized: comment, trimmed } = prepareCommentForSave(commentInput.value);
           if (trimmed && comment !== (kr.comments[0]?.text ?? '')) {
             await fetchJSON(`/api/v1/krs/${kr.id}/comments`, {
               method: 'POST',
-              headers: jsonHeaders,
+              headers: jsonHeaders(),
               body: JSON.stringify({ text: comment }),
             });
           }

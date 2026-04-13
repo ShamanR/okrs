@@ -35,6 +35,38 @@ func TestCSRFMiddlewareSetsCookieOnSafeRequest(t *testing.T) {
 	}
 }
 
+func TestCSRFMiddlewareRotatesCookieOnSafeRequest(t *testing.T) {
+	mw := NewCSRF()
+	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/teams", nil)
+	req.AddCookie(&http.Cookie{Name: csrfCookieName, Value: "old-token"})
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	var csrfCookie *http.Cookie
+	for _, cookie := range rr.Result().Cookies() {
+		if cookie.Name == csrfCookieName {
+			csrfCookie = cookie
+			break
+		}
+	}
+	if csrfCookie == nil {
+		t.Fatal("expected rotated csrf cookie")
+	}
+	if csrfCookie.Value == "" || csrfCookie.Value == "old-token" {
+		t.Fatalf("expected csrf cookie to rotate, got %q", csrfCookie.Value)
+	}
+	if csrfCookie.MaxAge != 3600 {
+		t.Fatalf("expected MaxAge=3600, got %d", csrfCookie.MaxAge)
+	}
+}
+
 func TestCSRFMiddlewareRejectsWebPostWithoutCookie(t *testing.T) {
 	mw := NewCSRF()
 	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -106,10 +138,10 @@ func TestCSRFMiddlewareAllowsFormToken(t *testing.T) {
 	}
 }
 
-func TestCSRFMiddlewareAllowsAPIPostWithoutCookie(t *testing.T) {
+func TestCSRFMiddlewareRejectsAPIPostWithoutCookie(t *testing.T) {
 	mw := NewCSRF()
 	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 	}))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/krs/1/comments", strings.NewReader(`{"text":"ok"}`))
@@ -117,8 +149,11 @@ func TestCSRFMiddlewareAllowsAPIPostWithoutCookie(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusAccepted {
-		t.Fatalf("expected 202, got %d", rr.Code)
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("expected json content type, got %q", ct)
 	}
 }
 
