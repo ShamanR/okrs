@@ -236,6 +236,6 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 	return stages, nil
 }
 
-func formatGoalRedirect(goalID int64) string {
-	return fmt.Sprintf("/goals/%d", goalID)
+func formatGoalRedirect(_ int64) string {
+	return "/teamOkrs"
 }
