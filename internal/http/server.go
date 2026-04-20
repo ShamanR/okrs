@@ -113,8 +113,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	r.Post("/periods/{periodID}/move-up", periodsHandler.HandleMovePeriodUp)
 	r.Post("/periods/{periodID}/move-down", periodsHandler.HandleMovePeriodDown)
 
-	// Goal pages and goal-level actions.
-	r.Get("/goals/{goalID}", goalsHandler.HandleGoalDetail)
+	// Goal-level actions.
 	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
 	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)

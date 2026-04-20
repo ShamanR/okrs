@@ -24,57 +24,6 @@ func New(deps common.Dependencies) *Handler {
 	return &Handler{deps: deps}
 }
 
-func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	goal, err := h.deps.Service.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	period, err := h.deps.Service.GetPeriod(ctx, goal.PeriodID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	teamID := goal.TeamID
-	if value := r.URL.Query().Get("team"); value != "" {
-		if parsed, err := common.ParseID(value); err == nil {
-			if parsed != goal.TeamID {
-				if share, err := h.deps.Service.GetGoalShare(ctx, goalID, parsed); err == nil {
-					goal.Weight = share.Weight
-					teamID = parsed
-				}
-			}
-		}
-	}
-	team, err := h.deps.Service.GetTeam(ctx, teamID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, team.ID, goal.PeriodID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	page := struct {
-		Team            domain.Team
-		TeamTypeLabel   string
-		Goal            domain.Goal
-		Period          domain.Period
-		IsClosed        bool
-		FormError       string
-		PageTitle       string
-		ContentTemplate string
-	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, Period: period, IsClosed: status == domain.TeamPeriodStatusClosed, PageTitle: "Цель", ContentTemplate: "goal-content"}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
-}
-
 func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
@@ -92,7 +41,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, returnURL, http.StatusSeeOther)
 			return
 		}
-		http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+		http.Redirect(w, r, "/teamOkrs", http.StatusSeeOther)
 		return
 	}
 	if err := h.deps.Service.AddGoalComment(ctx, goalID, text); err != nil {
@@ -103,7 +52,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+	http.Redirect(w, r, "/teamOkrs", http.StatusSeeOther)
 }
 
 func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +69,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	weight := common.ParseIntField(r.FormValue("weight"))
 	kind := domain.KRKind(r.FormValue("kind"))
 	if !common.ValidKRKind(kind) || weight < 0 || weight > 100 {
-		h.renderGoalWithError(w, r, goalID, "Некорректный тип KR или вес")
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("Некорректный тип KR или вес"))
 		return
 	}
 
@@ -131,7 +80,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		start := common.ParseFloatField(r.FormValue("percent_start"))
 		target := common.ParseFloatField(r.FormValue("percent_target"))
 		if start == target {
-			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
 			return
 		}
 		meta.PercentStart = start
@@ -141,7 +90,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		start := common.ParseFloatField(r.FormValue("linear_start"))
 		target := common.ParseFloatField(r.FormValue("linear_target"))
 		if start == target {
-			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
 			return
 		}
 		meta.LinearStart = start
@@ -152,7 +101,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	case domain.KRKindProject:
 		stages, err := parseProjectStages(r)
 		if err != nil {
-			h.renderGoalWithError(w, r, goalID, err.Error())
+			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
 		meta.ProjectStages = stages
@@ -173,7 +122,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
+	http.Redirect(w, r, "/teamOkrs", http.StatusSeeOther)
 }
 
 func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
@@ -194,7 +143,7 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	teamID, periodID, err := h.deps.Service.DeleteGoal(ctx, goalID, requestingTeamID)
 	if err != nil {
 		if errors.Is(err, service.ErrPeriodClosed) {
-			h.renderGoalWithError(w, r, goalID, "Период закрыт, изменения недоступны")
+			common.RenderError(w, h.deps.Logger, fmt.Errorf("Период закрыт, изменения недоступны"))
 			return
 		}
 		common.RenderError(w, h.deps.Logger, err)
@@ -226,7 +175,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if status == domain.TeamPeriodStatusClosed {
-		h.renderGoalWithError(w, r, goalID, "Период закрыт, изменения недоступны")
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("Период закрыт, изменения недоступны"))
 		return
 	}
 	priority := domain.Priority(r.FormValue("priority"))
@@ -234,7 +183,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	focusType := domain.FocusType(r.FormValue("focus_type"))
 	weight := common.ParseIntField(r.FormValue("weight"))
 	if errMsg := common.ValidateGoalInput(priority, workType, focusType, weight); errMsg != "" {
-		h.renderGoalWithError(w, r, goalID, errMsg)
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("%s", errMsg))
 		return
 	}
 	if err := h.deps.Service.UpdateGoalFields(ctx, store.GoalFieldsUpdateInput{
@@ -291,51 +240,6 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 		return nil, fmt.Errorf("Для Project KR требуется минимум один шаг")
 	}
 	return stages, nil
-}
-
-func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, goalID int64, message string) {
-	goal, err := h.deps.Service.GetGoal(r.Context(), goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	if teamID == goal.TeamID {
-		if value := r.URL.Query().Get("team"); value != "" {
-			teamID = parseOptionalTeamID(value, goal.TeamID)
-		}
-	}
-	if teamID != goal.TeamID {
-		if share, err := h.deps.Service.GetGoalShare(r.Context(), goalID, teamID); err == nil {
-			goal.Weight = share.Weight
-		}
-	}
-	team, err := h.deps.Service.GetTeam(r.Context(), teamID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	period, err := h.deps.Service.GetPeriod(r.Context(), goal.PeriodID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	status, err := h.deps.Service.GetTeamPeriodStatus(r.Context(), team.ID, goal.PeriodID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	page := struct {
-		Team            domain.Team
-		TeamTypeLabel   string
-		Goal            domain.Goal
-		Period          domain.Period
-		IsClosed        bool
-		FormError       string
-		PageTitle       string
-		ContentTemplate string
-	}{Team: team, TeamTypeLabel: common.TeamTypeLabel(team.Type), Goal: goal, Period: period, IsClosed: status == domain.TeamPeriodStatusClosed, FormError: message, PageTitle: "Цель", ContentTemplate: "goal-content"}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) {
