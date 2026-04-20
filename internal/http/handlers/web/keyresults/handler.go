@@ -7,6 +7,7 @@ import (
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
+	"okrs/internal/service"
 	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"
@@ -44,68 +45,56 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("Неверный тип KR"))
 		return
 	}
-	if err := h.deps.Store.UpdateKeyResult(ctx, store.KeyResultUpdateInput{
-		ID:          krID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        krKind,
-	}); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
 
+	meta := service.KeyResultMetaInput{}
 	switch krKind {
 	case domain.KRKindPercent:
 		start := common.ParseFloatField(r.FormValue("percent_start"))
 		target := common.ParseFloatField(r.FormValue("percent_target"))
-		current := common.ParseFloatField(r.FormValue("percent_current"))
 		if start == target {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
 			return
 		}
-		if err := h.deps.Store.UpsertPercentMeta(ctx, store.PercentMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
+		meta.PercentStart = start
+		meta.PercentTarget = target
+		meta.PercentCurrent = common.ParseFloatField(r.FormValue("percent_current"))
 	case domain.KRKindLinear:
 		start := common.ParseFloatField(r.FormValue("linear_start"))
 		target := common.ParseFloatField(r.FormValue("linear_target"))
-		current := common.ParseFloatField(r.FormValue("linear_current"))
 		if start == target {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
 			return
 		}
-		if err := h.deps.Store.UpsertLinearMeta(ctx, store.LinearMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
+		meta.LinearStart = start
+		meta.LinearTarget = target
+		meta.LinearCurrent = common.ParseFloatField(r.FormValue("linear_current"))
 	case domain.KRKindBoolean:
-		done := r.FormValue("boolean_done") == "true"
-		if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
+		meta.BooleanDone = r.FormValue("boolean_done") == "true"
 	case domain.KRKindProject:
 		stages, err := parseProjectStages(r)
 		if err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
-		for i := range stages {
-			stages[i].KeyResultID = krID
-		}
-		if err := h.deps.Store.ReplaceProjectStages(ctx, krID, stages); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
+		meta.ProjectStages = stages
+	}
+
+	if err := h.deps.Service.UpdateKeyResultWithMeta(ctx, store.KeyResultUpdateInput{
+		ID:          krID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Weight:      weight,
+		Kind:        krKind,
+	}, meta); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
 	}
 
 	if returnURL := r.FormValue("return"); returnURL != "" {
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
@@ -128,7 +117,7 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Store.MoveKeyResult(ctx, krID, direction); err != nil {
+	if err := h.deps.Service.MoveKeyResult(ctx, krID, direction); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -136,7 +125,7 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
@@ -153,7 +142,7 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 	}
 	text := common.TrimmedFormValue(r, "text")
 	if text != "" {
-		if err := h.deps.Store.AddKeyResultComment(ctx, krID, text); err != nil {
+		if err := h.deps.Service.AddKeyResultComment(ctx, krID, text); err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
@@ -162,7 +151,7 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	goalID, _ := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
@@ -173,12 +162,12 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goalID, err := common.FindGoalIDByKR(ctx, h.deps.Store, krID)
+	goalID, err := h.deps.Service.FindGoalIDByKR(ctx, krID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Store.DeleteKeyResult(ctx, krID); err != nil {
+	if err := h.deps.Service.DeleteKeyResult(ctx, krID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

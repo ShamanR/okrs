@@ -395,3 +395,19 @@ func (s *Store) touchKeyResultProgressUpdatedAt(ctx context.Context, krID int64)
 	_, err := s.DB.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
 	return err
 }
+
+func (s *Store) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
+	var goalID int64
+	err := s.DB.QueryRow(ctx, `SELECT goal_id FROM key_results WHERE id=$1`, krID).Scan(&goalID)
+	return goalID, err
+}
+
+func (s *Store) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
+	var goalID int64
+	err := s.DB.QueryRow(ctx, `
+		SELECT kr.goal_id
+		FROM kr_project_stages s
+		JOIN key_results kr ON kr.id = s.key_result_id
+		WHERE s.id=$1`, stageID).Scan(&goalID)
+	return goalID, err
+}

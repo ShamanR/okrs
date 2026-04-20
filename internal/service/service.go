@@ -17,14 +17,35 @@ type Store interface {
 	ListDeletedTeams(ctx context.Context) ([]domain.Team, error)
 	ListAllTeams(ctx context.Context) ([]domain.Team, error)
 	GetTeam(ctx context.Context, id int64) (domain.Team, error)
+	CreateTeam(ctx context.Context, input store.TeamInput) (int64, error)
+	UpdateTeam(ctx context.Context, input store.TeamInput, id int64) error
 	ListPeriods(ctx context.Context) ([]domain.Period, error)
 	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
+	FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error)
+	CreatePeriod(ctx context.Context, input store.PeriodInput) (int64, error)
+	UpdatePeriod(ctx context.Context, periodID int64, input store.PeriodInput) error
+	DeletePeriod(ctx context.Context, periodID int64) error
+	MovePeriod(ctx context.Context, periodID int64, direction int) error
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
 	ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
 	ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error)
+	GetGoal(ctx context.Context, id int64) (domain.Goal, error)
+	CreateGoal(ctx context.Context, input store.GoalInput) (int64, error)
+	DeleteGoal(ctx context.Context, id int64) error
+	UpdateGoal(ctx context.Context, input store.GoalUpdateInput) error
+	UpdateGoalFields(ctx context.Context, input store.GoalFieldsUpdateInput) error
+	UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error
+	MoveGoal(ctx context.Context, goalID int64, direction int) error
+	AddGoalComment(ctx context.Context, goalID int64, text string) error
+	ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
+	GetGoalShare(ctx context.Context, goalID, teamID int64) (store.GoalShare, error)
+	ReplaceGoalShares(ctx context.Context, goalID int64, shares []store.GoalShareInput) error
+	DeleteGoalShare(ctx context.Context, goalID, teamID int64) error
+	UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, weight int) error
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
 	ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
+	SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 	TeamHasGoals(ctx context.Context, id int64) (bool, error)
 	TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (bool, error)
@@ -32,27 +53,23 @@ type Store interface {
 	SoftDeleteTeam(ctx context.Context, id int64) error
 	RestoreTeam(ctx context.Context, id int64) error
 	HardDeleteTeam(ctx context.Context, id int64) error
+	GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error)
+	CreateKeyResult(ctx context.Context, input store.KeyResultInput) (int64, error)
+	UpdateKeyResult(ctx context.Context, input store.KeyResultUpdateInput) error
+	DeleteKeyResult(ctx context.Context, id int64) error
+	MoveKeyResult(ctx context.Context, krID int64, direction int) error
+	AddKeyResultComment(ctx context.Context, krID int64, text string) error
+	FindGoalIDByKR(ctx context.Context, krID int64) (int64, error)
+	FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error)
 	UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error
 	UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error
 	UpdateBoolean(ctx context.Context, krID int64, done bool) error
 	ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error)
 	UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error
-	ReplaceGoalShares(ctx context.Context, goalID int64, shares []store.GoalShareInput) error
-	UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, weight int) error
-	GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error)
-	AddGoalComment(ctx context.Context, goalID int64, text string) error
-	AddKeyResultComment(ctx context.Context, krID int64, text string) error
-	GetGoal(ctx context.Context, id int64) (domain.Goal, error)
-	UpdateGoal(ctx context.Context, input store.GoalUpdateInput) error
-	CreateKeyResult(ctx context.Context, input store.KeyResultInput) (int64, error)
-	UpdateKeyResult(ctx context.Context, input store.KeyResultUpdateInput) error
-	MoveGoal(ctx context.Context, goalID int64, direction int) error
-	MoveKeyResult(ctx context.Context, krID int64, direction int) error
 	UpsertPercentMeta(ctx context.Context, input store.PercentMetaInput) error
 	UpsertLinearMeta(ctx context.Context, input store.LinearMetaInput) error
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
 	ReplaceProjectStages(ctx context.Context, krID int64, stages []store.ProjectStageInput) error
-	SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error
 }
 
 type Service struct {
@@ -60,8 +77,10 @@ type Service struct {
 }
 
 var (
-	ErrTeamHasGoals           = errors.New("team has goals")
-	ErrTeamNotVisibleInPeriod = errors.New("team not visible in period")
+	ErrTeamHasGoals                = errors.New("team has goals")
+	ErrTeamNotVisibleInPeriod      = errors.New("team not visible in period")
+	ErrPeriodClosed                = errors.New("period is closed")
+	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is validated or closed")
 )
 
 func New(store Store) *Service {
@@ -786,4 +805,212 @@ func buildTeamNode(team domain.Team, childrenMap map[int64][]domain.Team) TeamNo
 		node.Children = append(node.Children, buildTeamNode(child, childrenMap))
 	}
 	return node
+}
+
+// — Team passthroughs —
+
+func (s *Service) ListTeams(ctx context.Context) ([]domain.Team, error) {
+	return s.store.ListTeams(ctx)
+}
+
+func (s *Service) ListDeletedTeams(ctx context.Context) ([]domain.Team, error) {
+	return s.store.ListDeletedTeams(ctx)
+}
+
+func (s *Service) ListAllTeams(ctx context.Context) ([]domain.Team, error) {
+	return s.store.ListAllTeams(ctx)
+}
+
+func (s *Service) CreateTeam(ctx context.Context, input store.TeamInput) (int64, error) {
+	return s.store.CreateTeam(ctx, input)
+}
+
+func (s *Service) UpdateTeam(ctx context.Context, input store.TeamInput, id int64) error {
+	return s.store.UpdateTeam(ctx, input, id)
+}
+
+// — Period passthroughs —
+
+func (s *Service) FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error) {
+	return s.store.FindPeriodForDate(ctx, date)
+}
+
+func (s *Service) CreatePeriod(ctx context.Context, input store.PeriodInput) (int64, error) {
+	return s.store.CreatePeriod(ctx, input)
+}
+
+func (s *Service) UpdatePeriod(ctx context.Context, periodID int64, input store.PeriodInput) error {
+	return s.store.UpdatePeriod(ctx, periodID, input)
+}
+
+func (s *Service) DeletePeriod(ctx context.Context, periodID int64) error {
+	return s.store.DeletePeriod(ctx, periodID)
+}
+
+func (s *Service) MovePeriod(ctx context.Context, periodID int64, direction int) error {
+	return s.store.MovePeriod(ctx, periodID, direction)
+}
+
+// — Goal passthroughs —
+
+func (s *Service) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error) {
+	return s.store.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+}
+
+func (s *Service) UpdateGoalFields(ctx context.Context, input store.GoalFieldsUpdateInput) error {
+	return s.store.UpdateGoalFields(ctx, input)
+}
+
+func (s *Service) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
+	return s.store.ListGoalComments(ctx, goalID)
+}
+
+func (s *Service) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
+	return s.store.GetTeamPeriodStatus(ctx, teamID, periodID)
+}
+
+func (s *Service) GetGoalShare(ctx context.Context, goalID, teamID int64) (store.GoalShare, error) {
+	return s.store.GetGoalShare(ctx, goalID, teamID)
+}
+
+func (s *Service) DeleteGoalShare(ctx context.Context, goalID, teamID int64) error {
+	return s.store.DeleteGoalShare(ctx, goalID, teamID)
+}
+
+func (s *Service) ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error) {
+	return s.store.ListGoalShares(ctx, goalID)
+}
+
+// — Key result passthroughs —
+
+func (s *Service) DeleteKeyResult(ctx context.Context, id int64) error {
+	return s.store.DeleteKeyResult(ctx, id)
+}
+
+func (s *Service) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
+	return s.store.FindGoalIDByKR(ctx, krID)
+}
+
+func (s *Service) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
+	return s.store.FindGoalIDByStage(ctx, stageID)
+}
+
+// — Business logic —
+
+// CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
+// Returns ErrPeriodClosed if the team's period status is Closed.
+func (s *Service) CreateGoal(ctx context.Context, input store.GoalInput) (int64, error) {
+	status, err := s.store.GetTeamPeriodStatus(ctx, input.TeamID, input.PeriodID)
+	if err != nil {
+		return 0, err
+	}
+	if status == domain.TeamPeriodStatusClosed {
+		return 0, ErrPeriodClosed
+	}
+	goalID, err := s.store.CreateGoal(ctx, input)
+	if err != nil {
+		return 0, err
+	}
+	if status == domain.TeamPeriodStatusNoGoals {
+		if err := s.store.SetTeamPeriodStatus(ctx, input.TeamID, input.PeriodID, domain.TeamPeriodStatusForming); err != nil {
+			return 0, err
+		}
+	}
+	return goalID, nil
+}
+
+// DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.
+// Returns the effective requesting teamID and the goal's periodID for redirect.
+// Returns ErrPeriodClosed if the owner tries to delete in a closed period with no shares.
+func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64) (effectiveTeamID, periodID int64, err error) {
+	goal, err := s.store.GetGoal(ctx, goalID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if requestingTeamID == 0 {
+		requestingTeamID = goal.TeamID
+	}
+	if requestingTeamID != goal.TeamID {
+		return requestingTeamID, goal.PeriodID, s.store.DeleteGoalShare(ctx, goalID, requestingTeamID)
+	}
+	shares, err := s.store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if len(shares) > 0 {
+		newOwner := shares[0]
+		if err := s.store.UpdateGoalOwner(ctx, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
+			return 0, 0, err
+		}
+		if err := s.store.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
+			return 0, 0, err
+		}
+		return requestingTeamID, goal.PeriodID, nil
+	}
+	status, err := s.store.GetTeamPeriodStatus(ctx, goal.TeamID, goal.PeriodID)
+	if err != nil {
+		return 0, 0, err
+	}
+	if status == domain.TeamPeriodStatusClosed {
+		return 0, 0, ErrPeriodClosed
+	}
+	return requestingTeamID, goal.PeriodID, s.store.DeleteGoal(ctx, goalID)
+}
+
+// UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
+// Returns ErrCannotShareWithClosedPeriod if any selected team has a validated or closed period.
+func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
+	goal, err := s.store.GetGoal(ctx, goalID)
+	if err != nil {
+		return 0, 0, err
+	}
+	shares, err := s.store.ListGoalShares(ctx, goalID)
+	if err != nil {
+		return 0, 0, err
+	}
+	shareWeights := make(map[int64]int, len(shares))
+	for _, share := range shares {
+		shareWeights[share.TeamID] = share.Weight
+	}
+	selectedSet := make(map[int64]struct{}, len(selectedTeamIDs))
+	for _, id := range selectedTeamIDs {
+		selectedSet[id] = struct{}{}
+	}
+	ownerID = goal.TeamID
+	if _, ok := selectedSet[ownerID]; !ok && len(selectedTeamIDs) > 0 {
+		ownerID = selectedTeamIDs[0]
+	}
+	newShares := make([]store.GoalShareInput, 0, len(selectedTeamIDs))
+	for _, teamID := range selectedTeamIDs {
+		status, err := s.store.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
+		if err != nil {
+			return 0, 0, err
+		}
+		if status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed {
+			return 0, 0, ErrCannotShareWithClosedPeriod
+		}
+		if teamID == ownerID {
+			ownerWeight := goal.Weight
+			if ownerID != goal.TeamID {
+				if w, ok := shareWeights[ownerID]; ok {
+					ownerWeight = w
+				} else {
+					ownerWeight = 0
+				}
+			}
+			if err := s.store.UpdateGoalOwner(ctx, goalID, ownerID, ownerWeight); err != nil {
+				return 0, 0, err
+			}
+			continue
+		}
+		weight := 0
+		if w, ok := shareWeights[teamID]; ok {
+			weight = w
+		}
+		newShares = append(newShares, store.GoalShareInput{TeamID: teamID, Weight: weight})
+	}
+	if err := s.store.ReplaceGoalShares(ctx, goalID, newShares); err != nil {
+		return 0, 0, err
+	}
+	return ownerID, goal.PeriodID, nil
 }

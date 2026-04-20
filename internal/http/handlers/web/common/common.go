@@ -2,7 +2,6 @@ package common
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,13 +14,10 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/okr"
 	"okrs/internal/service"
-	"okrs/internal/store"
 )
 
 type Dependencies struct {
-	Store     *store.Store
 	Service   *service.Service
 	Logger    *slog.Logger
 	Templates *template.Template
@@ -109,40 +105,6 @@ func ParsePeriodID(r *http.Request) (int64, error) {
 		return 0, nil
 	}
 	return ParseID(value)
-}
-
-func CalculateGoalProgress(goal domain.Goal) int {
-	for i := range goal.KeyResults {
-		goal.KeyResults[i].Progress = CalculateKRProgress(goal.KeyResults[i])
-	}
-	return okr.GoalProgress(goal.KeyResults)
-}
-
-func CalculateKRProgress(kr domain.KeyResult) int {
-	switch kr.Kind {
-	case domain.KRKindProject:
-		if kr.Project == nil {
-			return 0
-		}
-		return okr.ProjectProgress(kr.Project.Stages)
-	case domain.KRKindPercent:
-		if kr.Percent == nil {
-			return 0
-		}
-		return okr.PercentProgress(kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue, kr.Percent.Checkpoints)
-	case domain.KRKindLinear:
-		if kr.Linear == nil {
-			return 0
-		}
-		return okr.LinearProgress(kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
-	case domain.KRKindBoolean:
-		if kr.Boolean == nil {
-			return 0
-		}
-		return okr.BooleanProgress(kr.Boolean.IsDone)
-	default:
-		return 0
-	}
 }
 
 func ValidateGoalInput(priority domain.Priority, workType domain.WorkType, focusType domain.FocusType, weight int) string {
@@ -243,22 +205,6 @@ func ValidKRKind(k domain.KRKind) bool {
 	default:
 		return false
 	}
-}
-
-func FindGoalIDByKR(ctx context.Context, store *store.Store, krID int64) (int64, error) {
-	var goalID int64
-	err := store.DB.QueryRow(ctx, `SELECT goal_id FROM key_results WHERE id=$1`, krID).Scan(&goalID)
-	return goalID, err
-}
-
-func FindGoalIDByStage(ctx context.Context, store *store.Store, stageID int64) (int64, error) {
-	var goalID int64
-	err := store.DB.QueryRow(ctx, `
-		SELECT kr.goal_id
-		FROM kr_project_stages s
-		JOIN key_results kr ON kr.id = s.key_result_id
-		WHERE s.id=$1`, stageID).Scan(&goalID)
-	return goalID, err
 }
 
 func ParseID(raw string) (int64, error) {

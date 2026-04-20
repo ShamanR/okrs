@@ -73,7 +73,7 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 }
 
 func (s *Server) Routes() http.Handler {
-	deps := common.Dependencies{Store: s.store, Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
+	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
 
 	csrf := middleware.NewCSRF()

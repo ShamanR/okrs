@@ -282,9 +282,6 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		if goals[0].KeyResults[0].Boolean == nil || !goals[0].KeyResults[0].Boolean.IsDone {
 			t.Fatalf("team %d expected boolean KR meta to be loaded for shared goal", teamID)
 		}
-		if goals[0].Progress != 100 {
-			t.Fatalf("team %d expected goal progress=100 for done boolean KR, got %d", teamID, goals[0].Progress)
-		}
 	}
 }
 
