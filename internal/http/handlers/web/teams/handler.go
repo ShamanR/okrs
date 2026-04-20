@@ -19,6 +19,7 @@ import (
 	"github.com/pkg/errors"
 )
 
+
 type Handler struct {
 	deps common.Dependencies
 }
@@ -183,7 +184,7 @@ func (h *Handler) HandleTeamManagement(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) resolvePeriodFilter(ctx context.Context, r *http.Request) (domain.Period, string, []domain.Period, error) {
-	periods, err := h.deps.Store.ListPeriods(ctx)
+	periods, err := h.deps.Service.ListPeriods(ctx)
 	if err != nil {
 		return domain.Period{}, "", nil, err
 	}
@@ -210,7 +211,7 @@ func (h *Handler) resolvePeriodFilter(ctx context.Context, r *http.Request) (dom
 		}
 	}
 	if selectedPeriod.ID == 0 && len(periods) > 0 {
-		if current, err := h.deps.Store.FindPeriodForDate(ctx, time.Now().In(h.deps.Zone)); err == nil {
+		if current, err := h.deps.Service.FindPeriodForDate(ctx, time.Now().In(h.deps.Zone)); err == nil {
 			selectedPeriod = current
 		} else {
 			selectedPeriod = periods[0]
@@ -261,12 +262,12 @@ func persistTeamsFilters(w http.ResponseWriter, periodValue, selectedFilter stri
 }
 
 func (h *Handler) renderTeamManagement(w http.ResponseWriter, r *http.Request, formError string) {
-	activeTeams, err := h.deps.Store.ListTeams(r.Context())
+	activeTeams, err := h.deps.Service.ListTeams(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	deletedTeams, err := h.deps.Store.ListDeletedTeams(r.Context())
+	deletedTeams, err := h.deps.Service.ListDeletedTeams(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -296,7 +297,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	teams, err := h.deps.Store.ListTeams(ctx)
+	teams, err := h.deps.Service.ListTeams(ctx)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -335,7 +336,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 		}, teams, 0, false)
 		return
 	}
-	if _, err := h.deps.Store.CreateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
+	if _, err := h.deps.Service.CreateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -343,7 +344,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
-	teams, err := h.deps.Store.ListAllTeams(r.Context())
+	teams, err := h.deps.Service.ListAllTeams(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -363,7 +364,7 @@ func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
+	team, err := h.deps.Service.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -372,7 +373,7 @@ func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("deleted team cannot be edited"))
 		return
 	}
-	teams, err := h.deps.Store.ListTeams(r.Context())
+	teams, err := h.deps.Service.ListTeams(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -406,7 +407,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	teams, err := h.deps.Store.ListTeams(ctx)
+	teams, err := h.deps.Service.ListTeams(ctx)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -470,7 +471,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := h.deps.Store.UpdateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
+	if err := h.deps.Service.UpdateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -599,15 +600,6 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
 		return
 	}
-	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, teamID, periodID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if status == domain.TeamPeriodStatusClosed {
-		h.renderTeamOKRWithError(w, r, teamID, periodID, "Период закрыт, изменения недоступны")
-		return
-	}
 	weight := common.ParseIntField(r.FormValue("weight"))
 	priority := domain.Priority(r.FormValue("priority"))
 	workType := domain.WorkType(r.FormValue("work_type"))
@@ -619,7 +611,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goalID, err := h.deps.Store.CreateGoal(ctx, store.GoalInput{
+	goalID, err := h.deps.Service.CreateGoal(ctx, store.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       common.TrimmedFormValue(r, "title"),
@@ -631,14 +623,12 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
 	})
 	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if status == domain.TeamPeriodStatusNoGoals {
-		if err := h.deps.Store.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusForming); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
+		if err == service.ErrPeriodClosed {
+			h.renderTeamOKRWithError(w, r, teamID, periodID, "Период закрыт, изменения недоступны")
 			return
 		}
+		common.RenderError(w, h.deps.Logger, err)
+		return
 	}
 
 	http.Redirect(w, r, buildTeamOKRURL(teamID, periodID, goalID), http.StatusSeeOther)
@@ -653,30 +643,30 @@ func buildTeamOKRURL(teamID, periodID, goalID int64) string {
 }
 
 func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request, teamID, periodID int64, message string) {
-	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
+	team, err := h.deps.Service.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, err := h.deps.Store.GetPeriod(r.Context(), periodID)
+	period, err := h.deps.Service.GetPeriod(r.Context(), periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goals, err := h.deps.Store.ListGoalsByTeamPeriod(r.Context(), teamID, periodID)
+	goals, err := h.deps.Service.ListGoalsByTeamPeriod(r.Context(), teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	for i := range goals {
-		comments, err := h.deps.Store.ListGoalComments(r.Context(), goals[i].ID)
+		comments, err := h.deps.Service.ListGoalComments(r.Context(), goals[i].ID)
 		if err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
 		goals[i].Comments = comments
 	}
-	teams, err := h.deps.Store.ListTeams(r.Context())
+	teams, err := h.deps.Service.ListTeams(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -698,14 +688,14 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	}
 	shareTargets := buildShareTargets(rootTeams, childrenMap, statuses)
 	goalShareTargets := buildGoalShareTargets(shareTargets, goalShareIDs)
-	status, err := h.deps.Store.GetTeamPeriodStatus(r.Context(), teamID, periodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(r.Context(), teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	var totalWeight int
 	for i := range goals {
-		goals[i].Progress = common.CalculateGoalProgress(goals[i])
+		goals[i].Progress = service.CalculateGoalProgress(&goals[i])
 		totalWeight += goals[i].Weight
 	}
 	page := teamOKRPage{
@@ -731,7 +721,7 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {
-	shares, err := h.deps.Store.ListGoalShares(ctx, goal.ID)
+	shares, err := h.deps.Service.ListGoalShares(ctx, goal.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -779,7 +769,7 @@ func (h *Handler) buildGoalSharesMap(ctx context.Context, goals []domain.Goal, t
 func (h *Handler) buildTeamPeriodStatuses(ctx context.Context, teams []domain.Team, periodID int64) (map[int64]domain.TeamPeriodStatus, error) {
 	statuses := make(map[int64]domain.TeamPeriodStatus, len(teams))
 	for _, team := range teams {
-		status, err := h.deps.Store.GetTeamPeriodStatus(ctx, team.ID, periodID)
+		status, err := h.deps.Service.GetTeamPeriodStatus(ctx, team.ID, periodID)
 		if err != nil {
 			return nil, err
 		}

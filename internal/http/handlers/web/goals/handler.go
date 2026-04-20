@@ -1,12 +1,14 @@
 package goals
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
+	"okrs/internal/service"
 	"okrs/internal/store"
 
 	"github.com/go-chi/chi/v5"
@@ -29,12 +31,12 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	goal, err := h.deps.Service.GetGoal(ctx, goalID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, err := h.deps.Store.GetPeriod(ctx, goal.PeriodID)
+	period, err := h.deps.Service.GetPeriod(ctx, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -43,26 +45,23 @@ func (h *Handler) HandleGoalDetail(w http.ResponseWriter, r *http.Request) {
 	if value := r.URL.Query().Get("team"); value != "" {
 		if parsed, err := common.ParseID(value); err == nil {
 			if parsed != goal.TeamID {
-				if share, err := h.deps.Store.GetGoalShare(ctx, goalID, parsed); err == nil {
+				if share, err := h.deps.Service.GetGoalShare(ctx, goalID, parsed); err == nil {
 					goal.Weight = share.Weight
 					teamID = parsed
 				}
 			}
 		}
 	}
-	team, err := h.deps.Store.GetTeam(ctx, teamID)
+	team, err := h.deps.Service.GetTeam(ctx, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, team.ID, goal.PeriodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, team.ID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-
-	goal.Progress = common.CalculateGoalProgress(goal)
-
 	page := struct {
 		Team            domain.Team
 		TeamTypeLabel   string
@@ -96,7 +95,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
 		return
 	}
-	if err := h.deps.Store.AddGoalComment(ctx, goalID, text); err != nil {
+	if err := h.deps.Service.AddGoalComment(ctx, goalID, text); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -125,66 +124,49 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	krID, err := h.deps.Store.CreateKeyResult(ctx, store.KeyResultInput{
-		GoalID:      goalID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        kind,
-	})
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
+	meta := service.KeyResultMetaInput{}
 
-	if kind == domain.KRKindPercent {
+	switch kind {
+	case domain.KRKindPercent:
 		start := common.ParseFloatField(r.FormValue("percent_start"))
 		target := common.ParseFloatField(r.FormValue("percent_target"))
-		current := common.ParseFloatField(r.FormValue("percent_current"))
 		if start == target {
 			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
 			return
 		}
-		if err := h.deps.Store.UpsertPercentMeta(ctx, store.PercentMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-	}
-
-	if kind == domain.KRKindLinear {
+		meta.PercentStart = start
+		meta.PercentTarget = target
+		meta.PercentCurrent = common.ParseFloatField(r.FormValue("percent_current"))
+	case domain.KRKindLinear:
 		start := common.ParseFloatField(r.FormValue("linear_start"))
 		target := common.ParseFloatField(r.FormValue("linear_target"))
-		current := common.ParseFloatField(r.FormValue("linear_current"))
 		if start == target {
 			h.renderGoalWithError(w, r, goalID, "Start и Target не должны быть равны")
 			return
 		}
-		if err := h.deps.Store.UpsertLinearMeta(ctx, store.LinearMetaInput{KeyResultID: krID, StartValue: start, TargetValue: target, CurrentValue: current}); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-	}
-
-	if kind == domain.KRKindBoolean {
-		done := r.FormValue("boolean_done") == "true"
-		if err := h.deps.Store.UpsertBooleanMeta(ctx, krID, done); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-	}
-	if kind == domain.KRKindProject {
+		meta.LinearStart = start
+		meta.LinearTarget = target
+		meta.LinearCurrent = common.ParseFloatField(r.FormValue("linear_current"))
+	case domain.KRKindBoolean:
+		meta.BooleanDone = r.FormValue("boolean_done") == "true"
+	case domain.KRKindProject:
 		stages, err := parseProjectStages(r)
 		if err != nil {
 			h.renderGoalWithError(w, r, goalID, err.Error())
 			return
 		}
-		for i := range stages {
-			stages[i].KeyResultID = krID
-		}
-		if err := h.deps.Store.ReplaceProjectStages(ctx, krID, stages); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
+		meta.ProjectStages = stages
+	}
+
+	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, store.KeyResultInput{
+		GoalID:      goalID,
+		Title:       common.TrimmedFormValue(r, "title"),
+		Description: common.TrimmedFormValue(r, "description"),
+		Weight:      weight,
+		Kind:        kind,
+	}, meta); err != nil {
+		common.RenderError(w, h.deps.Logger, err)
+		return
 	}
 
 	if returnURL := r.FormValue("return"); returnURL != "" {
@@ -205,52 +187,20 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
+	var requestingTeamID int64
+	if s := r.FormValue("team_id"); s != "" {
+		requestingTeamID, _ = common.ParseID(s)
 	}
-	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	if teamID != goal.TeamID {
-		if err := h.deps.Store.DeleteGoalShare(ctx, goalID, teamID); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
+	teamID, periodID, err := h.deps.Service.DeleteGoal(ctx, goalID, requestingTeamID)
+	if err != nil {
+		if errors.Is(err, service.ErrPeriodClosed) {
+			h.renderGoalWithError(w, r, goalID, "Период закрыт, изменения недоступны")
 			return
 		}
-		redirectToTeam(w, r, teamID, goal.PeriodID)
-		return
-	}
-	shares, err := h.deps.Store.ListGoalShares(ctx, goalID)
-	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if len(shares) > 0 {
-		newOwner := shares[0]
-		if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-		if err := h.deps.Store.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-		redirectToTeam(w, r, teamID, goal.PeriodID)
-		return
-	}
-	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, goal.TeamID, goal.PeriodID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	if status == domain.TeamPeriodStatusClosed {
-		h.renderGoalWithError(w, r, goalID, "Период закрыт, изменения недоступны")
-		return
-	}
-	if err := h.deps.Store.DeleteGoal(ctx, goalID); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", goal.TeamID, goal.PeriodID), http.StatusSeeOther)
+	redirectToTeam(w, r, teamID, periodID)
 }
 
 func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
@@ -264,13 +214,13 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
+	goal, err := h.deps.Service.GetGoal(ctx, goalID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	status, err := h.deps.Store.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -287,7 +237,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		h.renderGoalWithError(w, r, goalID, errMsg)
 		return
 	}
-	if err := h.deps.Store.UpdateGoalFields(ctx, store.GoalFieldsUpdateInput{
+	if err := h.deps.Service.UpdateGoalFields(ctx, store.GoalFieldsUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -299,7 +249,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Store.UpdateGoalTeamWeight(ctx, goalID, teamID, weight); err != nil {
+	if err := h.deps.Service.UpdateGoalWeight(ctx, goalID, teamID, weight); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -344,7 +294,7 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 }
 
 func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, goalID int64, message string) {
-	goal, err := h.deps.Store.GetGoal(r.Context(), goalID)
+	goal, err := h.deps.Service.GetGoal(r.Context(), goalID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -356,26 +306,25 @@ func (h *Handler) renderGoalWithError(w http.ResponseWriter, r *http.Request, go
 		}
 	}
 	if teamID != goal.TeamID {
-		if share, err := h.deps.Store.GetGoalShare(r.Context(), goalID, teamID); err == nil {
+		if share, err := h.deps.Service.GetGoalShare(r.Context(), goalID, teamID); err == nil {
 			goal.Weight = share.Weight
 		}
 	}
-	team, err := h.deps.Store.GetTeam(r.Context(), teamID)
+	team, err := h.deps.Service.GetTeam(r.Context(), teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, err := h.deps.Store.GetPeriod(r.Context(), goal.PeriodID)
+	period, err := h.deps.Service.GetPeriod(r.Context(), goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	status, err := h.deps.Store.GetTeamPeriodStatus(r.Context(), team.ID, goal.PeriodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(r.Context(), team.ID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal.Progress = common.CalculateGoalProgress(goal)
 	page := struct {
 		Team            domain.Team
 		TeamTypeLabel   string
@@ -400,75 +349,30 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal, err := h.deps.Store.GetGoal(ctx, goalID)
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
 	selected := r.Form["team_ids"]
 	if len(selected) == 0 {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
 		return
 	}
 	selectedIDs := make([]int64, 0, len(selected))
-	selectedSet := make(map[int64]struct{}, len(selected))
+	seen := make(map[int64]struct{}, len(selected))
 	for _, value := range selected {
 		teamID, err := common.ParseID(value)
 		if err != nil {
 			continue
 		}
-		if _, exists := selectedSet[teamID]; exists {
+		if _, exists := seen[teamID]; exists {
 			continue
 		}
-		selectedSet[teamID] = struct{}{}
+		seen[teamID] = struct{}{}
 		selectedIDs = append(selectedIDs, teamID)
 	}
-	sharesList, err := h.deps.Store.ListGoalShares(ctx, goalID)
+	ownerID, periodID, err := h.deps.Service.UpdateGoalOwnerAndShares(ctx, goalID, selectedIDs)
 	if err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	shareWeights := make(map[int64]int, len(sharesList))
-	for _, share := range sharesList {
-		shareWeights[share.TeamID] = share.Weight
-	}
-	ownerID := goal.TeamID
-	if _, ok := selectedSet[ownerID]; !ok {
-		ownerID = selectedIDs[0]
-	}
-	shares := make([]store.GoalShareInput, 0, len(selectedIDs))
-	for _, teamID := range selectedIDs {
-		status, err := h.deps.Store.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
-		if err != nil {
-			common.RenderError(w, h.deps.Logger, err)
-			return
-		}
-		if status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed {
+		if errors.Is(err, service.ErrCannotShareWithClosedPeriod) {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым периодом"))
 			return
 		}
-		if teamID == ownerID {
-			ownerWeight := goal.Weight
-			if ownerID != goal.TeamID {
-				if existingWeight, ok := shareWeights[ownerID]; ok {
-					ownerWeight = existingWeight
-				} else {
-					ownerWeight = 0
-				}
-			}
-			if err := h.deps.Store.UpdateGoalOwner(ctx, goalID, ownerID, ownerWeight); err != nil {
-				common.RenderError(w, h.deps.Logger, err)
-				return
-			}
-			continue
-		}
-		weight := 0
-		if existingWeight, ok := shareWeights[teamID]; ok {
-			weight = existingWeight
-		}
-		shares = append(shares, store.GoalShareInput{TeamID: teamID, Weight: weight})
-	}
-	if err := h.deps.Store.ReplaceGoalShares(ctx, goalID, shares); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -476,7 +380,7 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", ownerID, goal.PeriodID), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/teams/%d/okr?period_id=%d", ownerID, periodID), http.StatusSeeOther)
 }
 
 func parseOptionalTeamID(value string, fallback int64) int64 {

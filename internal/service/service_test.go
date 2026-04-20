@@ -247,6 +247,30 @@ func (f *fakeStore) ReplaceProjectStages(context.Context, int64, []store.Project
 func (f *fakeStore) SetTeamPeriodStatus(context.Context, int64, int64, domain.TeamPeriodStatus) error {
 	return nil
 }
+func (f *fakeStore) CreateTeam(context.Context, store.TeamInput) (int64, error)          { return 0, nil }
+func (f *fakeStore) UpdateTeam(context.Context, store.TeamInput, int64) error            { return nil }
+func (f *fakeStore) CreatePeriod(context.Context, store.PeriodInput) (int64, error)      { return 0, nil }
+func (f *fakeStore) UpdatePeriod(context.Context, int64, store.PeriodInput) error        { return nil }
+func (f *fakeStore) DeletePeriod(context.Context, int64) error                           { return nil }
+func (f *fakeStore) MovePeriod(context.Context, int64, int) error                        { return nil }
+func (f *fakeStore) CreateGoal(context.Context, store.GoalInput) (int64, error)          { return 0, nil }
+func (f *fakeStore) DeleteGoal(context.Context, int64) error                             { return nil }
+func (f *fakeStore) UpdateGoalFields(context.Context, store.GoalFieldsUpdateInput) error { return nil }
+func (f *fakeStore) UpdateGoalOwner(context.Context, int64, int64, int) error            { return nil }
+func (f *fakeStore) ListGoalComments(context.Context, int64) ([]domain.GoalComment, error) {
+	return nil, nil
+}
+func (f *fakeStore) GetGoalShare(context.Context, int64, int64) (store.GoalShare, error) {
+	return store.GoalShare{}, nil
+}
+func (f *fakeStore) DeleteGoalShare(context.Context, int64, int64) error { return nil }
+func (f *fakeStore) DeleteKeyResult(context.Context, int64) error        { return nil }
+func (f *fakeStore) FindGoalIDByKR(context.Context, int64) (int64, error) {
+	return 0, nil
+}
+func (f *fakeStore) FindGoalIDByStage(context.Context, int64) (int64, error) {
+	return 0, nil
+}
 
 func TestUpdateKRProgressPercent(t *testing.T) {
 	store := newFakeStore()

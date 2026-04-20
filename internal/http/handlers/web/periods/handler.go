@@ -30,7 +30,7 @@ type periodsPage struct {
 }
 
 func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
-	periods, err := h.deps.Store.ListPeriods(r.Context())
+	periods, err := h.deps.Service.ListPeriods(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -49,7 +49,7 @@ func (h *Handler) HandleEditPeriod(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, err := h.deps.Store.GetPeriod(r.Context(), periodID)
+	period, err := h.deps.Service.GetPeriod(r.Context(), periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -93,7 +93,7 @@ func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
 		h.renderPeriodsWithError(w, r, "Дата окончания должна быть позже даты начала")
 		return
 	}
-	if _, err := h.deps.Store.CreatePeriod(r.Context(), store.PeriodInput{
+	if _, err := h.deps.Service.CreatePeriod(r.Context(), store.PeriodInput{
 		Name:      name,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -135,7 +135,7 @@ func (h *Handler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
 		h.renderPeriodEditWithError(w, r, periodID, "Дата окончания должна быть позже даты начала")
 		return
 	}
-	if err := h.deps.Store.UpdatePeriod(r.Context(), periodID, store.PeriodInput{
+	if err := h.deps.Service.UpdatePeriod(r.Context(), periodID, store.PeriodInput{
 		Name:      name,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -152,7 +152,7 @@ func (h *Handler) HandleDeletePeriod(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Store.DeletePeriod(r.Context(), periodID); err != nil {
+	if err := h.deps.Service.DeletePeriod(r.Context(), periodID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -173,7 +173,7 @@ func (h *Handler) handleMove(w http.ResponseWriter, r *http.Request, direction i
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
 		return
 	}
-	if err := h.deps.Store.MovePeriod(r.Context(), periodID, direction); err != nil {
+	if err := h.deps.Service.MovePeriod(r.Context(), periodID, direction); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -181,7 +181,7 @@ func (h *Handler) handleMove(w http.ResponseWriter, r *http.Request, direction i
 }
 
 func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request, message string) {
-	periods, err := h.deps.Store.ListPeriods(r.Context())
+	periods, err := h.deps.Service.ListPeriods(r.Context())
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -196,7 +196,7 @@ func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request,
 }
 
 func (h *Handler) renderPeriodEditWithError(w http.ResponseWriter, r *http.Request, periodID int64, message string) {
-	period, err := h.deps.Store.GetPeriod(r.Context(), periodID)
+	period, err := h.deps.Service.GetPeriod(r.Context(), periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
