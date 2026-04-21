@@ -2465,18 +2465,24 @@
       let isFocusOnTrigger = false;
       let isFocusOnPopover = false;
 
+      const getActiveTip = () => {
+        const id = el.getAttribute('aria-describedby');
+        return id ? document.getElementById(id) : null;
+      };
+
       const hideIfNotHovered = () => {
-        const tip = popover.getTipElement();
-        const isTipHovered = Boolean(tip && tip.matches(':hover'));
-        const active = document.activeElement;
-        const isTipFocused = Boolean(tip && active && tip.contains(active));
-        if (isPointerOnTrigger || isPointerOnPopover || isTipHovered || isFocusOnTrigger || isFocusOnPopover || isTipFocused) return;
+        if (isPointerOnTrigger || isPointerOnPopover || isFocusOnTrigger || isFocusOnPopover) return;
+        const tip = getActiveTip();
+        if (tip) {
+          const active = document.activeElement;
+          if (tip.matches(':hover') || (active && tip.contains(active))) return;
+        }
         popover.hide();
       };
 
       const scheduleHide = () => {
         cancelHide();
-        hideTimeout = window.setTimeout(hideIfNotHovered, 220);
+        hideTimeout = window.setTimeout(hideIfNotHovered, 300);
       };
       const cancelHide = () => {
         if (hideTimeout) {
@@ -2507,7 +2513,7 @@
       });
 
       el.addEventListener('shown.bs.popover', () => {
-        const tip = popover.getTipElement();
+        const tip = getActiveTip();
         if (!tip) return;
         if (tip.dataset.hoverableBound === 'true') return;
         tip.dataset.hoverableBound = 'true';
@@ -2533,6 +2539,7 @@
       });
 
       el.addEventListener('hidden.bs.popover', () => {
+        isPointerOnTrigger = false;
         isPointerOnPopover = false;
         isFocusOnTrigger = false;
         isFocusOnPopover = false;
