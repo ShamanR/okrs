@@ -33,6 +33,10 @@ func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
 	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal))
 }
 
@@ -40,6 +44,10 @@ func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	var req struct {
@@ -79,6 +87,10 @@ func (h *Handler) HandleUpdateGoalWeight(w http.ResponseWriter, r *http.Request)
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	var req struct {
@@ -132,6 +144,10 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -197,6 +213,10 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {

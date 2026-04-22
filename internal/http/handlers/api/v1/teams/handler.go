@@ -3,6 +3,7 @@ package teams
 import (
 	"net/http"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
@@ -25,6 +26,10 @@ func (h *Handler) HandleTeam(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
 		return
 	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
+		return
+	}
 	team, err := h.service.GetTeam(r.Context(), teamID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
@@ -43,6 +48,10 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
 	periodID, err := common.ParsePeriodID(r)
@@ -69,6 +78,10 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
 		return
 	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
+		return
+	}
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil || periodID == 0 {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
@@ -91,6 +104,10 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {

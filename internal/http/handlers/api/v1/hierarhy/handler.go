@@ -2,7 +2,9 @@ package hierarhy
 
 import (
 	"net/http"
+	"slices"
 
+	"okrs/internal/auth"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
@@ -44,5 +46,25 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 			metrics[summary.ID] = summary
 		}
 	}
+	if allowedIDs, ok := auth.AllowedTeamIDsFromCtx(r.Context()); ok && allowedIDs != nil {
+		nodes = filterNodesByScope(nodes, allowedIDs)
+	}
 	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics))
+}
+
+// filterNodesByScope removes tree nodes not in allowedIDs and promotes orphaned children to their
+// parent's level so the user sees a valid subtree rooted at their access boundary.
+func filterNodesByScope(nodes []service.TeamNode, allowedIDs []int64) []service.TeamNode {
+	result := make([]service.TeamNode, 0, len(nodes))
+	for _, node := range nodes {
+		filteredChildren := filterNodesByScope(node.Children, allowedIDs)
+		if slices.Contains(allowedIDs, node.Team.ID) {
+			node.Children = filteredChildren
+			result = append(result, node)
+		} else {
+			// promote accessible children to this level
+			result = append(result, filteredChildren...)
+		}
+	}
+	return result
 }

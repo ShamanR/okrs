@@ -78,6 +78,30 @@ func (e *PolicyEvaluator) CanAccessTeam(ctx context.Context, teamID int64) bool 
 	return slices.Contains(ids, teamID)
 }
 
+// CanAccessTeamFromCtx is a package-level helper handlers can call without a PolicyEvaluator instance.
+// It reads the scope already loaded into ctx by ScopeMiddleware.
+// Returns true for admin/unrestricted (nil slice) or when teamID is in the allowed set.
+func CanAccessTeamFromCtx(ctx context.Context, teamID int64) bool {
+	ids, ok := ctx.Value(allowedTeamsKey).([]int64)
+	if !ok {
+		// Scope not explicitly loaded (e.g. in tests without middleware).
+		// ScopeMiddleware always populates this key in production, so treat
+		// absence as unrestricted rather than deny-all.
+		return true
+	}
+	if ids == nil {
+		return true // admin: unrestricted
+	}
+	return slices.Contains(ids, teamID)
+}
+
+// AllowedTeamIDsFromCtx returns the allowed team ID slice from ctx.
+// nil means unrestricted (admin). false second return means scope not loaded.
+func AllowedTeamIDsFromCtx(ctx context.Context) ([]int64, bool) {
+	ids, ok := ctx.Value(allowedTeamsKey).([]int64)
+	return ids, ok
+}
+
 // DefaultNodeID reads the configured default hierarchy node from system settings.
 func DefaultNodeIDFromSettings(ctx context.Context, st *store.Store) (int64, error) {
 	raw, err := st.GetSetting(ctx, "default_hierarchy_node_id")

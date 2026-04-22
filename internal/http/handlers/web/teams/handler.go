@@ -19,7 +19,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-
 type Handler struct {
 	deps common.Dependencies
 }
@@ -496,7 +495,7 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 		ContentTemplate: "team-form-content",
 		BreadcrumbTitle: map[bool]string{true: "Редактирование", false: "Новая команда"}[isEdit],
 		Title:           map[bool]string{true: "Редактировать команду", false: "Создать команду"}[isEdit],
-		FormAction:      map[bool]string{true: fmt.Sprintf("/teams/%d/update", teamID), false: "/teams"}[isEdit],
+		FormAction:      map[bool]string{true: fmt.Sprintf("/admin/teams/%d/update", teamID), false: "/admin/teams"}[isEdit],
 		SubmitLabel:     map[bool]string{true: "Сохранить", false: "Создать"}[isEdit],
 		TeamName:        values.Name,
 		TeamLead:        values.Lead,

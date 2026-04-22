@@ -211,6 +211,31 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
 	r.Get("/api/v1/me", apiadmin.HandleMe)
+	r.Get("/api/v1/users", func(w http.ResponseWriter, r *http.Request) {
+		users, err := s.store.ListUsers(r.Context())
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load users", nil)
+			return
+		}
+		type userItem struct {
+			ID          int64  `json:"id"`
+			DisplayName string `json:"display_name"`
+			AvatarURL   string `json:"avatar_url"`
+			Provider    string `json:"provider"`
+			Email       string `json:"email"`
+		}
+		items := make([]userItem, 0, len(users))
+		for _, u := range users {
+			items = append(items, userItem{
+				ID:          u.ID,
+				DisplayName: u.DisplayName,
+				AvatarURL:   u.AvatarURL,
+				Provider:    u.Provider,
+				Email:       u.Email,
+			})
+		}
+		v1.WriteJSON(w, http.StatusOK, items)
+	})
 
 	teamHandlers := apiteams.New(s.service)
 	r.Get("/api/v1/teams/{teamID}", teamHandlers.HandleTeam)
