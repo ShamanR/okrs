@@ -1,1 +1,2 @@
 cmd/server/__debug_*
+.vscode/*
