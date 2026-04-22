@@ -33,15 +33,15 @@
                   <td>{{.SortOrder}}</td>
                   <td class="text-end">
                     <div class="d-flex justify-content-end gap-2 flex-wrap">
-                      <a class="btn btn-outline-primary btn-sm" href="/periods/{{.ID}}/edit">Редактировать</a>
-                      <form method="post" action="/periods/{{.ID}}/delete" onsubmit="return confirm('Удалить период?');">
+                      <a class="btn btn-outline-primary btn-sm" href="/admin/periods/{{.ID}}/edit">Редактировать</a>
+                      <form method="post" action="/admin/periods/{{.ID}}/delete" onsubmit="return confirm('Удалить период?');">
                         <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
                       </form>
                       <div class="btn-group">
-                        <form method="post" action="/periods/{{.ID}}/move-up">
+                        <form method="post" action="/admin/periods/{{.ID}}/move-up">
                           <button class="btn btn-outline-secondary btn-sm" type="submit">↑</button>
                         </form>
-                        <form method="post" action="/periods/{{.ID}}/move-down">
+                        <form method="post" action="/admin/periods/{{.ID}}/move-down">
                           <button class="btn btn-outline-secondary btn-sm" type="submit">↓</button>
                         </form>
                       </div>
@@ -61,7 +61,7 @@
     <div class="card">
       <div class="card-body">
         <h2 class="h5">Новый период</h2>
-        <form method="post" action="/periods" class="vstack gap-3 mt-3">
+        <form method="post" action="/admin/periods" class="vstack gap-3 mt-3">
           <div>
             <label class="form-label">Название</label>
             <input class="form-control" name="name" required>

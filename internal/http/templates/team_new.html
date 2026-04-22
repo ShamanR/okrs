@@ -1,7 +1,7 @@
 {{define "team-form-content"}}
 <nav class="mb-4" aria-label="breadcrumb">
   <ol class="breadcrumb">
-    <li class="breadcrumb-item"><a href="/teams">Управление командами</a></li>
+    <li class="breadcrumb-item"><a href="/admin/teams">Управление командами</a></li>
     <li class="breadcrumb-item active" aria-current="page">{{.BreadcrumbTitle}}</li>
   </ol>
 </nav>
@@ -43,7 +43,7 @@
           </div>
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary">{{.SubmitLabel}}</button>
-            <a class="btn btn-outline-secondary" href="/teams">Отмена</a>
+            <a class="btn btn-outline-secondary" href="/admin/teams">Отмена</a>
           </div>
         </form>
       </div>
@@ -55,7 +55,7 @@
         <h2 class="h5">Быстрые ссылки</h2>
         <p class="text-muted">После сохранения команды можно перейти к OKR текущего периода.</p>
         <div class="d-flex flex-wrap gap-2">
-          <a class="btn btn-outline-primary" href="/teams">Вернуться к управлению</a>
+          <a class="btn btn-outline-primary" href="/admin/teams">Вернуться к управлению</a>
           <a class="btn btn-outline-secondary" href="/teamOkrs">К OKR команд</a>
         </div>
       </div>

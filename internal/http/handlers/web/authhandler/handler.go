@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	"okrs/internal/auth"
 
@@ -117,7 +118,9 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	next := "/teamOkrs"
 	if nc, err := r.Cookie("okrs_oauth_next"); err == nil && nc.Value != "" {
-		next = nc.Value
+		if safeRedirectPath(nc.Value) {
+			next = nc.Value
+		}
 		http.SetCookie(w, &http.Cookie{Name: "okrs_oauth_next", MaxAge: -1, Path: "/"})
 	}
 	http.Redirect(w, r, next, http.StatusFound)
@@ -130,6 +133,19 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	auth.ClearSessionCookie(w, h.mgr.CookieName())
 	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// safeRedirectPath returns true only for relative paths on this host,
+// preventing open-redirect attacks via a crafted next parameter.
+func safeRedirectPath(next string) bool {
+	if next == "" {
+		return false
+	}
+	// Must start with / but not // (protocol-relative URL)
+	if !strings.HasPrefix(next, "/") || strings.HasPrefix(next, "//") {
+		return false
+	}
+	return true
 }
 
 func generateState() (string, error) {

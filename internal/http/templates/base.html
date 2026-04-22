@@ -420,9 +420,10 @@
                 <li><hr class="dropdown-divider"></li>
               {{end}}
               <li>
-                <form method="post" action="/logout" class="d-inline">
-                  <button type="submit" class="dropdown-item text-danger">Выйти</button>
-                </form>
+                <button type="button" class="dropdown-item text-danger"
+                  onclick="fetch('/logout',{method:'POST',credentials:'include'}).then(()=>{location.href='/login'})">
+                  Выйти
+                </button>
               </li>
             </ul>
           </div>

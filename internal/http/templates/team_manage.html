@@ -6,7 +6,7 @@
   </div>
   <div class="d-flex gap-2">
     <a class="btn btn-outline-secondary btn-sm" href="/teamOkrs">К OKR команд</a>
-    <a class="btn btn-primary btn-sm" href="/teams/new">Новая команда</a>
+    <a class="btn btn-primary btn-sm" href="/admin/teams/new">Новая команда</a>
   </div>
 </div>
 
@@ -42,8 +42,8 @@
               </td>
               <td class="text-end">
                 <div class="d-inline-flex gap-2">
-                  <a class="btn btn-outline-secondary btn-sm" href="/teams/{{.ID}}/edit">Редактировать</a>
-                  <form method="post" action="/teams/{{.ID}}/delete" class="m-0">
+                  <a class="btn btn-outline-secondary btn-sm" href="/admin/teams/{{.ID}}/edit">Редактировать</a>
+                  <form method="post" action="/admin/teams/{{.ID}}/delete" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm">Удалить</button>
                   </form>
                 </div>
@@ -91,10 +91,10 @@
               <td>{{if .DeletedAt}}{{.DeletedAt}}{{else}}<span class="text-muted">—</span>{{end}}</td>
               <td class="text-end">
                 <div class="d-inline-flex gap-2">
-                  <form method="post" action="/teams/{{.ID}}/restore" class="m-0">
+                  <form method="post" action="/admin/teams/{{.ID}}/restore" class="m-0">
                     <button type="submit" class="btn btn-outline-secondary btn-sm">Вернуть</button>
                   </form>
-                  <form method="post" action="/teams/{{.ID}}/hard-delete" class="m-0">
+                  <form method="post" action="/admin/teams/{{.ID}}/hard-delete" class="m-0">
                     <button type="submit" class="btn btn-outline-danger btn-sm">Удалить окончательно</button>
                   </form>
                 </div>

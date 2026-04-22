@@ -222,8 +222,8 @@ func (f *fakeStore) UpdateGoalTeamWeight(context.Context, int64, int64, int) err
 func (f *fakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
-func (f *fakeStore) AddGoalComment(context.Context, int64, string) error      { return nil }
-func (f *fakeStore) AddKeyResultComment(context.Context, int64, string) error { return nil }
+func (f *fakeStore) AddGoalComment(context.Context, int64, string, int64) error { return nil }
+func (f *fakeStore) AddKeyResultComment(context.Context, int64, string, int64) error { return nil }
 func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error)      { return domain.Goal{}, nil }
 func (f *fakeStore) UpdateGoal(context.Context, store.GoalUpdateInput) error  { return nil }
 func (f *fakeStore) CreateKeyResult(context.Context, store.KeyResultInput) (int64, error) {

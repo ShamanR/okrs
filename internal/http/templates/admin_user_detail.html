@@ -30,8 +30,7 @@
         {{if .User.IsAdmin}}
           <span class="badge text-bg-warning me-2">Admin</span>
           <button class="btn btn-sm btn-outline-danger"
-            hx-delete="/api/v1/admin/users/{{.User.ID}}/admin"
-            onclick="if(confirm('Снять admin?')) fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'DELETE'}).then(()=>location.reload())">
+            onclick="if(confirm('Снять admin?')) fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'DELETE',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
             Снять admin
           </button>
         {{else}}

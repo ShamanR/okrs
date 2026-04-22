@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -135,6 +136,11 @@ func loadAuthConfig() auth.Config {
 	}
 	if policy := os.Getenv("AUTH_DEFAULT_NEW_USER_POLICY"); policy != "" {
 		cfg.NewUserPolicy = auth.NewUserPolicy(policy)
+	}
+	if nodeID := os.Getenv("AUTH_DEFAULT_NODE_ID"); nodeID != "" {
+		if id, err := strconv.ParseInt(nodeID, 10, 64); err == nil {
+			cfg.DefaultNodeID = id
+		}
 	}
 
 	// Google
