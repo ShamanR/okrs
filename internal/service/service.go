@@ -36,7 +36,7 @@ type Store interface {
 	UpdateGoalFields(ctx context.Context, input store.GoalFieldsUpdateInput) error
 	UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error
 	MoveGoal(ctx context.Context, goalID int64, direction int) error
-	AddGoalComment(ctx context.Context, goalID int64, text string) error
+	AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error
 	ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error)
 	ListGoalShares(ctx context.Context, goalID int64) ([]store.GoalShare, error)
 	GetGoalShare(ctx context.Context, goalID, teamID int64) (store.GoalShare, error)
@@ -58,7 +58,7 @@ type Store interface {
 	UpdateKeyResult(ctx context.Context, input store.KeyResultUpdateInput) error
 	DeleteKeyResult(ctx context.Context, id int64) error
 	MoveKeyResult(ctx context.Context, krID int64, direction int) error
-	AddKeyResultComment(ctx context.Context, krID int64, text string) error
+	AddKeyResultComment(ctx context.Context, krID int64, text string, authorUserID int64) error
 	FindGoalIDByKR(ctx context.Context, krID int64) (int64, error)
 	FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error)
 	UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error
@@ -547,12 +547,12 @@ func (s *Service) UpdateGoalWeight(ctx context.Context, goalID, teamID int64, we
 	return s.store.UpdateGoalTeamWeight(ctx, goalID, teamID, weight)
 }
 
-func (s *Service) AddGoalComment(ctx context.Context, goalID int64, text string) error {
-	return s.store.AddGoalComment(ctx, goalID, text)
+func (s *Service) AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error {
+	return s.store.AddGoalComment(ctx, goalID, text, authorUserID)
 }
 
-func (s *Service) AddKeyResultComment(ctx context.Context, krID int64, text string) error {
-	return s.store.AddKeyResultComment(ctx, krID, text)
+func (s *Service) AddKeyResultComment(ctx context.Context, krID int64, text string, authorUserID int64) error {
+	return s.store.AddKeyResultComment(ctx, krID, text, authorUserID)
 }
 
 func (s *Service) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {

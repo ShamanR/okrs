@@ -16,6 +16,14 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/okrs?sslmode=disable
       PORT: "8080"
       TZ: Asia/Bangkok
+      # AUTH_MODE: enabled
+      # AUTH_ENABLED_PROVIDERS: google,github
+      # AUTH_GOOGLE_CLIENT_ID: ...
+      # AUTH_GOOGLE_CLIENT_SECRET: ...
+      # AUTH_GOOGLE_REDIRECT_URL: http://localhost:8080/auth/google/callback
+      # AUTH_GITHUB_CLIENT_ID: ...
+      # AUTH_GITHUB_CLIENT_SECRET: ...
+      # AUTH_GITHUB_REDIRECT_URL: http://localhost:8080/auth/github/callback
     depends_on:
       - db
     ports:

@@ -11,9 +11,10 @@ type ShareTeam struct {
 }
 
 type GoalComment struct {
-	ID        int64     `json:"id"`
-	Text      string    `json:"text"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int64     `json:"id"`
+	Text       string    `json:"text"`
+	AuthorName string    `json:"author_name"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type GoalDetails struct {

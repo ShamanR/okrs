@@ -829,6 +829,12 @@
     const item = document.createElement('li');
     item.className = 'small okr-kr-comment is-clamped';
     item.textContent = latestComment.text;
+    if (latestComment.author_name) {
+      const author = document.createElement('span');
+      author.className = 'text-muted ms-1';
+      author.textContent = '— ' + latestComment.author_name;
+      item.appendChild(author);
+    }
     list.appendChild(item);
     container.append(title, list);
     return container;

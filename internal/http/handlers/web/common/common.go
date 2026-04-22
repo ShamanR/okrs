@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/service"
 )
@@ -24,7 +25,7 @@ type Dependencies struct {
 	Zone      *time.Location
 }
 
-func RenderTemplate(w http.ResponseWriter, tmpl *template.Template, name string, data any, logger *slog.Logger) {
+func RenderTemplate(w http.ResponseWriter, r *http.Request, tmpl *template.Template, name string, data any, logger *slog.Logger) {
 	if name == "base" {
 		pageTitle, contentTemplate, err := extractLayoutFields(data)
 		if err != nil {
@@ -39,9 +40,11 @@ func RenderTemplate(w http.ResponseWriter, tmpl *template.Template, name string,
 		layout := struct {
 			PageTitle   string
 			ContentHTML template.HTML
+			CurrentUser any
 		}{
 			PageTitle:   pageTitle,
 			ContentHTML: template.HTML(content.String()),
+			CurrentUser: auth.UserFromContext(r.Context()),
 		}
 		if err := tmpl.ExecuteTemplate(w, name, layout); err != nil {
 			RenderError(w, logger, err)

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
@@ -142,7 +143,7 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 	}
 	text := common.TrimmedFormValue(r, "text")
 	if text != "" {
-		if err := h.deps.Service.AddKeyResultComment(ctx, krID, text); err != nil {
+		if err := h.deps.Service.AddKeyResultComment(ctx, krID, text, auth.UserIDFromContext(ctx)); err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
@@ -44,7 +45,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/teamOkrs", http.StatusSeeOther)
 		return
 	}
-	if err := h.deps.Service.AddGoalComment(ctx, goalID, text); err != nil {
+	if err := h.deps.Service.AddGoalComment(ctx, goalID, text, auth.UserIDFromContext(ctx)); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

@@ -95,7 +95,7 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDe
 func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 	comments := make([]dto.KRComment, 0, len(kr.Comments))
 	for _, comment := range kr.Comments {
-		comments = append(comments, dto.KRComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
+		comments = append(comments, dto.KRComment{ID: comment.ID, Text: comment.Text, AuthorName: comment.AuthorName, CreatedAt: comment.CreatedAt})
 	}
 	return dto.KeyResult{
 		ID:          kr.ID,

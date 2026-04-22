@@ -9,7 +9,7 @@ import (
 func newGoalResponse(goal domain.Goal) dto.GoalResponse {
 	comments := make([]dto.GoalComment, 0, len(goal.Comments))
 	for _, comment := range goal.Comments {
-		comments = append(comments, dto.GoalComment{ID: comment.ID, Text: comment.Text, CreatedAt: comment.CreatedAt})
+		comments = append(comments, dto.GoalComment{ID: comment.ID, Text: comment.Text, AuthorName: comment.AuthorName, CreatedAt: comment.CreatedAt})
 	}
 	krList := make([]dto.KeyResult, 0, len(goal.KeyResults))
 	for _, kr := range goal.KeyResults {

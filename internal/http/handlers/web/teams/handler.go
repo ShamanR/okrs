@@ -176,7 +176,7 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "teams-content",
 	}
 	persistTeamsFilters(w, periodValue, selectedFilter)
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleTeamManagement(w http.ResponseWriter, r *http.Request) {
@@ -279,7 +279,7 @@ func (h *Handler) renderTeamManagement(w http.ResponseWriter, r *http.Request, f
 		Teams:           buildTeamManagementRows(activeTeams),
 		DeletedTeams:    buildTeamManagementRows(deletedTeams),
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
@@ -504,7 +504,7 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 		TeamTypes:       types,
 		ParentTeams:     parentOptions,
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -581,7 +581,7 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		PageTitle:       fmt.Sprintf("OKR %s", team.Name),
 		ContentTemplate: "team-okr-content",
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
@@ -717,7 +717,7 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		ContentTemplate:  "team-okr-content",
 		ObjectiveBlockV2: common.FeatureEnabled("okr_objective_block_ui_v2"),
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {

@@ -85,10 +85,11 @@ type Goal struct {
 }
 
 type GoalComment struct {
-	ID        int64
-	GoalID    int64
-	Text      string
-	CreatedAt time.Time
+	ID         int64
+	GoalID     int64
+	Text       string
+	AuthorName string
+	CreatedAt  time.Time
 }
 
 type KeyResult struct {
@@ -113,6 +114,7 @@ type KeyResultComment struct {
 	ID          int64
 	KeyResultID int64
 	Text        string
+	AuthorName  string
 	CreatedAt   time.Time
 }
 
@@ -162,3 +164,34 @@ type Period struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+type User struct {
+	ID                 int64
+	ProviderSubjectKey string
+	Provider           string
+	Subject            string
+	DisplayName        string
+	AvatarURL          string
+	Email              string
+	AttributesJSON     map[string]any
+	IsAdmin            bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	LastLoginAt        time.Time
+}
+
+type AuthSession struct {
+	ID          string
+	UserID      int64
+	Provider    string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	LastSeenAt  time.Time
+	UserAgent   string
+	IP          string
+}
+
+const (
+	SystemUserAnonymous int64 = 1
+	SystemUserMigration int64 = 2
+)

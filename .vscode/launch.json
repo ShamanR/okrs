@@ -10,7 +10,17 @@
             "request": "launch",
             "mode": "debug",
             "program": "cmd/server/main.go",
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "AUTH_MODE": "enabled",
+                "AUTH_ENABLED_PROVIDERS": "github",
+                "AUTH_GITHUB_CLIENT_ID": "Ov23li9VpfsFnJU2UMUm",
+                "AUTH_GITHUB_CLIENT_SECRET": "d8935b1765a1dfb05dd64b3fe46b1e2d4840037a",
+                "AUTH_GITHUB_REDIRECT_URL": "http://localhost:8080/auth/github/callback",
+                "AUTH_GOOGLE_CLIENT_ID": "",
+                "AUTH_GOOGLE_CLIENT_SECRET": "...",
+                "AUTH_GOOGLE_REDIRECT_URL": "http://localhost:8080/auth/google/callback"
+            }
         }
     ]
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
@@ -120,7 +121,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
-	if err := h.service.AddGoalComment(r.Context(), goalID, req.Text); err != nil {
+	if err := h.service.AddGoalComment(r.Context(), goalID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to add comment", nil)
 		return
 	}

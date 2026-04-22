@@ -8,6 +8,62 @@ Legacy SSR/form mutation endpoints для team OKR также не считаю�
 
 SSR-страницы должны опираться на те же правила, что и API.
 
+## Auth endpoints
+
+Публичные маршруты (не требуют авторизации):
+
+- `GET /login` — страница входа (список провайдеров или немедленный редирект при одном провайдере); при `AUTH_MODE=disabled` редиректит на `/teamOkrs`
+- `GET /auth/{provider}/start` — инициирует OAuth2 flow, устанавливает state cookie и редиректит на провайдера
+- `GET /auth/{provider}/callback` — обрабатывает OAuth2 callback, создаёт или обновляет пользователя, устанавливает session cookie, редиректит на исходную страницу
+- `POST /logout` — удаляет серверную сессию, очищает cookie, редиректит на `/login`
+
+При `AUTH_MODE=enabled` неавторизованные запросы к SSR-страницам получают `302 → /login?next=<original_url>`. Запросы к API-endpoints получают `401`.
+
+## Me endpoint
+
+- `GET /api/v1/me` — возвращает текущего пользователя
+
+Response:
+
+```json
+{
+  "id": 42,
+  "display_name": "Ivan Ivanov",
+  "email": "ivan@example.com",
+  "avatar_url": "https://...",
+  "provider": "google",
+  "is_admin": false
+}
+```
+
+При `AUTH_MODE=disabled` возвращает системного пользователя `anonymous-local`.
+
+## Admin API endpoints
+
+Доступны только администраторам при `AUTH_MODE=enabled`. При `AUTH_MODE=disabled` доступны всем.
+
+### Пользователи
+
+- `GET /api/v1/admin/users` — список всех пользователей (id, display_name, avatar_url, provider, last_login_at, is_admin)
+- `GET /api/v1/admin/users/{userID}` — карточка пользователя с grants
+- `POST /api/v1/admin/users/{userID}/admin` — выдать права администратора
+- `DELETE /api/v1/admin/users/{userID}/admin` — снять права администратора
+
+### Grants
+
+- `GET /api/v1/admin/users/{userID}/grants` — список выданных hierarchy grants
+- `POST /api/v1/admin/users/{userID}/grants` — выдать грант на узел иерархии; body: `{"team_id": 42}`
+- `DELETE /api/v1/admin/users/{userID}/grants/{teamID}` — отозвать грант
+
+### Настройки доступа
+
+- `GET /api/v1/admin/settings/access` — текущая политика для новых пользователей (`new_user_policy`, `default_hierarchy_node_id`)
+- `POST /api/v1/admin/settings/access` — обновить политику; body: `{"new_user_policy": "default_node", "default_hierarchy_node_id": 42}`
+
+Допустимые значения `new_user_policy`: `empty`, `default_node`.
+
+Все admin API endpoints требуют CSRF token при вызове из браузера.
+
 Ошибки возвращаются в нормализованном виде:
 
 - `VALIDATION_ERROR`
