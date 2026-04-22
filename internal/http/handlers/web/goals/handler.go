@@ -271,6 +271,10 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		seen[teamID] = struct{}{}
 		selectedIDs = append(selectedIDs, teamID)
 	}
+	if len(selectedIDs) == 0 {
+		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
+		return
+	}
 	ownerID, periodID, err := h.deps.Service.UpdateGoalOwnerAndShares(ctx, goalID, selectedIDs)
 	if err != nil {
 		if errors.Is(err, service.ErrCannotShareWithClosedPeriod) {
