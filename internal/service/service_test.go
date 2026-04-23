@@ -101,7 +101,7 @@ func (f *fakeStore) ListGoalsByTeamsPeriod(_ context.Context, periodID int64, te
 	}
 	return result, nil
 }
-func (f *fakeStore) ListTeamOverviewStats(_ context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error) {
+func (f *fakeStore) listTeamOverviewStatsUnused(_ context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error) {
 	result := make(map[int64]store.TeamOverviewStats, len(teamIDs))
 	for _, teamID := range teamIDs {
 		item := store.TeamOverviewStats{TeamID: teamID}
@@ -138,6 +138,12 @@ func (f *fakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID int6
 		return status, nil
 	}
 	return domain.TeamPeriodStatusNoGoals, nil
+}
+func (f *fakeStore) GetTeamPeriodStatusWithTime(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
+	if status, ok := f.statuses[[2]int64{teamID, periodID}]; ok {
+		return status, nil, nil
+	}
+	return domain.TeamPeriodStatusNoGoals, nil, nil
 }
 func (f *fakeStore) ListTeamPeriodStatuses(_ context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
 	result := make(map[int64]domain.TeamPeriodStatus, len(teamIDs))
@@ -598,12 +604,6 @@ func TestGetTeamOverview(t *testing.T) {
 	}
 	if overview.AverageProgress != 0 {
 		t.Fatalf("expected average progress=0 for zero-progress goal, got %d", overview.AverageProgress)
-	}
-	if overview.Priorities.P1 != 1 {
-		t.Fatalf("expected P1 count=1, got %+v", overview.Priorities)
-	}
-	if overview.WorkBalance.Delivery != 1 {
-		t.Fatalf("expected delivery count=1, got %+v", overview.WorkBalance)
 	}
 	if len(overview.ChildrenSummary) != 1 {
 		t.Fatalf("expected one direct child summary row, got %d", len(overview.ChildrenSummary))

@@ -28,7 +28,6 @@ type Store interface {
 	MovePeriod(ctx context.Context, periodID int64, direction int) error
 	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
 	ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
-	ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]store.TeamOverviewStats, error)
 	GetGoal(ctx context.Context, id int64) (domain.Goal, error)
 	CreateGoal(ctx context.Context, input store.GoalInput) (int64, error)
 	DeleteGoal(ctx context.Context, id int64) error
@@ -44,6 +43,7 @@ type Store interface {
 	DeleteGoalShare(ctx context.Context, goalID, teamID int64) error
 	UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, weight int) error
 	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
+	GetTeamPeriodStatusWithTime(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error)
 	ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
 	SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
@@ -80,7 +80,7 @@ var (
 	ErrTeamHasGoals                = errors.New("team has goals")
 	ErrTeamNotVisibleInPeriod      = errors.New("team not visible in period")
 	ErrPeriodClosed                = errors.New("period is closed")
-	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is validated or closed")
+	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
 )
 
 func New(store Store) *Service {
@@ -122,41 +122,30 @@ type TeamShareInfo struct {
 }
 
 type TeamChildSummary struct {
-	Team         domain.Team
-	Status       domain.TeamPeriodStatus
-	HasGoals     bool
-	Progress     int
-	LastUpdateAt *time.Time
+	Team              domain.Team
+	Status            domain.TeamPeriodStatus
+	HasGoals          bool
+	Progress          int
+	GoalsCount        int
+	HighPriorityCount int
+	LastUpdateAt      *time.Time
 }
 
 type TeamOverview struct {
 	AverageProgress int
 	TeamsWithGoals  int
-	Priorities      TeamPrioritySummary
-	WorkBalance     TeamWorkBalance
 	ChildrenSummary []TeamChildSummary
 }
 
-type TeamPrioritySummary struct {
-	P0 int
-	P1 int
-	P2 int
-	P3 int
-}
-
-type TeamWorkBalance struct {
-	Discovery int
-	Delivery  int
-}
-
 type TeamOKR struct {
-	Team           domain.Team
-	Period         domain.Period
-	PeriodStatus   domain.TeamPeriodStatus
-	PeriodProgress int
-	GoalsCount     int
-	GoalsWeight    int
-	Goals          []GoalDetails
+	Team              domain.Team
+	Period            domain.Period
+	PeriodStatus      domain.TeamPeriodStatus
+	StatusChangedAt   *time.Time
+	PeriodProgress    int
+	GoalsCount        int
+	GoalsWeight       int
+	Goals             []GoalDetails
 }
 
 type GoalDetails struct {
@@ -271,7 +260,7 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 	for _, goal := range goals {
 		goalsWeight += goal.Weight
 	}
-	status, err := s.store.GetTeamPeriodStatus(ctx, teamID, periodID)
+	status, statusChangedAt, err := s.store.GetTeamPeriodStatusWithTime(ctx, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -283,13 +272,14 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 		})
 	}
 	return TeamOKR{
-		Team:           team,
-		Period:         period,
-		PeriodStatus:   status,
-		PeriodProgress: periodProgress,
-		GoalsCount:     len(goals),
-		GoalsWeight:    goalsWeight,
-		Goals:          goalDetails,
+		Team:            team,
+		Period:          period,
+		PeriodStatus:    status,
+		StatusChangedAt: statusChangedAt,
+		PeriodProgress:  periodProgress,
+		GoalsCount:      len(goals),
+		GoalsWeight:     goalsWeight,
+		Goals:           goalDetails,
 	}, nil
 }
 
@@ -309,7 +299,7 @@ func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID
 	return s.buildDirectChildrenSummary(ctx, periodID, children, nil)
 }
 
-func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64, children []TeamNode, summaryByID map[int64]TeamSummary) ([]TeamChildSummary, error) {
+func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64, children []TeamNode, goalsByTeam map[int64][]domain.Goal) ([]TeamChildSummary, error) {
 	childIDs := make([]int64, 0, len(children))
 	for _, child := range children {
 		childIDs = append(childIDs, child.Team.ID)
@@ -331,22 +321,26 @@ func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64
 		if status, ok := statuses[child.Team.ID]; ok {
 			item.Status = status
 		}
-		if summaryByID != nil {
-			if summary, ok := summaryByID[child.Team.ID]; ok {
-				item.HasGoals = summary.GoalsCount > 0
-				item.Progress = summary.PeriodProgress
-			}
+		var goals []domain.Goal
+		if goalsByTeam != nil {
+			goals = goalsByTeam[child.Team.ID]
 		} else {
-			goals, err := s.store.ListGoalsByTeamPeriod(ctx, child.Team.ID, periodID)
+			goals, err = s.store.ListGoalsByTeamPeriod(ctx, child.Team.ID, periodID)
 			if err != nil {
 				return nil, err
 			}
-			item.HasGoals = len(goals) > 0
-			if item.HasGoals {
-				for i := range goals {
-					goals[i].Progress = CalculateGoalProgress(&goals[i])
+		}
+		item.GoalsCount = len(goals)
+		item.HasGoals = item.GoalsCount > 0
+		if item.HasGoals {
+			for i := range goals {
+				goals[i].Progress = CalculateGoalProgress(&goals[i])
+			}
+			item.Progress = okr.PeriodProgress(goals)
+			for _, g := range goals {
+				if g.Priority == domain.PriorityP0 || g.Priority == domain.PriorityP1 {
+					item.HighPriorityCount++
 				}
-				item.Progress = okr.PeriodProgress(goals)
 			}
 		}
 		if updatedAt, ok := lastUpdates[child.Team.ID]; ok {
@@ -373,10 +367,6 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 	if err != nil {
 		return TeamOverview{}, err
 	}
-	overviewStats, err := s.store.ListTeamOverviewStats(ctx, periodID, descendantIDs)
-	if err != nil {
-		return TeamOverview{}, err
-	}
 	summaryByID := make(map[int64]TeamSummary, len(descendantIDs))
 	for _, id := range descendantIDs {
 		goals := goalsByTeam[id]
@@ -394,7 +384,7 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 	}
 	childrenSummary := []TeamChildSummary{}
 	if len(children) > 0 {
-		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, summaryByID)
+		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, goalsByTeam)
 		if err != nil {
 			return TeamOverview{}, err
 		}
@@ -402,8 +392,6 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 
 	totalProgress := 0
 	teamsWithGoals := 0
-	priorities := TeamPrioritySummary{}
-	workBalance := TeamWorkBalance{}
 
 	for _, id := range descendantIDs {
 		summary, ok := summaryByID[id]
@@ -412,14 +400,6 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 		}
 		teamsWithGoals++
 		totalProgress += summary.PeriodProgress
-		if stat, exists := overviewStats[id]; exists {
-			priorities.P0 += stat.PriorityP0
-			priorities.P1 += stat.PriorityP1
-			priorities.P2 += stat.PriorityP2
-			priorities.P3 += stat.PriorityP3
-			workBalance.Discovery += stat.Discovery
-			workBalance.Delivery += stat.Delivery
-		}
 	}
 
 	avgProgress := 0
@@ -430,8 +410,6 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 	return TeamOverview{
 		AverageProgress: avgProgress,
 		TeamsWithGoals:  teamsWithGoals,
-		Priorities:      priorities,
-		WorkBalance:     workBalance,
 		ChildrenSummary: childrenSummary,
 	}, nil
 }
@@ -898,13 +876,13 @@ func (s *Service) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, 
 // — Business logic —
 
 // CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
-// Returns ErrPeriodClosed if the team's period status is Closed.
+// Returns ErrPeriodClosed if the team's period status is InProgress or Closed.
 func (s *Service) CreateGoal(ctx context.Context, input store.GoalInput) (int64, error) {
 	status, err := s.store.GetTeamPeriodStatus(ctx, input.TeamID, input.PeriodID)
 	if err != nil {
 		return 0, err
 	}
-	if status == domain.TeamPeriodStatusClosed {
+	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
 		return 0, ErrPeriodClosed
 	}
 	goalID, err := s.store.CreateGoal(ctx, input)
@@ -931,7 +909,11 @@ func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64
 		requestingTeamID = goal.TeamID
 	}
 	if requestingTeamID != goal.TeamID {
-		return requestingTeamID, goal.PeriodID, s.store.DeleteGoalShare(ctx, goalID, requestingTeamID)
+		if err := s.store.DeleteGoalShare(ctx, goalID, requestingTeamID); err != nil {
+			return 0, 0, err
+		}
+		_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+		return requestingTeamID, goal.PeriodID, nil
 	}
 	shares, err := s.store.ListGoalShares(ctx, goalID)
 	if err != nil {
@@ -945,20 +927,37 @@ func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64
 		if err := s.store.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
 			return 0, 0, err
 		}
+		_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
 	status, err := s.store.GetTeamPeriodStatus(ctx, goal.TeamID, goal.PeriodID)
 	if err != nil {
 		return 0, 0, err
 	}
-	if status == domain.TeamPeriodStatusClosed {
+	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
 		return 0, 0, ErrPeriodClosed
 	}
-	return requestingTeamID, goal.PeriodID, s.store.DeleteGoal(ctx, goalID)
+	if err := s.store.DeleteGoal(ctx, goalID); err != nil {
+		return 0, 0, err
+	}
+	_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+	return requestingTeamID, goal.PeriodID, nil
+}
+
+func (s *Service) resetStatusIfNoGoals(ctx context.Context, teamID, periodID int64) error {
+	goals, err := s.store.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+	if err != nil || len(goals) > 0 {
+		return err
+	}
+	status, err := s.store.GetTeamPeriodStatus(ctx, teamID, periodID)
+	if err != nil || status == domain.TeamPeriodStatusNoGoals {
+		return nil
+	}
+	return s.store.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusNoGoals)
 }
 
 // UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
-// Returns ErrCannotShareWithClosedPeriod if any selected team has a validated or closed period.
+// Returns ErrCannotShareWithClosedPeriod if any selected team has an in_progress or closed period.
 func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
 	goal, err := s.store.GetGoal(ctx, goalID)
 	if err != nil {
@@ -986,7 +985,7 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, se
 		if err != nil {
 			return 0, 0, err
 		}
-		if status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed {
+		if status == domain.TeamPeriodStatusInProgress || status == domain.TeamPeriodStatusClosed {
 			return 0, 0, ErrCannotShareWithClosedPeriod
 		}
 		if teamID == ownerID {

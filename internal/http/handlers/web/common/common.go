@@ -177,7 +177,7 @@ func TeamTypeLabel(t domain.TeamType) string {
 
 func ValidTeamPeriodStatus(status domain.TeamPeriodStatus) bool {
 	switch status {
-	case domain.TeamPeriodStatusNoGoals, domain.TeamPeriodStatusForming, domain.TeamPeriodStatusInProgress, domain.TeamPeriodStatusValidated, domain.TeamPeriodStatusClosed:
+	case domain.TeamPeriodStatusNoGoals, domain.TeamPeriodStatusForming, domain.TeamPeriodStatusReady, domain.TeamPeriodStatusInProgress, domain.TeamPeriodStatusClosed:
 		return true
 	default:
 		return false
@@ -189,13 +189,13 @@ func TeamPeriodStatusLabel(status domain.TeamPeriodStatus) string {
 	case domain.TeamPeriodStatusNoGoals:
 		return "Нет целей"
 	case domain.TeamPeriodStatusForming:
-		return "Черновик целей"
+		return "Черновик"
+	case domain.TeamPeriodStatusReady:
+		return "К валидации"
 	case domain.TeamPeriodStatusInProgress:
-		return "Готовы к валидации"
-	case domain.TeamPeriodStatusValidated:
-		return "Провалидировано"
+		return "В работе"
 	case domain.TeamPeriodStatusClosed:
-		return "Цели закрыты"
+		return "Закрыты"
 	default:
 		return "Нет целей"
 	}

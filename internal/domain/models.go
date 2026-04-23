@@ -47,11 +47,11 @@ const (
 type TeamPeriodStatus string
 
 const (
-	TeamPeriodStatusNoGoals    TeamPeriodStatus = "no_goals"
-	TeamPeriodStatusForming    TeamPeriodStatus = "forming"
-	TeamPeriodStatusInProgress TeamPeriodStatus = "in_progress"
-	TeamPeriodStatusValidated  TeamPeriodStatus = "validated"
-	TeamPeriodStatusClosed     TeamPeriodStatus = "closed"
+	TeamPeriodStatusNoGoals    TeamPeriodStatus = "no_goals"    // computed: no goals in period
+	TeamPeriodStatusForming    TeamPeriodStatus = "forming"     // черновик: full edit
+	TeamPeriodStatusReady      TeamPeriodStatus = "ready"       // к валидации: full edit
+	TeamPeriodStatusInProgress TeamPeriodStatus = "in_progress" // в работе: progress/comments only
+	TeamPeriodStatusClosed     TeamPeriodStatus = "closed"      // закрыты: comments only
 )
 
 type Team struct {

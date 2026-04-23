@@ -214,10 +214,6 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
-		return
-	}
 	if err := h.service.MoveKeyResult(r.Context(), krID, direction); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move key result", nil)
 		return

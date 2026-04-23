@@ -788,7 +788,7 @@ func buildShareTargets(rootTeams []domain.Team, childrenMap map[int64][]domain.T
 func appendShareTarget(options *[]shareTeamOption, team domain.Team, childrenMap map[int64][]domain.Team, statuses map[int64]domain.TeamPeriodStatus, level int) {
 	label := fmt.Sprintf("%s%s %s", teamHierarchyPrefix(level), common.TeamTypeLabel(team.Type), team.Name)
 	status := statuses[team.ID]
-	disabled := status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed
+	disabled := status == domain.TeamPeriodStatusInProgress || status == domain.TeamPeriodStatusClosed
 	*options = append(*options, shareTeamOption{
 		ID:       team.ID,
 		Label:    label,
@@ -929,7 +929,7 @@ func buildTeamStatusOptions(selected domain.TeamPeriodStatus) []teamStatusOption
 		{Value: string(domain.TeamPeriodStatusNoGoals), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusNoGoals), Selected: selected == domain.TeamPeriodStatusNoGoals},
 		{Value: string(domain.TeamPeriodStatusForming), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusForming), Selected: selected == domain.TeamPeriodStatusForming},
 		{Value: string(domain.TeamPeriodStatusInProgress), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusInProgress), Selected: selected == domain.TeamPeriodStatusInProgress},
-		{Value: string(domain.TeamPeriodStatusValidated), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusValidated), Selected: selected == domain.TeamPeriodStatusValidated},
+		{Value: string(domain.TeamPeriodStatusReady), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusReady), Selected: selected == domain.TeamPeriodStatusReady},
 		{Value: string(domain.TeamPeriodStatusClosed), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusClosed), Selected: selected == domain.TeamPeriodStatusClosed},
 	}
 }

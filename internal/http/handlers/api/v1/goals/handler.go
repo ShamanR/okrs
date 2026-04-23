@@ -219,12 +219,48 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
-		return
-	}
 	if err := h.service.MoveGoal(r.Context(), goalID, direction); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move goal", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) HandleLeaveGoalShare(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "access denied", nil)
+		return
+	}
+	if _, _, err := h.service.DeleteGoal(r.Context(), goalID, teamID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), goalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	if _, _, err := h.service.DeleteGoal(r.Context(), goalID, goal.TeamID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
