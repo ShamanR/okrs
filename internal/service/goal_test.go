@@ -1,0 +1,505 @@
+package service
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"okrs/internal/domain"
+	"okrs/internal/store"
+)
+
+// ── goalFakeStore ─────────────────────────────────────────────────────────────
+
+type goalFakeStore struct {
+	goals      map[int64]domain.Goal
+	goalShares map[int64][]store.GoalShare
+	statuses   map[[2]int64]domain.TeamPeriodStatus
+	// goals remaining after a delete (used to drive resetStatusIfNoGoals)
+	goalsAfterDelete map[int64]map[int64][]domain.Goal
+	keyResults       map[int64]domain.KeyResult
+	nextGoalID       int64
+
+	// call tracking
+	setStatusCalls     []setStatusArg
+	deleteGoalCalls    []int64
+	deleteShareCalls   []deleteShareArg
+	updateOwnerCalls   []updateOwnerArg
+	replaceSharesCalls []replaceSharesArg
+	upsertPercentCalls []store.PercentMetaInput
+	upsertLinearCalls  []store.LinearMetaInput
+	upsertBoolCalls    []upsertBoolArg
+	replaceStageCalls  []replaceStagesArg
+}
+
+type setStatusArg    struct{ teamID, periodID int64; status domain.TeamPeriodStatus }
+type deleteShareArg  struct{ goalID, teamID int64 }
+type updateOwnerArg  struct{ goalID, teamID int64; weight int }
+type replaceSharesArg struct{ goalID int64; shares []store.GoalShareInput }
+type upsertBoolArg   struct{ krID int64; done bool }
+type replaceStagesArg struct{ krID int64; stages []store.ProjectStageInput }
+
+func newGoalFakeStore() *goalFakeStore {
+	return &goalFakeStore{
+		goals:            make(map[int64]domain.Goal),
+		goalShares:       make(map[int64][]store.GoalShare),
+		statuses:         make(map[[2]int64]domain.TeamPeriodStatus),
+		goalsAfterDelete: make(map[int64]map[int64][]domain.Goal),
+		keyResults:       make(map[int64]domain.KeyResult),
+		nextGoalID:       1,
+	}
+}
+
+// — Store interface implementation (tracking methods first) —
+
+func (f *goalFakeStore) GetGoal(_ context.Context, id int64) (domain.Goal, error) {
+	return f.goals[id], nil
+}
+func (f *goalFakeStore) CreateGoal(_ context.Context, input store.GoalInput) (int64, error) {
+	id := f.nextGoalID
+	f.nextGoalID++
+	return id, nil
+}
+func (f *goalFakeStore) DeleteGoal(_ context.Context, id int64) error {
+	f.deleteGoalCalls = append(f.deleteGoalCalls, id)
+	return nil
+}
+func (f *goalFakeStore) DeleteGoalShare(_ context.Context, goalID, teamID int64) error {
+	f.deleteShareCalls = append(f.deleteShareCalls, deleteShareArg{goalID, teamID})
+	return nil
+}
+func (f *goalFakeStore) UpdateGoalOwner(_ context.Context, goalID, teamID int64, weight int) error {
+	f.updateOwnerCalls = append(f.updateOwnerCalls, updateOwnerArg{goalID, teamID, weight})
+	return nil
+}
+func (f *goalFakeStore) SetTeamPeriodStatus(_ context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
+	f.setStatusCalls = append(f.setStatusCalls, setStatusArg{teamID, periodID, status})
+	return nil
+}
+func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, goalID int64, shares []store.GoalShareInput) error {
+	f.replaceSharesCalls = append(f.replaceSharesCalls, replaceSharesArg{goalID, shares})
+	return nil
+}
+func (f *goalFakeStore) UpsertPercentMeta(_ context.Context, input store.PercentMetaInput) error {
+	f.upsertPercentCalls = append(f.upsertPercentCalls, input)
+	return nil
+}
+func (f *goalFakeStore) UpsertLinearMeta(_ context.Context, input store.LinearMetaInput) error {
+	f.upsertLinearCalls = append(f.upsertLinearCalls, input)
+	return nil
+}
+func (f *goalFakeStore) UpsertBooleanMeta(_ context.Context, krID int64, done bool) error {
+	f.upsertBoolCalls = append(f.upsertBoolCalls, upsertBoolArg{krID, done})
+	return nil
+}
+func (f *goalFakeStore) ReplaceProjectStages(_ context.Context, krID int64, stages []store.ProjectStageInput) error {
+	f.replaceStageCalls = append(f.replaceStageCalls, replaceStagesArg{krID, stages})
+	return nil
+}
+func (f *goalFakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
+	if s, ok := f.statuses[[2]int64{teamID, periodID}]; ok {
+		return s, nil
+	}
+	return domain.TeamPeriodStatusNoGoals, nil
+}
+func (f *goalFakeStore) ListGoalShares(_ context.Context, goalID int64) ([]store.GoalShare, error) {
+	return f.goalShares[goalID], nil
+}
+func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID int64) ([]domain.Goal, error) {
+	if m := f.goalsAfterDelete[teamID]; m != nil {
+		return m[periodID], nil
+	}
+	return nil, nil
+}
+func (f *goalFakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult, error) {
+	return f.keyResults[id], nil
+}
+func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ store.KeyResultInput) (int64, error) {
+	id := f.nextGoalID
+	f.nextGoalID++
+	return id, nil
+}
+
+// — no-op implementations for the remaining Store interface methods —
+
+func (f *goalFakeStore) ListTeams(context.Context) ([]domain.Team, error)       { return nil, nil }
+func (f *goalFakeStore) ListDeletedTeams(context.Context) ([]domain.Team, error) { return nil, nil }
+func (f *goalFakeStore) ListAllTeams(context.Context) ([]domain.Team, error)     { return nil, nil }
+func (f *goalFakeStore) GetTeam(_ context.Context, _ int64) (domain.Team, error) {
+	return domain.Team{}, nil
+}
+func (f *goalFakeStore) CreateTeam(_ context.Context, _ store.TeamInput) (int64, error) {
+	return 0, nil
+}
+func (f *goalFakeStore) UpdateTeam(_ context.Context, _ store.TeamInput, _ int64) error { return nil }
+func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error)           { return nil, nil }
+func (f *goalFakeStore) GetPeriod(_ context.Context, _ int64) (domain.Period, error) {
+	return domain.Period{}, nil
+}
+func (f *goalFakeStore) FindPeriodForDate(_ context.Context, _ time.Time) (domain.Period, error) {
+	return domain.Period{}, nil
+}
+func (f *goalFakeStore) CreatePeriod(_ context.Context, _ store.PeriodInput) (int64, error) {
+	return 0, nil
+}
+func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ int64, _ store.PeriodInput) error {
+	return nil
+}
+func (f *goalFakeStore) DeletePeriod(_ context.Context, _ int64) error   { return nil }
+func (f *goalFakeStore) MovePeriod(_ context.Context, _ int64, _ int) error { return nil }
+func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ int64, _ []int64) (map[int64][]domain.Goal, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) UpdateGoal(_ context.Context, _ store.GoalUpdateInput) error { return nil }
+func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ store.GoalFieldsUpdateInput) error {
+	return nil
+}
+func (f *goalFakeStore) MoveGoal(_ context.Context, _ int64, _ int) error   { return nil }
+func (f *goalFakeStore) AddGoalComment(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) ListGoalComments(_ context.Context, _ int64) ([]domain.GoalComment, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) GetGoalShare(_ context.Context, _, _ int64) (store.GoalShare, error) {
+	return store.GoalShare{}, nil
+}
+func (f *goalFakeStore) UpdateGoalTeamWeight(_ context.Context, _, _ int64, _ int) error { return nil }
+func (f *goalFakeStore) GetTeamPeriodStatusWithTime(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
+	s, err := f.GetTeamPeriodStatus(context.Background(), teamID, periodID)
+	return s, nil, err
+}
+func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ int64, _ []int64) (map[int64]domain.TeamPeriodStatus, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ int64, _ []int64) (map[int64]time.Time, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ int64) (bool, error)            { return false, nil }
+func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _, _ int64) (bool, error) { return false, nil }
+func (f *goalFakeStore) ListTeamIDsWithGoalsInPeriod(_ context.Context, _ int64) (map[int64]struct{}, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ int64) error  { return nil }
+func (f *goalFakeStore) RestoreTeam(_ context.Context, _ int64) error     { return nil }
+func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ int64) error  { return nil }
+func (f *goalFakeStore) UpdateKeyResult(_ context.Context, _ store.KeyResultUpdateInput) error {
+	return nil
+}
+func (f *goalFakeStore) DeleteKeyResult(_ context.Context, _ int64) error  { return nil }
+func (f *goalFakeStore) MoveKeyResult(_ context.Context, _ int64, _ int) error { return nil }
+func (f *goalFakeStore) AddKeyResultComment(_ context.Context, _ int64, _ string, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) FindGoalIDByKR(_ context.Context, _ int64) (int64, error)    { return 0, nil }
+func (f *goalFakeStore) FindGoalIDByStage(_ context.Context, _ int64) (int64, error) { return 0, nil }
+func (f *goalFakeStore) UpdatePercentCurrent(_ context.Context, _ int64, _ float64) error {
+	return nil
+}
+func (f *goalFakeStore) UpdateLinearCurrent(_ context.Context, _ int64, _ float64) error { return nil }
+func (f *goalFakeStore) UpdateBoolean(_ context.Context, _ int64, _ bool) error          { return nil }
+func (f *goalFakeStore) ListProjectStages(_ context.Context, _ int64) ([]domain.KRProjectStage, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) UpdateProjectStageDone(_ context.Context, _ int64, _ bool) error { return nil }
+
+// ── CreateGoal tests ──────────────────────────────────────────────────────────
+
+func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
+	st := newGoalFakeStore()
+	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
+	svc := New(st)
+
+	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 1, PeriodID: 10})
+	if err != ErrPeriodClosed {
+		t.Fatalf("expected ErrPeriodClosed, got %v", err)
+	}
+}
+
+func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
+	st := newGoalFakeStore()
+	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
+	svc := New(st)
+
+	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 1, PeriodID: 10})
+	if err != ErrPeriodClosed {
+		t.Fatalf("expected ErrPeriodClosed for in_progress, got %v", err)
+	}
+}
+
+func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
+	st := newGoalFakeStore()
+	// no entry in statuses → defaults to NoGoals
+	svc := New(st)
+
+	goalID, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 2, PeriodID: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if goalID == 0 {
+		t.Fatal("expected non-zero goal ID")
+	}
+	if len(st.setStatusCalls) != 1 {
+		t.Fatalf("expected SetTeamPeriodStatus called once, got %d", len(st.setStatusCalls))
+	}
+	call := st.setStatusCalls[0]
+	if call.teamID != 2 || call.periodID != 5 || call.status != domain.TeamPeriodStatusForming {
+		t.Fatalf("unexpected SetTeamPeriodStatus call: %+v", call)
+	}
+}
+
+func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
+	st := newGoalFakeStore()
+	st.statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
+	svc := New(st)
+
+	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 2, PeriodID: 5})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(st.setStatusCalls) != 0 {
+		t.Fatalf("expected no SetTeamPeriodStatus call when already Forming, got %d", len(st.setStatusCalls))
+	}
+}
+
+// ── DeleteGoal tests ──────────────────────────────────────────────────────────
+
+func TestDeleteGoalBySharedTeamRemovesShareOnly(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[7] = domain.Goal{ID: 7, TeamID: 1, PeriodID: 5}
+	svc := New(st)
+
+	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), 7, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if effectiveTeam != 2 || periodID != 5 {
+		t.Fatalf("expected effectiveTeam=2 periodID=5, got %d %d", effectiveTeam, periodID)
+	}
+	if len(st.deleteShareCalls) != 1 || st.deleteShareCalls[0].goalID != 7 || st.deleteShareCalls[0].teamID != 2 {
+		t.Fatalf("expected share deletion for goal 7 / team 2, got %+v", st.deleteShareCalls)
+	}
+	if len(st.deleteGoalCalls) != 0 {
+		t.Fatal("goal itself should not be deleted when shared team removes share")
+	}
+}
+
+func TestDeleteGoalByOwnerTransfersOwnershipWhenShared(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[8] = domain.Goal{ID: 8, TeamID: 1, PeriodID: 5, Weight: 50}
+	st.goalShares[8] = []store.GoalShare{{GoalID: 8, TeamID: 3, Weight: 30}}
+	svc := New(st)
+
+	_, _, err := svc.DeleteGoal(context.Background(), 8, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Ownership transferred to team 3
+	if len(st.updateOwnerCalls) != 1 || st.updateOwnerCalls[0].teamID != 3 {
+		t.Fatalf("expected ownership transfer to team 3, got %+v", st.updateOwnerCalls)
+	}
+	// Old share for team 3 removed
+	if len(st.deleteShareCalls) != 1 || st.deleteShareCalls[0].teamID != 3 {
+		t.Fatalf("expected share deletion for team 3, got %+v", st.deleteShareCalls)
+	}
+	// Goal itself not deleted
+	if len(st.deleteGoalCalls) != 0 {
+		t.Fatal("goal itself should not be deleted when ownership transfers")
+	}
+}
+
+func TestDeleteGoalByOwnerDeletesGoalWhenNoSharesAndPeriodOpen(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[9] = domain.Goal{ID: 9, TeamID: 1, PeriodID: 5}
+	// statuses defaults to NoGoals → open period
+	svc := New(st)
+
+	_, _, err := svc.DeleteGoal(context.Background(), 9, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(st.deleteGoalCalls) != 1 || st.deleteGoalCalls[0] != 9 {
+		t.Fatalf("expected goal 9 to be deleted, got %+v", st.deleteGoalCalls)
+	}
+}
+
+func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 5}
+	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
+	svc := New(st)
+
+	_, _, err := svc.DeleteGoal(context.Background(), 10, 1)
+	if err != ErrPeriodClosed {
+		t.Fatalf("expected ErrPeriodClosed, got %v", err)
+	}
+	if len(st.deleteGoalCalls) != 0 {
+		t.Fatal("goal should not be deleted when period is closed")
+	}
+}
+
+func TestDeleteGoalResetsStatusWhenLastGoalRemoved(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[11] = domain.Goal{ID: 11, TeamID: 1, PeriodID: 5}
+	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusForming
+	// goalsAfterDelete is empty → no goals remain after deletion
+	svc := New(st)
+
+	_, _, err := svc.DeleteGoal(context.Background(), 11, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// resetStatusIfNoGoals should set status to NoGoals
+	var resetCall *setStatusArg
+	for i := range st.setStatusCalls {
+		if st.setStatusCalls[i].status == domain.TeamPeriodStatusNoGoals {
+			resetCall = &st.setStatusCalls[i]
+		}
+	}
+	if resetCall == nil {
+		t.Fatal("expected status reset to NoGoals after last goal deleted")
+	}
+}
+
+// ── UpdateGoalOwnerAndShares tests ────────────────────────────────────────────
+
+func TestUpdateGoalOwnerAndSharesBlockedByInProgressPeriod(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[20] = domain.Goal{ID: 20, TeamID: 1, PeriodID: 10, Weight: 40}
+	// team 2 is in_progress
+	st.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
+	svc := New(st)
+
+	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), 20, []int64{2})
+	if err != ErrCannotShareWithClosedPeriod {
+		t.Fatalf("expected ErrCannotShareWithClosedPeriod, got %v", err)
+	}
+}
+
+func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *testing.T) {
+	st := newGoalFakeStore()
+	st.goals[21] = domain.Goal{ID: 21, TeamID: 1, PeriodID: 10, Weight: 40}
+	// team 3 has open period (defaults to NoGoals)
+	svc := New(st)
+
+	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), 21, []int64{3})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ownerID != 3 {
+		t.Fatalf("expected new owner 3, got %d", ownerID)
+	}
+	if periodID != 10 {
+		t.Fatalf("expected period 10, got %d", periodID)
+	}
+	if len(st.updateOwnerCalls) != 1 || st.updateOwnerCalls[0].teamID != 3 {
+		t.Fatalf("expected UpdateGoalOwner call for team 3, got %+v", st.updateOwnerCalls)
+	}
+}
+
+// ── Unsupported KR kind errors ────────────────────────────────────────────────
+
+func TestUpdateKRProgressPercentRejectsUnsupportedKind(t *testing.T) {
+	st := newGoalFakeStore()
+	st.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
+	svc := New(st)
+
+	if err := svc.UpdateKRProgressPercent(context.Background(), 1, 50); err == nil {
+		t.Fatal("expected error for boolean KR with percent update")
+	}
+}
+
+func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
+	st := newGoalFakeStore()
+	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindPercent}
+	svc := New(st)
+
+	if err := svc.UpdateKRProgressBoolean(context.Background(), 2, true); err == nil {
+		t.Fatal("expected error for percent KR with boolean update")
+	}
+}
+
+func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
+	st := newGoalFakeStore()
+	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindPercent}
+	svc := New(st)
+
+	if err := svc.UpdateKRProgressProject(context.Background(), 3, nil); err == nil {
+		t.Fatal("expected error for percent KR with project update")
+	}
+}
+
+// ── CreateKeyResultWithMeta tests ─────────────────────────────────────────────
+
+func TestCreateKeyResultWithMetaAppliesPercentMeta(t *testing.T) {
+	st := newGoalFakeStore()
+	svc := New(st)
+
+	_, err := svc.CreateKeyResultWithMeta(context.Background(),
+		store.KeyResultInput{Kind: domain.KRKindPercent},
+		KeyResultMetaInput{PercentStart: 0, PercentTarget: 100, PercentCurrent: 30},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(st.upsertPercentCalls) != 1 {
+		t.Fatalf("expected UpsertPercentMeta called once, got %d", len(st.upsertPercentCalls))
+	}
+	meta := st.upsertPercentCalls[0]
+	if meta.StartValue != 0 || meta.TargetValue != 100 || meta.CurrentValue != 30 {
+		t.Fatalf("unexpected percent meta values: %+v", meta)
+	}
+}
+
+func TestCreateKeyResultWithMetaAppliesLinearMeta(t *testing.T) {
+	st := newGoalFakeStore()
+	svc := New(st)
+
+	_, err := svc.CreateKeyResultWithMeta(context.Background(),
+		store.KeyResultInput{Kind: domain.KRKindLinear},
+		KeyResultMetaInput{LinearStart: 10, LinearTarget: 200, LinearCurrent: 50},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(st.upsertLinearCalls) != 1 {
+		t.Fatalf("expected UpsertLinearMeta called once, got %d", len(st.upsertLinearCalls))
+	}
+	meta := st.upsertLinearCalls[0]
+	if meta.StartValue != 10 || meta.TargetValue != 200 || meta.CurrentValue != 50 {
+		t.Fatalf("unexpected linear meta values: %+v", meta)
+	}
+}
+
+func TestCreateKeyResultWithMetaAppliesBooleanMeta(t *testing.T) {
+	st := newGoalFakeStore()
+	svc := New(st)
+
+	_, err := svc.CreateKeyResultWithMeta(context.Background(),
+		store.KeyResultInput{Kind: domain.KRKindBoolean},
+		KeyResultMetaInput{BooleanDone: true},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(st.upsertBoolCalls) != 1 || !st.upsertBoolCalls[0].done {
+		t.Fatalf("expected UpsertBooleanMeta(done=true), got %+v", st.upsertBoolCalls)
+	}
+}
+
+func TestCreateKeyResultWithMetaAppliesProjectStages(t *testing.T) {
+	st := newGoalFakeStore()
+	svc := New(st)
+
+	stages := []store.ProjectStageInput{{Title: "Step 1", Weight: 60}, {Title: "Step 2", Weight: 40}}
+	_, err := svc.CreateKeyResultWithMeta(context.Background(),
+		store.KeyResultInput{Kind: domain.KRKindProject},
+		KeyResultMetaInput{ProjectStages: stages},
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(st.replaceStageCalls) != 1 || len(st.replaceStageCalls[0].stages) != 2 {
+		t.Fatalf("expected ReplaceProjectStages with 2 stages, got %+v", st.replaceStageCalls)
+	}
+}

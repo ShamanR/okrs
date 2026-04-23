@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -79,9 +80,29 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 }
 
 func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) error {
-	if m.cfg.NewUserPolicy != PolicyDefaultNode || m.cfg.DefaultNodeID == 0 {
+	// Read policy from DB settings; fall back to env-var cfg for backward compat.
+	policy := m.cfg.NewUserPolicy
+	if raw, _ := m.store.GetSetting(ctx, "new_user_policy"); raw != nil {
+		var p NewUserPolicy
+		if json.Unmarshal(raw, &p) == nil && p != "" {
+			policy = p
+		}
+	}
+	if policy != PolicyDefaultNode {
 		return nil
 	}
+
+	nodeID := m.cfg.DefaultNodeID
+	if raw, _ := m.store.GetSetting(ctx, "default_hierarchy_node_id"); raw != nil {
+		var id int64
+		if json.Unmarshal(raw, &id) == nil && id != 0 {
+			nodeID = id
+		}
+	}
+	if nodeID == 0 {
+		return nil
+	}
+
 	grants, err := m.store.ListUserGrants(ctx, user.ID)
 	if err != nil {
 		return err
@@ -89,7 +110,7 @@ func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) err
 	if len(grants) > 0 {
 		return nil
 	}
-	return m.store.AddUserGrant(ctx, user.ID, m.cfg.DefaultNodeID, domain.SystemUserAnonymous)
+	return m.store.AddUserGrant(ctx, user.ID, nodeID, domain.SystemUserAnonymous)
 }
 
 // ResolveSession loads the session and user by session ID.

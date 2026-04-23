@@ -33,6 +33,11 @@ func SessionFromContext(ctx context.Context) *domain.AuthSession {
 	return s
 }
 
+// WithUser injects a user into the context. Used by middleware and tests.
+func WithUser(ctx context.Context, u *domain.User) context.Context {
+	return withUser(ctx, u)
+}
+
 // UserIDFromContext returns the current user ID or the anonymous-local system user ID.
 func UserIDFromContext(ctx context.Context) int64 {
 	if u := UserFromContext(ctx); u != nil {

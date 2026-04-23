@@ -6,7 +6,9 @@
 
 - SSR-страницы отдают layout и HTML-каркас;
 - данные и мутации идут через HTTP/API;
-- фронтенд без сборщика, минимальный vanilla JS;
+- фронтенд без сборщика: React 18 подключается через CDN (unpkg), JSX компилируется @babel/standalone в браузере — toolchain не нужен;
+- компоненты трекера живут в `tracker.js`, стили — в `tracker.css`; добавление нового CDN-пакета = новый `<script>` в shell-шаблоне;
+- компонент `UserSelector` реализован трижды с одинаковым поведением и CSS-классами: в `tracker.js` (React, multi-select для владельца цели), в `admin.js` (React, single-select для руководителя команды в React-админке), в `app.js` (vanilla JS, single-select для команд на Bootstrap-страницах); CSS-классы (`.user-selector*`, `.user-chip*`, `.user-avatar__fallback`) определены в `tracker.css`, `base.html` и `admin_shell.html`;
 - PostgreSQL как единственное системное хранилище;
 - SQL-миграции — единственный способ менять схему;
 - Docker Compose остаётся базовым локальным способом запуска.

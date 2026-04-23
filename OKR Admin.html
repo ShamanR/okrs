@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OKR Admin · Управление</title>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*{box-sizing:border-box}
+html,body,#root{margin:0;padding:0;height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Inter',system-ui,sans-serif;background:#edf0f4;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased}
+a{color:#2563eb;text-decoration:none}
+a:hover{text-decoration:underline}
+button{font-family:inherit}
+input,select,textarea{font-family:inherit;font-size:14px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:5px;border:2px solid transparent;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background:#94a3b8;background-clip:padding-box;border:2px solid transparent}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState,useMemo,useEffect,useRef}=React;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SEED (mirrors main app)
+// ═════════════════════════════════════════════════════════════════════════════
+const USERS_SEED=[
+  {id:'u1',name:'Алексей Иванов',initials:'АИ',color:'#2563eb',role:'Tech Lead',dept:'Платформа',email:'a.ivanov@corp.com',provider:'github',lastLogin:'22.04.2026 09:14',isAdmin:true,scopes:['c1','u1']},
+  {id:'u2',name:'Дмитрий Петров',initials:'ДП',color:'#7c3aed',role:'Unit Lead',dept:'Платформа',email:'d.petrov@corp.com',provider:'gitlab',lastLogin:'22.04.2026 16:17',isAdmin:true,scopes:[]},
+  {id:'u3',name:'Елена Смирнова',initials:'ЕС',color:'#059669',role:'QA Lead',dept:'CoreQA',email:'e.smirnova@corp.com',provider:'github',lastLogin:'21.04.2026 18:02',isAdmin:false,scopes:['sg1']},
+  {id:'u4',name:'Михаил Козлов',initials:'МК',color:'#d97706',role:'Senior Dev',dept:'CoreDEV',email:'m.kozlov@corp.com',provider:'github',lastLogin:'22.04.2026 11:40',isAdmin:false,scopes:['t1']},
+  {id:'u5',name:'Кирилл Воронов',initials:'КВ',color:'#dc2626',role:'SRE Lead',dept:'SRE',email:'k.voronov@corp.com',provider:'gitlab',lastLogin:'20.04.2026 14:05',isAdmin:false,scopes:['t5']},
+  {id:'u6',name:'Сергей Лебедев',initials:'СЛ',color:'#0891b2',role:'Dev Lead',dept:'CoreDEV',email:'s.lebedev@corp.com',provider:'github',lastLogin:'22.04.2026 08:30',isAdmin:false,scopes:['t1']},
+  {id:'u7',name:'Ольга Фёдорова',initials:'ОФ',color:'#be185d',role:'Senior Dev',dept:'CoreDEV',email:'o.fedorova@corp.com',provider:'github',lastLogin:'19.04.2026 17:22',isAdmin:false,scopes:['st2']},
+  {id:'u8',name:'Андрей Николаев',initials:'АН',color:'#6366f1',role:'DevOps Lead',dept:'PaaS/Infra',email:'a.nikolaev@corp.com',provider:'gitlab',lastLogin:'22.04.2026 07:45',isAdmin:false,scopes:['sg2']},
+  {id:'u9',name:'Роман Белов',initials:'РБ',color:'#0891b2',role:'Perf Engineer',dept:'Перформанс',email:'r.belov@corp.com',provider:'github',lastLogin:'18.04.2026 10:11',isAdmin:false,scopes:['u2']},
+];
+
+const TEAM_TYPE_LABEL={cluster:'Кластер',unit:'Юнит',group:'Группа',team:'Команда',squad:'Сквад'};
+const TEAM_TYPE_ORDER={cluster:0,unit:1,group:2,team:3,squad:4};
+const TEAM_TYPE_COLOR={cluster:'#7c3aed',unit:'#2563eb',group:'#0891b2',team:'#059669',squad:'#d97706'};
+
+const TEAMS_SEED=[
+  {id:'c1',name:'Реклама — Разработка',type:'cluster',parentId:null,leadId:'u2',color:'#7c3aed',desc:'Весь кластер рекламной разработки'},
+  {id:'u1',name:'Платформа',type:'unit',parentId:'c1',leadId:'u2',color:'#2563eb',desc:''},
+  {id:'sg1',name:'Backend & Quality',type:'group',parentId:'u1',leadId:'u1',color:'#0891b2',desc:''},
+  {id:'t1',name:'CoreDEV',type:'team',parentId:'sg1',leadId:'u6',color:'#0891b2',desc:''},
+  {id:'st1',name:'API Platform',type:'squad',parentId:'t1',leadId:'u4',color:'#d97706',desc:''},
+  {id:'st2',name:'SDK & Tools',type:'squad',parentId:'t1',leadId:'u7',color:'#be185d',desc:''},
+  {id:'t2',name:'CoreQA',type:'team',parentId:'sg1',leadId:'u3',color:'#059669',desc:''},
+  {id:'sg2',name:'Infrastructure',type:'group',parentId:'u1',leadId:'u8',color:'#6366f1',desc:''},
+  {id:'t4',name:'PaaS / Infra',type:'team',parentId:'sg2',leadId:'u8',color:'#6366f1',desc:''},
+  {id:'t5',name:'SRE',type:'team',parentId:'sg2',leadId:'u5',color:'#dc2626',desc:''},
+  {id:'t3',name:'DWH',type:'team',parentId:'u1',leadId:'u4',color:'#d97706',desc:''},
+  {id:'u2',name:'Продвижение',type:'unit',parentId:'c1',leadId:'u9',color:'#0891b2',desc:''},
+  {id:'t6',name:'Перформанс',type:'team',parentId:'u2',leadId:'u9',color:'#0891b2',desc:''},
+  {id:'t7',name:'Медиабаинг',type:'team',parentId:'u2',leadId:'u4',color:'#d97706',desc:''},
+  {id:'u3',name:'Сервисы медиа',type:'unit',parentId:'c1',leadId:'u6',color:'#0891b2',desc:''},
+  {id:'t8',name:'Видео',type:'team',parentId:'u3',leadId:'u7',color:'#be185d',desc:''},
+  {id:'t9',name:'Изображения',type:'team',parentId:'u3',leadId:'u4',color:'#d97706',desc:''},
+  {id:'c2',name:'Реклама — Продукт1',type:'cluster',parentId:null,leadId:'u2',color:'#059669',desc:''},
+  {id:'u4',name:'ЛК Продвижение',type:'unit',parentId:'c2',leadId:'u9',color:'#059669',desc:''},
+  {id:'t10',name:'Команда 1',type:'team',parentId:'u4',leadId:'u6',color:'#0891b2',desc:''},
+  {id:'t11',name:'Команда 2',type:'team',parentId:'u4',leadId:'u1',color:'#2563eb',desc:''},
+  {id:'t12',name:'Команда 3',type:'team',parentId:'u4',leadId:'u7',color:'#be185d',desc:''},
+];
+
+const PERIODS_SEED=[
+  {id:'y26',label:'Y26',start:'2026-01-01',end:'2026-12-31',order:1,desc:'Годовой период 2026'},
+  {id:'y26q1',label:'Y26-Q1',start:'2026-01-01',end:'2026-03-31',order:2,desc:'Квартал 1 · Январь—Март'},
+  {id:'y26q2',label:'Y26-Q2',start:'2026-04-01',end:'2026-06-30',order:3,desc:'Квартал 2 · Апрель—Июнь'},
+  {id:'y26q3',label:'Y26-Q3',start:'2026-07-01',end:'2026-09-30',order:4,desc:'Квартал 3 · Июль—Сентябрь'},
+  {id:'y26q4',label:'Y26-Q4',start:'2026-10-01',end:'2026-12-31',order:5,desc:'Квартал 4 · Октябрь—Декабрь'},
+];
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TOKENS — mirrors main app
+// ═════════════════════════════════════════════════════════════════════════════
+const T={
+  sidebarBg:'#0c1220',
+  sidebarText:'#f1f5f9',
+  sidebarDim:'#94a3b8',
+  sidebarMuted:'#64748b',
+  sidebarSel:'#c4b5fd',
+  sidebarSelBg:'rgba(124,58,237,0.15)',
+  accent:'#7c3aed',
+  accentLight:'#c4b5fd',
+  link:'#2563eb',
+  contentBg:'#edf0f4',
+  cardBg:'#ffffff',
+  cardBorder:'#e5e7eb',
+  hairline:'#f1f5f9',
+  headingFg:'#0f172a',
+  bodyFg:'#111827',
+  mutedFg:'#6b7280',
+  dimFg:'#9ca3af',
+  danger:'#dc2626',
+  success:'#059669',
+  warn:'#d97706',
+  info:'#0891b2',
+};
+
+// ═════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═════════════════════════════════════════════════════════════════════════════
+function useStore(key,init){
+  const [v,setV]=useState(()=>{try{const r=localStorage.getItem(key);return r?JSON.parse(r):init;}catch(e){return init;}});
+  useEffect(()=>{try{localStorage.setItem(key,JSON.stringify(v));}catch(e){}},[key,v]);
+  return [v,setV];
+}
+const userById=(users,id)=>users.find(u=>u.id===id);
+const teamById=(teams,id)=>teams.find(t=>t.id===id);
+const teamPath=(teams,id)=>{const out=[];let cur=teamById(teams,id);while(cur){out.unshift(cur);cur=cur.parentId?teamById(teams,cur.parentId):null;}return out;};
+const teamPathLabel=(teams,id)=>teamPath(teams,id).map(t=>t.name).join(' › ');
+function descendantIds(teams,rootId){
+  const out=new Set([rootId]);let changed=true;
+  while(changed){changed=false;for(const t of teams){if(t.parentId&&out.has(t.parentId)&&!out.has(t.id)){out.add(t.id);changed=true;}}}
+  return out;
+}
+const depthOf=(teams,id)=>teamPath(teams,id).length-1;
+function hierOrder(teams){
+  const out=[];const byParent={};
+  for(const t of teams){(byParent[t.parentId||'__root__']=byParent[t.parentId||'__root__']||[]).push(t);}
+  function walk(parent){
+    const kids=byParent[parent||'__root__']||[];
+    kids.sort((a,b)=>(TEAM_TYPE_ORDER[a.type]-TEAM_TYPE_ORDER[b.type])||a.name.localeCompare(b.name));
+    for(const k of kids){out.push(k);walk(k.id);}
+  }
+  walk(null);return out;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PRIMITIVES (shared w/ main app vocabulary)
+// ═════════════════════════════════════════════════════════════════════════════
+function UserAvatar({user,size=28}){
+  if(!user)return <div style={{width:size,height:size,borderRadius:'50%',background:'#e5e7eb',display:'inline-flex',alignItems:'center',justifyContent:'center',color:T.dimFg,fontSize:size*.4,fontWeight:700,flexShrink:0}}>?</div>;
+  return <div style={{width:size,height:size,borderRadius:'50%',background:user.color,display:'inline-flex',alignItems:'center',justifyContent:'center',color:'white',fontSize:size*.38,fontWeight:700,letterSpacing:-.3,flexShrink:0}}>{user.initials}</div>;
+}
+function TypeBadge({type}){
+  const c=TEAM_TYPE_COLOR[type]||T.mutedFg;
+  return <span style={{display:'inline-block',padding:'2px 9px',fontSize:10.5,fontWeight:700,color:'white',background:c,borderRadius:10,letterSpacing:.3,textTransform:'uppercase',flexShrink:0,lineHeight:1.4}}>{TEAM_TYPE_LABEL[type]||type}</span>;
+}
+function Btn({variant='secondary',onClick,disabled,children,style={},danger,size='md',type='button'}){
+  const pad=size==='sm'?'5px 12px':'8px 16px';
+  const fs=size==='sm'?12:13;
+  let bg='white',color='#374151',border='1.5px solid #e5e7eb';
+  if(variant==='primary'){bg=T.accent;color='white';border='1.5px solid '+T.accent;}
+  else if(variant==='accent'){bg=T.link;color='white';border='1.5px solid '+T.link;}
+  else if(variant==='ghost'){bg='transparent';border='1.5px solid transparent';}
+  if(danger){color=T.danger;border='1.5px solid #fecaca';bg='white';}
+  return <button type={type} onClick={onClick} disabled={disabled} style={{display:'inline-flex',alignItems:'center',justifyContent:'center',gap:6,padding:pad,borderRadius:20,border,background:bg,color,fontSize:fs,fontWeight:600,cursor:disabled?'not-allowed':'pointer',opacity:disabled?.5:1,transition:'all .12s',whiteSpace:'nowrap',...style}}>{children}</button>;
+}
+function Chip({children,color='#6b7280',bg}){
+  const b=bg||(color+'15');
+  return <span style={{display:'inline-block',padding:'2px 8px',fontSize:10.5,fontWeight:700,color,background:b,borderRadius:10,letterSpacing:.3,textTransform:'uppercase',lineHeight:1.45}}>{children}</span>;
+}
+function ProviderChip({p}){
+  return <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#374151',background:'#f3f4f6',borderRadius:5,fontFamily:'ui-monospace,Menlo,monospace'}}>
+    <span style={{width:5,height:5,borderRadius:'50%',background:p==='github'?'#111827':p==='gitlab'?'#fc6d26':T.mutedFg}}/>
+    {p}
+  </span>;
+}
+const inp={width:'100%',padding:'9px 13px',borderRadius:9,border:'1.5px solid #e5e7eb',fontSize:14,outline:'none',background:'white',color:T.bodyFg};
+function Field({label,hint,children,required}){
+  return <div style={{marginBottom:14}}>
+    <div style={{fontSize:12,fontWeight:600,color:'#475569',marginBottom:6,display:'flex',alignItems:'center',gap:6}}>
+      {label}{required&&<span style={{color:T.danger}}>*</span>}
+      {hint&&<span style={{fontSize:11,fontWeight:400,color:T.dimFg}}>· {hint}</span>}
+    </div>
+    {children}
+  </div>;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SHELL — dark sidebar + header user menu, matches main app
+// ═════════════════════════════════════════════════════════════════════════════
+function Shell({section,setSection,currentUser,children}){
+  const sections=[
+    {id:'periods',label:'Периоды',hint:'Квартальные окна',icon:'📅'},
+    {id:'teams',label:'Команды',hint:'Иерархия и руководители',icon:'👥'},
+    {id:'users',label:'Пользователи',hint:'Админы и доступ',icon:'🔑'},
+  ];
+  const cur=sections.find(s=>s.id===section);
+  return(
+    <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+      {/* SIDEBAR */}
+      <div style={{width:252,background:T.sidebarBg,display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden'}}>
+        <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:10}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:14,fontWeight:800,color:'white',letterSpacing:-.3,lineHeight:1.15}}>OKR Tracker</div>
+            <div style={{fontSize:10,color:T.sidebarMuted,fontWeight:600,textTransform:'uppercase',letterSpacing:.5,marginTop:1}}>Управление</div>
+          </div>
+          <HeaderUserMenu user={currentUser}/>
+        </div>
+        <div style={{padding:'12px 8px',flex:1,overflowY:'auto'}}>
+          <div style={{fontSize:10,color:T.sidebarMuted,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',padding:'8px 14px 6px'}}>Разделы</div>
+          {sections.map(s=>{
+            const sel=s.id===section;
+            return(
+              <button key={s.id} onClick={()=>setSection(s.id)}
+                style={{width:'100%',display:'flex',alignItems:'flex-start',gap:10,padding:'9px 12px',border:'none',background:sel?T.sidebarSelBg:'transparent',color:sel?T.sidebarSel:T.sidebarText,borderRadius:8,cursor:'pointer',marginBottom:2,fontFamily:'inherit',textAlign:'left',transition:'background .14s'}}
+                onMouseEnter={e=>{if(!sel)e.currentTarget.style.background='rgba(255,255,255,0.04)';}}
+                onMouseLeave={e=>{if(!sel)e.currentTarget.style.background='transparent';}}>
+                <span style={{fontSize:14,marginTop:1,opacity:.85}}>{s.icon}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:sel?700:500,letterSpacing:-.1}}>{s.label}</div>
+                  <div style={{fontSize:11,color:sel?T.sidebarSel:T.sidebarMuted,marginTop:1,opacity:sel?.7:1}}>{s.hint}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{padding:'12px 14px',borderTop:'1px solid rgba(255,255,255,0.05)'}}>
+          <a href="OKR Tracker Redesign.html" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,color:'white',fontSize:12.5,fontWeight:600,padding:'10px 12px',borderRadius:8,textDecoration:'none',background:'rgba(124,58,237,0.22)',border:'1px solid rgba(167,139,250,0.45)',transition:'all .14s'}}
+            onMouseEnter={e=>{e.currentTarget.style.background='rgba(124,58,237,0.38)';e.currentTarget.style.borderColor='rgba(167,139,250,0.75)';}}
+            onMouseLeave={e=>{e.currentTarget.style.background='rgba(124,58,237,0.22)';e.currentTarget.style.borderColor='rgba(167,139,250,0.45)';}}>
+            <span style={{fontSize:14,lineHeight:1}}>←</span> Вернуться к OKR Tracker
+          </a>
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:T.contentBg}}>
+        {/* HEADER */}
+        <div style={{padding:'0 24px',background:'white',borderBottom:'1px solid '+T.cardBorder,display:'flex',alignItems:'center',height:54,gap:14,flexShrink:0}}>
+          <a href="OKR Tracker Redesign.html" title="Вернуться к списку целей"
+            style={{display:'inline-flex',alignItems:'center',gap:7,padding:'6px 12px 6px 10px',background:'#f5f3ff',color:'#6d28d9',border:'1px solid #ddd6fe',borderRadius:20,fontSize:12,fontWeight:600,textDecoration:'none',transition:'all .14s',flexShrink:0}}
+            onMouseEnter={e=>{e.currentTarget.style.background='#ede9fe';e.currentTarget.style.borderColor='#c4b5fd';}}
+            onMouseLeave={e=>{e.currentTarget.style.background='#f5f3ff';e.currentTarget.style.borderColor='#ddd6fe';}}>
+            <span style={{fontSize:13,lineHeight:1}}>←</span> OKR Tracker
+          </a>
+          <div style={{width:1,height:20,background:T.cardBorder}}/>
+          <div style={{display:'flex',alignItems:'baseline',gap:10,flex:1}}>
+            <span style={{fontSize:11,color:T.dimFg,fontWeight:600,textTransform:'uppercase',letterSpacing:.5}}>Управление</span>
+            <span style={{color:T.dimFg,fontSize:12}}>/</span>
+            <span style={{fontSize:17,fontWeight:800,color:T.headingFg,letterSpacing:-.2}}>{cur?.label}</span>
+          </div>
+        </div>
+        <div style={{flex:1,overflow:'auto'}}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeaderUserMenu({user}){
+  const [open,setOpen]=useState(false);
+  const timer=useRef();
+  const show=()=>{clearTimeout(timer.current);setOpen(true);};
+  const hide=()=>{clearTimeout(timer.current);timer.current=setTimeout(()=>setOpen(false),160);};
+  const items=[
+    {icon:'👤',label:'Профиль',hint:'Ваша карточка и KR',href:'#'},
+    {icon:'⚙',label:'Управление',hint:'Команды, периоды, доступы',href:'OKR Admin.html',active:true},
+    {icon:'✦',label:'Настройки',hint:'Уведомления, интеграции',href:'#'},
+  ];
+  return(
+    <div style={{position:'relative'}} onMouseEnter={show} onMouseLeave={hide}>
+      <button onClick={()=>setOpen(o=>!o)}
+        style={{display:'flex',alignItems:'center',gap:7,background:open?'rgba(255,255,255,0.08)':'transparent',border:'none',borderRadius:8,padding:'4px 7px 4px 4px',cursor:'pointer',transition:'background .15s'}}>
+        <UserAvatar user={user} size={28}/>
+        <span style={{color:'rgba(255,255,255,0.55)',fontSize:10,transition:'transform .15s',transform:open?'rotate(180deg)':'rotate(0deg)'}}>▾</span>
+      </button>
+      {open&&(
+        <div onMouseEnter={show} onMouseLeave={hide}
+          style={{position:'absolute',top:'calc(100% + 6px)',right:0,background:'white',borderRadius:10,boxShadow:'0 12px 32px rgba(15,23,42,0.18)',border:'1px solid '+T.cardBorder,minWidth:240,zIndex:1000,overflow:'hidden'}}>
+          <div style={{padding:'12px 14px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'center',gap:10}}>
+            <UserAvatar user={user} size={40}/>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontSize:13,fontWeight:700,color:T.bodyFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.name}</div>
+              <div style={{fontSize:11,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.role} · {user?.dept}</div>
+            </div>
+          </div>
+          <div style={{padding:'4px 0'}}>
+            {items.map(it=>(
+              <a key={it.label} href={it.href} onClick={e=>{if(it.href==='#')e.preventDefault();setOpen(false);}}
+                style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 14px',background:it.active?'#f5f3ff':'none',border:'none',cursor:'pointer',textAlign:'left',fontFamily:'inherit',textDecoration:'none',color:'inherit',boxSizing:'border-box'}}
+                onMouseEnter={e=>{if(!it.active)e.currentTarget.style.background='#f9fafb';}}
+                onMouseLeave={e=>{if(!it.active)e.currentTarget.style.background='none';}}>
+                <span style={{width:20,textAlign:'center',fontSize:13,color:T.mutedFg}}>{it.icon}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:500,color:T.bodyFg}}>{it.label}</div>
+                  <div style={{fontSize:11,color:T.dimFg}}>{it.hint}</div>
+                </div>
+                {it.active&&<span style={{fontSize:10,color:T.accent,fontWeight:700}}>СЕЙЧАС</span>}
+              </a>
+            ))}
+          </div>
+          <div style={{borderTop:'1px solid '+T.hairline,padding:'4px 0'}}>
+            <a href="OKR Tracker Redesign.html" onClick={()=>setOpen(false)}
+              style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 14px',background:'none',border:'none',cursor:'pointer',textAlign:'left',fontFamily:'inherit',textDecoration:'none',color:'inherit',boxSizing:'border-box'}}
+              onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'}
+              onMouseLeave={e=>e.currentTarget.style.background='none'}>
+              <span style={{width:20,textAlign:'center',fontSize:13,color:T.danger}}>↩</span>
+              <div style={{fontSize:13,fontWeight:500,color:T.danger}}>Выйти</div>
+            </a>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SHARED MASTER–DETAIL LAYOUT
+// All three sections reuse this: left list with search + create, right details panel.
+// ═════════════════════════════════════════════════════════════════════════════
+function MasterDetail({toolbar,listHeader,list,detail,listWidth=440}){
+  return(
+    <div style={{display:'flex',height:'100%',padding:'20px 24px 24px',gap:20,boxSizing:'border-box'}}>
+      {/* LIST PANE */}
+      <div style={{width:listWidth,flexShrink:0,display:'flex',flexDirection:'column',background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}>
+        {toolbar&&<div style={{padding:'12px 14px',borderBottom:'1px solid '+T.hairline,background:'#fafbfc'}}>{toolbar}</div>}
+        {listHeader&&<div style={{padding:'10px 14px',borderBottom:'1px solid '+T.hairline,fontSize:11,color:T.mutedFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fafbfc'}}>{listHeader}</div>}
+        <div style={{flex:1,overflow:'auto'}}>{list}</div>
+      </div>
+      {/* DETAIL PANE */}
+      <div style={{flex:1,minWidth:0,background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'auto'}}>
+        {detail}
+      </div>
+    </div>
+  );
+}
+function EmptyDetail({icon,title,hint}){
+  return <div style={{height:'100%',minHeight:300,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,color:T.mutedFg,textAlign:'center'}}>
+    <div style={{fontSize:32,marginBottom:10,opacity:.55}}>{icon}</div>
+    <div style={{fontSize:14,fontWeight:700,color:T.bodyFg,marginBottom:4}}>{title}</div>
+    <div style={{fontSize:12,maxWidth:320}}>{hint}</div>
+  </div>;
+}
+
+// Full-width list layout (no right pane); primary CRUD happens in modals
+function ListOnly({toolbar,listHeader,children}){
+  return(
+    <div style={{height:'100%',padding:'20px 24px 24px',boxSizing:'border-box'}}>
+      <div style={{height:'100%',display:'flex',flexDirection:'column',background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden',maxWidth:980,margin:'0 auto'}}>
+        {toolbar&&<div style={{padding:'12px 14px',borderBottom:'1px solid '+T.hairline,background:'#fafbfc'}}>{toolbar}</div>}
+        {listHeader&&<div style={{padding:'10px 16px',borderBottom:'1px solid '+T.hairline,fontSize:11,color:T.mutedFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fafbfc'}}>{listHeader}</div>}
+        <div style={{flex:1,overflow:'auto'}}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// Row-action icon button — used for ↑ ↓ ✎ ✕ on list rows
+function RowAction({title,onClick,disabled,danger,children}){
+  return <button onClick={e=>{e.stopPropagation();if(!disabled)onClick(e);}} disabled={disabled} title={title}
+    style={{width:28,height:28,borderRadius:7,border:'1px solid '+T.cardBorder,background:'white',
+      color:disabled?T.dimFg:(danger?T.danger:T.bodyFg),cursor:disabled?'not-allowed':'pointer',
+      opacity:disabled?.4:1,fontSize:12,padding:0,lineHeight:1,
+      display:'inline-flex',alignItems:'center',justifyContent:'center',transition:'all .12s'}}
+    onMouseEnter={e=>{if(disabled)return;e.currentTarget.style.background=danger?'#fef2f2':'#f5f3ff';e.currentTarget.style.borderColor=danger?'#fecaca':'#c4b5fd';}}
+    onMouseLeave={e=>{if(disabled)return;e.currentTarget.style.background='white';e.currentTarget.style.borderColor=T.cardBorder;}}>
+    {children}
+  </button>;
+}
+
+// Modal dialog — backdrop + centered card, Esc to close
+function Modal({open,title,subtitle,onClose,children,width=640}){
+  useEffect(()=>{
+    if(!open)return;
+    const h=e=>{if(e.key==='Escape')onClose();};
+    document.addEventListener('keydown',h);
+    const prev=document.body.style.overflow;document.body.style.overflow='hidden';
+    return()=>{document.removeEventListener('keydown',h);document.body.style.overflow=prev;};
+  },[open,onClose]);
+  if(!open)return null;
+  return(
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.42)',backdropFilter:'blur(2px)',zIndex:2000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'60px 24px 40px',overflow:'auto'}}>
+      <div onClick={e=>e.stopPropagation()}
+        style={{width:'100%',maxWidth:width,background:'white',borderRadius:14,boxShadow:'0 24px 60px rgba(15,23,42,0.28)',overflow:'hidden',animation:'admModalIn .16s ease-out'}}>
+        <div style={{padding:'16px 22px 14px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'flex-start',gap:14}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:16,fontWeight:800,color:T.headingFg,letterSpacing:-.2}}>{title}</div>
+            {subtitle&&<div style={{fontSize:12,color:T.mutedFg,marginTop:3}}>{subtitle}</div>}
+          </div>
+          <button onClick={onClose} title="Закрыть (Esc)"
+            style={{width:30,height:30,borderRadius:8,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:'pointer',fontSize:15,lineHeight:1,padding:0,flexShrink:0}}
+            onMouseEnter={e=>{e.currentTarget.style.background='#f8fafc';}}
+            onMouseLeave={e=>{e.currentTarget.style.background='white';}}>×</button>
+        </div>
+        <div>{children}</div>
+      </div>
+    </div>
+  );
+}
+function DetailHeader({breadcrumb,title,subtitle,actions}){
+  return(
+    <div style={{padding:'20px 24px 16px',borderBottom:'1px solid '+T.hairline}}>
+      <div style={{fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginBottom:6}}>{breadcrumb}</div>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:20,fontWeight:800,color:T.headingFg,letterSpacing:-.3,lineHeight:1.2}}>{title}</div>
+          {subtitle&&<div style={{fontSize:13,color:T.mutedFg,marginTop:4}}>{subtitle}</div>}
+        </div>
+        {actions&&<div style={{display:'flex',gap:8,flexShrink:0}}>{actions}</div>}
+      </div>
+    </div>
+  );
+}
+function DetailSection({title,children}){
+  return <div style={{padding:'18px 24px',borderBottom:'1px solid '+T.hairline}}>
+    {title&&<div style={{fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginBottom:10}}>{title}</div>}
+    {children}
+  </div>;
+}
+
+function ListSearch({value,onChange,placeholder}){
+  return <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||'Поиск…'}
+    style={{...inp,padding:'7px 12px',fontSize:13,border:'1.5px solid #e5e7eb'}}/>;
+}
+function ListRow({selected,onClick,children,indent=0}){
+  return <div onClick={onClick} style={{padding:'10px 14px 10px '+(14+indent)+'px',borderBottom:'1px solid '+T.hairline,cursor:'pointer',display:'flex',alignItems:'center',gap:10,background:selected?'#f5f3ff':'transparent',borderLeft:selected?'3px solid '+T.accent:'3px solid transparent',transition:'background .12s'}}
+    onMouseEnter={e=>{if(!selected)e.currentTarget.style.background='#fafbfc';}}
+    onMouseLeave={e=>{if(!selected)e.currentTarget.style.background='transparent';}}>
+    {children}
+  </div>;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION: PERIODS
+// ═════════════════════════════════════════════════════════════════════════════
+function PeriodsSection({periods,setPeriods,selectedId,setSelectedId}){
+  const [q,setQ]=useState('');
+  const [creating,setCreating]=useState(false);
+  const sorted=[...periods].sort((a,b)=>a.order-b.order);
+  const filtered=sorted.filter(p=>!q||p.label.toLowerCase().includes(q.toLowerCase()));
+  const selected=creating?null:periods.find(p=>p.id===selectedId);
+
+  function move(id,dir){
+    const arr=[...periods].sort((a,b)=>a.order-b.order);
+    const i=arr.findIndex(p=>p.id===id);const j=i+dir;
+    if(j<0||j>=arr.length)return;
+    [arr[i],arr[j]]=[arr[j],arr[i]];
+    arr.forEach((p,idx)=>p.order=idx+1);
+    setPeriods([...arr]);
+  }
+  function remove(id){
+    if(!confirm('Удалить период? Цели внутри останутся, но не будут отображаться.'))return;
+    setPeriods(periods.filter(p=>p.id!==id).map((p,i)=>({...p,order:i+1})));
+    if(selectedId===id)setSelectedId(null);
+  }
+  function save(form){
+    if(form.id&&periods.some(x=>x.id===form.id)){
+      setPeriods(periods.map(x=>x.id===form.id?{...x,...form}:x));
+      setSelectedId(form.id);
+    } else {
+      const id=form.label.toLowerCase().replace(/[^a-z0-9]+/g,'').slice(0,12)||`p${Date.now().toString(36)}`;
+      const next={...form,id,order:periods.length+1};
+      setPeriods([...periods,next]);
+      setSelectedId(id);
+    }
+    setCreating(false);
+  }
+
+  return(
+    <MasterDetail
+      toolbar={<div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <ListSearch value={q} onChange={setQ} placeholder="Поиск периода…"/>
+        <Btn variant="primary" size="sm" onClick={()=>{setCreating(true);setSelectedId(null);}}>+ Новый</Btn>
+      </div>}
+      listHeader={`Всего · ${sorted.length}`}
+      list={filtered.map((p,i)=>{
+        const sel=p.id===selectedId&&!creating;
+        return <ListRow key={p.id} selected={sel} onClick={()=>{setSelectedId(p.id);setCreating(false);}}>
+          <div style={{width:32,height:32,borderRadius:8,background:sel?'#ede9fe':'#f3f4f6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:sel?T.accent:T.mutedFg,flexShrink:0,letterSpacing:.3}}>{p.order}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13.5,fontWeight:600,color:T.headingFg}}>{p.label}</div>
+            <div style={{fontSize:11,color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace',marginTop:2}}>{p.start} → {p.end}</div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:2}}>
+            <button onClick={e=>{e.stopPropagation();move(p.id,-1);}} disabled={i===0} title="Выше"
+              style={{width:22,height:18,borderRadius:4,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:i===0?'not-allowed':'pointer',opacity:i===0?.35:1,fontSize:9,padding:0,lineHeight:1}}>▲</button>
+            <button onClick={e=>{e.stopPropagation();move(p.id,1);}} disabled={i===filtered.length-1} title="Ниже"
+              style={{width:22,height:18,borderRadius:4,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:i===filtered.length-1?'not-allowed':'pointer',opacity:i===filtered.length-1?.35:1,fontSize:9,padding:0,lineHeight:1}}>▼</button>
+          </div>
+        </ListRow>;
+      })}
+      detail={
+        creating ? <PeriodEditor value={{label:'',start:'',end:'',desc:''}} onSave={save} onCancel={()=>setCreating(false)}/>
+        : selected ? <PeriodDetail period={selected} onSave={save} onDelete={()=>remove(selected.id)}/>
+        : <EmptyDetail icon="📅" title="Выберите период" hint="Кликните по периоду в списке слева или создайте новый. Периоды определяют квартальные и годовые окна для OKR команд."/>
+      }
+    />
+  );
+}
+function PeriodDetail({period,onSave,onDelete}){
+  return <PeriodEditor value={period} onSave={onSave} onDelete={onDelete}/>;
+}
+function PeriodEditor({value,onSave,onCancel,onDelete}){
+  const [f,setF]=useState(value);
+  useEffect(()=>{setF(value);},[value.id]);
+  const canSave=f.label.trim()&&f.start&&f.end;
+  const isNew=!value.id;
+  return(
+    <div>
+      <DetailHeader
+        breadcrumb={isNew?'Периоды / новый':`Периоды · ${value.label}`}
+        title={isNew?'Новый период':value.label}
+        subtitle={isNew?'Заполните название и даты, чтобы создать квартальное или годовое окно.':`${value.start} → ${value.end}`}
+        actions={<>
+          {!isNew&&<Btn danger onClick={onDelete}>Удалить</Btn>}
+          {isNew&&<Btn onClick={onCancel}>Отмена</Btn>}
+          <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave}>{isNew?'Создать':'Сохранить'}</Btn>
+        </>}
+      />
+      <DetailSection title="Параметры">
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <Field label="Название" required><input value={f.label} onChange={e=>setF({...f,label:e.target.value})} placeholder="Y26 · Y26-Q1 · …" style={inp}/></Field>
+          <Field label="Порядок"><input value={f.order||''} onChange={e=>setF({...f,order:Number(e.target.value)||1})} type="number" min={1} style={inp}/></Field>
+          <Field label="Дата начала" required><input type="date" value={f.start} onChange={e=>setF({...f,start:e.target.value})} style={inp}/></Field>
+          <Field label="Дата окончания" required><input type="date" value={f.end} onChange={e=>setF({...f,end:e.target.value})} style={inp}/></Field>
+        </div>
+        <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.desc||''} onChange={e=>setF({...f,desc:e.target.value})} style={{...inp,resize:'vertical',lineHeight:1.5}} placeholder="К чему относится этот период"/></Field>
+      </DetailSection>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION: TEAMS
+// ═════════════════════════════════════════════════════════════════════════════
+function TeamsSection({teams,setTeams,users,selectedId,setSelectedId}){
+  const [q,setQ]=useState('');
+  const [creating,setCreating]=useState(false);
+  const ordered=useMemo(()=>hierOrder(teams),[teams]);
+  const filteredIds=useMemo(()=>{
+    if(!q)return new Set(ordered.map(t=>t.id));
+    const ql=q.toLowerCase();
+    const out=new Set();
+    for(const t of ordered){
+      if(t.name.toLowerCase().includes(ql))for(const n of teamPath(teams,t.id))out.add(n.id);
+    }
+    return out;
+  },[q,ordered,teams]);
+  const shown=ordered.filter(t=>filteredIds.has(t.id));
+  const selected=creating?null:teams.find(t=>t.id===selectedId);
+
+  function remove(id){
+    const desc=descendantIds(teams,id);
+    if(!confirm(`Удалить узел «${teamById(teams,id).name}»?\nВместе с ним будут удалены ${desc.size-1} вложенных.`))return;
+    setTeams(teams.filter(t=>!desc.has(t.id)));
+    if(selectedId===id)setSelectedId(null);
+  }
+  function save(form){
+    if(form.id&&teams.some(t=>t.id===form.id)){
+      setTeams(teams.map(t=>t.id===form.id?{...t,...form}:t));
+      setSelectedId(form.id);
+    } else {
+      const id=`n${Date.now().toString(36)}`;
+      setTeams([...teams,{...form,id}]);
+      setSelectedId(id);
+    }
+    setCreating(false);
+  }
+  function move(id,dir){
+    const cur=teamById(teams,id);const siblings=teams.filter(t=>t.parentId===cur.parentId);
+    const myIdx=siblings.findIndex(s=>s.id===id);const target=Math.max(0,Math.min(siblings.length-1,myIdx+dir));
+    if(target===myIdx)return;
+    // rebuild teams keeping siblings' new order
+    const others=teams.filter(t=>t.parentId!==cur.parentId);
+    const newSibs=[...siblings];const [moved]=newSibs.splice(myIdx,1);newSibs.splice(target,0,moved);
+    setTeams([...others,...newSibs]);
+  }
+
+  return(
+    <MasterDetail
+      toolbar={<div style={{display:'flex',gap:8,alignItems:'center'}}>
+        <ListSearch value={q} onChange={setQ} placeholder="Поиск команды…"/>
+        <Btn variant="primary" size="sm" onClick={()=>{setCreating(true);setSelectedId(null);}}>+ Новая</Btn>
+      </div>}
+      listHeader={`Иерархия · ${ordered.length}`}
+      list={shown.map(t=>{
+        const sel=t.id===selectedId&&!creating;
+        const lead=t.leadId?userById(users,t.leadId):null;
+        const depth=depthOf(teams,t.id);
+        return <ListRow key={t.id} selected={sel} indent={depth*18} onClick={()=>{setSelectedId(t.id);setCreating(false);}}>
+          <span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:t.color,flexShrink:0}}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+              <TypeBadge type={t.type}/>
+              <span style={{fontSize:13.5,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.name}</span>
+            </div>
+            {lead&&<div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:T.mutedFg}}>
+              <UserAvatar user={lead} size={15}/>
+              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lead.name}</span>
+            </div>}
+          </div>
+        </ListRow>;
+      })}
+      listWidth={480}
+      detail={
+        creating ? <TeamEditor value={{name:'',type:'team',parentId:null,leadId:null,color:'#2563eb',desc:''}} teams={teams} users={users} onSave={save} onCancel={()=>setCreating(false)}/>
+        : selected ? <TeamDetail team={selected} teams={teams} users={users} onSave={save} onDelete={()=>remove(selected.id)} onMove={move}/>
+        : <EmptyDetail icon="👥" title="Выберите команду" hint="Кликните по узлу в списке слева или создайте новую команду. Можно переключать иерархию, менять руководителя и цвет."/>
+      }
+    />
+  );
+}
+
+const TEAM_COLORS=['#2563eb','#7c3aed','#059669','#d97706','#dc2626','#0891b2','#6366f1','#be185d','#0f766e','#b45309','#111827'];
+
+function TeamDetail({team,teams,users,onSave,onDelete,onMove}){
+  return <TeamEditor value={team} teams={teams} users={users} onSave={onSave} onDelete={onDelete} onMove={onMove}/>;
+}
+function TeamEditor({value,teams,users,onSave,onCancel,onDelete,onMove}){
+  const [f,setF]=useState(value);
+  useEffect(()=>{setF(value);},[value.id]);
+  const canSave=f.name.trim()&&f.type;
+  const isNew=!value.id;
+  const excluded=value.id?descendantIds(teams,value.id):new Set();
+  const parentOptions=teams.filter(t=>!excluded.has(t.id)).sort((a,b)=>(TEAM_TYPE_ORDER[a.type]-TEAM_TYPE_ORDER[b.type])||a.name.localeCompare(b.name));
+  const lead=f.leadId?userById(users,f.leadId):null;
+  const path=value.id?teamPath(teams,value.id).slice(0,-1).map(t=>t.name).join(' › '):null;
+  const children=value.id?teams.filter(t=>t.parentId===value.id):[];
+  const siblings=value.id?teams.filter(t=>t.parentId===value.parentId):[];
+  const mySibIdx=siblings.findIndex(s=>s.id===value.id);
+
+  return(
+    <div>
+      <DetailHeader
+        breadcrumb={isNew?'Команды / новая':`Команды${path?' · '+path:''}`}
+        title={<span style={{display:'inline-flex',alignItems:'center',gap:10}}>
+          <span style={{display:'inline-block',width:14,height:14,borderRadius:4,background:f.color||'#e5e7eb',flexShrink:0}}/>
+          {f.name||(isNew?'Новая команда':'—')}
+        </span>}
+        subtitle={<span style={{display:'inline-flex',alignItems:'center',gap:8}}>
+          <TypeBadge type={f.type}/>
+          {!isNew&&<span>· id <code style={{fontSize:11,color:T.mutedFg}}>{value.id}</code></span>}
+          {!isNew&&children.length>0&&<span>· {children.length} вложенных</span>}
+        </span>}
+        actions={<>
+          {!isNew&&onMove&&<div style={{display:'flex',gap:4,marginRight:4}}>
+            <button onClick={()=>onMove(value.id,-1)} disabled={mySibIdx===0} title="Выше среди соседей"
+              style={{width:32,height:32,borderRadius:'50%',border:'1.5px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:mySibIdx===0?'not-allowed':'pointer',opacity:mySibIdx===0?.4:1,fontSize:11,padding:0}}>↑</button>
+            <button onClick={()=>onMove(value.id,1)} disabled={mySibIdx===siblings.length-1} title="Ниже среди соседей"
+              style={{width:32,height:32,borderRadius:'50%',border:'1.5px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:mySibIdx===siblings.length-1?'not-allowed':'pointer',opacity:mySibIdx===siblings.length-1?.4:1,fontSize:11,padding:0}}>↓</button>
+          </div>}
+          {!isNew&&<Btn danger onClick={onDelete}>Удалить</Btn>}
+          {isNew&&<Btn onClick={onCancel}>Отмена</Btn>}
+          <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave}>{isNew?'Создать':'Сохранить'}</Btn>
+        </>}
+      />
+      <DetailSection title="Основное">
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <Field label="Название" required><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} style={inp}/></Field>
+          <Field label="Тип">
+            <select value={f.type} onChange={e=>setF({...f,type:e.target.value})} style={{...inp,cursor:'pointer'}}>
+              {['cluster','unit','group','team','squad'].map(k=><option key={k} value={k}>{TEAM_TYPE_LABEL[k]}</option>)}
+            </select>
+          </Field>
+        </div>
+        <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.desc} onChange={e=>setF({...f,desc:e.target.value})} style={{...inp,resize:'vertical',lineHeight:1.5}}/></Field>
+      </DetailSection>
+
+      <DetailSection title="Руководитель">
+        <LeadPicker value={f.leadId} users={users} onChange={id=>setF({...f,leadId:id})}/>
+        {lead&&<div style={{marginTop:10,padding:'10px 12px',background:'#f8fafc',borderRadius:9,display:'flex',alignItems:'center',gap:10}}>
+          <UserAvatar user={lead} size={32}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600,color:T.headingFg}}>{lead.name}</div>
+            <div style={{fontSize:11,color:T.mutedFg}}>{lead.role} · {lead.email}</div>
+          </div>
+        </div>}
+      </DetailSection>
+
+      <DetailSection title="Визуальная метка">
+        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+          {TEAM_COLORS.map(c=>{
+            const sel=f.color===c;
+            return <button key={c} onClick={()=>setF({...f,color:c})} style={{width:32,height:32,borderRadius:'50%',background:c,border:sel?'3px solid '+T.headingFg:'2px solid white',boxShadow:'0 1px 3px rgba(0,0,0,0.15)',cursor:'pointer',padding:0}}/>;
+          })}
+        </div>
+      </DetailSection>
+
+      <DetailSection title="Расположение в иерархии">
+        <Field label="Родительская команда" hint="перемещает узел вместе с вложенными">
+          <select value={f.parentId||''} onChange={e=>setF({...f,parentId:e.target.value||null})} style={{...inp,cursor:'pointer'}}>
+            <option value="">Без родителя (корневой кластер)</option>
+            {parentOptions.map(t=><option key={t.id} value={t.id}>{TEAM_TYPE_LABEL[t.type]} · {teamPathLabel(teams,t.id)}</option>)}
+          </select>
+        </Field>
+        {!isNew&&children.length>0&&<div style={{fontSize:12,color:T.mutedFg,marginTop:4}}>
+          Внутри: {children.map(c=>c.name).join(', ')}
+        </div>}
+      </DetailSection>
+    </div>
+  );
+}
+
+function LeadPicker({value,users,onChange}){
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState('');
+  const ref=useRef();
+  useEffect(()=>{
+    const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  const sel=value?users.find(u=>u.id===value):null;
+  const filtered=users.filter(u=>u.name.toLowerCase().includes(q.toLowerCase())||u.email.toLowerCase().includes(q.toLowerCase()));
+  return(
+    <div ref={ref} style={{position:'relative'}}>
+      <div onClick={()=>setOpen(o=>!o)} style={{...inp,cursor:'pointer',display:'flex',alignItems:'center',gap:8,minHeight:42}}>
+        {sel?(
+          <span style={{display:'inline-flex',alignItems:'center',gap:7,padding:'3px 10px 3px 3px',background:'#f1f5f9',borderRadius:20}}>
+            <UserAvatar user={sel} size={22}/>
+            <span style={{fontSize:13,color:T.headingFg}}>{sel.name}</span>
+            <span onClick={e=>{e.stopPropagation();onChange(null);}} style={{color:T.dimFg,cursor:'pointer',fontSize:14,padding:'0 4px'}}>×</span>
+          </span>
+        ):(<span style={{color:T.dimFg,fontSize:13}}>— не выбран —</span>)}
+        <span style={{flex:1}}/>
+        <span style={{color:T.dimFg,fontSize:11}}>▾</span>
+      </div>
+      {open&&(
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',border:'1px solid '+T.cardBorder,borderRadius:10,boxShadow:'0 10px 30px rgba(0,0,0,0.12)',zIndex:10,maxHeight:280,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+          <input autoFocus value={q} onChange={e=>setQ(e.target.value)} placeholder="Поиск по имени / email…" style={{border:'none',borderBottom:'1px solid '+T.hairline,padding:'10px 14px',outline:'none',fontSize:13}}/>
+          <div style={{overflow:'auto',flex:1}}>
+            {filtered.map(u=>(
+              <div key={u.id} onClick={()=>{onChange(u.id);setOpen(false);setQ('');}} style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',background:u.id===value?'#eff6ff':'transparent'}}
+                onMouseEnter={e=>{if(u.id!==value)e.currentTarget.style.background='#f8fafc';}}
+                onMouseLeave={e=>{if(u.id!==value)e.currentTarget.style.background='transparent';}}>
+                <UserAvatar user={u} size={26}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,color:T.headingFg,fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.name}</div>
+                  <div style={{fontSize:11,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.role} · {u.email}</div>
+                </div>
+              </div>
+            ))}
+            {filtered.length===0&&<div style={{padding:14,textAlign:'center',color:T.dimFg,fontSize:12}}>Ничего не найдено</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// TEAM COMBOBOX — hierarchical, with suggest (shared vocabulary w/ main app)
+// ═════════════════════════════════════════════════════════════════════════════
+function TeamCombobox({selectedIds,onChange,teams,placeholder,accent=T.accent,autoReplaceDescendants=true}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const [hi,setHi]=useState(0);
+  const inputRef=useRef();
+  const wrapRef=useRef();
+  const selected=selectedIds.map(id=>teamById(teams,id)).filter(Boolean);
+  const ql=q.trim().toLowerCase();
+  const tree=useMemo(()=>{
+    const ordered=hierOrder(teams);
+    return ordered.map(t=>({...t,depth:depthOf(teams,t.id)}));
+  },[teams]);
+  // When searching: keep matches + all their ancestors as context (non-selectable)
+  const selectable=new Set();
+  const visible=new Set();
+  tree.forEach(t=>{
+    const matches=!ql||t.name.toLowerCase().includes(ql)||(TEAM_TYPE_LABEL[t.type]||'').toLowerCase().includes(ql);
+    if(matches){
+      selectable.add(t.id);
+      let p=t.parentId;
+      while(p){visible.add(p);p=teamById(teams,p)?.parentId;}
+      visible.add(t.id);
+    }
+  });
+  if(!ql)tree.forEach(t=>{selectable.add(t.id);visible.add(t.id);});
+  const list=tree.filter(t=>visible.has(t.id)).map(t=>{
+    const isSelected=selectedIds.includes(t.id);
+    // also check if covered by a parent already in scope
+    const coveredByParent=!isSelected&&selectedIds.some(sid=>sid!==t.id&&descendantIds(teams,sid).has(t.id));
+    return {...t,isSelected,coveredByParent,isSelectable:selectable.has(t.id)&&!isSelected&&!coveredByParent};
+  });
+  const interactable=list.filter(x=>x.isSelectable);
+  useEffect(()=>{setHi(0);},[q,open]);
+  useEffect(()=>{
+    const h=(e)=>{if(wrapRef.current&&!wrapRef.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  const add=(t)=>{
+    let next=[...selectedIds,t.id];
+    if(autoReplaceDescendants){
+      // remove descendants of the newly added node — parent now covers them
+      const newDesc=descendantIds(teams,t.id);
+      next=next.filter(id=>id===t.id||!newDesc.has(id));
+    }
+    onChange(next);setQ('');inputRef.current?.focus();
+  };
+  const remove=(id)=>onChange(selectedIds.filter(x=>x!==id));
+  const onKey=(e)=>{
+    if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(interactable.length-1,h+1));}
+    else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
+    else if(e.key==='Enter'){e.preventDefault();if(open&&interactable[hi])add(interactable[hi]);}
+    else if(e.key==='Escape'){setOpen(false);}
+    else if(e.key==='Backspace'&&!q&&selected.length>0){remove(selected[selected.length-1].id);}
+  };
+  const highlight=(text)=>{
+    if(!ql)return text;
+    const i=text.toLowerCase().indexOf(ql);
+    if(i<0)return text;
+    return(<>{text.slice(0,i)}<mark style={{background:`${accent}30`,color:'inherit',padding:0}}>{text.slice(i,i+ql.length)}</mark>{text.slice(i+ql.length)}</>);
+  };
+  return(
+    <div ref={wrapRef} style={{position:'relative'}}>
+      <div onClick={()=>{setOpen(true);inputRef.current?.focus();}}
+        style={{minHeight:42,padding:'5px 7px',border:`1.5px solid ${open?accent:T.cardBorder}`,borderRadius:9,background:'white',display:'flex',flexWrap:'wrap',gap:5,alignItems:'center',cursor:'text',transition:'border-color .12s'}}>
+        {selected.map(t=>{
+          const color=TEAM_TYPE_COLOR[t.type]||T.mutedFg;
+          return(
+            <div key={t.id} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 4px 3px 8px',borderRadius:16,background:`${color}15`,border:`1px solid ${color}40`}}>
+              <span style={{fontSize:9,fontWeight:700,color:color,textTransform:'uppercase',letterSpacing:.4}}>{TEAM_TYPE_LABEL[t.type]}</span>
+              <span style={{fontSize:12,fontWeight:600,color:T.bodyFg}}>{t.name}</span>
+              <button onClick={(e)=>{e.stopPropagation();remove(t.id);}}
+                style={{background:'none',border:'none',cursor:'pointer',color:T.mutedFg,fontSize:14,lineHeight:1,padding:'0 4px',borderRadius:8}}
+                onMouseEnter={e=>e.currentTarget.style.color=T.danger}
+                onMouseLeave={e=>e.currentTarget.style.color=T.mutedFg}>×</button>
+            </div>
+          );
+        })}
+        <input ref={inputRef} value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}}
+          onFocus={()=>setOpen(true)} onKeyDown={onKey}
+          placeholder={selected.length?'Ещё команду…':(placeholder||'Начните вводить название команды')}
+          style={{flex:1,minWidth:180,border:'none',outline:'none',fontSize:13,padding:'6px 4px',background:'transparent',fontFamily:'inherit',color:T.bodyFg}}/>
+      </div>
+      {open&&(
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.15)',border:'1px solid '+T.cardBorder,maxHeight:320,overflow:'auto',zIndex:50}}>
+          {list.length===0?(
+            <div style={{padding:'14px 16px',fontSize:12,color:T.dimFg,textAlign:'center'}}>
+              {ql?`Команды не найдены по запросу «${q}»`:'Все команды уже добавлены'}
+            </div>
+          ):(
+            <>
+              {(()=>{
+                let hiIdx=0;
+                return list.map((t)=>{
+                  const color=TEAM_TYPE_COLOR[t.type]||T.mutedFg;
+                  const isHi=t.isSelectable&&hiIdx===hi;
+                  const myIdx=t.isSelectable?hiIdx:-1;
+                  if(t.isSelectable)hiIdx++;
+                  return(
+                    <div key={t.id}
+                      onClick={t.isSelectable?()=>add(t):undefined}
+                      onMouseEnter={t.isSelectable?()=>setHi(myIdx):undefined}
+                      style={{
+                        padding:'6px 12px 6px 8px',
+                        display:'flex',alignItems:'center',gap:6,
+                        cursor:t.isSelectable?'pointer':'default',
+                        background:isHi?'#f3f4f6':'white',
+                        opacity:t.isSelectable?1:0.55,
+                        borderLeft:`3px solid ${isHi?color:'transparent'}`,
+                      }}>
+                      <div style={{display:'flex',flexShrink:0,alignSelf:'stretch'}}>
+                        {Array.from({length:t.depth}).map((_,d)=>(
+                          <div key={d} style={{width:14,borderRight:'1px dashed #e5e7eb',marginRight:0}}/>
+                        ))}
+                      </div>
+                      <div style={{width:3,height:22,borderRadius:2,background:color,flexShrink:0}}/>
+                      <span style={{fontSize:9,fontWeight:700,color:color,textTransform:'uppercase',letterSpacing:.4,padding:'2px 5px',background:`${color}12`,borderRadius:3,flexShrink:0}}>{TEAM_TYPE_LABEL[t.type]}</span>
+                      <span style={{fontSize:13,fontWeight:t.isSelectable?500:400,color:t.isSelectable?T.bodyFg:T.dimFg,flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                        {highlight(t.name)}
+                      </span>
+                      {t.isSelected&&<span style={{fontSize:10,color:T.success,fontWeight:600,flexShrink:0}}>✓ выбрана</span>}
+                      {t.coveredByParent&&<span style={{fontSize:10,color:T.info,fontWeight:600,flexShrink:0}} title="Уже покрыта родительским доступом">покрыта родителем</span>}
+                      {!t.isSelected&&!t.coveredByParent&&!t.isSelectable&&<span style={{fontSize:10,color:T.dimFg,flexShrink:0}}>группа</span>}
+                    </div>
+                  );
+                });
+              })()}
+              <div style={{padding:'6px 12px',fontSize:10,color:T.dimFg,borderTop:'1px solid '+T.hairline,background:'#fafbfc',display:'flex',justifyContent:'space-between',position:'sticky',bottom:0}}>
+                <span>↑↓ навигация · Enter — выбрать · Backspace — убрать</span>
+                <span>{interactable.length} доступно</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION: USERS
+// ═════════════════════════════════════════════════════════════════════════════
+function UsersSection({users,setUsers,teams,selectedId,setSelectedId,currentUserId,onGoToTeam}){
+  const [q,setQ]=useState('');
+  const filtered=users.filter(u=>!q||u.name.toLowerCase().includes(q.toLowerCase())||u.email.toLowerCase().includes(q.toLowerCase())||u.role.toLowerCase().includes(q.toLowerCase()));
+  const selected=users.find(u=>u.id===selectedId);
+  const adminCount=users.filter(u=>u.isAdmin).length;
+
+  function update(id,patch){setUsers(users.map(u=>u.id===id?{...u,...patch}:u));}
+  function toggleAdmin(u){
+    if(u.isAdmin&&adminCount<=1){alert('Нельзя снять admin-права с последнего администратора.');return;}
+    if(u.isAdmin&&u.id===currentUserId&&!confirm('Снять admin-права с себя? Вы потеряете доступ к этому разделу.'))return;
+    update(u.id,{isAdmin:!u.isAdmin});
+  }
+
+  return(
+    <MasterDetail
+      toolbar={<ListSearch value={q} onChange={setQ} placeholder="Поиск по имени, роли, email…"/>}
+      listHeader={`Все пользователи · ${users.length} · админов ${adminCount}`}
+      list={filtered.map(u=>{
+        const sel=u.id===selectedId;
+        return <ListRow key={u.id} selected={sel} onClick={()=>setSelectedId(u.id)}>
+          <UserAvatar user={u} size={32}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:13.5,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.name}</span>
+              {u.id===currentUserId&&<span style={{fontSize:9.5,color:T.mutedFg,background:'#f1f5f9',padding:'1px 6px',borderRadius:4,fontWeight:700,letterSpacing:.3}}>ВЫ</span>}
+            </div>
+            <div style={{fontSize:11,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{u.role} · {u.dept}</div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-end',flexShrink:0}}>
+            {u.isAdmin&&<Chip color="#92400e" bg="#fef3c7">Admin</Chip>}
+            <span style={{fontSize:10.5,color:u.scopes.length===0?T.success:T.info,fontWeight:600}}>
+              {u.scopes.length===0?'весь доступ':`${u.scopes.length} узл${u.scopes.length===1?'':u.scopes.length<5?'а':'ов'}`}
+            </span>
+          </div>
+        </ListRow>;
+      })}
+      detail={
+        selected ? <UserDetail user={selected} users={users} teams={teams} currentUserId={currentUserId}
+                              onToggleAdmin={()=>toggleAdmin(selected)}
+                              onUpdate={patch=>update(selected.id,patch)}
+                              onGoToTeam={onGoToTeam}/>
+        : <EmptyDetail icon="🔑" title="Выберите пользователя" hint="В списке слева — все пользователи OKR Tracker. Здесь можно выдавать admin-права и управлять доступом к конкретным узлам иерархии."/>
+      }
+    />
+  );
+}
+
+function UserDetail({user,users,teams,currentUserId,onToggleAdmin,onUpdate,onGoToTeam}){
+  const isSelf=user.id===currentUserId;
+  const leadOf=teams.filter(t=>t.leadId===user.id);
+
+  function updateScopes(newScopes){onUpdate({scopes:newScopes});}
+
+  return(
+    <div>
+      <DetailHeader
+        breadcrumb="Пользователи · карточка"
+        title={<span style={{display:'inline-flex',alignItems:'center',gap:12}}>
+          <UserAvatar user={user} size={36}/>
+          {user.name}
+          {isSelf&&<span style={{fontSize:10.5,color:T.mutedFg,background:'#f1f5f9',padding:'2px 7px',borderRadius:5,fontWeight:700,letterSpacing:.3}}>ВЫ</span>}
+          {user.isAdmin&&<Chip color="#92400e" bg="#fef3c7">Admin</Chip>}
+        </span>}
+        subtitle={<span>
+          <ProviderChip p={user.provider}/> · {user.email} · {user.role} · {user.dept}
+        </span>}
+        actions={<Btn variant={user.isAdmin?'secondary':'accent'} danger={user.isAdmin} onClick={onToggleAdmin}>
+          {user.isAdmin?'Снять admin':'Назначить admin'}
+        </Btn>}
+      />
+
+      <DetailSection title="Учётная запись">
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+          <Field label="Email"><input value={user.email} readOnly style={{...inp,background:'#f8fafc',color:T.mutedFg}}/></Field>
+          <Field label="Последний вход"><input value={user.lastLogin} readOnly style={{...inp,background:'#f8fafc',color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace',fontSize:13}}/></Field>
+          <Field label="Провайдер"><input value={user.provider} readOnly style={{...inp,background:'#f8fafc',color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace',fontSize:13}}/></Field>
+          <Field label="Отдел"><input value={user.dept} readOnly style={{...inp,background:'#f8fafc',color:T.mutedFg}}/></Field>
+        </div>
+      </DetailSection>
+
+      <DetailSection title={`Является руководителем · ${leadOf.length}`}>
+        {leadOf.length===0?(
+          <div style={{fontSize:12.5,color:T.mutedFg,fontStyle:'italic'}}>Пользователь не назначен руководителем ни в одной команде.</div>
+        ):(
+          <div style={{display:'flex',flexDirection:'column',gap:6}}>
+            {leadOf.map(t=>(
+              <button key={t.id} onClick={()=>onGoToTeam&&onGoToTeam(t.id)}
+                style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'white',border:'1px solid '+T.cardBorder,borderRadius:9,cursor:'pointer',textAlign:'left',fontFamily:'inherit',transition:'all .12s'}}
+                onMouseEnter={e=>{e.currentTarget.style.background='#f8fafc';e.currentTarget.style.borderColor='#c4b5fd';}}
+                onMouseLeave={e=>{e.currentTarget.style.background='white';e.currentTarget.style.borderColor=T.cardBorder;}}>
+                <span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:t.color,flexShrink:0}}/>
+                <TypeBadge type={t.type}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:T.headingFg}}>{t.name}</div>
+                  <div style={{fontSize:11,color:T.mutedFg,marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{teamPathLabel(teams,t.id)}</div>
+                </div>
+                <span style={{fontSize:11,color:T.accent,fontWeight:600,flexShrink:0}}>Открыть →</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </DetailSection>
+
+      <DetailSection title="Доступ к иерархии">
+        <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:12,lineHeight:1.5}}>
+          Список конкретных команд, к которым пользователь имеет доступ. При выборе узла он видит только его и все дочерние.
+          Если список пуст — виден весь tree.
+        </div>
+
+        {user.scopes.length===0&&(
+          <div style={{padding:'12px 14px',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:9,color:'#065f46',fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+            <span style={{width:8,height:8,background:'#10b981',borderRadius:'50%'}}/>
+            Полный доступ — видна вся иерархия
+          </div>
+        )}
+
+        <Field label="Команды, к которым есть доступ" hint="выбор с поиском и иерархией">
+          <TeamCombobox selectedIds={user.scopes} onChange={updateScopes} teams={teams}
+            placeholder="Выберите команды из иерархии…"/>
+        </Field>
+
+        {user.scopes.length>0&&(
+          <div style={{marginTop:8,fontSize:11.5,color:T.mutedFg,lineHeight:1.5}}>
+            При выборе родительской команды — доступ к всем дочерним выдаётся автоматически. Дочерние узлы ниже уже выбранной родительской не отображаются.
+          </div>
+        )}
+      </DetailSection>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// APP
+// ═════════════════════════════════════════════════════════════════════════════
+function App(){
+  const [section,setSection]=useStore('okr_admin_section','periods');
+  const [periods,setPeriods]=useStore('okr_periods',PERIODS_SEED);
+  const [teams,setTeams]=useStore('okr_teams',TEAMS_SEED);
+  const [users,setUsers]=useStore('okr_users',USERS_SEED);
+  const [selPeriod,setSelPeriod]=useStore('okr_admin_sel_period','y26q1');
+  const [selTeam,setSelTeam]=useStore('okr_admin_sel_team','t1');
+  const [selUser,setSelUser]=useStore('okr_admin_sel_user','u2');
+
+  const currentUserId='u2';
+  const currentUser=users.find(u=>u.id===currentUserId)||users[0];
+
+  return(
+    <Shell section={section} setSection={setSection} currentUser={currentUser}>
+      {section==='periods'&&<PeriodsSection periods={periods} setPeriods={setPeriods} selectedId={selPeriod} setSelectedId={setSelPeriod}/>}
+      {section==='teams'&&<TeamsSection teams={teams} setTeams={setTeams} users={users} selectedId={selTeam} setSelectedId={setSelTeam}/>}
+      {section==='users'&&<UsersSection users={users} setUsers={setUsers} teams={teams} selectedId={selUser} setSelectedId={setSelUser} currentUserId={currentUserId} onGoToTeam={tid=>{setSelTeam(tid);setSection('teams');}}/>}
+    </Shell>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

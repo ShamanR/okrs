@@ -167,6 +167,15 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 	w.WriteHeader(http.StatusNoContent)
 }
 
+type meResponse struct {
+	ID          int64  `json:"id"`
+	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
+	AvatarURL   string `json:"avatar_url"`
+	Provider    string `json:"provider"`
+	IsAdmin     bool   `json:"is_admin"`
+}
+
 // GET /api/v1/me
 func HandleMe(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
@@ -174,7 +183,14 @@ func HandleMe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
-	writeJSON(w, user)
+	writeJSON(w, meResponse{
+		ID:          user.ID,
+		DisplayName: user.DisplayName,
+		Email:       user.Email,
+		AvatarURL:   user.AvatarURL,
+		Provider:    user.Provider,
+		IsAdmin:     user.IsAdmin,
+	})
 }
 
 func parseID(r *http.Request, param string) (int64, error) {

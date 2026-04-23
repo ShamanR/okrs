@@ -10,6 +10,9 @@ import (
 	"okrs/internal/store"
 )
 
+// sentinel for "no access" — non-nil empty slice stored in context
+var emptyTeamIDs = []int64{}
+
 type policyContextKey int
 
 const allowedTeamsKey policyContextKey = 0
@@ -34,7 +37,10 @@ func (e *PolicyEvaluator) AllowedTeamIDs(ctx context.Context) ([]int64, bool) {
 }
 
 // LoadScope resolves and stores the user's allowed team IDs into the context.
-// Admin users get nil (unrestricted). Returns enriched context.
+// Admin users get nil (unrestricted access). Non-admins get their explicit grant
+// expansion — an empty slice if they have no grants (no access).
+// The cfg param is kept for signature compatibility but default-node policy is
+// applied at registration time by Manager.applyNewUserPolicy, not per-request.
 func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg Config) (context.Context, error) {
 	if user == nil || user.IsAdmin {
 		return context.WithValue(ctx, allowedTeamsKey, []int64(nil)), nil
@@ -45,13 +51,11 @@ func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg 
 		return ctx, err
 	}
 
-	rootIDs := make([]int64, 0, len(grants))
-
-	// Also check if there's a configured default node
-	if cfg.NewUserPolicy == PolicyDefaultNode && cfg.DefaultNodeID != 0 {
-		rootIDs = append(rootIDs, cfg.DefaultNodeID)
+	if len(grants) == 0 {
+		return context.WithValue(ctx, allowedTeamsKey, emptyTeamIDs), nil
 	}
 
+	rootIDs := make([]int64, 0, len(grants))
 	for _, g := range grants {
 		if !slices.Contains(rootIDs, g.TeamID) {
 			rootIDs = append(rootIDs, g.TeamID)
@@ -61,6 +65,9 @@ func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg 
 	allIDs, err := e.store.ListDescendantTeamIDs(ctx, rootIDs)
 	if err != nil {
 		return ctx, err
+	}
+	if allIDs == nil {
+		allIDs = emptyTeamIDs
 	}
 
 	return context.WithValue(ctx, allowedTeamsKey, allIDs), nil

@@ -19,6 +19,29 @@ SSR-страницы должны опираться на те же правил
 
 При `AUTH_MODE=enabled` неавторизованные запросы к SSR-страницам получают `302 → /login?next=<original_url>`. Запросы к API-endpoints получают `401`.
 
+## Users endpoint
+
+- `GET /api/v1/users` — возвращает список пользователей (все не-системные)
+
+Response (array):
+
+```json
+[
+  {
+    "id": 42,
+    "display_name": "Ivan Ivanov",
+    "avatar_url": "https://...",
+    "provider": "google",
+    "email": "ivan@example.com",
+    "led_team": "Platform"
+  }
+]
+```
+
+- `led_team` — имя команды, которой пользователь является лидом (по строковому совпадению `teams.lead = display_name`); поле отсутствует если команды нет.
+- Используется компонентом выбора пользователя (UserSelector в tracker.js, user picker в admin).
+- Endpoint доступен без admin-прав (scope: авторизованный пользователь).
+
 ## Me endpoint
 
 - `GET /api/v1/me` — возвращает текущего пользователя
@@ -57,10 +80,25 @@ Response:
 
 ### Настройки доступа
 
-- `GET /api/v1/admin/settings/access` — текущая политика для новых пользователей (`new_user_policy`, `default_hierarchy_node_id`)
+- `GET /api/v1/admin/settings/access` — текущая политика для новых пользователей
+
+Response:
+
+```json
+{
+  "new_user_policy": "empty",
+  "default_hierarchy_node_id": null
+}
+```
+
 - `POST /api/v1/admin/settings/access` — обновить политику; body: `{"new_user_policy": "default_node", "default_hierarchy_node_id": 42}`
 
-Допустимые значения `new_user_policy`: `empty`, `default_node`.
+Допустимые значения `new_user_policy`:
+
+- `empty` — новый пользователь не получает доступа (пустая иерархия)
+- `default_node` — новый пользователь получает грант на `default_hierarchy_node_id` при первом логине, если у него ещё нет ни одного гранта
+
+Политика хранится в `system_settings` и применяется без перезапуска. Изменение политики не влияет на уже выданные гранты.
 
 Все admin API endpoints требуют CSRF token при вызове из браузера.
 
@@ -97,17 +135,54 @@ CSRF token должен быть ротационным (не постоянны
 
 Обязательные write endpoints:
 
-- share goal
+- share goal — `POST /api/v1/goals/{goalID}/share`
 - update goal weight
-- add goal comment
+- add goal comment — `POST /api/v1/goals/{goalID}/comments`
 - update goal
-- create KR
-- move goal up / down
-- update KR progress
-- add KR comment
-- update KR
-- move KR up / down
-- update team status
+- create KR — `POST /api/v1/goals/{goalID}/key-results`
+- move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`
+- update KR progress — `POST /api/v1/krs/{krID}/progress/percent|boolean|project`
+- add KR comment — `POST /api/v1/krs/{krID}/comments`
+- update KR — `POST /api/v1/krs/{krID}`
+- move KR up / down — `POST /api/v1/krs/{krID}/move-up`, `POST /api/v1/krs/{krID}/move-down`
+- update team status — `POST /api/v1/teams/{teamID}/status`
+- delete goal — `DELETE /api/v1/goals/{goalID}`
+- delete KR — `DELETE /api/v1/krs/{krID}`
+- leave goal share — `DELETE /api/v1/goals/{goalID}/share/{teamID}`
+
+### `DELETE /api/v1/goals/{goalID}`
+
+Удаляет goal или покидает shared goal в зависимости от роли команды.
+
+- Если `requesting_team_id` является owner team goal — goal удаляется полностью (включая все KR и shares).
+- Если `requesting_team_id` является shared team — удаляется только запись goal_share для этой команды.
+- `requesting_team_id` определяется из контекста авторизации.
+
+Side effects:
+
+- после удаления сервер проверяет, остались ли у команды goals в данном периоде; если нет — автоматически сбрасывает `team_period_status` в `no_goals`.
+
+Validation:
+
+- `NOT_FOUND` если goal не найдена или недоступна текущему пользователю.
+
+### `DELETE /api/v1/krs/{krID}`
+
+Удаляет KR. Доступно, если текущая команда является owner team родительской goal.
+
+Validation:
+
+- `NOT_FOUND` если KR не найден или команда не имеет доступа к родительской goal.
+
+### `DELETE /api/v1/goals/{goalID}/share/{teamID}`
+
+Удаляет запись goal_share для указанной команды. Эквивалентно `DELETE /api/v1/goals/{goalID}` при вызове от имени shared team.
+
+Используется GoalModal при сохранении с выключённым togglem «Общая цель» когда цель ранее была shared.
+
+Validation:
+
+- `403` если вызывающий не имеет доступа к `teamID`.
 
 ## Period-aware team visibility
 
@@ -142,7 +217,6 @@ CSRF token должен быть ротационным (не постоянны
 - изменение доменного правила сопровождается тестами;
 - нет дублирования business rule между SSR handler и API handler.
 
-
 ## Contract extensions for team OKRs UI
 
 ### `GET /api/v1/hierarchy`
@@ -156,6 +230,16 @@ Hierarchy node shape расширен полем:
 Это поле используется sidebar/navigation UI и таблицей дочерних команд.
 
 ### `GET /api/v1/teams/{teamID}/okrs?period_id={id}`
+
+Каждый goal в `goals[]` содержит вложенный массив `comments[]`:
+
+```json
+"comments": [
+  { "id": 1, "text": "...", "author_name": "Ivan", "created_at": "..." }
+]
+```
+
+Комментарии загружаются батчевым запросом (`ANY($1)`) вместе с goals — без N+1.
 
 Response расширен полем:
 

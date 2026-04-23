@@ -215,22 +215,28 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load users", nil)
 			return
 		}
+		leadTeams, _ := s.store.ListUserLeadTeams(r.Context())
 		type userItem struct {
 			ID          int64  `json:"id"`
 			DisplayName string `json:"display_name"`
 			AvatarURL   string `json:"avatar_url"`
 			Provider    string `json:"provider"`
 			Email       string `json:"email"`
+			LedTeam     string `json:"led_team,omitempty"`
 		}
 		items := make([]userItem, 0, len(users))
 		for _, u := range users {
-			items = append(items, userItem{
+			item := userItem{
 				ID:          u.ID,
 				DisplayName: u.DisplayName,
 				AvatarURL:   u.AvatarURL,
 				Provider:    u.Provider,
 				Email:       u.Email,
-			})
+			}
+			if leadTeams != nil {
+				item.LedTeam = leadTeams[u.DisplayName]
+			}
+			items = append(items, item)
 		}
 		v1.WriteJSON(w, http.StatusOK, items)
 	})

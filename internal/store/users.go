@@ -61,6 +61,28 @@ func (s *Store) ListUsers(ctx context.Context) ([]*domain.User, error) {
 	return users, rows.Err()
 }
 
+func (s *Store) ListUserLeadTeams(ctx context.Context) (map[string]string, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT lead, name FROM teams
+		WHERE deleted_at IS NULL AND lead != ''
+		ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[string]string)
+	for rows.Next() {
+		var lead, teamName string
+		if err := rows.Scan(&lead, &teamName); err != nil {
+			return nil, err
+		}
+		if _, exists := result[lead]; !exists {
+			result[lead] = teamName
+		}
+	}
+	return result, rows.Err()
+}
+
 func (s *Store) SetUserAdmin(ctx context.Context, userID int64, isAdmin bool) error {
 	_, err := s.DB.Exec(ctx, `UPDATE users SET is_admin = $1, updated_at = NOW() WHERE id = $2`, isAdmin, userID)
 	return err

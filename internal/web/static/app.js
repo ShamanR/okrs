@@ -2459,15 +2459,74 @@
       img.src = user.avatar_url;
       img.width = size;
       img.height = size;
-      img.className = 'rounded-circle flex-shrink-0';
+      img.style.cssText = `border-radius:50%;object-fit:cover;flex-shrink:0;display:block`;
       img.alt = '';
       return img;
     }
     const el = document.createElement('span');
-    el.className = 'rounded-circle bg-secondary d-inline-flex align-items-center justify-content-center text-white flex-shrink-0';
+    el.className = 'user-avatar__fallback';
     el.style.cssText = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px;line-height:1`;
     el.textContent = user && user.display_name ? user.display_name[0].toUpperCase() : '?';
     return el;
+  };
+
+  const _userPickerDropdown = (users, onSelect, inputEl) => {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'user-selector__dropdown';
+    const renderItems = (q) => {
+      const lower = (q || '').toLowerCase().trim();
+      const filtered = lower
+        ? users.filter((u) => u.display_name.toLowerCase().includes(lower) || (u.led_team || '').toLowerCase().includes(lower) || (u.email || '').toLowerCase().includes(lower))
+        : users;
+      dropdown.innerHTML = '';
+      if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.className = 'user-selector__empty';
+        empty.textContent = 'Пользователи не найдены';
+        dropdown.appendChild(empty);
+        return;
+      }
+      filtered.slice(0, 20).forEach((user) => {
+        const item = document.createElement('div');
+        item.className = 'user-selector__option';
+        item.appendChild(_pickerAvatar(user, 26));
+        const info = document.createElement('div');
+        info.className = 'user-selector__option-info';
+        const nameEl = document.createElement('span');
+        nameEl.className = 'user-selector__option-name';
+        nameEl.textContent = user.display_name;
+        info.appendChild(nameEl);
+        if (user.led_team) {
+          const teamEl = document.createElement('span');
+          teamEl.className = 'user-selector__option-team';
+          teamEl.textContent = user.led_team;
+          info.appendChild(teamEl);
+        }
+        item.appendChild(info);
+        item.addEventListener('mousedown', (e) => { e.preventDefault(); onSelect(user); });
+        dropdown.appendChild(item);
+      });
+    };
+    if (inputEl) inputEl.addEventListener('input', () => renderItems(inputEl.value));
+    renderItems('');
+    return dropdown;
+  };
+
+  const _userSelectorChip = (user, label, onRemove) => {
+    const chip = document.createElement('span');
+    chip.className = 'user-chip';
+    chip.appendChild(_pickerAvatar(user, 18));
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'user-chip__name';
+    nameSpan.textContent = label;
+    chip.appendChild(nameSpan);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'user-chip__remove';
+    btn.textContent = '×';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); onRemove(); });
+    chip.appendChild(btn);
+    return chip;
   };
 
   const _attachHoverPopover = (el, html) => {
@@ -2504,7 +2563,8 @@
   const _userPopHtml = (user) => [
     user.avatar_url ? `<img src="${escapeHTML(user.avatar_url)}" width="32" height="32" class="rounded-circle me-2">` : '',
     `<strong>${escapeHTML(user.display_name)}</strong>`,
-    user.provider ? `<br><span class="text-muted small">${escapeHTML(user.provider)}</span>` : '',
+    user.led_team ? `<br><span class="text-muted small">${escapeHTML(user.led_team)}</span>`
+      : user.provider ? `<br><span class="text-muted small">${escapeHTML(user.provider)}</span>` : '',
   ].join('');
 
   const _pickerChip = (user, label, onRemove) => {
@@ -2538,7 +2598,7 @@
     const renderItems = (q) => {
       const lower = (q || '').toLowerCase().trim();
       const filtered = lower
-        ? users.filter((u) => u.display_name.toLowerCase().includes(lower) || (u.email || '').toLowerCase().includes(lower))
+        ? users.filter((u) => u.display_name.toLowerCase().includes(lower) || (u.email || '').toLowerCase().includes(lower) || (u.led_team || '').toLowerCase().includes(lower))
         : users;
       dropdown.innerHTML = '';
       if (!filtered.length) {
@@ -2558,12 +2618,13 @@
         const nameEl = document.createElement('span');
         nameEl.textContent = user.display_name;
         info.appendChild(nameEl);
-        if (user.provider) {
-          const provEl = document.createElement('span');
-          provEl.className = 'text-muted';
-          provEl.style.fontSize = '0.75rem';
-          provEl.textContent = user.provider;
-          info.appendChild(provEl);
+        const subLabel = user.led_team || user.provider;
+        if (subLabel) {
+          const subEl = document.createElement('span');
+          subEl.className = 'text-muted';
+          subEl.style.fontSize = '0.75rem';
+          subEl.textContent = subLabel;
+          info.appendChild(subEl);
         }
         item.appendChild(info);
         item.addEventListener('mouseenter', () => { item.style.background = '#f0f1ff'; });
@@ -2586,47 +2647,55 @@
     hidden.value = initialValue;
     container.appendChild(hidden);
     let selectedUser = null;
+
+    const root = document.createElement('div');
+    root.className = 'user-selector';
+    container.appendChild(root);
+
     const render = () => {
-      Array.from(container.children).forEach((el) => { if (el !== hidden) el.remove(); });
+      root.innerHTML = '';
+      const field = document.createElement('div');
+      field.className = 'user-selector__field';
+      root.appendChild(field);
+
       if (hidden.value) {
-        const chipWrap = document.createElement('div');
-        chipWrap.className = 'd-flex align-items-center';
-        chipWrap.appendChild(_pickerChip(selectedUser, hidden.value, () => {
+        field.appendChild(_userSelectorChip(selectedUser, hidden.value, () => {
           hidden.value = '';
           selectedUser = null;
           render();
         }));
-        container.appendChild(chipWrap);
       } else {
-        const wrap = document.createElement('div');
-        wrap.className = 'position-relative';
         const input = document.createElement('input');
         input.type = 'text';
-        input.className = 'form-control';
+        input.className = 'user-selector__input';
         input.placeholder = 'Поиск пользователя…';
-        wrap.appendChild(input);
+        field.appendChild(input);
         let dropdown = null;
+        const closeDropdown = () => {
+          dropdown?.remove();
+          dropdown = null;
+          field.classList.remove('user-selector__field--open');
+        };
         const openDropdown = async () => {
           if (dropdown) return;
+          field.classList.add('user-selector__field--open');
           const users = await _fetchUsersForPicker();
-          dropdown = _pickerDropdown(users, (user) => {
+          dropdown = _userPickerDropdown(users, (user) => {
             hidden.value = user.display_name;
             selectedUser = user;
-            dropdown = null;
+            closeDropdown();
             render();
           }, input);
-          wrap.appendChild(dropdown);
+          root.appendChild(dropdown);
         };
         input.addEventListener('focus', openDropdown);
         input.addEventListener('blur', () => {
           setTimeout(() => {
-            dropdown?.remove();
-            dropdown = null;
+            closeDropdown();
             const typed = input.value.trim();
             if (typed) { hidden.value = typed; selectedUser = null; render(); }
           }, 200);
         });
-        container.appendChild(wrap);
       }
     };
     render();

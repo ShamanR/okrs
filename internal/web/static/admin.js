@@ -289,16 +289,16 @@ function HeaderUserMenu({user}) {
   const hide = ()=>{timer.current=setTimeout(()=>setOpen(false),160);};
   return <div style={{position:'relative'}} onMouseEnter={show} onMouseLeave={hide}>
     <button onClick={()=>setOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:7,background:open?'rgba(255,255,255,0.08)':'transparent',border:'none',borderRadius:8,padding:'4px 7px 4px 4px',cursor:'pointer'}}>
-      <Avatar user={user} size={28}/>
+      <UserAvatar user={user} size={28}/>
       <span style={{color:'rgba(255,255,255,0.55)',fontSize:10,transform:open?'rotate(180deg)':'none'}}>▾</span>
     </button>
     {open&&<div onMouseEnter={show} onMouseLeave={hide}
       style={{position:'absolute',top:'calc(100% + 6px)',right:0,background:'white',borderRadius:10,boxShadow:'0 12px 32px rgba(15,23,42,0.18)',border:'1px solid '+T.cardBorder,minWidth:240,zIndex:1000,overflow:'hidden'}}>
       <div style={{padding:'12px 14px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'center',gap:10}}>
-        <Avatar user={user} size={40}/>
+        <UserAvatar user={user} size={40}/>
         <div>
-          <div style={{fontSize:13,fontWeight:700,color:T.bodyFg}}>{user?.DisplayName}</div>
-          <div style={{fontSize:11,color:T.mutedFg}}>{user?.Email}</div>
+          <div style={{fontSize:13,fontWeight:700,color:T.bodyFg}}>{user?.display_name}</div>
+          <div style={{fontSize:11,color:T.mutedFg}}>{user?.email}</div>
         </div>
       </div>
       <div style={{padding:'4px 0'}}>
@@ -323,9 +323,10 @@ function HeaderUserMenu({user}) {
 // ── SHELL ────────────────────────────────────────────────────────────────────
 function Shell({section, setSection, currentUser, children}) {
   const sections = [
-    {id:'periods', label:'Периоды', hint:'Квартальные окна', icon:'📅'},
-    {id:'teams',   label:'Команды', hint:'Иерархия и руководители', icon:'👥'},
-    {id:'users',   label:'Пользователи', hint:'Админы и доступ', icon:'🔑'},
+    {id:'periods',  label:'Периоды',     hint:'Квартальные окна',        icon:'📅'},
+    {id:'teams',    label:'Команды',     hint:'Иерархия и руководители', icon:'👥'},
+    {id:'users',    label:'Пользователи',hint:'Админы и доступ',         icon:'🔑'},
+    {id:'settings', label:'Настройки',   hint:'Доступ и политики',       icon:'⚙'},
   ];
   const cur = sections.find(s=>s.id===section);
   return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
@@ -585,6 +586,89 @@ function TeamsSection({teams, reload}) {
   </div>;
 }
 
+// ── USER SELECTOR ────────────────────────────────────────────────────────────
+let _adminUsersCache = null;
+async function fetchUserList() {
+  if (_adminUsersCache) return _adminUsersCache;
+  try { const res = await apiGet('/api/v1/users'); _adminUsersCache = res?.ok ? await res.json() : []; } catch { _adminUsersCache = []; }
+  return _adminUsersCache;
+}
+
+function UserAvatar({user, size=24}) {
+  if (user?.avatar_url) return <img src={user.avatar_url} width={size} height={size} alt="" style={{borderRadius:'50%',objectFit:'cover',flexShrink:0,display:'block'}}/>;
+  return <span className="user-avatar__fallback" style={{width:size,height:size,fontSize:Math.round(size*0.45),lineHeight:1}}>{user?.display_name?.[0]?.toUpperCase()||'?'}</span>;
+}
+
+function UserSelector({value, onChange, placeholder='Поиск пользователя…'}) {
+  const [users, setUsers] = useState([]);
+  const [inputVal, setInputVal] = useState(value||'');
+  const [open, setOpen] = useState(false);
+  const [hi, setHi] = useState(0);
+  const inputRef = useRef(null);
+  const wrapRef = useRef(null);
+
+  useEffect(()=>{fetchUserList().then(setUsers);},[]);
+  // Sync displayed text when external value changes (e.g. form reset)
+  useEffect(()=>{ if(!open) setInputVal(value||''); },[value]);
+  // Close dropdown on outside click, revert input to selected value
+  useEffect(()=>{
+    if(!open) return;
+    const h = e=>{if(wrapRef.current&&!wrapRef.current.contains(e.target)){setOpen(false);setInputVal(value||'');}};
+    document.addEventListener('mousedown',h);
+    return ()=>document.removeEventListener('mousedown',h);
+  },[open,value]);
+
+  const ql = inputVal.trim().toLowerCase();
+  const filtered = ql
+    ? users.filter(u=>u.display_name.toLowerCase().includes(ql)||(u.led_team||'').toLowerCase().includes(ql))
+    : users;
+  const selectedUser = value ? users.find(u=>u.display_name===value)||null : null;
+
+  const select = u=>{onChange(u.display_name);setInputVal(u.display_name);setOpen(false);};
+  const clear = e=>{e.stopPropagation();onChange('');setInputVal('');inputRef.current?.focus();};
+  const onKey = e=>{
+    if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(filtered.length-1,h+1));}
+    else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
+    else if(e.key==='Enter'){e.preventDefault();if(open&&filtered[hi])select(filtered[hi]);}
+    else if(e.key==='Escape'){setOpen(false);setInputVal(value||'');}
+  };
+
+  return (
+    <div ref={wrapRef} className="user-selector">
+      <div className={`user-selector__field${open?' user-selector__field--open':''}`}
+        style={{flexWrap:'nowrap',gap:6}}>
+        {selectedUser&&<UserAvatar user={selectedUser} size={22}/>}
+        <input ref={inputRef}
+          value={inputVal}
+          onChange={e=>{setInputVal(e.target.value);setOpen(true);setHi(0);if(!e.target.value.trim())onChange('');}}
+          onFocus={()=>{setInputVal('');setOpen(true);setHi(0);}}
+          onKeyDown={onKey}
+          placeholder={value||placeholder}
+          className="user-selector__input"
+          autoComplete="off"/>
+        {value&&<button type="button" onClick={clear} className="user-chip__remove" style={{flexShrink:0,fontSize:18,padding:'0 2px'}}>×</button>}
+      </div>
+      {open&&(
+        <div className="user-selector__dropdown">
+          {filtered.length===0
+            ? <div className="user-selector__empty">{ql?'Пользователи не найдены':'Список пуст'}</div>
+            : filtered.slice(0,20).map((u,i)=>(
+              <div key={u.id} onMouseDown={e=>{e.preventDefault();select(u);}} onMouseEnter={()=>setHi(i)}
+                className={`user-selector__option${i===hi?' user-selector__option--hi':''}`}>
+                <UserAvatar user={u} size={26}/>
+                <div className="user-selector__option-info">
+                  <span className="user-selector__option-name">{u.display_name}</span>
+                  {u.led_team&&<span className="user-selector__option-team">{u.led_team}</span>}
+                </div>
+              </div>
+            ))
+          }
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TeamEditor({value, teams, onSave, onCancel, onDelete, onRestore, onHardDelete, saving}) {
   const [f, setF] = useState({...value});
   useEffect(()=>{setF({...value});},[value.id]);
@@ -626,7 +710,7 @@ function TeamEditor({value, teams, onSave, onCancel, onDelete, onRestore, onHard
           </select>
         </Field>
       </div>
-      <Field label="Руководитель" hint="свободный текст"><input value={f.lead||''} onChange={e=>setF({...f,lead:e.target.value})} placeholder="Имя или ник" style={inpStyle}/></Field>
+      <Field label="Руководитель"><UserSelector value={f.lead||''} onChange={v=>setF({...f,lead:v})} placeholder="Поиск пользователя…"/></Field>
       <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.description||''} onChange={e=>setF({...f,description:e.target.value})} style={{...inpStyle,resize:'vertical',lineHeight:1.5}}/></Field>
     </DetailSection>
     <DetailSection title="Расположение в иерархии">
@@ -644,6 +728,88 @@ function TeamEditor({value, teams, onSave, onCancel, onDelete, onRestore, onHard
   </div>;
 }
 
+// ── ACCESS SETTINGS PANEL ────────────────────────────────────────────────────
+function AccessSettingsPanel({teams}) {
+  const [policy, setPolicy] = useState('empty');
+  const [nodeId, setNodeId] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const activeTeams = (teams||[]).filter(t=>!t.deleted_at);
+
+  useEffect(()=>{
+    apiGet('/api/v1/admin/settings/access').then(r=>r&&r.json()).then(data=>{
+      if (!data) return;
+      setPolicy(data.new_user_policy||'empty');
+      setNodeId(data.default_hierarchy_node_id ? String(data.default_hierarchy_node_id) : '');
+    });
+  },[]);
+
+  async function save() {
+    setSaving(true); setSaved(false);
+    const body = {new_user_policy: policy};
+    if (policy==='default_node') body.default_hierarchy_node_id = nodeId ? Number(nodeId) : null;
+    const res = await apiPost('/api/v1/admin/settings/access', body);
+    setSaving(false);
+    if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
+    else alert('Ошибка сохранения настроек');
+  }
+
+  function teamOptions(nodes, depth=0) {
+    const opts = [];
+    (nodes||[]).forEach(t=>{
+      opts.push(<option key={t.id} value={t.id}>{'\u00A0'.repeat(depth*2)}{TEAM_TYPE_LABEL[t.type]||t.type} · {t.name}</option>);
+      if (t.children) opts.push(...teamOptions(t.children, depth+1));
+    });
+    return opts;
+  }
+
+  const treeTeams = (function buildTree(flat) {
+    const byId = Object.fromEntries(flat.map(t=>([t.id, {...t, children:[]}])));
+    const roots = [];
+    flat.forEach(t=>{ if (t.parent_id && byId[t.parent_id]) byId[t.parent_id].children.push(byId[t.id]); else roots.push(byId[t.id]); });
+    return roots;
+  })(activeTeams);
+
+  return <div>
+    <DetailHeader breadcrumb="Настройки" title="Политика для новых пользователей"
+      subtitle="Определяет, что видит пользователь при первом входе в систему"/>
+    <DetailSection title="Доступ по умолчанию">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:16,lineHeight:1.6}}>
+        Применяется однократно при первом логине. После этого доступ управляется вручную через карточку пользователя.
+      </div>
+      <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:20}}>
+        <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',padding:'12px 14px',borderRadius:9,border:'1.5px solid '+(policy==='empty'?T.accent:'#e5e7eb'),background:policy==='empty'?'#f5f3ff':'white',transition:'all .12s'}}>
+          <input type="radio" name="np" value="empty" checked={policy==='empty'} onChange={()=>setPolicy('empty')} style={{marginTop:2,accentColor:T.accent}}/>
+          <div>
+            <div style={{fontSize:13,fontWeight:600,color:T.bodyFg}}>Нет доступа</div>
+            <div style={{fontSize:11.5,color:T.mutedFg,marginTop:2}}>Новый пользователь видит пустую иерархию. Администратор выдаёт доступ вручную.</div>
+          </div>
+        </label>
+        <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',padding:'12px 14px',borderRadius:9,border:'1.5px solid '+(policy==='default_node'?T.accent:'#e5e7eb'),background:policy==='default_node'?'#f5f3ff':'white',transition:'all .12s'}}>
+          <input type="radio" name="np" value="default_node" checked={policy==='default_node'} onChange={()=>setPolicy('default_node')} style={{marginTop:2,accentColor:T.accent}}/>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600,color:T.bodyFg}}>Доступ к узлу по умолчанию</div>
+            <div style={{fontSize:11.5,color:T.mutedFg,marginTop:2}}>При первом входе пользователю автоматически выдаётся доступ к выбранному узлу и всем его дочерним командам.</div>
+            {policy==='default_node'&&<div style={{marginTop:10}}>
+              <select value={nodeId} onChange={e=>setNodeId(e.target.value)}
+                style={{...inpStyle,fontSize:13,cursor:'pointer'}}>
+                <option value="">— выберите узел иерархии —</option>
+                {teamOptions(treeTeams)}
+              </select>
+            </div>}
+          </div>
+        </label>
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <Btn variant="primary" onClick={save} disabled={saving||(policy==='default_node'&&!nodeId)}>
+          {saving?'Сохранение…':'Сохранить'}
+        </Btn>
+        {saved&&<span style={{fontSize:12,color:'#059669',fontWeight:600}}>✓ Сохранено</span>}
+      </div>
+    </DetailSection>
+  </div>;
+}
+
 // ── USERS SECTION ────────────────────────────────────────────────────────────
 function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
@@ -654,7 +820,7 @@ function UsersSection({users, teams, currentUser, reload}) {
 
   async function toggleAdmin(u) {
     if (u.IsAdmin && adminCount<=1) { alert('Нельзя снять admin-права с последнего администратора.'); return; }
-    if (u.IsAdmin && u.ID===currentUser?.ID && !confirm('Снять admin-права с себя? Вы потеряете доступ к этому разделу.')) return;
+    if (u.IsAdmin && u.ID===currentUser?.id && !confirm('Снять admin-права с себя? Вы потеряете доступ к этому разделу.')) return;
     let res;
     if (u.IsAdmin) res = await apiDel(`/api/v1/admin/users/${u.ID}/admin`);
     else           res = await apiPost(`/api/v1/admin/users/${u.ID}/admin`, {});
@@ -672,7 +838,7 @@ function UsersSection({users, teams, currentUser, reload}) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <span style={{fontSize:13.5,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.DisplayName}</span>
-            {u.ID===currentUser?.ID&&<span style={{fontSize:9.5,color:T.mutedFg,background:'#f1f5f9',padding:'1px 6px',borderRadius:4,fontWeight:700}}>ВЫ</span>}
+            {u.ID===currentUser?.id&&<span style={{fontSize:9.5,color:T.mutedFg,background:'#f1f5f9',padding:'1px 6px',borderRadius:4,fontWeight:700}}>ВЫ</span>}
           </div>
           <div style={{fontSize:11,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{u.Email}</div>
         </div>
@@ -718,7 +884,7 @@ function UserDetail({user, teams, currentUser, onToggleAdmin, onGrantsChange}) {
     if (res && res.ok) { setGrants(g=>g.filter(x=>x.TeamID!==teamId)); onGrantsChange(); }
   }
 
-  const isSelf = user.ID===currentUser?.ID;
+  const isSelf = user.ID===currentUser?.id;
   const activeTeams = teams.filter(t=>!t.deleted_at);
 
   return <div>
@@ -747,12 +913,12 @@ function UserDetail({user, teams, currentUser, onToggleAdmin, onGrantsChange}) {
     </DetailSection>
     <DetailSection title="Доступ к иерархии">
       <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:12,lineHeight:1.5}}>
-        Список команд, к которым пользователь имеет доступ. При выборе узла — виден он и все дочерние. Пустой список = полный доступ.
+        Команды и узлы иерархии, доступные пользователю. При выборе узла — видны он и все дочерние. Пустой список — нет доступа ни к одной команде.
       </div>
       {!loading&&grantedTeamIds.length===0&&(
-        <div style={{padding:'12px 14px',background:'#ecfdf5',border:'1px solid #a7f3d0',borderRadius:9,color:'#065f46',fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-          <span style={{width:8,height:8,background:'#10b981',borderRadius:'50%'}}/>
-          Полный доступ — видна вся иерархия
+        <div style={{padding:'12px 14px',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:9,color:'#991b1b',fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+          <span style={{width:8,height:8,background:'#ef4444',borderRadius:'50%'}}/>
+          Нет доступа — иерархия не видна
         </div>
       )}
       {loading
@@ -811,9 +977,10 @@ function App() {
   if (err) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:T.danger,fontSize:14}}>Ошибка: {err}</div>;
 
   return <Shell section={section} setSection={setSection} currentUser={me}>
-    {section==='periods'&&<PeriodsSection periods={periods} reload={loadAll}/>}
-    {section==='teams'&&<TeamsSection teams={teams} reload={loadAll}/>}
-    {section==='users'&&<UsersSection users={users} teams={teams} currentUser={me} reload={loadAll}/>}
+    {section==='periods' &&<PeriodsSection periods={periods} reload={loadAll}/>}
+    {section==='teams'   &&<TeamsSection teams={teams} reload={loadAll}/>}
+    {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={loadAll}/>}
+    {section==='settings'&&<div style={{padding:'20px 24px 24px'}}><div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div></div>}
   </Shell>;
 }
 
