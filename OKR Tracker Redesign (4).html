@@ -1,0 +1,1678 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OKR Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:#edf0f4;color:#111827;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:2px}
+input,textarea,select,button{font-family:inherit}textarea{resize:vertical}
+</style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const {useState,useCallback,useRef,useEffect}=React;
+
+const TWEAK_DEFAULTS=/*EDITMODE-BEGIN*/{"accentColor":"#7c3aed","density":"comfortable","forecastPct":35}/*EDITMODE-END*/;
+
+// ── USERS ─────────────────────────────────────────────────────────────────────
+const USERS=[
+  {id:'u1',name:'Алексей Иванов',initials:'АИ',color:'#2563eb',role:'Tech Lead',dept:'Платформа'},
+  {id:'u2',name:'Дмитрий Петров',initials:'ДП',color:'#7c3aed',role:'Unit Lead',dept:'Платформа'},
+  {id:'u3',name:'Елена Смирнова',initials:'ЕС',color:'#059669',role:'QA Lead',dept:'CoreQA'},
+  {id:'u4',name:'Михаил Козлов',initials:'МК',color:'#d97706',role:'Senior Dev',dept:'CoreDEV'},
+  {id:'u5',name:'Кирилл Воронов',initials:'КВ',color:'#dc2626',role:'SRE Lead',dept:'SRE'},
+  {id:'u6',name:'Сергей Лебедев',initials:'СЛ',color:'#0891b2',role:'Dev Lead',dept:'CoreDEV'},
+  {id:'u7',name:'Ольга Фёдорова',initials:'ОФ',color:'#be185d',role:'Senior Dev',dept:'CoreDEV'},
+  {id:'u8',name:'Андрей Николаев',initials:'АН',color:'#6366f1',role:'DevOps Lead',dept:'PaaS/Infra'},
+  {id:'u9',name:'Роман Белов',initials:'РБ',color:'#0891b2',role:'Perf Engineer',dept:'Перформанс'},
+];
+const userById=(id,fallback)=>USERS.find(u=>u.id===id)||(fallback||USERS[0]);
+
+// ── TEAMS (5 levels) ──────────────────────────────────────────────────────────
+const TEAMS=[
+  {id:'c1',name:'Реклама — Разработка',type:'cluster',parentId:null,leadId:'u2'},
+    {id:'u1',name:'Платформа',type:'unit',parentId:'c1',leadId:'u2'},
+      {id:'sg1',name:'Backend & Quality',type:'group',parentId:'u1',leadId:'u1'},
+        {id:'t1',name:'CoreDEV',type:'team',parentId:'sg1',leadId:'u6'},
+          {id:'st1',name:'API Platform',type:'squad',parentId:'t1',leadId:'u4'},
+          {id:'st2',name:'SDK & Tools',type:'squad',parentId:'t1',leadId:'u7'},
+        {id:'t2',name:'CoreQA',type:'team',parentId:'sg1',leadId:'u3'},
+      {id:'sg2',name:'Infrastructure',type:'group',parentId:'u1',leadId:'u8'},
+        {id:'t4',name:'PaaS / Infra',type:'team',parentId:'sg2',leadId:'u8'},
+        {id:'t5',name:'SRE',type:'team',parentId:'sg2',leadId:'u5'},
+      {id:'t3',name:'DWH',type:'team',parentId:'u1',leadId:'u4'},
+    {id:'u2',name:'Продвижение',type:'unit',parentId:'c1',leadId:'u9'},
+      {id:'t6',name:'Перформанс',type:'team',parentId:'u2',leadId:'u9'},
+      {id:'t7',name:'Медиабаинг',type:'team',parentId:'u2',leadId:'u4'},
+    {id:'u3',name:'Сервисы медиа',type:'unit',parentId:'c1',leadId:'u6'},
+      {id:'t8',name:'Видео',type:'team',parentId:'u3',leadId:'u7'},
+      {id:'t9',name:'Изображения',type:'team',parentId:'u3',leadId:'u4'},
+  {id:'c2',name:'Реклама — Продукт1',type:'cluster',parentId:null,leadId:'u2'},
+    {id:'u4',name:'ЛК Продвижение',type:'unit',parentId:'c2',leadId:'u9'},
+      {id:'t10',name:'Команда 1',type:'team',parentId:'u4',leadId:'u6'},
+      {id:'t11',name:'Команда 2',type:'team',parentId:'u4',leadId:'u1'},
+      {id:'t12',name:'Команда 3',type:'team',parentId:'u4',leadId:'u7'},
+];
+const teamById=(id)=>TEAMS.find(t=>t.id===id);
+const teamPath=(id)=>{
+  const arr=[];
+  let cur=teamById(id);
+  while(cur){arr.unshift(cur);cur=cur.parentId?teamById(cur.parentId):null;}
+  return arr;
+};
+const teamPathLabel=(id)=>teamPath(id).map(t=>t.name).join(' / ');
+const TEAM_TYPE_COLOR={cluster:'#7c3aed',unit:'#2563eb',group:'#0891b2',team:'#059669',squad:'#d97706'};
+const TEAM_TYPE_LABEL={cluster:'Кластер',unit:'Юнит',group:'Группа',team:'Команда',squad:'Сквад'};
+const flattenTeams=()=>{
+  const out=[];
+  const walk=(parentId,depth)=>{
+    TEAMS.filter(t=>t.parentId===parentId).forEach(t=>{
+      out.push({...t,depth});
+      walk(t.id,depth+1);
+    });
+  };
+  walk(null,0);
+  return out;
+};
+const PERIODS=[
+  {id:'y26',label:'Y26',start:'2026-01-01',end:'2026-12-31'},
+  {id:'y26q1',label:'Y26-Q1',start:'2026-01-01',end:'2026-05-31'},
+  {id:'y26q2',label:'Y26-Q2',start:'2026-04-01',end:'2026-06-30'},
+  {id:'y26q3',label:'Y26-Q3',start:'2026-07-01',end:'2026-09-30'},
+];
+
+// ── KR progress calc ──────────────────────────────────────────────────────────
+function calcKRProgress(kr){
+  if(kr.krType==='BOOLEAN') return kr.done?100:0;
+  if(kr.krType==='PROJECT') return Math.min(100,(kr.stages||[]).filter(s=>s.done).reduce((a,s)=>a+s.weight,0));
+  const r=(kr.target||100)-(kr.start||0);
+  return r?Math.min(100,Math.max(0,Math.round(((kr.current||0)-(kr.start||0))/r*100))):0;
+}
+
+// ── GOALS ─────────────────────────────────────────────────────────────────────
+const INIT_GOALS={
+  'u1_y26q1':[
+    {id:'g1',title:'Снизить P95 latency до 200ms',desc:'Оптимизировать критические пути запросов',priority:'P1',weight:35,type:'delivery',focus:'EFFICIENCY',shared:true,sharedTeamIds:['t1','t4','t5'],ownerTeamId:'st1',ownerIds:['u1'],updatedDaysAgo:0,
+      krs:[
+        {id:'k1',name:'P95 latency API gateway',weight:40,krType:'LINEAR',start:320,target:200,current:278,updatedDaysAgo:0,notes:[]},
+        {id:'k2',name:'P95 latency auth service',weight:40,krType:'LINEAR',start:450,target:200,current:408,updatedDaysAgo:0,notes:[
+          {id:'kn1',userId:'u1',date:'21 апр',text:'Нашли узкое место в JWT verify — пул соединений был слишком мал.'}
+        ]},
+        {id:'k3',name:'Миграция на HTTP/2',weight:20,krType:'PROJECT',updatedDaysAgo:2,notes:[],
+          stages:[{id:'s1',name:'Конфигурация nginx обновлена',weight:40,done:true},{id:'s2',name:'Тестирование с HTTP/2',weight:35,done:false},{id:'s3',name:'Мониторинг метрик',weight:25,done:false}]},
+      ],
+      comments:[{id:'c1',userId:'u1',date:'21 апр',text:'Начали профилирование. Нашли узкое место в middleware auth.'},{id:'c2',userId:'u2',date:'20 апр',text:'Нужно учесть зависимость от PaaS/Infra по HTTP/2-конфигурации nginx.'}]},
+    {id:'g2',title:'Покрыть 80% кода тестами',desc:'Повысить надёжность через автоматизацию',priority:'P1',weight:30,type:'delivery',focus:'QUALITY',shared:false,ownerIds:['u3'],updatedDaysAgo:0,
+      krs:[
+        {id:'k4',name:'Unit test coverage CoreDEV',weight:50,krType:'PERCENT',start:0,target:80,current:14,updatedDaysAgo:0,notes:[]},
+        {id:'k5',name:'Integration test suite',weight:30,krType:'BOOLEAN',done:false,updatedDaysAgo:7,notes:[{id:'kn2',userId:'u3',date:'15 апр',text:'Ожидаем инфраструктуру от PaaS — блокер на неделю.'}]},
+        {id:'k6',name:'QA automation pipeline',weight:20,krType:'PROJECT',updatedDaysAgo:3,notes:[],
+          stages:[{id:'s4',name:'Тест-раннер настроен',weight:30,done:true},{id:'s5',name:'CI интеграция',weight:40,done:false},{id:'s6',name:'Репортинг',weight:30,done:false}]},
+      ],comments:[]},
+    {id:'g3',title:'Запустить портал документации',desc:'Единое место для архитектурных решений',priority:'P2',weight:20,type:'discovery',focus:'RELIABILITY',shared:false,ownerIds:['u4'],updatedDaysAgo:1,
+      krs:[
+        {id:'k7',name:'Architecture decisions documented',weight:60,krType:'PERCENT',start:0,target:100,current:60,updatedDaysAgo:1,notes:[]},
+        {id:'k8',name:'API docs migrated',weight:40,krType:'PERCENT',start:0,target:100,current:10,updatedDaysAgo:5,notes:[]},
+      ],comments:[{id:'c3',userId:'u4',date:'21 апр',text:'ADR по 12 ключевым решениям готовы. Миграция API docs с Confluence в процессе.'}]},
+    {id:'g4',title:'Снизить Time-to-Deploy до 15 мин',desc:'Ускорить CI/CD пайплайн',priority:'P2',weight:15,type:'delivery',focus:'EFFICIENCY',shared:false,ownerIds:['u8'],updatedDaysAgo:9,
+      krs:[
+        {id:'k9',name:'Pipeline время P50 < 15 мин',weight:70,krType:'LINEAR',start:48,target:15,current:48,updatedDaysAgo:9,notes:[]},
+        {id:'k10',name:'Параллелизация тестов',weight:30,krType:'BOOLEAN',done:false,updatedDaysAgo:4,notes:[]},
+      ],comments:[]},
+  ],
+  'sg1_y26q1':[
+    {id:'g_sg1',title:'Единая культура инженерного качества',desc:'Стандарты кода и процессов для Backend и QA команд',priority:'P1',weight:100,type:'discovery',focus:'QUALITY',shared:true,sharedTeamIds:['t1','t2'],ownerTeamId:'sg1',ownerIds:['u2'],updatedDaysAgo:2,
+      krs:[
+        {id:'k_sg1_1',name:'Engineering handbook опубликован',weight:50,krType:'BOOLEAN',done:false,updatedDaysAgo:2,notes:[]},
+        {id:'k_sg1_2',name:'Code review время < 2ч',weight:50,krType:'LINEAR',start:8,target:2,current:5,updatedDaysAgo:2,notes:[]},
+      ],comments:[]},
+  ],
+  't1_y26q1':[
+    {id:'g5',title:'Migrate to Go 1.22',desc:'Обновить все сервисы, использовать новые возможности языка',priority:'P1',weight:50,type:'delivery',focus:'RELIABILITY',shared:false,ownerIds:['u6'],updatedDaysAgo:1,
+      krs:[
+        {id:'k11',name:'Все сервисы обновлены',weight:60,krType:'PERCENT',start:0,target:100,current:65,updatedDaysAgo:1,notes:[{id:'kn3',userId:'u6',date:'21 апр',text:'Осталось 3 сервиса. Проблемы с устаревшими зависимостями решены.'}]},
+        {id:'k12',name:'Тесты проходят на Go 1.22',weight:40,krType:'PERCENT',start:0,target:100,current:80,updatedDaysAgo:1,notes:[]},
+      ],comments:[{id:'c4',userId:'u6',date:'21 апр',text:'Осталось 3 сервиса. Основные проблемы с устаревшими зависимостями решены.'}]},
+    {id:'g6',title:'Рефакторинг auth модуля',desc:'Выделить в отдельный сервис',priority:'P2',weight:50,type:'delivery',focus:'QUALITY',shared:false,ownerIds:['u7'],updatedDaysAgo:3,
+      krs:[
+        {id:'k13',name:'Auth service выделен',weight:70,krType:'PROJECT',updatedDaysAgo:3,notes:[],
+          stages:[{id:'s7',name:'Интерфейс auth service',weight:25,done:true},{id:'s8',name:'Деплой в dev',weight:35,done:false},{id:'s9',name:'Production миграция',weight:40,done:false}]},
+        {id:'k14',name:'Цикл. зависимости устранены',weight:30,krType:'BOOLEAN',done:false,updatedDaysAgo:8,notes:[]},
+      ],comments:[]},
+  ],
+  'st1_y26q1':[
+    {id:'g_st1',title:'Запустить новую версию API Gateway v2',desc:'Рефакторинг маршрутизации, поддержка gRPC',priority:'P1',weight:70,type:'delivery',focus:'RELIABILITY',shared:false,ownerIds:['u6'],updatedDaysAgo:0,
+      krs:[
+        {id:'k_st1_1',name:'gRPC транскодинг работает',weight:40,krType:'BOOLEAN',done:false,updatedDaysAgo:0,notes:[]},
+        {id:'k_st1_2',name:'Latency не деградировала',weight:60,krType:'PERCENT',start:0,target:100,current:30,updatedDaysAgo:0,notes:[]},
+      ],comments:[]},
+    {id:'g_st1b',title:'Документация API для партнёров',desc:'',priority:'P2',weight:30,type:'discovery',focus:'GROWTH',shared:false,ownerIds:['u4'],updatedDaysAgo:3,
+      krs:[{id:'k_st1b_1',name:'API Reference опубликован',weight:100,krType:'BOOLEAN',done:false,updatedDaysAgo:3,notes:[]}],
+      comments:[]},
+  ],
+  't5_y26q1':[
+    {id:'g7',title:'99.9% uptime всех production сервисов',desc:'Обеспечить надёжность инфраструктуры',priority:'P0',weight:60,type:'delivery',focus:'RELIABILITY',shared:false,ownerIds:['u5'],updatedDaysAgo:0,
+      krs:[
+        {id:'k15',name:'Uptime API gateway',weight:50,krType:'PERCENT',start:98,target:99.9,current:99.2,updatedDaysAgo:0,notes:[]},
+        {id:'k16',name:'Uptime core services',weight:50,krType:'PERCENT',start:98,target:99.9,current:99.4,updatedDaysAgo:0,notes:[]},
+      ],comments:[{id:'c5',userId:'u5',date:'22 апр',text:'Апрельский инцидент учтён. Добавили circuit breaker на 3 критичных точках.'}]},
+    {id:'g8',title:'MTTR < 10 мин для P0 инцидентов',desc:'Ускорить реакцию на критические сбои',priority:'P1',weight:40,type:'delivery',focus:'RELIABILITY',shared:false,ownerIds:['u5'],updatedDaysAgo:2,
+      krs:[
+        {id:'k17',name:'Runbook покрытие 90%',weight:40,krType:'PERCENT',start:0,target:90,current:41,updatedDaysAgo:2,notes:[]},
+        {id:'k18',name:'On-call rotation настроен',weight:30,krType:'BOOLEAN',done:true,updatedDaysAgo:2,notes:[]},
+        {id:'k19',name:'P50 MTTR < 10 мин',weight:30,krType:'LINEAR',start:35,target:10,current:20,updatedDaysAgo:2,notes:[]},
+      ],comments:[]},
+  ],
+  't3_y26q1':[
+    {id:'g9',title:'DWH для рекламных метрик',desc:'Централизованное хранилище',priority:'P1',weight:100,type:'discovery',focus:'GROWTH',shared:false,ownerIds:['u4'],updatedDaysAgo:4,
+      krs:[
+        {id:'k20',name:'Схема данных согласована',weight:40,krType:'BOOLEAN',done:true,updatedDaysAgo:4,notes:[]},
+        {id:'k21',name:'Pipeline ежедневных данных',weight:60,krType:'PROJECT',updatedDaysAgo:4,notes:[],
+          stages:[{id:'s10',name:'Источники подключены',weight:40,done:true},{id:'s11',name:'Трансформации настроены',weight:35,done:false},{id:'s12',name:'Дашборды готовы',weight:25,done:false}]},
+      ],comments:[]},
+  ],
+  't4_y26q1':[
+    {id:'g10',title:'Перевести 80% сервисов на k8s',desc:'',priority:'P1',weight:70,type:'delivery',focus:'EFFICIENCY',shared:false,ownerIds:['u8'],updatedDaysAgo:2,
+      krs:[{id:'k22',name:'Сервисов на k8s',weight:100,krType:'PERCENT',start:0,target:80,current:44,updatedDaysAgo:2,notes:[]}],comments:[]},
+    {id:'g11',title:'SLA платформ 99.5%',desc:'',priority:'P2',weight:30,type:'delivery',focus:'RELIABILITY',shared:false,ownerIds:['u8'],updatedDaysAgo:6,
+      krs:[{id:'k23',name:'Uptime platform',weight:100,krType:'PERCENT',start:97,target:99.5,current:98.6,updatedDaysAgo:6,notes:[]}],comments:[]},
+  ],
+  't2_y26q1':[
+    {id:'g12',title:'Автоматизировать регрессионное тестирование',desc:'Покрыть 200 ключевых user flows',priority:'P1',weight:100,type:'delivery',focus:'QUALITY',shared:false,ownerIds:['u3'],updatedDaysAgo:1,
+      krs:[
+        {id:'k24',name:'User flows покрыты авто-тестами',weight:70,krType:'PERCENT',start:0,target:200,current:76,updatedDaysAgo:1,notes:[]},
+        {id:'k25',name:'CI интеграция настроена',weight:30,krType:'BOOLEAN',done:true,updatedDaysAgo:1,notes:[]},
+      ],comments:[]},
+  ],
+  't6_y26q1':[
+    {id:'g13',title:'Снизить CPA на 15%',desc:'ML-биддинг',priority:'P0',weight:60,type:'delivery',focus:'PROFITABILITY',shared:false,ownerIds:['u9'],updatedDaysAgo:0,
+      krs:[{id:'k26',name:'CPA (целевой -15%)',weight:100,krType:'LINEAR',start:100,target:85,current:97,updatedDaysAgo:0,notes:[]}],comments:[]},
+    {id:'g14',title:'ML-биддинг для топ-10 клиентов',desc:'',priority:'P1',weight:40,type:'discovery',focus:'GROWTH',shared:false,ownerIds:['u9'],updatedDaysAgo:3,
+      krs:[
+        {id:'k27',name:'ML-модель в проде',weight:60,krType:'PROJECT',updatedDaysAgo:3,notes:[],
+          stages:[{id:'s13',name:'Модель обучена',weight:35,done:true},{id:'s14',name:'A/B тест',weight:35,done:true},{id:'s15',name:'Production',weight:30,done:false}]},
+        {id:'k28',name:'Клиентов подключено',weight:40,krType:'LINEAR',start:0,target:10,current:2,updatedDaysAgo:3,notes:[]},
+      ],comments:[]},
+  ],
+};
+['st2','t7','t8','t9','t10','t11','t12','sg2'].forEach(id=>{INIT_GOALS[`${id}_y26q1`]=[];});
+
+// ── PERIOD STATUSES ───────────────────────────────────────────────────────────
+const INIT_STATUSES={
+  'u1_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  'sg1_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  't1_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  'st1_y26q1':{status:'forming',changedAt:'1 апр'},
+  't2_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  'sg2_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  't4_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  't5_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  't3_y26q1':{status:'forming',changedAt:'10 апр'},
+  'u2_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  't6_y26q1':{status:'in_progress',changedAt:'15 мар'},
+  't7_y26q1':{status:'forming',changedAt:'5 апр'},
+};
+
+// ── HELPERS ───────────────────────────────────────────────────────────────────
+const getChildren=(pid)=>TEAMS.filter(t=>t.parentId===pid);
+function goalProgress(g){
+  if(!g.krs.length)return 0;
+  const tw=g.krs.reduce((s,k)=>s+k.weight,0);
+  return tw?Math.round(g.krs.reduce((s,k)=>s+calcKRProgress(k)*k.weight/100,0)*100/tw):0;
+}
+function teamProgress(id,pid,goals){
+  const gs=goals[`${id}_${pid}`]||[];
+  if(!gs.length)return null;
+  const tw=gs.reduce((s,g)=>s+g.weight,0);
+  return tw?Math.round(gs.reduce((s,g)=>s+goalProgress(g)*g.weight/100,0)*100/tw):0;
+}
+const healthOf=(p,stale)=>p===null?'no_goals':stale?'stale':p>=35?'ahead':p>=15?'on_track':'below';
+const HEALTH_COLOR={ahead:'#16a34a',on_track:'#2563eb',below:'#ef4444',stale:'#d97706',no_goals:'#d1d5db'};
+const HEALTH_LABEL={ahead:'опережает',on_track:'в плане',below:'отстаёт',stale:'нет обновлений',no_goals:'нет целей'};
+const FOCUS_COLORS={EFFICIENCY:'#0891b2',QUALITY:'#7c3aed',RELIABILITY:'#059669',GROWTH:'#d97706',PROFITABILITY:'#dc2626',DEFAULT:'#6b7280'};
+const KR_TYPE_C={PERCENT:'#2563eb',LINEAR:'#0891b2',BOOLEAN:'#7c3aed',PROJECT:'#d97706'};
+
+const STATUS_STEPS=[
+  {k:'forming',l:'Черновик'},
+  {k:'ready',l:'К валидации'},
+  {k:'in_progress',l:'В работе'},
+  {k:'closed',l:'Закрыты'},
+];
+function getTeamStatus(id,pid,goals,statuses){
+  const gs=goals[`${id}_${pid}`]||[];
+  if(!gs.length)return{status:'no_goals',changedAt:null};
+  return statuses[`${id}_${pid}`]||{status:'forming',changedAt:null};
+}
+function getEditMode(status){
+  if(status==='forming'||status==='ready'||status==='no_goals')return'full';
+  if(status==='in_progress')return'progress_only';
+  if(status==='closed')return'comments_only';
+  return'read';
+}
+const todayStr=()=>new Date().toLocaleDateString('ru-RU',{day:'numeric',month:'short'});
+
+// ── MICRO COMPONENTS ──────────────────────────────────────────────────────────
+function ProgressBar({value,forecast=25,h=8,color}){
+  return(
+    <div style={{position:'relative',height:h,background:'#e5e7eb',borderRadius:h/2,overflow:'visible'}}>
+      <div style={{height:'100%',width:`${Math.min(value,100)}%`,background:color||'#2563eb',borderRadius:h/2,transition:'width .4s ease'}}/>
+      <div style={{position:'absolute',top:-3,left:`${forecast}%`,width:2,height:h+6,background:'rgba(0,0,0,0.18)',borderRadius:1,transform:'translateX(-50%)'}}/>
+    </div>
+  );
+}
+function Badge({label,color='#6b7280',bg}){
+  return <span style={{display:'inline-flex',alignItems:'center',padding:'2px 7px',borderRadius:4,fontSize:11,fontWeight:600,letterSpacing:.3,color,background:bg||`${color}18`}}>{label}</span>;
+}
+function PriBadge({p}){
+  const c={P0:'#dc2626',P1:'#d97706',P2:'#2563eb',P3:'#6b7280'}[p]||'#6b7280';
+  return <Badge label={p} color={c}/>;
+}
+
+// ── INFO HINT (tooltip on hover over ? icon) ──────────────────────────────────
+function InfoHint({children,width=300}){
+  const [open,setOpen]=useState(false);
+  const [pos,setPos]=useState(null);
+  const ref=useRef();
+  const show=()=>{
+    if(!ref.current)return;
+    const r=ref.current.getBoundingClientRect();
+    setPos({top:r.bottom+6,left:r.left+r.width/2});
+    setOpen(true);
+  };
+  return(
+    <span ref={ref}
+      onMouseEnter={show} onMouseLeave={()=>setOpen(false)}
+      onFocus={show} onBlur={()=>setOpen(false)}
+      tabIndex={0}
+      style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:open?'#dbeafe':'#f3f4f6',color:open?'#2563eb':'#9ca3af',fontSize:10,fontWeight:700,cursor:'help',marginLeft:5,transition:'all .12s',userSelect:'none',outline:'none'}}>
+      ?
+      {open&&pos&&(
+        <span style={{position:'fixed',top:pos.top,left:pos.left,transform:'translateX(-50%)',width,maxWidth:'calc(100vw - 40px)',background:'#111827',color:'#f3f4f6',fontSize:12,lineHeight:1.55,padding:'10px 13px',borderRadius:8,boxShadow:'0 8px 24px rgba(0,0,0,0.25)',zIndex:2000,fontWeight:400,letterSpacing:0,pointerEvents:'none',textAlign:'left',whiteSpace:'normal'}}>
+          <span style={{position:'absolute',top:-5,left:'50%',transform:'translateX(-50%) rotate(45deg)',width:10,height:10,background:'#111827'}}/>
+          {children}
+        </span>
+      )}
+    </span>
+  );
+}
+// ── FIELD LABEL with optional hint ────────────────────────────────────────────
+function FieldLabel({children,hint,required,size=13}){
+  return(
+    <div style={{fontSize:size,fontWeight:600,color:'#374151',marginBottom:6,display:'flex',alignItems:'center'}}>
+      <span>{children}</span>
+      {required&&<span style={{color:'#ef4444',marginLeft:4}}>*</span>}
+      {hint&&<InfoHint>{hint}</InfoHint>}
+    </div>
+  );
+}
+const iSt={width:'100%',padding:'10px 12px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:14,outline:'none',color:'#111827',background:'white'};
+
+// ── USER AVATAR + POPUP ───────────────────────────────────────────────────────
+function UserAvatar({userId,size=28,showName=false}){
+  const user=userById(userId);
+  const [pos,setPos]=useState(null);
+  const ref=useRef();
+  const enter=()=>{
+    const r=ref.current.getBoundingClientRect();
+    setPos({top:r.top,left:r.left+r.width/2});
+  };
+  return(
+    <div ref={ref} style={{display:'inline-flex',alignItems:'center',gap:6,position:'relative',cursor:'default'}}
+      onMouseEnter={enter} onMouseLeave={()=>setPos(null)}>
+      <div style={{width:size,height:size,borderRadius:'50%',background:user.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.38,fontWeight:700,color:'white',flexShrink:0,letterSpacing:-.5}}>
+        {user.initials}
+      </div>
+      {showName&&<span style={{fontSize:13,color:'#374151',fontWeight:500}}>{user.name}</span>}
+      {pos&&(
+        <div style={{position:'fixed',top:pos.top-8,left:pos.left,transform:'translateX(-50%) translateY(-100%)',zIndex:1000,background:'white',borderRadius:10,boxShadow:'0 8px 24px rgba(0,0,0,0.18)',border:'1px solid #e5e7eb',padding:'12px 14px',minWidth:160,pointerEvents:'none'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+            <div style={{width:36,height:36,borderRadius:'50%',background:user.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white'}}>{user.initials}</div>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:'#111827'}}>{user.name}</div>
+              <div style={{fontSize:11,color:'#6b7280'}}>{user.role}</div>
+            </div>
+          </div>
+          <div style={{fontSize:11,color:'#9ca3af',borderTop:'1px solid #f3f4f6',paddingTop:6}}>{user.dept}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── HEADER USER MENU (avatar + dropdown on hover) ─────────────────────────────
+function HeaderUserMenu({user,onLogout}){
+  const [open,setOpen]=useState(false);
+  const timer=useRef();
+  const show=()=>{clearTimeout(timer.current);setOpen(true);};
+  const hide=()=>{clearTimeout(timer.current);timer.current=setTimeout(()=>setOpen(false),150);};
+  const items=[
+    {icon:'👤',label:'Профиль',hint:'Ваша карточка и KR'},
+    {icon:'⚙',label:'Управление',hint:'Команды, периоды, доступы',href:'OKR Admin.html'},
+    {icon:'✦',label:'Настройки',hint:'Уведомления, интеграции'},
+  ];
+  return(
+    <div style={{position:'relative'}} onMouseEnter={show} onMouseLeave={hide}>
+      <button
+        onClick={()=>setOpen(o=>!o)}
+        style={{display:'flex',alignItems:'center',gap:7,background:open?'rgba(255,255,255,0.1)':'transparent',border:'none',borderRadius:8,padding:'4px 7px 4px 4px',cursor:'pointer',transition:'background .15s'}}>
+        <div style={{width:28,height:28,borderRadius:'50%',background:user.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white',letterSpacing:-.3}}>{user.initials}</div>
+        <span style={{color:'#94a3b8',fontSize:10,transition:'transform .15s',transform:open?'rotate(180deg)':'rotate(0deg)'}}>▾</span>
+      </button>
+      {open&&(
+        <div onMouseEnter={show} onMouseLeave={hide}
+          style={{position:'absolute',top:'calc(100% + 6px)',right:0,background:'white',borderRadius:10,boxShadow:'0 12px 32px rgba(0,0,0,0.25)',border:'1px solid #e5e7eb',minWidth:240,zIndex:1000,overflow:'hidden'}}>
+          <div style={{padding:'12px 14px',borderBottom:'1px solid #f3f4f6',display:'flex',alignItems:'center',gap:10}}>
+            <div style={{width:40,height:40,borderRadius:'50%',background:user.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:700,color:'white'}}>{user.initials}</div>
+            <div style={{minWidth:0,flex:1}}>
+              <div style={{fontSize:13,fontWeight:700,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.name}</div>
+              <div style={{fontSize:11,color:'#6b7280',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user.role} · {user.dept}</div>
+            </div>
+          </div>
+          <div style={{padding:'4px 0'}}>
+            {items.map(it=>(
+              <a key={it.label} href={it.href||'#'} onClick={e=>{if(!it.href)e.preventDefault();setOpen(false);}}
+                style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 14px',background:'none',border:'none',cursor:'pointer',textAlign:'left',fontFamily:'inherit',textDecoration:'none',color:'inherit',boxSizing:'border-box'}}
+                onMouseEnter={e=>e.currentTarget.style.background='#f9fafb'}
+                onMouseLeave={e=>e.currentTarget.style.background='none'}>
+                <span style={{width:20,textAlign:'center',fontSize:13,color:'#6b7280'}}>{it.icon}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:500,color:'#111827'}}>{it.label}</div>
+                  <div style={{fontSize:11,color:'#9ca3af'}}>{it.hint}</div>
+                </div>
+              </a>
+            ))}
+          </div>
+          <div style={{borderTop:'1px solid #f3f4f6',padding:'4px 0'}}>
+            <button onClick={()=>{setOpen(false);onLogout();}}
+              style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 14px',background:'none',border:'none',cursor:'pointer',textAlign:'left',fontFamily:'inherit'}}
+              onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'}
+              onMouseLeave={e=>e.currentTarget.style.background='none'}>
+              <span style={{width:20,textAlign:'center',fontSize:13,color:'#dc2626'}}>↩</span>
+              <div style={{fontSize:13,fontWeight:500,color:'#dc2626'}}>Выйти</div>
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── OWNER COMBOBOX (search + suggest for potentially large user lists) ────────
+function OwnerCombobox({selectedIds,onChange,users,accent}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const [hi,setHi]=useState(0);
+  const inputRef=useRef();
+  const wrapRef=useRef();
+  const selected=selectedIds.map(id=>users.find(u=>u.id===id)).filter(Boolean);
+  const ql=q.trim().toLowerCase();
+  const available=users.filter(u=>!selectedIds.includes(u.id));
+  const filtered=ql?available.filter(u=>u.name.toLowerCase().includes(ql)||(u.role||'').toLowerCase().includes(ql)||(u.dept||'').toLowerCase().includes(ql)):available;
+  useEffect(()=>{setHi(0);},[q,open]);
+  useEffect(()=>{
+    const h=(e)=>{if(wrapRef.current&&!wrapRef.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  const add=(u)=>{onChange([...selectedIds,u.id]);setQ('');inputRef.current?.focus();};
+  const remove=(id)=>onChange(selectedIds.filter(x=>x!==id));
+  const onKey=(e)=>{
+    if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(filtered.length-1,h+1));}
+    else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
+    else if(e.key==='Enter'){e.preventDefault();if(open&&filtered[hi])add(filtered[hi]);}
+    else if(e.key==='Escape'){setOpen(false);}
+    else if(e.key==='Backspace'&&!q&&selected.length>0){remove(selected[selected.length-1].id);}
+  };
+  const highlight=(text)=>{
+    if(!ql)return text;
+    const i=text.toLowerCase().indexOf(ql);
+    if(i<0)return text;
+    return(<>{text.slice(0,i)}<mark style={{background:`${accent}30`,color:'inherit',padding:0}}>{text.slice(i,i+ql.length)}</mark>{text.slice(i+ql.length)}</>);
+  };
+  return(
+    <div ref={wrapRef} style={{position:'relative'}}>
+      <div onClick={()=>{setOpen(true);inputRef.current?.focus();}}
+        style={{minHeight:42,padding:'5px 7px',border:`1px solid ${open?accent:'#e5e7eb'}`,borderRadius:9,background:'white',display:'flex',flexWrap:'wrap',gap:5,alignItems:'center',cursor:'text',transition:'border-color .12s'}}>
+        {selected.map(u=>(
+          <div key={u.id} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 4px 3px 3px',borderRadius:16,background:`${u.color}18`,border:`1px solid ${u.color}40`}}>
+            <div style={{width:20,height:20,borderRadius:'50%',background:u.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'white'}}>{u.initials}</div>
+            <span style={{fontSize:12,fontWeight:500,color:'#111827'}}>{u.name}</span>
+            <button onClick={(e)=>{e.stopPropagation();remove(u.id);}}
+              style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:14,lineHeight:1,padding:'0 4px',borderRadius:8}}
+              onMouseEnter={e=>e.currentTarget.style.color='#dc2626'}
+              onMouseLeave={e=>e.currentTarget.style.color='#6b7280'}>×</button>
+          </div>
+        ))}
+        <input ref={inputRef} value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}}
+          onFocus={()=>setOpen(true)} onKeyDown={onKey}
+          placeholder={selected.length?'Добавить ещё…':'Начните вводить имя, роль или отдел'}
+          style={{flex:1,minWidth:160,border:'none',outline:'none',fontSize:13,padding:'6px 4px',background:'transparent',fontFamily:'inherit',color:'#111827'}}/>
+      </div>
+      {open&&(
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.15)',border:'1px solid #e5e7eb',maxHeight:280,overflow:'auto',zIndex:50}}>
+          {filtered.length===0?(
+            <div style={{padding:'14px 16px',fontSize:12,color:'#9ca3af',textAlign:'center'}}>
+              {ql?`Никого не найдено по запросу «${q}»`:'Все пользователи уже выбраны'}
+            </div>
+          ):filtered.map((u,i)=>(
+            <div key={u.id} onClick={()=>add(u)} onMouseEnter={()=>setHi(i)}
+              style={{padding:'7px 12px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',background:i===hi?'#f3f4f6':'white'}}>
+              <div style={{width:26,height:26,borderRadius:'50%',background:u.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'white',flexShrink:0}}>{u.initials}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{highlight(u.name)}</div>
+                <div style={{fontSize:11,color:'#6b7280',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{highlight(u.role||'')}{u.dept?' · ':''}{highlight(u.dept||'')}</div>
+              </div>
+              <span style={{fontSize:11,color:'#9ca3af',flexShrink:0}}>Enter ↵</span>
+            </div>
+          ))}
+          {filtered.length>0&&(
+            <div style={{padding:'6px 12px',fontSize:10,color:'#9ca3af',borderTop:'1px solid #f3f4f6',background:'#fafbfc',display:'flex',justifyContent:'space-between'}}>
+              <span>↑↓ навигация · Enter — выбрать · Backspace — убрать</span>
+              <span>{filtered.length} из {users.length}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── TEAM COMBOBOX (search teams for sharing a goal) ───────────────────────────
+function TeamCombobox({selectedIds,onChange,excludeTeamId,accent}){
+  const [q,setQ]=useState('');
+  const [open,setOpen]=useState(false);
+  const [hi,setHi]=useState(0);
+  const inputRef=useRef();
+  const wrapRef=useRef();
+  const selected=selectedIds.map(id=>teamById(id)).filter(Boolean);
+  const ql=q.trim().toLowerCase();
+  // Build hierarchical list in pre-order with depth
+  const tree=flattenTeams().filter(t=>t.id!==excludeTeamId);
+  // When searching: keep matches + all their ancestors as context (non-selectable)
+  const selectable=new Set();
+  const visible=new Set();
+  tree.forEach(t=>{
+    const matches=!ql||t.name.toLowerCase().includes(ql)||(TEAM_TYPE_LABEL[t.type]||'').toLowerCase().includes(ql);
+    if(matches){
+      selectable.add(t.id);
+      // add ancestors for context
+      let p=t.parentId;
+      while(p){visible.add(p);p=teamById(p)?.parentId;}
+    }
+    if(matches)visible.add(t.id);
+  });
+  if(!ql)tree.forEach(t=>{selectable.add(t.id);visible.add(t.id);});
+  const list=tree.filter(t=>visible.has(t.id)).map(t=>({
+    ...t,
+    isSelected:selectedIds.includes(t.id),
+    isSelectable:selectable.has(t.id)&&!selectedIds.includes(t.id),
+  }));
+  const interactable=list.filter(x=>x.isSelectable);
+  useEffect(()=>{setHi(0);},[q,open]);
+  useEffect(()=>{
+    const h=(e)=>{if(wrapRef.current&&!wrapRef.current.contains(e.target))setOpen(false);};
+    document.addEventListener('mousedown',h);
+    return()=>document.removeEventListener('mousedown',h);
+  },[]);
+  const add=(t)=>{onChange([...selectedIds,t.id]);setQ('');inputRef.current?.focus();};
+  const remove=(id)=>onChange(selectedIds.filter(x=>x!==id));
+  const onKey=(e)=>{
+    if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(interactable.length-1,h+1));}
+    else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
+    else if(e.key==='Enter'){e.preventDefault();if(open&&interactable[hi])add(interactable[hi]);}
+    else if(e.key==='Escape'){setOpen(false);}
+    else if(e.key==='Backspace'&&!q&&selected.length>0){remove(selected[selected.length-1].id);}
+  };
+  const highlight=(text)=>{
+    if(!ql)return text;
+    const i=text.toLowerCase().indexOf(ql);
+    if(i<0)return text;
+    return(<>{text.slice(0,i)}<mark style={{background:`${accent}30`,color:'inherit',padding:0}}>{text.slice(i,i+ql.length)}</mark>{text.slice(i+ql.length)}</>);
+  };
+  return(
+    <div ref={wrapRef} style={{position:'relative'}}>
+      <div onClick={()=>{setOpen(true);inputRef.current?.focus();}}
+        style={{minHeight:42,padding:'5px 7px',border:`1px solid ${open?accent:'#e5e7eb'}`,borderRadius:9,background:'white',display:'flex',flexWrap:'wrap',gap:5,alignItems:'center',cursor:'text',transition:'border-color .12s'}}>
+        {selected.map(t=>{
+          const color=TEAM_TYPE_COLOR[t.type]||'#6b7280';
+          return(
+            <div key={t.id} style={{display:'inline-flex',alignItems:'center',gap:6,padding:'3px 4px 3px 8px',borderRadius:16,background:`${color}15`,border:`1px solid ${color}40`}}>
+              <span style={{fontSize:9,fontWeight:700,color:color,textTransform:'uppercase',letterSpacing:.4}}>{TEAM_TYPE_LABEL[t.type]}</span>
+              <span style={{fontSize:12,fontWeight:600,color:'#111827'}}>{t.name}</span>
+              <button onClick={(e)=>{e.stopPropagation();remove(t.id);}}
+                style={{background:'none',border:'none',cursor:'pointer',color:'#6b7280',fontSize:14,lineHeight:1,padding:'0 4px',borderRadius:8}}
+                onMouseEnter={e=>e.currentTarget.style.color='#dc2626'}
+                onMouseLeave={e=>e.currentTarget.style.color='#6b7280'}>×</button>
+            </div>
+          );
+        })}
+        <input ref={inputRef} value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}}
+          onFocus={()=>setOpen(true)} onKeyDown={onKey}
+          placeholder={selected.length?'Ещё команду…':'Начните вводить название команды'}
+          style={{flex:1,minWidth:180,border:'none',outline:'none',fontSize:13,padding:'6px 4px',background:'transparent',fontFamily:'inherit',color:'#111827'}}/>
+      </div>
+      {open&&(
+        <div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.15)',border:'1px solid #e5e7eb',maxHeight:320,overflow:'auto',zIndex:50}}>
+          {list.length===0?(
+            <div style={{padding:'14px 16px',fontSize:12,color:'#9ca3af',textAlign:'center'}}>
+              {ql?`Команды не найдены по запросу «${q}»`:'Все команды уже добавлены'}
+            </div>
+          ):(
+            <>
+              {(()=>{
+                // Build a visual index ignoring non-selectable items so arrow keys align
+                let hiIdx=0;
+                return list.map((t)=>{
+                  const color=TEAM_TYPE_COLOR[t.type]||'#6b7280';
+                  const isHi=t.isSelectable&&hiIdx===hi;
+                  const myIdx=t.isSelectable?hiIdx:-1;
+                  if(t.isSelectable)hiIdx++;
+                  return(
+                    <div key={t.id}
+                      onClick={t.isSelectable?()=>add(t):undefined}
+                      onMouseEnter={t.isSelectable?()=>setHi(myIdx):undefined}
+                      style={{
+                        padding:'6px 12px 6px 8px',
+                        display:'flex',alignItems:'center',gap:6,
+                        cursor:t.isSelectable?'pointer':'default',
+                        background:isHi?'#f3f4f6':'white',
+                        opacity:t.isSelectable?1:(t.isSelected?0.55:0.5),
+                        borderLeft:`3px solid ${isHi?color:'transparent'}`,
+                      }}>
+                      {/* indent guides */}
+                      <div style={{display:'flex',flexShrink:0,alignSelf:'stretch'}}>
+                        {Array.from({length:t.depth}).map((_,d)=>(
+                          <div key={d} style={{width:14,borderRight:'1px dashed #e5e7eb',marginRight:0}}/>
+                        ))}
+                      </div>
+                      <div style={{width:3,height:22,borderRadius:2,background:color,flexShrink:0}}/>
+                      <span style={{fontSize:9,fontWeight:700,color:color,textTransform:'uppercase',letterSpacing:.4,padding:'2px 5px',background:`${color}12`,borderRadius:3,flexShrink:0}}>{TEAM_TYPE_LABEL[t.type]}</span>
+                      <span style={{fontSize:13,fontWeight:t.isSelectable?500:400,color:t.isSelectable?'#111827':'#9ca3af',flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                        {highlight(t.name)}
+                      </span>
+                      {t.isSelected&&<span style={{fontSize:10,color:'#10b981',fontWeight:600,flexShrink:0}}>✓ выбрана</span>}
+                      {!t.isSelected&&!t.isSelectable&&<span style={{fontSize:10,color:'#9ca3af',flexShrink:0}}>группа</span>}
+                    </div>
+                  );
+                });
+              })()}
+              <div style={{padding:'6px 12px',fontSize:10,color:'#9ca3af',borderTop:'1px solid #f3f4f6',background:'#fafbfc',display:'flex',justifyContent:'space-between',position:'sticky',bottom:0}}>
+                <span>↑↓ навигация · Enter — выбрать · Backspace — убрать</span>
+                {ql&&<span>{interactable.length} найдено</span>}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── OWNER STACK (multi-owner avatars) ─────────────────────────────────────────
+function OwnerStack({ownerIds,size=24,max=3}){
+  if(!ownerIds||ownerIds.length===0) return <span style={{fontSize:11,color:'#9ca3af',fontStyle:'italic'}}>не указан</span>;
+  if(ownerIds.length===1) return <UserAvatar userId={ownerIds[0]} size={size} showName/>;
+  const visible=ownerIds.slice(0,max);
+  const extra=ownerIds.length-visible.length;
+  return(
+    <div style={{display:'inline-flex',alignItems:'center'}}>
+      {visible.map((id,i)=>(
+        <div key={id} style={{marginLeft:i===0?0:-6,border:'2px solid white',borderRadius:'50%',zIndex:visible.length-i}}>
+          <UserAvatar userId={id} size={size}/>
+        </div>
+      ))}
+      {extra>0&&<div style={{marginLeft:-6,width:size,height:size,borderRadius:'50%',background:'#e5e7eb',display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.4,fontWeight:700,color:'#6b7280',border:'2px solid white'}}>+{extra}</div>}
+    </div>
+  );
+}
+
+// ── STATUS STEPPER ────────────────────────────────────────────────────────────
+function StatusStepper({teamId,periodId,goals,statuses,onChange,accent}){
+  const {status,changedAt}=getTeamStatus(teamId,periodId,goals,statuses);
+  const hasGoals=(goals[`${teamId}_${periodId}`]||[]).length>0;
+  const curIdx=STATUS_STEPS.findIndex(s=>s.k===status);
+  return(
+    <div style={{background:'white',borderBottom:'1px solid #e5e7eb',padding:'10px 24px',display:'flex',alignItems:'center',gap:0,flexWrap:'wrap'}}>
+      {/* no_goals pill */}
+      {!hasGoals&&(
+        <span style={{fontSize:12,fontWeight:600,color:'#9ca3af',background:'#f3f4f6',padding:'5px 12px',borderRadius:20,marginRight:8}}>Нет целей</span>
+      )}
+      {STATUS_STEPS.map((s,i)=>{
+        const isCur=s.k===status;
+        const isPast=i<curIdx;
+        return(
+          <React.Fragment key={s.k}>
+            {i>0&&<div style={{width:20,height:1,background:'#e5e7eb',flexShrink:0}}/>}
+            <button onClick={()=>hasGoals&&onChange(teamId,periodId,s.k)}
+              disabled={!hasGoals}
+              style={{padding:'5px 12px',borderRadius:20,fontSize:12,fontWeight:600,border:'none',cursor:hasGoals?'pointer':'default',transition:'all .15s',
+                background:isCur?accent:isPast?`${accent}15`:'transparent',
+                color:isCur?'white':isPast?accent:'#9ca3af',
+                outline:'none'}}>
+              {s.l}
+            </button>
+          </React.Fragment>
+        );
+      })}
+      {changedAt&&<span style={{marginLeft:'auto',fontSize:11,color:'#9ca3af'}}>изменён {changedAt}</span>}
+      {status==='in_progress'&&<span style={{marginLeft:changedAt?8:0,fontSize:11,fontWeight:600,color:'#ef4444',background:'#fef2f2',padding:'2px 8px',borderRadius:4}}>🔒 Редактирование заблокировано</span>}
+      {status==='closed'&&<span style={{marginLeft:changedAt?8:0,fontSize:11,fontWeight:600,color:'#6b7280',background:'#f3f4f6',padding:'2px 8px',borderRadius:4}}>🔒 Период закрыт</span>}
+    </div>
+  );
+}
+
+// ── KR PROGRESS MODAL (in_progress mode) ─────────────────────────────────────
+function KRProgressModal({kr,onSave,onClose,accent}){
+  const [form,setForm]=useState({...kr,stages:kr.stages?kr.stages.map(s=>({...s})):[]});
+  const [note,setNote]=useState('');
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const setStage=(i,k,v)=>setForm(f=>{const ss=[...f.stages];ss[i]={...ss[i],[k]:v};return{...f,stages:ss};});
+  const progress=calcKRProgress(form);
+  const save=()=>{
+    const saved={...form,updatedDaysAgo:0,notes:note.trim()?[...form.notes,{id:`kn${Date.now()}`,userId:ME.id,date:todayStr(),text:note.trim()}]:form.notes};
+    onSave(saved);
+  };
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'white',borderRadius:14,width:480,boxShadow:'0 20px 60px rgba(0,0,0,0.2)',overflow:'hidden'}}>
+        <div style={{padding:'18px 22px 14px',borderBottom:'1px solid #f3f4f6',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:15,fontWeight:700,color:'#111827'}}>Обновить прогресс</div>
+            <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>{kr.name}</div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'#9ca3af',padding:4}}>×</button>
+        </div>
+        <div style={{padding:'18px 22px'}}>
+          {(form.krType==='PERCENT'||form.krType==='LINEAR')&&(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}}>
+                Текущее значение <span style={{color:'#9ca3af',fontWeight:400}}>({form.start} → {form.target})</span>
+              </div>
+              <input type="number" value={form.current} onChange={e=>set('current',e.target.value)} style={iSt}/>
+              <div style={{marginTop:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                  <span style={{fontSize:12,color:'#6b7280'}}>Прогресс</span>
+                  <span style={{fontSize:13,fontWeight:700,color:accent}}>{progress}%</span>
+                </div>
+                <ProgressBar value={progress} h={6} color={accent}/>
+              </div>
+            </div>
+          )}
+          {form.krType==='BOOLEAN'&&(
+            <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',marginBottom:14,padding:'12px',background:'#f9fafb',borderRadius:8}}>
+              <input type="checkbox" checked={!!form.done} onChange={e=>set('done',e.target.checked)} style={{width:18,height:18,accentColor:accent}}/>
+              <span style={{fontSize:14,fontWeight:500,color:'#111827'}}>Выполнено</span>
+              <span style={{marginLeft:'auto',fontSize:13,fontWeight:700,color:form.done?'#16a34a':'#9ca3af'}}>{form.done?'100%':'0%'}</span>
+            </label>
+          )}
+          {form.krType==='PROJECT'&&(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:8}}>Шаги</div>
+              {form.stages.map((s,i)=>(
+                <label key={s.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 10px',borderRadius:7,cursor:'pointer',marginBottom:4,background:s.done?`${accent}08`:'#f9fafb',border:`1px solid ${s.done?`${accent}30`:'#f0f1f3'}`}}>
+                  <input type="checkbox" checked={!!s.done} onChange={e=>setStage(i,'done',e.target.checked)} style={{width:16,height:16,accentColor:accent}}/>
+                  <span style={{flex:1,fontSize:13,color:'#374151',fontWeight:s.done?600:400,textDecoration:s.done?'none':'none'}}>{s.name}</span>
+                  <span style={{fontSize:11,color:'#9ca3af'}}>вес {s.weight}</span>
+                </label>
+              ))}
+              <div style={{marginTop:10}}>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+                  <span style={{fontSize:12,color:'#6b7280'}}>Прогресс</span>
+                  <span style={{fontSize:13,fontWeight:700,color:accent}}>{progress}%</span>
+                </div>
+                <ProgressBar value={progress} h={6} color={accent}/>
+              </div>
+            </div>
+          )}
+          <div>
+            <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}}>Заметка к обновлению <span style={{color:'#9ca3af',fontWeight:400}}>(опционально)</span></div>
+            <textarea value={note} onChange={e=>setNote(e.target.value)} rows={3} placeholder="Контекст, блокеры, что изменилось…" style={{...iSt,resize:'vertical'}}/>
+          </div>
+        </div>
+        <div style={{padding:'0 22px 18px',display:'flex',gap:8,justifyContent:'flex-end'}}>
+          <button onClick={onClose} style={{padding:'9px 18px',border:'1px solid #e5e7eb',borderRadius:8,background:'white',color:'#374151',fontSize:13,fontWeight:500,cursor:'pointer'}}>Отмена</button>
+          <button onClick={save} style={{padding:'9px 22px',border:'none',borderRadius:8,background:accent,color:'white',fontSize:13,fontWeight:600,cursor:'pointer'}}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── KR EDIT MODAL (full mode) ─────────────────────────────────────────────────
+function KREditModal({kr,goal,onSave,onClose,accent}){
+  const isNew=!kr;
+  const [form,setForm]=useState(kr?{...kr,stages:(kr.stages||[]).map(s=>({...s}))}:{id:`kr_${Date.now()}`,name:'',desc:'',weight:20,krType:'PERCENT',start:0,target:100,current:0,done:false,stages:[],updatedDaysAgo:0,notes:[]});
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const setSt=(i,k,v)=>setForm(f=>{const ss=[...f.stages];ss[i]={...ss[i],[k]:v};return{...f,stages:ss};});
+  const addSt=()=>setForm(f=>({...f,stages:[...f.stages,{id:`s_${Date.now()}`,name:'',weight:0,done:false}]}));
+  const remSt=(i)=>setForm(f=>({...f,stages:f.stages.filter((_,j)=>j!==i)}));
+  const sw=form.stages.reduce((s,st)=>s+Number(st.weight||0),0);
+  const prev=calcKRProgress(form);
+  const save=()=>{if(!form.name.trim())return;onSave({...form,weight:Number(form.weight)||0,start:Number(form.start)||0,target:Number(form.target)||100,current:Number(form.current)||0,updatedDaysAgo:0});};
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'white',borderRadius:14,width:560,maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,0.25)'}}>
+        <div style={{padding:'20px 24px 14px',borderBottom:'1px solid #f3f4f6',display:'flex',justifyContent:'space-between',alignItems:'center',position:'sticky',top:0,background:'white',zIndex:1}}>
+          <div style={{fontSize:16,fontWeight:700,color:'#111827'}}>{isNew?'Добавить KR':'Редактировать KR'}</div>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:20,color:'#9ca3af',padding:4}}>×</button>
+        </div>
+        <div style={{padding:'18px 24px'}}>
+          {/* context readonly */}
+          <div style={{display:'flex',gap:10,marginBottom:16}}>
+            {[['Приоритет',goal?.priority||'P1'],['Тип',goal?.type||'delivery'],['Фокус',goal?.focus||'—']].map(([l,v])=>(
+              <div key={l} style={{flex:1,padding:'8px 10px',background:'#f9fafb',borderRadius:7,border:'1px solid #f0f1f3'}}>
+                <div style={{fontSize:10,color:'#9ca3af',fontWeight:600,textTransform:'uppercase',letterSpacing:.4,marginBottom:2}}>{l}</div>
+                <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}}>Название</div>
+            <input value={form.name} onChange={e=>set('name',e.target.value)} placeholder="Что измеряет этот KR?" style={iSt}/>
+          </div>
+          <div style={{marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}}>Описание</div>
+            <textarea value={form.desc||''} onChange={e=>set('desc',e.target.value)} rows={2} style={{...iSt,resize:'vertical'}}/>
+          </div>
+          <div style={{display:'flex',gap:12,marginBottom:14}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}}>Вес</div>
+              <input type="number" min={0} max={100} value={form.weight} onChange={e=>set('weight',e.target.value)} style={iSt}/>
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:5}}>Тип</div>
+              <select value={form.krType} onChange={e=>set('krType',e.target.value)} style={{...iSt,cursor:'pointer'}}>
+                {['PERCENT','LINEAR','BOOLEAN','PROJECT'].map(t=><option key={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+          {(form.krType==='PERCENT'||form.krType==='LINEAR')&&(
+            <div style={{background:'#f9fafb',borderRadius:10,padding:'14px',marginBottom:14,border:'1px solid #f0f1f3'}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:.5,marginBottom:12}}>{form.krType==='PERCENT'?'Процент':'Числовой прогресс'}</div>
+              <div style={{display:'flex',gap:12,marginBottom:12}}>
+                {['start','target','current'].map(f2=>(
+                  <div key={f2} style={{flex:1}}>
+                    <div style={{fontSize:11,fontWeight:600,color:'#374151',marginBottom:4,textTransform:'capitalize'}}>{f2}</div>
+                    <input type="number" value={form[f2]} onChange={e=>set(f2,e.target.value)} style={{...iSt,padding:'7px 10px',fontSize:13}}/>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}><span style={{fontSize:12,color:'#6b7280'}}>Прогресс</span><span style={{fontSize:12,fontWeight:700,color:accent}}>{prev}%</span></div>
+              <ProgressBar value={prev} h={5} color={accent}/>
+            </div>
+          )}
+          {form.krType==='BOOLEAN'&&(
+            <div style={{background:'#f9fafb',borderRadius:10,padding:'14px',marginBottom:14,border:'1px solid #f0f1f3'}}>
+              <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                <input type="checkbox" checked={!!form.done} onChange={e=>set('done',e.target.checked)} style={{width:18,height:18,accentColor:accent}}/>
+                <span style={{fontSize:14,fontWeight:500,color:'#111827'}}>Выполнено</span>
+                <span style={{marginLeft:'auto',fontWeight:700,color:form.done?'#16a34a':'#9ca3af'}}>{form.done?'100%':'0%'}</span>
+              </label>
+            </div>
+          )}
+          {form.krType==='PROJECT'&&(
+            <div style={{background:'#f9fafb',borderRadius:10,padding:'14px',marginBottom:14,border:'1px solid #f0f1f3'}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
+                <div style={{fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:.5}}>Шаги проекта</div>
+                <div style={{fontSize:11,fontWeight:600,color:Math.abs(sw-100)<1?'#16a34a':'#ef4444'}}>Сумма весов: {sw}</div>
+              </div>
+              {form.stages.map((st,i)=>(
+                <div key={st.id} style={{display:'flex',gap:8,alignItems:'center',marginBottom:8}}>
+                  <input type="checkbox" checked={!!st.done} onChange={e=>setSt(i,'done',e.target.checked)} style={{width:16,height:16,accentColor:accent,flexShrink:0}}/>
+                  <input value={st.name} onChange={e=>setSt(i,'name',e.target.value)} placeholder="Название шага" style={{...iSt,flex:1,padding:'7px 10px',fontSize:13}}/>
+                  <input type="number" min={0} value={st.weight} onChange={e=>setSt(i,'weight',Number(e.target.value))} style={{...iSt,width:60,padding:'7px 10px',fontSize:13,textAlign:'center'}}/>
+                  <button onClick={()=>remSt(i)} style={{background:'none',border:'none',cursor:'pointer',color:'#ef4444',fontSize:18,flexShrink:0}}>×</button>
+                </div>
+              ))}
+              <button onClick={addSt} style={{width:'100%',padding:'7px',border:'1px dashed #d1d5db',borderRadius:7,background:'transparent',color:'#6b7280',fontSize:12,cursor:'pointer',marginTop:4}}>+ Добавить шаг</button>
+              {form.stages.length>0&&<><div style={{display:'flex',justifyContent:'space-between',marginBottom:4,marginTop:12}}><span style={{fontSize:12,color:'#6b7280'}}>Прогресс</span><span style={{fontSize:12,fontWeight:700,color:accent}}>{prev}%</span></div><ProgressBar value={prev} h={5} color={accent}/></>}
+            </div>
+          )}
+        </div>
+        <div style={{padding:'0 24px 18px',display:'flex',gap:10,justifyContent:'flex-end',position:'sticky',bottom:0,background:'white',borderTop:'1px solid #f3f4f6',paddingTop:14}}>
+          <button onClick={onClose} style={{padding:'9px 18px',border:'1px solid #e5e7eb',borderRadius:8,background:'white',color:'#374151',fontSize:13,fontWeight:500,cursor:'pointer'}}>Отмена</button>
+          <button onClick={save} disabled={!form.name.trim()} style={{padding:'9px 24px',border:'none',borderRadius:8,background:form.name.trim()?accent:'#e5e7eb',color:form.name.trim()?'white':'#9ca3af',fontSize:13,fontWeight:600,cursor:form.name.trim()?'pointer':'default'}}>Сохранить</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── KR ROW ────────────────────────────────────────────────────────────────────
+function KRRow({kr,goal,editMode,onSaveKR,accent}){
+  const [modal,setModal]=useState(null); // null | 'progress' | 'edit'
+  const [showNotes,setShowNotes]=useState(false);
+  const progress=calcKRProgress(kr);
+  const staleC=kr.updatedDaysAgo>7?'#dc2626':kr.updatedDaysAgo>4?'#d97706':'#10b981';
+  let detail=null;
+  if(kr.krType==='BOOLEAN') detail=<span style={{fontSize:12,fontWeight:600,color:kr.done?'#16a34a':'#9ca3af'}}>{kr.done?'✓ Выполнено':'○ Не выполнено'}</span>;
+  else if(kr.krType==='PROJECT') detail=<span style={{fontSize:12,color:'#6b7280'}}>{(kr.stages||[]).filter(s=>s.done).length}/{(kr.stages||[]).length} шагов</span>;
+  else detail=<span style={{fontSize:12,color:'#6b7280',fontVariantNumeric:'tabular-nums'}}>{kr.current} → {kr.target}</span>;
+  return(
+    <>
+      <div style={{padding:'10px 0',borderBottom:'1px solid #f3f4f6'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:26,height:26,borderRadius:6,background:'#f3f4f6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#6b7280',flexShrink:0}}>{kr.weight}</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:500,color:'#111827',marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{kr.name}</div>
+            <div style={{display:'flex',alignItems:'center',gap:10}}>
+              <div style={{flex:1,maxWidth:160}}><ProgressBar value={progress} h={4} color={accent}/></div>
+              <span style={{fontSize:11,fontWeight:700,color:accent,flexShrink:0}}>{progress}%</span>
+              {detail}
+            </div>
+          </div>
+          <Badge label={kr.krType} color={KR_TYPE_C[kr.krType]}/>
+          <span style={{fontSize:11,color:staleC,flexShrink:0,minWidth:72,textAlign:'right'}}>{kr.updatedDaysAgo===0?'сегодня':`${kr.updatedDaysAgo}д назад`}</span>
+          {kr.notes.length>0&&<button onClick={()=>setShowNotes(!showNotes)} style={{fontSize:11,color:'#6b7280',background:'none',border:'none',cursor:'pointer',flexShrink:0}}>📝 {kr.notes.length}</button>}
+          {editMode==='full'&&<button onClick={()=>setModal('edit')} style={{padding:'5px 10px',border:'1px solid #e5e7eb',borderRadius:6,background:'white',color:'#374151',fontSize:12,fontWeight:500,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>Редактировать</button>}
+          {editMode==='progress_only'&&<button onClick={()=>setModal('progress')} style={{padding:'5px 10px',border:'1px solid',borderColor:accent,borderRadius:6,background:`${accent}10`,color:accent,fontSize:12,fontWeight:600,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>Обновить прогресс</button>}
+        </div>
+        {showNotes&&kr.notes.length>0&&(
+          <div style={{marginTop:10,marginLeft:36,borderLeft:'2px solid #f0f1f3',paddingLeft:12}}>
+            {kr.notes.map(n=>(
+              <div key={n.id} style={{display:'flex',gap:8,marginBottom:8,alignItems:'flex-start'}}>
+                <UserAvatar userId={n.userId} size={22}/>
+                <div style={{flex:1}}>
+                  <div style={{display:'flex',gap:6,alignItems:'baseline',marginBottom:2}}>
+                    <span style={{fontSize:11,fontWeight:600,color:'#374151'}}>{userById(n.userId).name}</span>
+                    <span style={{fontSize:10,color:'#9ca3af'}}>{n.date}</span>
+                  </div>
+                  <div style={{fontSize:12,color:'#374151',background:'#f9fafb',padding:'6px 9px',borderRadius:6}}>{n.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {modal==='progress'&&<KRProgressModal kr={kr} onSave={saved=>{onSaveKR(saved);setModal(null);}} onClose={()=>setModal(null)} accent={accent}/>}
+      {modal==='edit'&&<KREditModal kr={kr} goal={goal} onSave={saved=>{onSaveKR(saved);setModal(null);}} onClose={()=>setModal(null)} accent={accent}/>}
+    </>
+  );
+}
+
+// ── COMMENTS ─────────────────────────────────────────────────────────────────
+function CommentsPanel({comments,onAdd,currentUser}){
+  const [text,setText]=useState('');
+  const submit=()=>{if(text.trim()){onAdd(text.trim());setText('');}};
+  return(
+    <div style={{paddingTop:14}}>
+      <div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:.6,marginBottom:12}}>Комментарии</div>
+      {comments.map(c=>{
+        const u=userById(c.userId);
+        return(
+          <div key={c.id} style={{display:'flex',gap:10,marginBottom:14}}>
+            <UserAvatar userId={c.userId} size={28}/>
+            <div style={{flex:1}}>
+              <div style={{display:'flex',gap:8,alignItems:'baseline',marginBottom:3}}>
+                <span style={{fontSize:12,fontWeight:600,color:'#374151'}}>{u.name}</span>
+                <span style={{fontSize:11,color:'#9ca3af'}}>{c.date}</span>
+              </div>
+              <div style={{fontSize:13,color:'#374151',lineHeight:1.55,background:'#f9fafb',padding:'9px 12px',borderRadius:8,border:'1px solid #f3f4f6'}}>{c.text}</div>
+            </div>
+          </div>
+        );
+      })}
+      <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+        <UserAvatar userId={currentUser?.id||'u1'} size={28}/>
+        <div style={{flex:1}}>
+          <textarea value={text} onChange={e=>setText(e.target.value)} placeholder="Контекст, блокер, заметка для ретро… (Cmd+Enter)"
+            onKeyDown={e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey))submit();}}
+            style={{width:'100%',padding:'9px 11px',borderRadius:8,border:'1px solid #e5e7eb',fontSize:13,lineHeight:1.5,minHeight:60,outline:'none',color:'#374151'}}/>
+          <div style={{display:'flex',justifyContent:'flex-end',marginTop:5}}>
+            <button onClick={submit} disabled={!text.trim()} style={{padding:'6px 14px',background:text.trim()?'#7c3aed':'#e5e7eb',color:text.trim()?'#fff':'#9ca3af',borderRadius:7,border:'none',cursor:text.trim()?'pointer':'default',fontSize:13,fontWeight:600}}>Отправить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── GOAL CARD ─────────────────────────────────────────────────────────────────
+function GoalCard({goal,editMode,onSaveKR,onAddComment,onEditGoal,onReorderKR,forecast,accent,currentUser,currentTeamId,dragProps}){
+  const [showKR,setShowKR]=useState(false);
+  const [showCom,setShowCom]=useState(false);
+  const [krDrag,setKrDrag]=useState(null);
+  const [newKR,setNewKR]=useState(false);
+  const [goalDraggable,setGoalDraggable]=useState(false);
+  const prog=goalProgress(goal);
+  const health=healthOf(prog,goal.updatedDaysAgo>7);
+  const hC=HEALTH_COLOR[health];
+  const isStale=goal.updatedDaysAgo>7;
+  const canEdit=editMode==='full'&&onEditGoal;
+  const {isDragging,...rootDrag}=dragProps||{};
+  const canReorderGoal=canEdit&&!!dragProps;
+  return(
+    <div {...rootDrag} draggable={!!(canReorderGoal&&goalDraggable)}
+      onDragEnd={(e)=>{setGoalDraggable(false);rootDrag.onDragEnd&&rootDrag.onDragEnd(e);}}
+      style={{background:'white',borderRadius:12,marginBottom:12,boxShadow:isDragging?'0 8px 24px rgba(0,0,0,0.15)':'0 1px 3px rgba(0,0,0,0.05)',border:isStale?'1px solid #fde68a':'1px solid #f0f1f3',borderLeft:goal.shared?'3px solid #0891b2':(isStale?'1px solid #fde68a':'1px solid #f0f1f3'),opacity:isDragging?0.6:1,transition:'box-shadow .15s, opacity .15s',position:'relative'}}>
+      {canReorderGoal&&<div
+        onMouseDown={()=>setGoalDraggable(true)}
+        onMouseUp={()=>setGoalDraggable(false)}
+        onMouseLeave={()=>setGoalDraggable(false)}
+        title="Перетащите для изменения порядка"
+        style={{position:'absolute',left:-2,top:'50%',transform:'translateY(-50%)',width:16,height:42,display:'flex',alignItems:'center',justifyContent:'center',cursor:'grab',color:'#d1d5db',fontSize:14,borderRadius:4,userSelect:'none'}}
+        onMouseEnter={e=>e.currentTarget.style.color='#6b7280'}>⋮⋮</div>}
+      <div style={{padding:'16px 18px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+          <PriBadge p={goal.priority}/>
+          <span style={{fontSize:11,color:'#9ca3af',fontWeight:500}}>вес {goal.weight}%</span>
+          {goal.shared&&(()=>{
+            const isOwner=goal.ownerTeamId?goal.ownerTeamId===currentTeamId:true;
+            const teamCount=(goal.sharedTeamIds||[]).length+1;
+            return <Badge label={isOwner?`⇄ Общая · ${teamCount} команд`:`⇄ Разделяется из ${teamById(goal.ownerTeamId)?.name||'другой команды'}`} color="#0891b2"/>;
+          })()}
+          {canEdit&&<Badge label="✏ Редактируется" color="#059669"/>}
+          <div style={{flex:1}}/>
+          {isStale&&<Badge label="⚠ 9 дней без обновлений" color="#d97706" bg="#fffbeb"/>}
+          {/* Owners */}
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontSize:11,color:'#9ca3af'}}>{(goal.ownerIds||[]).length>1?'владельцы':'владелец'}</span>
+            <OwnerStack ownerIds={goal.ownerIds||[]}/>
+          </div>
+        </div>
+        <div onClick={canEdit?()=>onEditGoal(goal):undefined}
+          style={{fontSize:15,fontWeight:700,color:'#111827',marginBottom:4,lineHeight:1.35,cursor:canEdit?'pointer':'default',display:'inline-flex',alignItems:'center',gap:6,borderRadius:4,padding:canEdit?'2px 6px':0,marginLeft:canEdit?-6:0,transition:'background .12s'}}
+          onMouseEnter={canEdit?e=>{e.currentTarget.style.background='#f3f4f6';}:undefined}
+          onMouseLeave={canEdit?e=>{e.currentTarget.style.background='transparent';}:undefined}>
+          {goal.title}
+          {canEdit&&<span style={{fontSize:11,color:'#9ca3af',fontWeight:500,opacity:0.7}}>✎</span>}
+        </div>
+        {goal.desc&&<div style={{fontSize:13,color:'#6b7280',marginBottom:12,lineHeight:1.5}}>{goal.desc}</div>}
+        {goal.shared&&(()=>{
+          const ownerT=goal.ownerTeamId?teamById(goal.ownerTeamId):null;
+          const otherTeamIds=(goal.sharedTeamIds||[]).filter(id=>id!==currentTeamId);
+          const allTeams=ownerT?[ownerT,...otherTeamIds.map(teamById).filter(Boolean)]:otherTeamIds.map(teamById).filter(Boolean);
+          if(allTeams.length===0)return null;
+          return(
+            <div style={{marginBottom:12,padding:'8px 10px',background:'#ecfeff',borderRadius:8,border:'1px solid #a5f3fc',display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+              <span style={{fontSize:11,color:'#0e7490',fontWeight:600,display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
+                <span style={{fontSize:12}}>⇄</span>Общая с:
+              </span>
+              {allTeams.map(t=>{
+                const isOwner=t.id===goal.ownerTeamId;
+                const isCurrent=t.id===currentTeamId;
+                const color=TEAM_TYPE_COLOR[t.type]||'#0891b2';
+                return(
+                  <span key={t.id} title={teamPathLabel(t.id)}
+                    style={{display:'inline-flex',alignItems:'center',gap:5,padding:'2px 8px',borderRadius:12,background:isCurrent?'#0891b2':'white',border:`1px solid ${isCurrent?'#0891b2':color+'60'}`,fontSize:11,fontWeight:isCurrent?700:500,color:isCurrent?'white':'#164e63'}}>
+                    {isOwner&&<span style={{fontSize:9,opacity:0.8}}>★</span>}
+                    {t.name}
+                    {isCurrent&&<span style={{fontSize:9,opacity:0.85}}>вы</span>}
+                  </span>
+                );
+              })}
+              <span style={{fontSize:10,color:'#0e7490',opacity:0.7,marginLeft:'auto'}}>★ владелец</span>
+            </div>
+          );
+        })()}
+        <div style={{marginBottom:10}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:5}}>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <span style={{fontSize:20,fontWeight:800,color:hC,letterSpacing:-.5}}>{prog}%</span>
+              <span style={{fontSize:11,fontWeight:700,color:hC,background:`${hC}15`,padding:'2px 7px',borderRadius:4}}>
+                {health==='ahead'?'▲ опережает':health==='on_track'?'✓ в плане':health==='stale'?'⚠ нет обновлений':'▼ отстаёт'}
+              </span>
+            </div>
+            <span style={{fontSize:11,color:'#9ca3af'}}>{goal.updatedDaysAgo===0?'сегодня':`${goal.updatedDaysAgo}д назад`}</span>
+          </div>
+          <ProgressBar value={prog} forecast={forecast} h={9} color={hC}/>
+          <div style={{fontSize:10,color:'#9ca3af',marginTop:3,textAlign:'right'}}>прогноз {forecast}%</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+          <Badge label={goal.type==='delivery'?'Delivery':'Discovery'} color={goal.type==='delivery'?'#374151':'#7c3aed'}/>
+          <Badge label={goal.focus} color={FOCUS_COLORS[goal.focus]||FOCUS_COLORS.DEFAULT}/>
+        </div>
+      </div>
+      <div style={{display:'flex',borderTop:'1px solid #f3f4f6',background:'#fafafa'}}>
+        <button onClick={()=>setShowKR(!showKR)} style={{flex:1,padding:'8px 0',border:'none',background:'transparent',cursor:'pointer',fontSize:12,fontWeight:500,color:'#6b7280',display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+          <span style={{fontSize:9}}>{showKR?'▲':'▼'}</span>{showKR?'Скрыть KR':`KR (${goal.krs.length})`}
+        </button>
+        <div style={{width:1,background:'#f3f4f6'}}/>
+        <button onClick={()=>setShowCom(!showCom)} style={{flex:1,padding:'8px 0',border:'none',background:'transparent',cursor:'pointer',fontSize:12,fontWeight:500,color:goal.comments.length>0?'#374151':'#6b7280',display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+          {goal.comments.length>0?`💬 ${goal.comments.length}`:'💬 Комментарии'}
+        </button>
+      </div>
+      {showKR&&(
+        <div style={{padding:'4px 18px 14px',borderTop:'1px solid #f3f4f6'}}>
+          {goal.krs.map(kr=>{
+            const canReorderKR=editMode==='full'&&onReorderKR;
+            const isKrDrag=krDrag===kr.id;
+            return(
+              <div key={kr.id}
+                draggable={!!canReorderKR}
+                onDragStart={canReorderKR?(e)=>{e.stopPropagation();e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain','kr');setKrDrag(kr.id);}:undefined}
+                onDragOver={canReorderKR?(e)=>{if(krDrag&&krDrag!==kr.id){e.preventDefault();e.stopPropagation();e.dataTransfer.dropEffect='move';}}:undefined}
+                onDrop={canReorderKR?(e)=>{e.preventDefault();e.stopPropagation();if(krDrag&&krDrag!==kr.id){onReorderKR(krDrag,kr.id);}setKrDrag(null);}:undefined}
+                onDragEnd={canReorderKR?()=>setKrDrag(null):undefined}
+                style={{position:'relative',opacity:isKrDrag?0.5:1,transition:'opacity .15s',marginLeft:canReorderKR?12:0}}>
+                {canReorderKR&&<div style={{position:'absolute',left:-12,top:'50%',transform:'translateY(-50%)',width:10,fontSize:11,color:'#d1d5db',cursor:'grab',userSelect:'none'}}>⋮⋮</div>}
+                <KRRow kr={kr} goal={goal} editMode={editMode} onSaveKR={saved=>onSaveKR(goal.id,saved)} accent={accent}/>
+              </div>
+            );
+          })}
+          {editMode==='full'&&<button onClick={()=>setNewKR(true)} style={{marginTop:10,padding:'7px 14px',border:'1px dashed #d1d5db',borderRadius:7,background:'transparent',color:'#6b7280',fontSize:12,cursor:'pointer'}}>+ Добавить KR</button>}
+        </div>
+      )}
+      {newKR&&<KREditModal kr={null} goal={goal} onSave={saved=>{onSaveKR(goal.id,saved);setNewKR(false);}} onClose={()=>setNewKR(false)} accent={accent}/>}
+      {showCom&&(
+        <div style={{padding:'0 18px 16px',borderTop:'1px solid #f3f4f6'}}>
+          <CommentsPanel comments={goal.comments} onAdd={text=>onAddComment(goal.id,text)} currentUser={currentUser}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SIDEBAR ───────────────────────────────────────────────────────────────────
+function SidebarNode({team,depth,selectedId,onSelect,expanded,toggle,period,goals,statuses}){
+  const ch=getChildren(team.id);
+  const isExp=expanded[team.id]!==false;
+  const isSel=selectedId===team.id;
+  const prog=teamProgress(team.id,period,goals);
+  const {status}=getTeamStatus(team.id,period,goals,statuses);
+  const health=healthOf(prog,false);
+  const hC=HEALTH_COLOR[health];
+  const pad=14+depth*13;
+  return(
+    <div>
+      <div onClick={()=>onSelect(team.id)} style={{display:'flex',alignItems:'center',gap:5,padding:`5px 10px 5px ${pad}px`,cursor:'pointer',background:isSel?'rgba(124,58,237,0.15)':'transparent',borderLeft:isSel?'2px solid #a78bfa':'2px solid transparent',transition:'background .1s'}}
+        onMouseEnter={e=>{if(!isSel)e.currentTarget.style.background='rgba(255,255,255,0.06)';}}
+        onMouseLeave={e=>{if(!isSel)e.currentTarget.style.background='transparent';}}>
+        {ch.length>0?<span onClick={e=>{e.stopPropagation();toggle(team.id);}} style={{color:'#4b5563',fontSize:9,width:11,textAlign:'center',flexShrink:0,lineHeight:1}}>{isExp?'▾':'▸'}</span>:<span style={{width:11}}/>}
+        <span style={{width:6,height:6,borderRadius:'50%',background:hC,flexShrink:0}}/>
+        <span style={{flex:1,fontSize:depth===0?13:depth===1?12.5:12,fontWeight:depth===0?700:depth===1?500:400,color:isSel?'#c4b5fd':depth===0?'#f1f5f9':depth===1?'#cbd5e1':depth===2?'#94a3b8':'#64748b',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',lineHeight:1.3}}>{team.name}</span>
+        {prog!==null&&<span style={{fontSize:10,color:isSel?'#c4b5fd':hC,flexShrink:0,fontVariantNumeric:'tabular-nums',fontWeight:600}}>{prog}%</span>}
+        {status==='in_progress'&&!isSel&&<span style={{fontSize:9,color:'#f87171',flexShrink:0}}>●</span>}
+      </div>
+      {isExp&&ch.map(c=><SidebarNode key={c.id} team={c} depth={depth+1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} period={period} goals={goals} statuses={statuses}/>)}
+    </div>
+  );
+}
+
+// ── CHILD CARD ────────────────────────────────────────────────────────────────
+function ChildCard({team,period,goals,statuses,onSelect}){
+  const gs=goals[`${team.id}_${period}`]||[];
+  const prog=teamProgress(team.id,period,goals);
+  const health=healthOf(prog,false);
+  const hC=HEALTH_COLOR[health];
+  const {status}=getTeamStatus(team.id,period,goals,statuses);
+  const p01=gs.filter(g=>g.priority==='P0'||g.priority==='P1').length;
+  return(
+    <div onClick={()=>onSelect(team.id)} style={{background:'white',borderRadius:10,padding:'14px 16px',cursor:'pointer',border:'1px solid #f0f1f3',boxShadow:'0 1px 2px rgba(0,0,0,0.05)',transition:'all .14s'}}
+      onMouseEnter={e=>{e.currentTarget.style.boxShadow='0 4px 14px rgba(0,0,0,0.1)';e.currentTarget.style.transform='translateY(-1px)';}}
+      onMouseLeave={e=>{e.currentTarget.style.boxShadow='0 1px 2px rgba(0,0,0,0.05)';e.currentTarget.style.transform='none';}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:10,gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:'#111827',lineHeight:1.3,marginBottom:team.leadId?4:0,overflow:'hidden',textOverflow:'ellipsis'}}>{team.name}</div>
+          {team.leadId&&(()=>{const lead=userById(team.leadId);return(
+            <div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'#6b7280'}} title={`${lead.name} · ${lead.role}`}>
+              <UserAvatar userId={lead.id} size={16}/>
+              <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lead.name.split(' ')[0]} {lead.name.split(' ')[1]?.[0]}.</span>
+            </div>
+          );})()}
+        </div>
+        <span style={{fontSize:10,fontWeight:700,color:hC,background:`${hC}15`,padding:'2px 6px',borderRadius:4,flexShrink:0}}>{HEALTH_LABEL[health]}</span>
+      </div>
+      {prog!==null?(
+        <>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+            <span style={{fontSize:11,color:'#9ca3af'}}>{gs.length} целей · {status==='in_progress'?'В работе':status==='forming'?'Черновик':status==='ready'?'К валидации':'Закрыт'}</span>
+            <span style={{fontSize:14,fontWeight:800,color:hC}}>{prog}%</span>
+          </div>
+          <ProgressBar value={prog} h={5} color={hC}/>
+          {p01>0&&<div style={{marginTop:6,fontSize:11,color:'#d97706',fontWeight:500}}>● {p01} приоритетных P0–P1</div>}
+        </>
+      ):(
+        <div style={{fontSize:12,color:'#9ca3af',fontStyle:'italic'}}>Цели не добавлены</div>
+      )}
+    </div>
+  );
+}
+
+// ── CLUSTER VIEW ──────────────────────────────────────────────────────────────
+function ClusterView({team,period,goals,statuses,onSelect,forecast}){
+  const children=getChildren(team.id);
+  const withGoals=children.filter(c=>teamProgress(c.id,period,goals)!==null);
+  const avg=withGoals.length?Math.round(withGoals.reduce((s,c)=>s+teamProgress(c.id,period,goals),0)/withGoals.length):0;
+  const health=healthOf(avg,false);
+  const hC=HEALTH_COLOR[health];
+  const units=children.filter(c=>c.type==='unit'||c.type==='group');
+  const direct=children.filter(c=>c.type==='team'||c.type==='squad');
+  return(
+    <div>
+      <div style={{background:'white',borderRadius:12,padding:'20px 24px',marginBottom:20,boxShadow:'0 1px 3px rgba(0,0,0,0.05)',border:'1px solid #f0f1f3',display:'flex',alignItems:'center',gap:24}}>
+        <div style={{minWidth:80}}>
+          <div style={{fontSize:11,color:'#9ca3af',fontWeight:500,marginBottom:4,textTransform:'uppercase',letterSpacing:.5}}>Прогресс</div>
+          <div style={{fontSize:34,fontWeight:800,color:hC,letterSpacing:-1}}>{avg}%</div>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+            <span style={{fontSize:12,color:'#9ca3af'}}>{withGoals.length} из {children.length} с целями</span>
+            <span style={{fontSize:12,fontWeight:700,color:hC}}>{HEALTH_LABEL[health]}</span>
+          </div>
+          <ProgressBar value={avg} forecast={forecast} h={10} color={hC}/>
+          <div style={{fontSize:10,color:'#9ca3af',marginTop:4}}>прогноз {forecast}%</div>
+        </div>
+      </div>
+      {units.map(u=>{
+        const uch=getChildren(u.id);
+        const up=teamProgress(u.id,period,goals);
+        return(
+          <div key={u.id} style={{marginBottom:20}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:10}}>
+              <span style={{fontSize:11,fontWeight:700,color:'#6b7280',textTransform:'uppercase',letterSpacing:.5}}>{u.type==='group'?'Группа':'Юнит'} · {u.name}</span>
+              {up!==null&&<span style={{fontSize:12,fontWeight:700,color:HEALTH_COLOR[healthOf(up,false)]}}>{up}%</span>}
+              <button onClick={()=>onSelect(u.id)} style={{marginLeft:'auto',fontSize:11,color:'#2563eb',background:'none',border:'none',cursor:'pointer'}}>Открыть →</button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:10}}>
+              {uch.map(t=><ChildCard key={t.id} team={t} period={period} goals={goals} statuses={statuses} onSelect={onSelect}/>)}
+            </div>
+          </div>
+        );
+      })}
+      {direct.length>0&&<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(190px,1fr))',gap:10}}>
+        {direct.map(t=><ChildCard key={t.id} team={t} period={period} goals={goals} statuses={statuses} onSelect={onSelect}/>)}
+      </div>}
+    </div>
+  );
+}
+
+// ── CHECK-IN ──────────────────────────────────────────────────────────────────
+function CheckInPanel({period,goals,statuses,onClose,onSaveKR,forecast,accent,currentUser}){
+  const [filter,setFilter]=useState('all'); // 'all' | 'stale' | 'behind'
+  const allGs=Object.entries(goals).filter(([k])=>k.endsWith(period)).flatMap(([,gs])=>gs);
+  const stale=allGs.filter(g=>g.updatedDaysAgo>7);
+  const behind=allGs.filter(g=>g.updatedDaysAgo<=7&&goalProgress(g)<forecast-5);
+  const total=stale.length+behind.length;
+  const visibleStale=filter==='behind'?[]:stale;
+  const visibleBehind=filter==='stale'?[]:behind;
+  const visibleTotal=visibleStale.length+visibleBehind.length;
+  const chip=(active,bg,activeBg,color,onClick,children)=>(
+    <button onClick={onClick}
+      style={{border:'none',cursor:'pointer',background:active?activeBg:bg,borderRadius:7,padding:'6px 12px',fontSize:12,fontWeight:600,color,display:'inline-flex',alignItems:'center',gap:6,outline:active?`2px solid ${color}`:'none',outlineOffset:-1,transition:'all .12s',fontFamily:'inherit'}}>
+      {children}
+    </button>
+  );
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.55)',zIndex:200,display:'flex',justifyContent:'flex-end'}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{width:600,background:'#edf0f4',height:'100%',overflow:'auto',boxShadow:'-8px 0 32px rgba(0,0,0,0.2)',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'20px 24px',background:'#111827',flexShrink:0}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+            <div><div style={{fontSize:17,fontWeight:700,color:'white',marginBottom:3}}>⚡ Health Check-in</div>
+              <div style={{fontSize:13,color:'#94a3b8'}}>{total>0?`${total} целей требуют внимания`:'Всё в порядке'}</div></div>
+            <button onClick={onClose} style={{background:'rgba(255,255,255,0.1)',border:'none',color:'white',borderRadius:7,padding:'6px 12px',cursor:'pointer',fontSize:13}}>✕</button>
+          </div>
+          {total>0&&<div style={{display:'flex',gap:8,marginTop:14,alignItems:'center',flexWrap:'wrap'}}>
+            {chip(filter==='all','rgba(255,255,255,0.06)','rgba(255,255,255,0.18)','#e5e7eb',()=>setFilter('all'),<>Все · {total}</>)}
+            {stale.length>0&&chip(filter==='stale','rgba(239,68,68,0.15)','rgba(239,68,68,0.35)','#fca5a5',()=>setFilter(f=>f==='stale'?'all':'stale'),<>🕐 Нет обновлений · {stale.length}</>)}
+            {behind.length>0&&chip(filter==='behind','rgba(245,158,11,0.15)','rgba(245,158,11,0.35)','#fcd34d',()=>setFilter(f=>f==='behind'?'all':'behind'),<>▼ Отстают · {behind.length}</>)}
+            {filter!=='all'&&<button onClick={()=>setFilter('all')} style={{background:'none',border:'none',color:'#94a3b8',fontSize:11,cursor:'pointer',textDecoration:'underline',fontFamily:'inherit'}}>сбросить</button>}
+          </div>}
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'18px'}}>
+          {total===0&&<div style={{textAlign:'center',padding:'80px 0'}}><div style={{fontSize:40,marginBottom:12}}>✅</div><div style={{fontSize:15,fontWeight:600,color:'#374151'}}>Всё актуально</div></div>}
+          {total>0&&visibleTotal===0&&<div style={{textAlign:'center',padding:'60px 0',color:'#6b7280',fontSize:13}}>По выбранному фильтру ничего нет</div>}
+          {visibleStale.length>0&&(
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:'#dc2626',textTransform:'uppercase',letterSpacing:.6,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>🕐 Нет обновлений · {visibleStale.length}</div>
+              {visibleStale.map(g=><GoalCard key={g.id} goal={g} editMode="progress_only" onSaveKR={onSaveKR} onAddComment={()=>{}} forecast={forecast} accent={accent} currentUser={currentUser}/>)}
+            </div>
+          )}
+          {visibleBehind.length>0&&(
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:'#d97706',textTransform:'uppercase',letterSpacing:.6,marginBottom:8,display:'flex',alignItems:'center',gap:6}}>▼ Отстают · {visibleBehind.length}</div>
+              {visibleBehind.map(g=><GoalCard key={g.id} goal={g} editMode="progress_only" onSaveKR={onSaveKR} onAddComment={()=>{}} forecast={forecast} accent={accent} currentUser={currentUser}/>)}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── TWEAKS ────────────────────────────────────────────────────────────────────
+function TweaksPanel({tweaks,setTweaks,visible}){
+  if(!visible)return null;
+  const set=(k,v)=>{const n={...tweaks,[k]:v};setTweaks(n);window.parent.postMessage({type:'__edit_mode_set_keys',edits:n},'*');};
+  return(
+    <div style={{position:'fixed',bottom:20,right:20,zIndex:500,background:'white',borderRadius:12,boxShadow:'0 8px 30px rgba(0,0,0,0.15)',border:'1px solid #e5e7eb',padding:'16px 18px',width:240}}>
+      <div style={{fontSize:13,fontWeight:700,color:'#111827',marginBottom:14}}>Tweaks</div>
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:11,color:'#6b7280',fontWeight:500,marginBottom:6}}>Акцентный цвет</div>
+        <div style={{display:'flex',gap:6}}>
+          {['#2563eb','#7c3aed','#059669','#d97706','#dc2626'].map(c=>(
+            <div key={c} onClick={()=>set('accentColor',c)} style={{width:24,height:24,borderRadius:'50%',background:c,cursor:'pointer',border:tweaks.accentColor===c?'3px solid #111827':'2px solid white',boxShadow:'0 1px 3px rgba(0,0,0,0.2)',transition:'transform .12s'}}
+              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.15)'}
+              onMouseLeave={e=>e.currentTarget.style.transform='none'}/>
+          ))}
+        </div>
+      </div>
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:11,color:'#6b7280',fontWeight:500,marginBottom:5}}>Прогноз квартала</div>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <input type="range" min={10} max={60} step={5} value={tweaks.forecastPct} onChange={e=>set('forecastPct',+e.target.value)} style={{flex:1,accentColor:tweaks.accentColor}}/>
+          <span style={{fontSize:13,fontWeight:700,color:'#374151',minWidth:32}}>{tweaks.forecastPct}%</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── LOGIN SCREEN ──────────────────────────────────────────────────────────────
+function LoginScreen({onLogin,accent}){
+  const [picked,setPicked]=useState(null);
+  const [pass,setPass]=useState('');
+  const [err,setErr]=useState('');
+  const [loading,setLoading]=useState(false);
+  const submit=()=>{
+    if(!picked){setErr('Выберите пользователя');return;}
+    setLoading(true);setErr('');
+    setTimeout(()=>{setLoading(false);onLogin(picked);},600);
+  };
+  return(
+    <div style={{minHeight:'100vh',background:'#0c1220',display:'flex',alignItems:'center',justifyContent:'center',fontFamily:'Inter,sans-serif'}}>
+      <div style={{width:420,background:'white',borderRadius:16,boxShadow:'0 24px 80px rgba(0,0,0,0.4)',overflow:'hidden'}}>
+        {/* top bar */}
+        <div style={{background:'#0c1220',padding:'28px 32px 24px'}}>
+          <div style={{fontSize:20,fontWeight:800,color:'white',letterSpacing:-.4,marginBottom:4}}>OKR Tracker</div>
+          <div style={{fontSize:13,color:'#64748b'}}>Войдите, чтобы продолжить</div>
+        </div>
+        <div style={{padding:'28px 32px 32px'}}>
+          <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:12}}>Выберите аккаунт</div>
+          <div style={{display:'flex',flexDirection:'column',gap:6,marginBottom:20}}>
+            {USERS.map(u=>(
+              <div key={u.id} onClick={()=>{setPicked(u);setErr('');}}
+                style={{display:'flex',alignItems:'center',gap:12,padding:'10px 14px',borderRadius:10,cursor:'pointer',border:`2px solid ${picked?.id===u.id?u.color:'#f0f1f3'}`,background:picked?.id===u.id?`${u.color}08`:'white',transition:'all .13s'}}
+                onMouseEnter={e=>{if(picked?.id!==u.id)e.currentTarget.style.background='#f9fafb';}}
+                onMouseLeave={e=>{if(picked?.id!==u.id)e.currentTarget.style.background='white';}}>
+                <div style={{width:36,height:36,borderRadius:'50%',background:u.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,color:'white',flexShrink:0}}>{u.initials}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:'#111827'}}>{u.name}</div>
+                  <div style={{fontSize:11,color:'#6b7280'}}>{u.role} · {u.dept}</div>
+                </div>
+                {picked?.id===u.id&&<div style={{width:18,height:18,borderRadius:'50%',background:u.color,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}><span style={{color:'white',fontSize:11,fontWeight:700}}>✓</span></div>}
+              </div>
+            ))}
+          </div>
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:6}}>Пароль</div>
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Любой пароль (прототип)"
+              onKeyDown={e=>e.key==='Enter'&&submit()}
+              style={{width:'100%',padding:'10px 12px',borderRadius:8,border:`1px solid ${err?'#ef4444':'#e5e7eb'}`,fontSize:14,outline:'none',color:'#111827'}}/>
+          </div>
+          {err&&<div style={{fontSize:12,color:'#ef4444',marginBottom:12}}>{err}</div>}
+          <button onClick={submit} disabled={loading}
+            style={{width:'100%',padding:'12px',borderRadius:10,background:picked?accent:'#e5e7eb',color:picked?'white':'#9ca3af',border:'none',fontSize:14,fontWeight:700,cursor:picked?'pointer':'default',transition:'all .15s'}}>
+            {loading?'Входим…':'Войти'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── GOAL CREATE / EDIT MODAL ───────────────────────────────────────────────────
+const FOCUS_OPTIONS=['EFFICIENCY','QUALITY','RELIABILITY','GROWTH','PROFITABILITY'];
+function GoalModal({goal,teamId,period,existingGoals,currentUser,onSave,onClose,accent}){
+  const isEdit=!!goal;
+  const usedWeight=(existingGoals||[]).filter(g=>!isEdit||g.id!==goal?.id).reduce((s,g)=>s+g.weight,0);
+  const maxWeight=100-usedWeight;
+  const [form,setForm]=useState(goal?{sharedTeamIds:[],...goal}:{
+    id:`g_${Date.now()}`,title:'',desc:'',priority:'P1',weight:Math.min(20,maxWeight),
+    type:'delivery',focus:'EFFICIENCY',shared:false,sharedTeamIds:[],ownerTeamId:teamId,ownerIds:[currentUser.id],
+    krs:[],comments:[],updatedDaysAgo:0,
+  });
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const weightLeft=maxWeight-(isEdit?0:0)-(form.weight-( isEdit?goal.weight:0));
+  const totalAfter=usedWeight+(isEdit?form.weight-goal.weight:form.weight);
+  const overWeight=totalAfter>100;
+  const valid=form.title.trim()&&!overWeight&&form.weight>0&&form.ownerIds.length>0&&(!form.shared||(form.sharedTeamIds||[]).length>0);
+
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',padding:20}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'white',borderRadius:16,width:600,maxHeight:'92vh',overflow:'auto',boxShadow:'0 24px 80px rgba(0,0,0,0.3)'}}>
+        {/* header */}
+        <div style={{padding:'22px 28px 16px',borderBottom:'1px solid #f3f4f6',position:'sticky',top:0,background:'white',zIndex:1,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontSize:18,fontWeight:700,color:'#111827'}}>{isEdit?'Редактировать цель':'Новая цель'}</div>
+            <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>Период · {period} · {TEAMS.find(t=>t.id===teamId)?.name}</div>
+          </div>
+          <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:22,color:'#9ca3af',padding:4,lineHeight:1}}>×</button>
+        </div>
+        <div style={{padding:'22px 28px'}}>
+
+          {/* title */}
+          <div style={{marginBottom:16}}>
+            <FieldLabel required hint={<><b style={{color:'white'}}>Objective (цель)</b> — качественное, вдохновляющее описание того, чего команда хочет достичь. Формулировка амбициозная, но достижимая: без цифр и метрик (они живут в KR). Отвечает на вопрос «Куда мы идём?». Избегайте задач и действий — пишите результат.</>}>
+              Название
+            </FieldLabel>
+            <input value={form.title} onChange={e=>set('title',e.target.value)} placeholder="Чего хотим достичь за этот период?"
+              style={{width:'100%',padding:'11px 13px',borderRadius:9,border:`1.5px solid ${form.title.trim()?'#e5e7eb':!form.title&&'#e5e7eb'}`,fontSize:14,outline:'none',color:'#111827'}}/>
+          </div>
+
+          {/* desc */}
+          <div style={{marginBottom:16}}>
+            <FieldLabel hint={<>Контекст для команды и смежников: <b style={{color:'white'}}>зачем</b> эта цель важна, какую проблему решает, какие ограничения или связи учитывать. Не дублируйте название — раскройте «why». Хороший тест: через 3 месяца новый человек поймёт смысл цели без дополнительных встреч.</>}>
+              Описание
+            </FieldLabel>
+            <textarea value={form.desc} onChange={e=>set('desc',e.target.value)} rows={3} placeholder="Дополнительный контекст…"
+              style={{width:'100%',padding:'10px 13px',borderRadius:9,border:'1.5px solid #e5e7eb',fontSize:14,outline:'none',color:'#111827',lineHeight:1.5}}/>
+          </div>
+
+          {/* row: priority + weight */}
+          <div style={{display:'flex',gap:14,marginBottom:16}}>
+            <div style={{flex:1}}>
+              <FieldLabel hint={<>Относительная важность цели для команды в этом периоде:<br/><b style={{color:'#fca5a5'}}>P0</b> — must-have, без этого период провален.<br/><b style={{color:'#fcd34d'}}>P1</b> — высокая важность, основной фокус.<br/><b style={{color:'#93c5fd'}}>P2</b> — важная, но может подвинуться.<br/><b style={{color:'#d1d5db'}}>P3</b> — желательная, «если останется ресурс».<br/>Приоритет помогает при конфликте ресурсов и checkpoint-ах.</>}>
+                Приоритет
+              </FieldLabel>
+              <div style={{display:'flex',gap:6}}>
+                {['P0','P1','P2','P3'].map(p=>{
+                  const c={P0:'#dc2626',P1:'#d97706',P2:'#2563eb',P3:'#6b7280'}[p];
+                  const sel=form.priority===p;
+                  return <button key={p} onClick={()=>set('priority',p)} style={{flex:1,padding:'9px 0',borderRadius:8,border:`2px solid ${sel?c:'#e5e7eb'}`,background:sel?`${c}12`:'white',color:sel?c:'#6b7280',fontSize:13,fontWeight:700,cursor:'pointer',transition:'all .12s'}}>{p}</button>;
+                })}
+              </div>
+            </div>
+            <div style={{width:140}}>
+              <FieldLabel hint={<>Доля этой цели в общем результате команды. Сумма весов всех целей в периоде = 100%. Вес отражает ожидаемый вклад в успех периода, а не трудоёмкость. Используется при расчёте общего прогресса команды.</>}>
+                <span>Вес <span style={{fontWeight:400,color:overWeight?'#ef4444':'#9ca3af',fontSize:12}}>(занято {usedWeight+(isEdit?0:0)+(form.weight-(isEdit?goal?.weight||0:0))}/100)</span></span>
+              </FieldLabel>
+              <div style={{position:'relative'}}>
+                <input type="number" min={1} max={100} value={form.weight} onChange={e=>set('weight',Math.max(1,Math.min(100,Number(e.target.value))))}
+                  style={{width:'100%',padding:'10px 30px 10px 13px',borderRadius:9,border:`1.5px solid ${overWeight?'#ef4444':'#e5e7eb'}`,fontSize:14,outline:'none',color:'#111827'}}/>
+                <span style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',fontSize:12,color:'#9ca3af'}}>%</span>
+              </div>
+              {/* weight bar */}
+              <div style={{marginTop:6,height:4,background:'#f3f4f6',borderRadius:2,overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${Math.min(totalAfter,100)}%`,background:overWeight?'#ef4444':accent,borderRadius:2,transition:'width .2s'}}/>
+              </div>
+              {overWeight&&<div style={{fontSize:11,color:'#ef4444',marginTop:3}}>Превышает 100%</div>}
+            </div>
+          </div>
+
+          {/* row: type + focus */}
+          <div style={{display:'flex',gap:14,marginBottom:16}}>
+            <div style={{flex:1}}>
+              <FieldLabel hint={<><b style={{color:'white'}}>Delivery</b> — результат известен, нужно выполнить: запустить, внедрить, достичь метрики. Предсказуемый исход, измеряется фактом «сделано/не сделано» или числом.<br/><br/><b style={{color:'white'}}>Discovery</b> — исследование: проверить гипотезу, найти решение, научиться. Исход непредсказуем — успех = валидированные выводы, а не «сделано».</>}>
+                Тип работы
+              </FieldLabel>
+              <div style={{display:'flex',gap:6}}>
+                {['delivery','discovery'].map(t=>{
+                  const sel=form.type===t;
+                  return <button key={t} onClick={()=>set('type',t)} style={{flex:1,padding:'9px',borderRadius:8,border:`2px solid ${sel?accent:'#e5e7eb'}`,background:sel?`${accent}10`:'white',color:sel?accent:'#6b7280',fontSize:13,fontWeight:600,cursor:'pointer',transition:'all .12s',textTransform:'capitalize'}}>{t}</button>;
+                })}
+              </div>
+            </div>
+            <div style={{flex:1}}>
+              <FieldLabel hint={<>Стратегический фокус, к которому относится цель: EFFICIENCY (эффективность), QUALITY (качество), RELIABILITY (надёжность), GROWTH (рост), PROFITABILITY (прибыльность). Помогает видеть баланс инвестиций команды и агрегировать цели по стратегии компании.</>}>
+                Фокус
+              </FieldLabel>
+              <select value={form.focus} onChange={e=>set('focus',e.target.value)}
+                style={{width:'100%',padding:'10px 13px',borderRadius:9,border:'1.5px solid #e5e7eb',fontSize:13,outline:'none',color:'#111827',background:'white',cursor:'pointer'}}>
+                {FOCUS_OPTIONS.map(f=><option key={f} value={f}>{f}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* owners (multi) */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#374151',marginBottom:8,display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+              <span>Владельцы {form.ownerIds.length>0&&<span style={{color:'#9ca3af',fontWeight:400}}>· выбрано {form.ownerIds.length}</span>}</span>
+              <span style={{fontSize:11,fontWeight:400,color:'#9ca3af'}}>можно несколько</span>
+            </div>
+            <OwnerCombobox selectedIds={form.ownerIds} onChange={ids=>set('ownerIds',ids)} users={USERS} accent={accent}/>
+            {form.ownerIds.length===0&&<div style={{fontSize:11,color:'#ef4444',marginTop:6}}>Выберите хотя бы одного владельца</div>}
+          </div>
+
+          {/* shared */}
+          <div style={{padding:'12px 14px',background:'#f9fafb',borderRadius:10,border:'1px solid #f0f1f3'}}>
+            <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+              <div onClick={()=>set('shared',!form.shared)} style={{width:38,height:22,borderRadius:11,background:form.shared?accent:'#d1d5db',transition:'background .15s',position:'relative',flexShrink:0,cursor:'pointer'}}>
+                <div style={{position:'absolute',top:3,left:form.shared?18:3,width:16,height:16,borderRadius:'50%',background:'white',transition:'left .15s',boxShadow:'0 1px 3px rgba(0,0,0,0.2)'}}/>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,color:'#374151'}}>Общая цель</div>
+                <div style={{fontSize:11,color:'#9ca3af'}}>Разделить цель с другими командами. Все разделяющие команды видят её в своём списке.</div>
+              </div>
+            </label>
+            {form.shared&&(
+              <div style={{marginTop:12,paddingTop:12,borderTop:'1px dashed #e5e7eb'}}>
+                <div style={{fontSize:12,fontWeight:600,color:'#374151',marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'baseline'}}>
+                  <span>С какими командами разделяете <span style={{color:'#ef4444'}}>*</span></span>
+                  {(form.sharedTeamIds||[]).length>0&&<span style={{fontSize:11,fontWeight:400,color:'#9ca3af'}}>{form.sharedTeamIds.length} выбрано</span>}
+                </div>
+                <TeamCombobox selectedIds={form.sharedTeamIds||[]} onChange={ids=>set('sharedTeamIds',ids)} excludeTeamId={teamId} accent={accent}/>
+                {(form.sharedTeamIds||[]).length===0&&<div style={{fontSize:11,color:'#ef4444',marginTop:6}}>Укажите хотя бы одну команду, с которой разделяете цель</div>}
+                <div style={{fontSize:11,color:'#9ca3af',marginTop:6,lineHeight:1.5}}>Владельцем остаётся <b style={{color:'#6b7280'}}>{teamById(teamId)?.name}</b>. Остальные команды увидят цель со значком ⇄ и смогут отслеживать её прогресс.</div>
+              </div>
+            )}
+          </div>
+
+          {/* KR hint */}
+          <div style={{marginTop:16,padding:'12px 14px',background:`${accent}08`,borderRadius:10,border:`1px dashed ${accent}40`,display:'flex',gap:10,alignItems:'flex-start'}}>
+            <span style={{fontSize:16,flexShrink:0}}>💡</span>
+            <div style={{fontSize:12,color:'#6b7280',lineHeight:1.5}}>После сохранения цели откройте её карточку и добавьте Key Results через кнопку «KR». Прогресс цели автоматически рассчитывается из KR.</div>
+          </div>
+        </div>
+
+        {/* footer */}
+        <div style={{padding:'14px 28px 22px',borderTop:'1px solid #f3f4f6',display:'flex',gap:10,justifyContent:'flex-end',position:'sticky',bottom:0,background:'white'}}>
+          <button onClick={onClose} style={{padding:'10px 20px',border:'1px solid #e5e7eb',borderRadius:9,background:'white',color:'#374151',fontSize:14,fontWeight:500,cursor:'pointer'}}>Отмена</button>
+          <button onClick={()=>valid&&onSave(form)} disabled={!valid}
+            style={{padding:'10px 28px',border:'none',borderRadius:9,background:valid?accent:'#e5e7eb',color:valid?'white':'#9ca3af',fontSize:14,fontWeight:700,cursor:valid?'pointer':'default',transition:'all .15s'}}>
+            {isEdit?'Сохранить изменения':'Создать цель'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── APP ───────────────────────────────────────────────────────────────────────
+function App(){
+  const [currentUser,setCurrentUser]=useState(null);
+  const [tweaks,setTweaks]=useState(TWEAK_DEFAULTS);
+  const [tweaksVis,setTweaksVis]=useState(false);
+  const [period,setPeriod]=useState('y26q1');
+  const [selId,setSelId]=useState('u1');
+  const [expanded,setExpanded]=useState({c1:true,u1:true,sg1:true,sg2:false,t1:false,c2:false});
+  const [checkIn,setCheckIn]=useState(false);
+  const [goalModal,setGoalModal]=useState(null); // null | 'new' | goal object
+  const [dragState,setDragState]=useState({kind:null,srcId:null});
+  const [goals,setGoals]=useState(INIT_GOALS);
+  const [statuses,setStatuses]=useState(INIT_STATUSES);
+
+  useEffect(()=>{
+    const h=e=>{
+      if(e.data?.type==='__activate_edit_mode')setTweaksVis(true);
+      if(e.data?.type==='__deactivate_edit_mode')setTweaksVis(false);
+    };
+    window.addEventListener('message',h);
+    window.parent.postMessage({type:'__edit_mode_available'},'*');
+    return()=>window.removeEventListener('message',h);
+  },[]);
+
+  const toggle=useCallback((id)=>setExpanded(m=>({...m,[id]:!m[id]})),[]);
+  const selTeam=TEAMS.find(t=>t.id===selId);
+  const isLeaf=selTeam&&getChildren(selId).length===0;
+  const teamGoals=goals[`${selId}_${period}`]||[];
+  const prog=teamProgress(selId,period,goals);
+  const {status,changedAt}=getTeamStatus(selId,period,goals,statuses);
+  const editMode=getEditMode(status);
+  const hC=HEALTH_COLOR[healthOf(prog,false)];
+
+  const allGs=Object.entries(goals).filter(([k])=>k.endsWith(period)).flatMap(([,gs])=>gs);
+  const attn=allGs.filter(g=>g.updatedDaysAgo>7||goalProgress(g)<tweaks.forecastPct-5).length;
+
+  const handleChangeStatus=useCallback((tid,pid,newStatus)=>{
+    setStatuses(prev=>({...prev,[`${tid}_${pid}`]:{status:newStatus,changedAt:todayStr()}}));
+  },[]);
+
+  const handleSaveGoal=useCallback((saved)=>{
+    setGoals(prev=>{
+      const key=`${selId}_${period}`;
+      const gs=prev[key]||[];
+      const exists=gs.find(g=>g.id===saved.id);
+      const next=exists?gs.map(g=>g.id===saved.id?saved:g):[...gs,saved];
+      return{...prev,[key]:next};
+    });
+    setStatuses(prev=>{
+      const key=`${selId}_${period}`;
+      if(!prev[key]||prev[key].status==='no_goals')
+        return{...prev,[key]:{status:'forming',changedAt:todayStr()}};
+      return prev;
+    });
+    setGoalModal(null);
+  },[selId,period]);
+
+  const handleReorderGoals=useCallback((fromId,toId)=>{
+    if(!fromId||!toId||fromId===toId)return;
+    setGoals(prev=>{
+      const key=`${selId}_${period}`;
+      const gs=[...(prev[key]||[])];
+      const fi=gs.findIndex(g=>g.id===fromId),ti=gs.findIndex(g=>g.id===toId);
+      if(fi<0||ti<0)return prev;
+      const [moved]=gs.splice(fi,1);
+      gs.splice(ti,0,moved);
+      return{...prev,[key]:gs};
+    });
+  },[selId,period]);
+
+  const handleReorderKRs=useCallback((goalId,fromId,toId)=>{
+    if(!fromId||!toId||fromId===toId)return;
+    setGoals(prev=>{
+      const key=`${selId}_${period}`;
+      return{...prev,[key]:(prev[key]||[]).map(g=>{
+        if(g.id!==goalId)return g;
+        const krs=[...g.krs];
+        const fi=krs.findIndex(k=>k.id===fromId),ti=krs.findIndex(k=>k.id===toId);
+        if(fi<0||ti<0)return g;
+        const [moved]=krs.splice(fi,1);
+        krs.splice(ti,0,moved);
+        return{...g,krs};
+      })};
+    });
+  },[selId,period]);
+
+  const handleSaveKR=useCallback((goalId,savedKR,teamId=selId)=>{
+    setGoals(prev=>{
+      const key=`${teamId}_${period}`;
+      const gs=(prev[key]||[]).map(g=>{
+        if(g.id!==goalId)return g;
+        const ex=g.krs.find(k=>k.id===savedKR.id);
+        const krs=ex?g.krs.map(k=>k.id===savedKR.id?savedKR:k):[...g.krs,savedKR];
+        return{...g,krs,updatedDaysAgo:0};
+      });
+      return{...prev,[key]:gs};
+    });
+  },[selId,period]);
+
+  const handleAddComment=useCallback((goalId,text)=>{
+    setGoals(prev=>{
+      const key=`${selId}_${period}`;
+      return{...prev,[key]:(prev[key]||[]).map(g=>g.id===goalId?{...g,comments:[...g.comments,{id:`c${Date.now()}`,userId:currentUser?.id||'u1',date:todayStr(),text}]}:g)};
+    });
+  },[selId,period,currentUser]);
+
+  if(!currentUser) return <LoginScreen onLogin={setCurrentUser} accent={tweaks.accentColor}/>;
+
+  return(
+    <div style={{display:'flex',height:'100vh',overflow:'hidden',fontFamily:'Inter,sans-serif'}}>
+      {/* SIDEBAR */}
+      <div style={{width:252,background:'#0c1220',display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden'}}>
+        <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:10}}>
+          <div style={{fontSize:14,fontWeight:800,color:'white',letterSpacing:-.3,flex:1}}>OKR Tracker</div>
+          <HeaderUserMenu user={currentUser} onLogout={()=>setCurrentUser(null)}/>
+        </div>
+        <div style={{padding:'9px 12px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+          <div style={{fontSize:10,color:'#374151',fontWeight:600,textTransform:'uppercase',letterSpacing:.6,marginBottom:4}}>Период</div>
+          <select value={period} onChange={e=>setPeriod(e.target.value)} style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',color:'#e5e7eb',borderRadius:6,padding:'6px 8px',fontSize:13,outline:'none',cursor:'pointer',fontFamily:'Inter,sans-serif'}}>
+            {PERIODS.map(p=><option key={p.id} value={p.id} style={{background:'#1f2937'}}>{p.label} · {p.start.slice(0,7)} – {p.end.slice(0,7)}</option>)}
+          </select>
+        </div>
+        <div style={{flex:1,overflow:'auto',padding:'6px 0'}}>
+          {TEAMS.filter(t=>!t.parentId).map(t=><SidebarNode key={t.id} team={t} depth={0} selectedId={selId} onSelect={setSelId} expanded={expanded} toggle={toggle} period={period} goals={goals} statuses={statuses}/>)}
+        </div>
+        <div style={{padding:'10px 12px',borderTop:'1px solid rgba(255,255,255,0.06)'}}>
+          <button onClick={()=>setCheckIn(true)} style={{width:'100%',padding:'9px 12px',borderRadius:8,background:attn>0?'rgba(239,68,68,0.85)':'rgba(255,255,255,0.07)',border:'none',color:'white',fontSize:13,fontWeight:700,cursor:'pointer',display:'flex',justifyContent:'center',alignItems:'center',gap:8}}>
+            ⚡ Health Check-in
+            {attn>0&&<span style={{background:'rgba(255,255,255,0.22)',borderRadius:10,padding:'1px 8px',fontSize:11}}>{attn}</span>}
+          </button>
+        </div>
+      </div>
+
+      {/* MAIN */}
+      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:'#edf0f4'}}>
+        {/* header */}
+        <div style={{padding:'0 24px',background:'white',borderBottom:'1px solid #e5e7eb',display:'flex',alignItems:'center',height:54,gap:14,flexShrink:0}}>
+          <span style={{fontSize:17,fontWeight:800,color:'#111827',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{selTeam?.name}</span>
+          {selTeam?.leadId&&(()=>{const lead=userById(selTeam.leadId);return(
+            <div title={`Руководитель: ${lead.name} · ${lead.role}`} style={{display:'inline-flex',alignItems:'center',gap:7,padding:'4px 10px 4px 4px',background:'#f3f4f6',borderRadius:20,fontSize:12,color:'#374151',cursor:'default',flexShrink:0}}>
+              <UserAvatar userId={lead.id} size={22}/>
+              <span style={{fontWeight:500,whiteSpace:'nowrap'}}>{lead.name.split(' ')[0]} {lead.name.split(' ')[1]?.[0]}.</span>
+              <span style={{color:'#9ca3af',fontSize:11}}>· лид</span>
+            </div>
+          );})()}
+          <div style={{flex:1}}/>
+          {isLeaf&&prog!==null&&(
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <div style={{width:140}}><ProgressBar value={prog} forecast={tweaks.forecastPct} h={6} color={hC}/></div>
+              <span style={{fontSize:13,fontWeight:700,color:hC,flexShrink:0}}>{prog}%</span>
+            </div>
+          )}
+          {editMode==='full'&&<button onClick={()=>setGoalModal('new')} style={{padding:'7px 14px',borderRadius:8,background:tweaks.accentColor,color:'white',border:'none',fontSize:13,fontWeight:600,cursor:'pointer',flexShrink:0}}>+ Добавить цель</button>}
+        </div>
+
+        {/* status stepper */}
+        <StatusStepper teamId={selId} periodId={period} goals={goals} statuses={statuses} onChange={handleChangeStatus} accent={tweaks.accentColor}/>
+
+        {/* body */}
+        <div style={{flex:1,overflow:'auto',padding:'20px 24px'}}>
+          {!isLeaf&&<ClusterView team={selTeam} period={period} goals={goals} statuses={statuses} onSelect={setSelId} forecast={tweaks.forecastPct}/>}
+          {(isLeaf||teamGoals.length>0)&&(
+            <>
+              {!isLeaf&&teamGoals.length>0&&<div style={{fontSize:11,fontWeight:700,color:'#9ca3af',textTransform:'uppercase',letterSpacing:.6,marginTop:24,marginBottom:12}}>Цели этого узла</div>}
+              {teamGoals.length===0&&isLeaf?(
+                <div style={{textAlign:'center',padding:'80px 0',color:'#9ca3af'}}>
+                  <div style={{fontSize:36,marginBottom:12}}>📋</div>
+                  <div style={{fontSize:15,fontWeight:600,color:'#6b7280',marginBottom:6}}>Цели не добавлены</div>
+                  <div style={{fontSize:13,marginBottom:20}}>Начните период с постановки OKR</div>
+                  {editMode==='full'&&<button onClick={()=>setGoalModal('new')} style={{padding:'10px 22px',borderRadius:10,background:tweaks.accentColor,color:'white',border:'none',fontSize:14,fontWeight:700,cursor:'pointer',boxShadow:`0 4px 12px ${tweaks.accentColor}40`}}>+ Создать первую цель</button>}
+                </div>
+              ):(
+                teamGoals.map(g=><GoalCard key={g.id} goal={g} editMode={editMode}
+                  onSaveKR={(gid,kr)=>handleSaveKR(gid,kr,selId)}
+                  onAddComment={handleAddComment}
+                  onEditGoal={setGoalModal}
+                  onReorderKR={(fid,tid)=>handleReorderKRs(g.id,fid,tid)}
+                  forecast={tweaks.forecastPct} accent={tweaks.accentColor} currentUser={currentUser} currentTeamId={selId}
+                  dragProps={editMode==='full'?{
+                    isDragging:dragState.kind==='goal'&&dragState.srcId===g.id,
+                    onDragStart:(e)=>{e.dataTransfer.effectAllowed='move';setDragState({kind:'goal',srcId:g.id});},
+                    onDragOver:(e)=>{if(dragState.kind==='goal'&&dragState.srcId!==g.id){e.preventDefault();e.dataTransfer.dropEffect='move';}},
+                    onDrop:(e)=>{e.preventDefault();if(dragState.kind==='goal'){handleReorderGoals(dragState.srcId,g.id);setDragState({kind:null,srcId:null});}},
+                    onDragEnd:()=>setDragState({kind:null,srcId:null}),
+                  }:null}/>)
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {checkIn&&<CheckInPanel period={period} goals={goals} statuses={statuses} onClose={()=>setCheckIn(false)} onSaveKR={(gid,kr)=>{}} forecast={tweaks.forecastPct} accent={tweaks.accentColor} currentUser={currentUser}/>}
+      {goalModal&&<GoalModal teamId={selId} period={period} existingGoals={teamGoals} currentUser={currentUser} onSave={handleSaveGoal} onClose={()=>setGoalModal(null)} accent={tweaks.accentColor} goal={goalModal==='new'?null:goalModal}/>}
+      <TweaksPanel tweaks={tweaks} setTweaks={setTweaks} visible={tweaksVis}/>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

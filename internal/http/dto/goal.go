@@ -32,6 +32,7 @@ type GoalDetails struct {
 	ProgressMeta ProgressBarInfo `json:"progress_meta"`
 	KeyResults   []KeyResult     `json:"key_results"`
 	ShareTeams   []ShareTeam     `json:"share_teams"`
+	Comments     []GoalComment   `json:"comments"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 }

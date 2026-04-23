@@ -459,9 +459,33 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
 }
 
 // ── KR ROW ────────────────────────────────────────────────────────────────────
+// ── CONFIRM MODAL ─────────────────────────────────────────────────────────────
+function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
+  const [busy, setBusy] = React.useState(false);
+  const run = async () => {
+    setBusy(true);
+    try { await onConfirm(); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: 'white', borderRadius: 14, width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+        <div style={{ padding: '22px 24px 16px' }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginBottom: 8 }}>{title}</div>
+          <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.5 }}>{message}</div>
+        </div>
+        <div style={{ padding: '12px 24px 20px', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} disabled={busy} style={{ padding: '9px 18px', border: '1px solid #e5e7eb', borderRadius: 8, background: 'white', color: '#374151', fontSize: 13, cursor: 'pointer' }}>Отмена</button>
+          <button onClick={run} disabled={busy} style={{ padding: '9px 18px', border: 'none', borderRadius: 8, background: busy ? '#e5e7eb' : '#dc2626', color: busy ? '#9ca3af' : 'white', fontSize: 13, fontWeight: 700, cursor: busy ? 'default' : 'pointer' }}>{busy ? 'Удаляем…' : (confirmLabel || 'Удалить')}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function KRRow({ kr, goalId, editMode, onReload, accent }) {
   const [modal, setModal] = useState(null);
   const [showNotes, setShowNotes] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const progress = kr.progress;
   const staleC = kr.updatedDaysAgo > 7 ? '#dc2626' : kr.updatedDaysAgo > 4 ? '#d97706' : '#10b981';
   let detail = null;
@@ -485,7 +509,10 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
           <Badge label={kr.krType} color={KR_TYPE_C[kr.krType]} />
           <span style={{ fontSize: 11, color: staleC, flexShrink: 0, minWidth: 72, textAlign: 'right' }}>{kr.updatedDaysAgo === 0 ? 'сегодня' : `${kr.updatedDaysAgo}д назад`}</span>
           {kr.notes && kr.notes.length > 0 && <button onClick={() => setShowNotes(!showNotes)} style={{ fontSize: 11, color: '#6b7280', background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0 }}>📝 {kr.notes.length}</button>}
-          {editMode === 'full' && <button onClick={() => setModal('edit')} style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer', flexShrink: 0 }}>Редактировать</button>}
+          {editMode === 'full' && <>
+            <button onClick={() => setModal('edit')} style={{ padding: '5px 10px', border: '1px solid #e5e7eb', borderRadius: 6, background: 'white', color: '#374151', fontSize: 12, fontWeight: 500, cursor: 'pointer', flexShrink: 0 }}>Редактировать</button>
+            <button onClick={() => setConfirmDelete(true)} title="Удалить KR" style={{ padding: '4px 7px', border: '1px solid #fca5a5', borderRadius: 6, background: '#fff1f1', color: '#dc2626', fontSize: 14, fontWeight: 700, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>×</button>
+          </>}
           {editMode === 'progress_only' && <button onClick={() => setModal('progress')} style={{ padding: '5px 10px', border: `1px solid ${accent}`, borderRadius: 6, background: `${accent}10`, color: accent, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>Обновить прогресс</button>}
         </div>
         {showNotes && (kr.notes || []).length > 0 && (
@@ -507,6 +534,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
       </div>
       {modal === 'progress' && <KRProgressModal kr={kr} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
       {modal === 'edit' && <KREditModal kr={kr} goalId={goalId} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
+      {confirmDelete && <ConfirmModal title="Удалить Key Result?" message={`«${kr.name}» будет удалён без возможности восстановления.`} onConfirm={async () => { await apiDelete(`/api/v1/krs/${kr.id}`); setConfirmDelete(false); onReload(); }} onClose={() => setConfirmDelete(false)} />}
     </>
   );
 }
@@ -555,6 +583,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
   const [goalDraggable, setGoalDraggable] = useState(false);
+  const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
   const isStale = goal.updatedDaysAgo > 7;
   const forecast = goal.progressMeta?.forecast ?? null;
@@ -570,8 +599,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
     onReload();
   };
   const handleDeleteGoal = async () => {
-    if (!confirm('Удалить цель?')) return;
-    try { await apiDelete(`/api/v1/goals/${goal.id}`); onReload(); } catch (e) { alert('Ошибка: ' + e.message); }
+    await apiDelete(`/api/v1/goals/${goal.id}`);
+    onReload();
   };
 
   return (
@@ -591,12 +620,15 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
           {otherTeams.length > 0 && <Badge label={`⇄ Общая · ${otherTeams.length + 1} команд`} color="#0891b2" />}
           <div style={{ flex: 1 }} />
           {isStale && <Badge label={`⚠ ${goal.updatedDaysAgo}д без обновлений`} color="#d97706" bg="#fffbeb" />}
-          {goal.ownerText && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}><span>👤</span><span>{goal.ownerText}</span></div>}
+          {goal.ownerText && <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: '#6b7280' }}><span style={{ color: '#9ca3af', fontWeight: 500 }}>Владелец</span><span>👤</span><span>{goal.ownerText}</span></div>}
         </div>
-        <div onClick={canEdit ? () => onEditGoal(goal) : undefined}
-          style={{ fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 4, lineHeight: 1.35, cursor: canEdit ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          {goal.title}
-          {canEdit && <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>✎</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+          <div onClick={canEdit ? () => onEditGoal(goal) : undefined}
+            style={{ fontSize: 15, fontWeight: 700, color: '#111827', lineHeight: 1.35, cursor: canEdit ? 'pointer' : 'default', display: 'inline-flex', alignItems: 'center', gap: 6, flex: 1 }}>
+            {goal.title}
+            {canEdit && <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>✎</span>}
+          </div>
+          {canEdit && <button onClick={() => setConfirmDeleteGoal(true)} title="Удалить цель" style={{ padding: '3px 7px', border: '1px solid #fca5a5', borderRadius: 6, background: '#fff1f1', color: '#dc2626', fontSize: 15, fontWeight: 700, cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>×</button>}
         </div>
         {goal.desc && <div style={{ fontSize: 13, color: '#6b7280', marginBottom: 12, lineHeight: 1.5 }}>{goal.desc}</div>}
         {otherTeams.length > 0 && (
@@ -635,9 +667,6 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         <button onClick={() => setShowCom(!showCom)} style={{ flex: 1, padding: '8px 0', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 500, color: (goal.comments || []).length > 0 ? '#374151' : '#6b7280', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
           {(goal.comments || []).length > 0 ? `💬 ${goal.comments.length}` : '💬 Комментарии'}
         </button>
-        {canEdit && <><div style={{ width: 1, background: '#f3f4f6' }} />
-          <button onClick={handleDeleteGoal} style={{ padding: '8px 14px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, color: '#dc2626' }}>Удалить</button>
-        </>}
       </div>
       {showKR && (
         <div style={{ padding: '4px 18px 14px', borderTop: '1px solid #f3f4f6' }}>
@@ -663,6 +692,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         </div>
       )}
       {newKR && <KREditModal kr={null} goalId={goal.id} onSave={() => { setNewKR(false); onReload(); }} onClose={() => setNewKR(false)} accent={accent} />}
+      {confirmDeleteGoal && <ConfirmModal title="Удалить цель?" message={`«${goal.title}» и все её Key Results будут удалены без возможности восстановления.`} onConfirm={handleDeleteGoal} onClose={() => setConfirmDeleteGoal(false)} />}
       {showCom && (
         <div style={{ padding: '0 18px 16px', borderTop: '1px solid #f3f4f6' }}>
           <CommentsPanel comments={goal.comments} onAdd={addGoalComment} me={me} />

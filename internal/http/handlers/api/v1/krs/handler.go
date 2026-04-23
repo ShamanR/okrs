@@ -208,6 +208,29 @@ func (h *Handler) HandleMoveKeyResultDown(w http.ResponseWriter, r *http.Request
 	h.handleMoveKeyResult(w, r, 1)
 }
 
+func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) {
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
+		return
+	}
+	kr, err := h.service.GetKeyResult(r.Context(), krID)
+	if err != nil {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), kr.GoalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	if err := h.service.DeleteKeyResult(r.Context(), krID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete key result", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, direction int) {
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {

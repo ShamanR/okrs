@@ -407,7 +407,39 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 		}
 		goals[i].KeyResults = krs
 	}
+	commentsByGoal, err := s.listGoalCommentsBatch(ctx, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range goals {
+		goals[i].Comments = commentsByGoal[goals[i].ID]
+	}
 	return goals, nil
+}
+
+func (s *Store) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
+	if len(goalIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, gc.created_at
+		FROM goal_comments gc
+		JOIN users u ON u.id = gc.author_user_id
+		WHERE gc.goal_id = ANY($1)
+		ORDER BY gc.created_at DESC`, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[int64][]domain.GoalComment)
+	for rows.Next() {
+		var c domain.GoalComment
+		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		result[c.GoalID] = append(result[c.GoalID], c)
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (map[int64]time.Time, error) {

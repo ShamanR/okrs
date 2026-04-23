@@ -71,6 +71,10 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDe
 			Weight:    share.Weight,
 		})
 	}
+	comments := make([]dto.GoalComment, 0, len(detail.Goal.Comments))
+	for _, c := range detail.Goal.Comments {
+		comments = append(comments, dto.GoalComment{ID: c.ID, Text: c.Text, AuthorName: c.AuthorName, CreatedAt: c.CreatedAt})
+	}
 	goal := detail.Goal
 	return dto.GoalDetails{
 		ID:           goal.ID,
@@ -87,6 +91,7 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDe
 		ProgressMeta: BuildProgressBarInfo(goal.Progress, period),
 		KeyResults:   krList,
 		ShareTeams:   shareTeams,
+		Comments:     comments,
 		CreatedAt:    goal.CreatedAt,
 		UpdatedAt:    goal.UpdatedAt,
 	}

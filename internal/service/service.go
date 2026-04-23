@@ -533,6 +533,10 @@ func (s *Service) AddKeyResultComment(ctx context.Context, krID int64, text stri
 	return s.store.AddKeyResultComment(ctx, krID, text, authorUserID)
 }
 
+func (s *Service) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
+	return s.store.GetKeyResult(ctx, id)
+}
+
 func (s *Service) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 	goal, err := s.store.GetGoal(ctx, id)
 	if err != nil {
