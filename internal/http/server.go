@@ -261,6 +261,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/krs/{krID}", krsHandler.HandleUpdateKeyResult)
 	r.Post("/api/v1/krs/{krID}/move-up", krsHandler.HandleMoveKeyResultUp)
 	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
+	r.Delete("/api/v1/krs/{krID}", krsHandler.HandleDeleteKeyResult)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)
