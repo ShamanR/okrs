@@ -277,6 +277,9 @@ func (f *fakeStore) FindGoalIDByKR(context.Context, int64) (int64, error) {
 func (f *fakeStore) FindGoalIDByStage(context.Context, int64) (int64, error) {
 	return 0, nil
 }
+func (f *fakeStore) GetUsersByDisplayNames(context.Context, []string) ([]*domain.User, error) {
+	return nil, nil
+}
 
 func TestUpdateKRProgressPercent(t *testing.T) {
 	store := newFakeStore()

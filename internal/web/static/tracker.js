@@ -70,7 +70,7 @@ function mapKR(kr) {
     id: kr.id, goalId: kr.goal_id, name: kr.title, desc: kr.description,
     weight: kr.weight, krType: kr.kind, progress: kr.progress,
     start, target, current, done, stages,
-    notes: (kr.comments || []).map(c => ({ id: c.id, author: c.author_name, date: fmtDate(c.created_at), text: c.text })),
+    notes: (kr.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text })),
     updatedAt: kr.updated_at, updatedDaysAgo: daysAgo(kr.updated_at),
   };
 }
@@ -81,11 +81,11 @@ function mapGoal(g) {
     priority: g.priority, weight: g.weight,
     type: (g.work_type || '').toLowerCase(),
     focus: g.focus_type,
-    ownerText: g.owner_text,
+    owners: g.owners || [],
     progress: g.progress,
     progressMeta: g.progress_meta,
     krs: (g.key_results || []).map(mapKR),
-    comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, date: fmtDate(c.created_at), text: c.text })),
+    comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text })),
     shareTeams: g.share_teams || [],
     shared: (g.share_teams || []).length > 0,
     updatedAt: g.updated_at,
@@ -181,6 +181,12 @@ function Avatar({ name, avatarUrl, size = 28, showName = false }) {
       {showName && <span className="avatar__name">{name}</span>}
     </div>
   );
+}
+
+// Shows the avatar for a comment author. Uses the name/UDID cache (no network call).
+function AvatarWithUDID({ name, udid, size = 28 }) {
+  const cached = udid ? _userByUdid.get(udid) : _userByName.get(name);
+  return <Avatar name={name} avatarUrl={cached?.avatar_url || null} size={size} />;
 }
 
 // ── HEADER USER MENU ──────────────────────────────────────────────────────────
@@ -627,7 +633,7 @@ function CommentsPanel({ comments, onAdd, me }) {
       <div className="comments-panel__title">Комментарии</div>
       {(comments || []).map((c, i) => (
         <div key={c.id || i} className="comment">
-          <Avatar name={c.author} size={28} />
+          <AvatarWithUDID name={c.author} udid={c.authorUdid} size={28} />
           <div className="comment__content">
             <div className="comment__header">
               <span className="comment__author">{c.author}</span>
@@ -698,11 +704,11 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
           {otherTeams.length > 0 && <Badge label={`⇄ Общая · ${otherTeams.length + 1} команд`} color="#0891b2" />}
           <div className="goal-card__spacer" />
           {isStale && <Badge label={`⚠ ${goal.updatedDaysAgo}д без обновлений`} color="#d97706" bg="#fffbeb" />}
-          {goal.ownerText && (
+          {goal.owners.length > 0 && (
             <div className="goal-card__owner">
               <span className="goal-card__owner-label">Владелец</span>
-              {goal.ownerText.split(',').map(n => n.trim()).filter(Boolean).map(name => (
-                <UserInfo key={name} name={name} size={18} />
+              {goal.owners.map(u => (
+                <UserInfo key={u.udid || u.display_name} userRef={u} size={18} />
               ))}
             </div>
           )}
@@ -795,12 +801,34 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
 }
 
 // ── GOAL MODAL ────────────────────────────────────────────────────────────────
-// ── USER SELECTOR ──────────────────────────────────────────────────────────────
-let _userListCache = null;
-async function fetchUserList() {
-  if (_userListCache) return _userListCache;
-  try { _userListCache = (await apiGet('/api/v1/users')) || []; } catch { _userListCache = []; }
-  return _userListCache;
+// ── USER CACHE ────────────────────────────────────────────────────────────────
+// Populated from UserRef objects embedded in API responses (owners, lead fields).
+const _userByUdid = new Map();
+const _userByName = new Map();
+
+function _cacheUserRef(ref) {
+  if (!ref) return;
+  if (ref.udid) _userByUdid.set(ref.udid, ref);
+  if (ref.display_name) _userByName.set(ref.display_name, ref);
+}
+
+function _cacheUserRefsFromHierarchyNodes(nodes) {
+  for (const node of nodes || []) {
+    if (node.lead) _cacheUserRef(node.lead);
+    _cacheUserRefsFromHierarchyNodes(node.children);
+  }
+}
+
+function _cacheUserRefsFromOKR(data) {
+  if (!data) return;
+  if (data.team?.lead) _cacheUserRef(data.team.lead);
+  for (const g of data.goals || []) {
+    for (const u of g.owners || []) _cacheUserRef(u);
+  }
+}
+
+function _cachedUsersList() {
+  return Array.from(_userByName.values());
 }
 
 function UserAvatar({ user, size = 24 }) {
@@ -816,14 +844,12 @@ function UserAvatar({ user, size = 24 }) {
 }
 
 function UserSelector({ value, onChange, multiple = false, placeholder = 'Поиск пользователя…' }) {
-  const [users, setUsers] = useState([]);
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
 
-  useEffect(() => { fetchUserList().then(setUsers); }, []);
   useEffect(() => { setHi(0); }, [q]);
   useEffect(() => {
     const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
@@ -831,13 +857,16 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
+  const qLow = q.toLowerCase();
+  const users = qLow
+    ? _cachedUsersList().filter(u => u.display_name?.toLowerCase().includes(qLow))
+    : _cachedUsersList();
+
+  const handleQueryChange = newQ => { setQ(newQ); };
+
   const values = multiple ? (Array.isArray(value) ? value : []) : (value ? [value] : []);
-  const findUser = name => users.find(u => u.display_name === name);
-  const ql = q.trim().toLowerCase();
-  const filtered = ql
-    ? users.filter(u => u.display_name.toLowerCase().includes(ql) || (u.led_team || '').toLowerCase().includes(ql))
-    : users;
-  const available = multiple ? filtered.filter(u => !values.includes(u.display_name)) : filtered;
+  const findUser = name => _userByName.get(name) || users.find(u => u.display_name === name);
+  const available = multiple ? users.filter(u => !values.includes(u.display_name)) : users;
 
   const select = u => {
     if (multiple) { if (!values.includes(u.display_name)) onChange([...values, u.display_name]); }
@@ -868,7 +897,7 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
           );
         })}
         {(multiple || values.length === 0) && (
-          <input ref={inputRef} value={q} onChange={e => { setQ(e.target.value); setOpen(true); }}
+          <input ref={inputRef} value={q} onChange={e => { handleQueryChange(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)} onKeyDown={onKey}
             placeholder={values.length === 0 ? placeholder : 'Ещё…'}
             className="user-selector__input" />
@@ -877,9 +906,9 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
       {open && (
         <div className="user-selector__dropdown">
           {available.length === 0
-            ? <div className="user-selector__empty">{ql ? 'Пользователи не найдены' : 'Список пуст'}</div>
+            ? <div className="user-selector__empty">{q ? 'Пользователи не найдены' : 'Список пуст'}</div>
             : available.slice(0, 20).map((u, i) => (
-              <div key={u.id} onClick={() => select(u)} onMouseEnter={() => setHi(i)}
+              <div key={u.udid} onClick={() => select(u)} onMouseEnter={() => setHi(i)}
                 className={`user-selector__option${i === hi ? ' user-selector__option--hi' : ''}`}>
                 <UserAvatar user={u} size={26} />
                 <div className="user-selector__option-info">
@@ -896,34 +925,36 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
 }
 
 // ── USER INFO (avatar + name + hover popup) ───────────────────────────────────
-function UserInfo({ name, size = 22 }) {
-  const [user, setUser] = useState(null);
+// Accepts a `userRef` object {udid,display_name,avatar_url} (from API responses),
+// or separate `name`/`udid` props for comment authors and legacy call sites.
+// All user data comes from the local cache — no network calls.
+function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
+  const initName = userRef?.display_name ?? nameProp ?? '';
+  const initUdid = userRef?.udid || udidProp || '';
+  const initAv   = userRef?.avatar_url || null;
+
+  if (userRef) _cacheUserRef(userRef);
+
+  const cached = initUdid ? _userByUdid.get(initUdid) : _userByName.get(initName);
   const [popup, setPopup] = useState(null);
   const ref = useRef();
   const timer = useRef();
 
-  useEffect(() => {
-    if (!name) return;
-    fetchUserList().then(list => setUser(list.find(u => u.display_name === name) || null));
-  }, [name]);
-
+  const name = cached?.display_name || initName || '?';
   const show = () => {
     clearTimeout(timer.current);
     if (!ref.current) return;
     const r = ref.current.getBoundingClientRect();
-    // Clamp left so popup doesn't overflow the right edge of the viewport.
     const left = Math.max(8, Math.min(r.left, window.innerWidth - 208));
     setPopup({ top: r.bottom + 6, left });
   };
   const hide = () => { timer.current = setTimeout(() => setPopup(null), 150); };
 
-  const initials = (name || '?').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+  const initials = name.split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '?';
   const palette = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2', '#be185d', '#6366f1'];
-  const bg = palette[(name || '').charCodeAt(0) % palette.length] || palette[0];
-  const av = user?.avatar_url;
+  const bg = palette[name.charCodeAt(0) % palette.length] || palette[0];
+  const av = cached?.avatar_url || initAv;
 
-  // Portal escapes any ancestor `transform` (child-card hover) or `overflow` that
-  // would break `position:fixed` coordinates.
   const popupEl = popup && ReactDOM.createPortal(
     <span className="uinfo__popup" style={{ top: popup.top, left: popup.left }}
       onMouseEnter={() => clearTimeout(timer.current)} onMouseLeave={hide}>
@@ -933,7 +964,7 @@ function UserInfo({ name, size = 22 }) {
       }
       <span className="uinfo__popup-body">
         <span className="uinfo__popup-name">{name}</span>
-        {user?.led_team && <span className="uinfo__popup-team">{user.led_team}</span>}
+        {cached?.led_team && <span className="uinfo__popup-team">{cached.led_team}</span>}
       </span>
     </span>,
     document.body
@@ -956,7 +987,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   const usedWeight = (existingGoals || []).filter(g => !isEdit || g.id !== goal?.id).reduce((s, g) => s + g.weight, 0);
   const wasShared = isEdit && (goal.shareTeams || []).filter(t => t.id !== teamId).length > 0;
   const [form, setForm] = useState(goal
-    ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared }
+    ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerText: (goal.owners || []).map(u => u.display_name).join(', ') }
     : { title: '', desc: '', priority: 'P1', weight: Math.min(20, 100 - usedWeight), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerText: '' });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1139,7 +1170,7 @@ function ChildCard({ item, onSelect }) {
           <div className="child-card__name">{item.team.name}</div>
           {item.team.lead && (
             <div className="child-card__lead">
-              <UserInfo name={item.team.lead} size={16} />
+              <UserInfo userRef={item.team.lead} size={16} />
             </div>
           )}
         </div>
@@ -1242,6 +1273,7 @@ function App() {
     apiGet(`/api/v1/hierarchy?period_id=${periodId}`).then(data => {
       if (!data) return;
       const nodes = data.items || [];
+      _cacheUserRefsFromHierarchyNodes(nodes);
       setHierarchy(nodes);
       if (!selId) {
         let target = null;
@@ -1258,7 +1290,7 @@ function App() {
   useEffect(() => {
     if (!periodId || !selId) return;
     setTeamOKR(null); setOverview(null);
-    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) setTeamOKR(data); });
+    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } });
     const node = findNodeById(hierarchy, selId);
     if (node && (node.children || []).length > 0) {
       apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(data => { if (data) setOverview(data); }).catch(() => {});
@@ -1287,9 +1319,10 @@ function App() {
 
   const reload = useCallback(() => {
     if (!periodId || !selId) return;
-    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) setTeamOKR(data); });
+    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } });
     apiGet(`/api/v1/hierarchy?period_id=${periodId}`).then(data => {
       if (!data) return;
+      _cacheUserRefsFromHierarchyNodes(data.items || []);
       setHierarchy(data.items || []);
       const node = findNodeById(data.items || [], selId);
       if (node && (node.children || []).length > 0) {
@@ -1368,7 +1401,7 @@ function App() {
           {teamOKR?.team?.type && <Badge label={TEAM_TYPE_LABEL[teamOKR.team.type] || teamOKR.team.type} color={TEAM_TYPE_COLOR[teamOKR.team.type] || '#6b7280'} />}
           {teamOKR?.team?.lead && (
             <div className="topbar__lead">
-              <UserInfo name={teamOKR.team.lead} size={22} />
+              <UserInfo userRef={teamOKR.team.lead} size={22} />
               <span className="topbar__lead-role">лид</span>
             </div>
           )}

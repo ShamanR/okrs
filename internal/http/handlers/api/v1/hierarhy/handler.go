@@ -49,7 +49,28 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 	if allowedIDs, ok := auth.AllowedTeamIDsFromCtx(r.Context()); ok && allowedIDs != nil {
 		nodes = filterNodesByScope(nodes, allowedIDs)
 	}
-	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics))
+	leadNames := collectLeadNames(nodes)
+	users, _ := h.service.GetUsersByDisplayNames(r.Context(), leadNames)
+	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics, v1.BuildUserRefMap(users)))
+}
+
+func collectLeadNames(nodes []service.TeamNode) []string {
+	seen := make(map[string]struct{})
+	var walk func([]service.TeamNode)
+	walk = func(ns []service.TeamNode) {
+		for _, n := range ns {
+			if n.Team.Lead != "" {
+				seen[n.Team.Lead] = struct{}{}
+			}
+			walk(n.Children)
+		}
+	}
+	walk(nodes)
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
 }
 
 // filterNodesByScope removes tree nodes not in allowedIDs and promotes orphaned children to their

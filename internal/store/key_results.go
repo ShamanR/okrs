@@ -99,7 +99,7 @@ func (s *Store) AddKeyResultComment(ctx context.Context, krID int64, text string
 func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
 	const Limit = 3
 	rows, err := s.DB.Query(ctx, `
-		SELECT krc.id, krc.key_result_id, krc.text, u.display_name, krc.created_at
+		SELECT krc.id, krc.key_result_id, krc.text, u.display_name, u.udid, krc.created_at
 		FROM key_result_comments krc
 		JOIN users u ON u.id = krc.author_user_id
 		WHERE krc.key_result_id = $1
@@ -111,7 +111,7 @@ func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain
 	var comments []domain.KeyResultComment
 	for rows.Next() {
 		var c domain.KeyResultComment
-		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)

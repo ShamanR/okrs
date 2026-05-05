@@ -202,6 +202,9 @@ func (f *goalFakeStore) ListProjectStages(_ context.Context, _ int64) ([]domain.
 	return nil, nil
 }
 func (f *goalFakeStore) UpdateProjectStageDone(_ context.Context, _ int64, _ bool) error { return nil }
+func (f *goalFakeStore) GetUsersByDisplayNames(_ context.Context, _ []string) ([]*domain.User, error) {
+	return nil, nil
+}
 
 // ── CreateGoal tests ──────────────────────────────────────────────────────────
 

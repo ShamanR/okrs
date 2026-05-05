@@ -422,7 +422,7 @@ func (s *Store) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map
 		return nil, nil
 	}
 	rows, err := s.DB.Query(ctx, `
-		SELECT gc.id, gc.goal_id, gc.text, u.display_name, gc.created_at
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
 		WHERE gc.goal_id = ANY($1)
@@ -434,7 +434,7 @@ func (s *Store) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map
 	result := make(map[int64][]domain.GoalComment)
 	for rows.Next() {
 		var c domain.GoalComment
-		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		result[c.GoalID] = append(result[c.GoalID], c)
@@ -651,7 +651,7 @@ func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string, a
 
 func (s *Store) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
 	rows, err := s.DB.Query(ctx, `
-		SELECT gc.id, gc.goal_id, gc.text, u.display_name, gc.created_at
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
 		WHERE gc.goal_id = $1
@@ -663,7 +663,7 @@ func (s *Store) ListGoalComments(ctx context.Context, goalID int64) ([]domain.Go
 	var comments []domain.GoalComment
 	for rows.Next() {
 		var c domain.GoalComment
-		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)

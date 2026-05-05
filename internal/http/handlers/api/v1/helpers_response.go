@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"strings"
 	"time"
 
 	"okrs/internal/domain"
@@ -8,6 +9,55 @@ import (
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 )
+
+// BuildUserRefMap builds a name→UserRef lookup from a slice of users.
+func BuildUserRefMap(users []*domain.User) map[string]*dto.UserRef {
+	m := make(map[string]*dto.UserRef, len(users))
+	for _, u := range users {
+		if u.DisplayName == "" {
+			continue
+		}
+		ref := &dto.UserRef{UDID: u.UDID, DisplayName: u.DisplayName, AvatarURL: u.AvatarURL}
+		m[u.DisplayName] = ref
+	}
+	return m
+}
+
+// ResolveUserRef returns a *dto.UserRef for name, or nil if name is empty or not in the map.
+func ResolveUserRef(name string, refs map[string]*dto.UserRef) *dto.UserRef {
+	if name == "" {
+		return nil
+	}
+	if refs != nil {
+		if ref, ok := refs[name]; ok {
+			return ref
+		}
+	}
+	return &dto.UserRef{DisplayName: name}
+}
+
+// ResolveOwners splits a comma-separated owner_text and resolves each name to a UserRef.
+func ResolveOwners(ownerText string, refs map[string]*dto.UserRef) []dto.UserRef {
+	if ownerText == "" {
+		return nil
+	}
+	parts := strings.Split(ownerText, ",")
+	out := make([]dto.UserRef, 0, len(parts))
+	for _, p := range parts {
+		name := strings.TrimSpace(p)
+		if name == "" {
+			continue
+		}
+		if refs != nil {
+			if ref, ok := refs[name]; ok {
+				out = append(out, *ref)
+				continue
+			}
+		}
+		out = append(out, dto.UserRef{DisplayName: name})
+	}
+	return out
+}
 
 func MapPeriodInfo(period domain.Period) dto.PeriodInfo {
 	return dto.PeriodInfo{
@@ -56,7 +106,7 @@ func CalculatePeriodForecast(period domain.Period, now time.Time) int {
 	return value
 }
 
-func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDetails {
+func MapGoalDetails(detail service.GoalDetails, period domain.Period, userRefs map[string]*dto.UserRef) dto.GoalDetails {
 	krList := make([]dto.KeyResult, 0, len(detail.Goal.KeyResults))
 	for _, kr := range detail.Goal.KeyResults {
 		krList = append(krList, MapKeyResult(kr))
@@ -73,7 +123,7 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDe
 	}
 	comments := make([]dto.GoalComment, 0, len(detail.Goal.Comments))
 	for _, c := range detail.Goal.Comments {
-		comments = append(comments, dto.GoalComment{ID: c.ID, Text: c.Text, AuthorName: c.AuthorName, CreatedAt: c.CreatedAt})
+		comments = append(comments, dto.GoalComment{ID: c.ID, Text: c.Text, AuthorName: c.AuthorName, AuthorUDID: c.AuthorUDID, CreatedAt: c.CreatedAt})
 	}
 	goal := detail.Goal
 	return dto.GoalDetails{
@@ -86,7 +136,7 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDe
 		Weight:       goal.Weight,
 		WorkType:     string(goal.WorkType),
 		FocusType:    string(goal.FocusType),
-		OwnerText:    goal.OwnerText,
+		Owners:       ResolveOwners(goal.OwnerText, userRefs),
 		Progress:     goal.Progress,
 		ProgressMeta: BuildProgressBarInfo(goal.Progress, period),
 		KeyResults:   krList,
@@ -100,7 +150,7 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period) dto.GoalDe
 func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 	comments := make([]dto.KRComment, 0, len(kr.Comments))
 	for _, comment := range kr.Comments {
-		comments = append(comments, dto.KRComment{ID: comment.ID, Text: comment.Text, AuthorName: comment.AuthorName, CreatedAt: comment.CreatedAt})
+		comments = append(comments, dto.KRComment{ID: comment.ID, Text: comment.Text, AuthorName: comment.AuthorName, AuthorUDID: comment.AuthorUDID, CreatedAt: comment.CreatedAt})
 	}
 	return dto.KeyResult{
 		ID:          kr.ID,

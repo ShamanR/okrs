@@ -7,6 +7,7 @@ import (
 	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
+	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 	"okrs/internal/store"
@@ -37,7 +38,12 @@ func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal))
+	var userRefs map[string]*dto.UserRef
+	if goal.OwnerText != "" {
+		users, _ := h.service.GetUsersByDisplayNames(r.Context(), []string{goal.OwnerText})
+		userRefs = v1.BuildUserRefMap(users)
+	}
+	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal, userRefs))
 }
 
 func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {

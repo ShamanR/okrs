@@ -208,7 +208,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 
 	body, ct := multipartBody(map[string]string{
 		"title": "New KR", "kind": "PERCENT", "weight": "50",
-		"start_value": "0", "target_value": "100",
+		"percent_start": "0", "percent_target": "100",
 	})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
@@ -216,7 +216,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 		defer server.Close()
 		body, ct := multipartBody(map[string]string{
 			"title": "New KR", "kind": "PERCENT", "weight": "50",
-			"start_value": "0", "target_value": "100",
+			"percent_start": "0", "percent_target": "100",
 		})
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/key-results", server.URL, goalID), ct, body)
 		if err != nil {

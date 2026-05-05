@@ -85,11 +85,12 @@ type Goal struct {
 }
 
 type GoalComment struct {
-	ID         int64
-	GoalID     int64
-	Text       string
-	AuthorName string
-	CreatedAt  time.Time
+	ID          int64
+	GoalID      int64
+	Text        string
+	AuthorName  string
+	AuthorUDID  string
+	CreatedAt   time.Time
 }
 
 type KeyResult struct {
@@ -115,6 +116,7 @@ type KeyResultComment struct {
 	KeyResultID int64
 	Text        string
 	AuthorName  string
+	AuthorUDID  string
 	CreatedAt   time.Time
 }
 
@@ -167,6 +169,7 @@ type Period struct {
 
 type User struct {
 	ID                 int64
+	UDID               string
 	ProviderSubjectKey string
 	Provider           string
 	Subject            string

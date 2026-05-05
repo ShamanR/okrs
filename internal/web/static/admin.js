@@ -587,11 +587,21 @@ function TeamsSection({teams, reload}) {
 }
 
 // ── USER SELECTOR ────────────────────────────────────────────────────────────
-let _adminUsersCache = null;
-async function fetchUserList() {
-  if (_adminUsersCache) return _adminUsersCache;
-  try { const res = await apiGet('/api/v1/users'); _adminUsersCache = res?.ok ? await res.json() : []; } catch { _adminUsersCache = []; }
-  return _adminUsersCache;
+let _adminAllUsers = null;
+
+async function _adminLoadUsers() {
+  if (_adminAllUsers) return _adminAllUsers;
+  try {
+    const users = (await apiGet('/api/v1/admin/users')) || [];
+    _adminAllUsers = users;
+    return users;
+  } catch { return []; }
+}
+
+function _adminFilterUsers(users, q) {
+  if (!q) return users;
+  const low = q.toLowerCase();
+  return users.filter(u => u.display_name?.toLowerCase().includes(low) || u.email?.toLowerCase().includes(low));
 }
 
 function UserAvatar({user, size=24}) {
@@ -600,14 +610,14 @@ function UserAvatar({user, size=24}) {
 }
 
 function UserSelector({value, onChange, placeholder='Поиск пользователя…'}) {
-  const [users, setUsers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [inputVal, setInputVal] = useState(value||'');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
 
-  useEffect(()=>{fetchUserList().then(setUsers);},[]);
+  useEffect(()=>{ _adminLoadUsers().then(setAllUsers); },[]);
   // Sync displayed text when external value changes (e.g. form reset)
   useEffect(()=>{ if(!open) setInputVal(value||''); },[value]);
   // Close dropdown on outside click, revert input to selected value
@@ -618,18 +628,21 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
     return ()=>document.removeEventListener('mousedown',h);
   },[open,value]);
 
-  const ql = inputVal.trim().toLowerCase();
-  const filtered = ql
-    ? users.filter(u=>u.display_name.toLowerCase().includes(ql)||(u.led_team||'').toLowerCase().includes(ql))
-    : users;
-  const selectedUser = value ? users.find(u=>u.display_name===value)||null : null;
+  const users = _adminFilterUsers(allUsers, open ? inputVal : '');
+
+  const handleInput = v => {
+    setInputVal(v); setHi(0);
+    if(!v.trim()) onChange('');
+  };
+
+  const selectedUser = value ? (allUsers.find(u=>u.display_name===value) || null) : null;
 
   const select = u=>{onChange(u.display_name);setInputVal(u.display_name);setOpen(false);};
   const clear = e=>{e.stopPropagation();onChange('');setInputVal('');inputRef.current?.focus();};
   const onKey = e=>{
-    if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(filtered.length-1,h+1));}
+    if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(users.length-1,h+1));}
     else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
-    else if(e.key==='Enter'){e.preventDefault();if(open&&filtered[hi])select(filtered[hi]);}
+    else if(e.key==='Enter'){e.preventDefault();if(open&&users[hi])select(users[hi]);}
     else if(e.key==='Escape'){setOpen(false);setInputVal(value||'');}
   };
 
@@ -640,7 +653,7 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
         {selectedUser&&<UserAvatar user={selectedUser} size={22}/>}
         <input ref={inputRef}
           value={inputVal}
-          onChange={e=>{setInputVal(e.target.value);setOpen(true);setHi(0);if(!e.target.value.trim())onChange('');}}
+          onChange={e=>{handleInput(e.target.value);setOpen(true);}}
           onFocus={()=>{setInputVal('');setOpen(true);setHi(0);}}
           onKeyDown={onKey}
           placeholder={value||placeholder}
@@ -650,10 +663,10 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
       </div>
       {open&&(
         <div className="user-selector__dropdown">
-          {filtered.length===0
-            ? <div className="user-selector__empty">{ql?'Пользователи не найдены':'Список пуст'}</div>
-            : filtered.slice(0,20).map((u,i)=>(
-              <div key={u.id} onMouseDown={e=>{e.preventDefault();select(u);}} onMouseEnter={()=>setHi(i)}
+          {users.length===0
+            ? <div className="user-selector__empty">{inputVal?'Пользователи не найдены':'Список пуст'}</div>
+            : users.slice(0,20).map((u,i)=>(
+              <div key={u.udid} onMouseDown={e=>{e.preventDefault();select(u);}} onMouseEnter={()=>setHi(i)}
                 className={`user-selector__option${i===hi?' user-selector__option--hi':''}`}>
                 <UserAvatar user={u} size={26}/>
                 <div className="user-selector__option-info">

@@ -70,6 +70,7 @@ type Store interface {
 	UpsertLinearMeta(ctx context.Context, input store.LinearMetaInput) error
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
 	ReplaceProjectStages(ctx context.Context, krID int64, stages []store.ProjectStageInput) error
+	GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error)
 }
 
 type Service struct {
@@ -831,6 +832,10 @@ func (s *Service) DeletePeriod(ctx context.Context, periodID int64) error {
 
 func (s *Service) MovePeriod(ctx context.Context, periodID int64, direction int) error {
 	return s.store.MovePeriod(ctx, periodID, direction)
+}
+
+func (s *Service) GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {
+	return s.store.GetUsersByDisplayNames(ctx, names)
 }
 
 // — Goal passthroughs —

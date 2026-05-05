@@ -28,7 +28,7 @@ func (s *Store) UpsertUser(ctx context.Context, in UpsertUserInput) (*domain.Use
 			email         = EXCLUDED.email,
 			updated_at    = EXCLUDED.updated_at,
 			last_login_at = EXCLUDED.last_login_at
-		RETURNING id, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at`,
+		RETURNING id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at`,
 		in.ProviderSubjectKey, in.Provider, in.Subject, in.DisplayName, in.AvatarURL, nullableString(in.Email),
 		now,
 	)
@@ -37,15 +37,38 @@ func (s *Store) UpsertUser(ctx context.Context, in UpsertUserInput) (*domain.Use
 
 func (s *Store) GetUser(ctx context.Context, id int64) (*domain.User, error) {
 	row := s.DB.QueryRow(ctx, `
-		SELECT id, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
 		FROM users WHERE id = $1`, id)
 	return scanUser(row)
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]*domain.User, error) {
 	rows, err := s.DB.Query(ctx, `
-		SELECT id, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
 		FROM users WHERE provider NOT IN ('system') ORDER BY last_login_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []*domain.User
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, rows.Err()
+}
+
+// GetUsersByDisplayNames returns non-system users whose display_name is in names.
+func (s *Store) GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		FROM users WHERE display_name = ANY($1) AND provider NOT IN ('system')`, names)
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +119,7 @@ func scanUser(row scanner) (*domain.User, error) {
 	var u domain.User
 	var attrRaw []byte
 	err := row.Scan(
-		&u.ID, &u.ProviderSubjectKey, &u.Provider, &u.Subject,
+		&u.ID, &u.UDID, &u.ProviderSubjectKey, &u.Provider, &u.Subject,
 		&u.DisplayName, &u.AvatarURL, &u.Email, &attrRaw,
 		&u.IsAdmin, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt,
 	)

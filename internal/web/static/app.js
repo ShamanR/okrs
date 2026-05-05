@@ -2441,16 +2441,20 @@
 
   // ---- User Picker ----
 
-  let _usersCache = null;
-  const _fetchUsersForPicker = async () => {
-    if (_usersCache !== null) return _usersCache;
+  let _appAllUsers = null;
+  const _appLoadUsers = async () => {
+    if (_appAllUsers) return _appAllUsers;
     try {
-      const data = await fetchJSON('/api/v1/users');
-      _usersCache = Array.isArray(data) ? data : [];
-    } catch {
-      _usersCache = [];
-    }
-    return _usersCache;
+      const data = await fetchJSON('/api/v1/admin/users');
+      _appAllUsers = Array.isArray(data) ? data : [];
+      return _appAllUsers;
+    } catch { return []; }
+  };
+  const _appSearchUsers = async (q) => {
+    const all = await _appLoadUsers();
+    if (!q) return all;
+    const low = q.toLowerCase();
+    return all.filter(u => u.display_name?.toLowerCase().includes(low) || u.email?.toLowerCase().includes(low));
   };
 
   const _pickerAvatar = (user, size = 24) => {
@@ -2470,23 +2474,20 @@
     return el;
   };
 
-  const _userPickerDropdown = (users, onSelect, inputEl) => {
+  const _userPickerDropdown = (onSelect, inputEl) => {
     const dropdown = document.createElement('div');
     dropdown.className = 'user-selector__dropdown';
-    const renderItems = (q) => {
-      const lower = (q || '').toLowerCase().trim();
-      const filtered = lower
-        ? users.filter((u) => u.display_name.toLowerCase().includes(lower) || (u.led_team || '').toLowerCase().includes(lower) || (u.email || '').toLowerCase().includes(lower))
-        : users;
+    let searchTimer = null;
+    const renderItems = (users) => {
       dropdown.innerHTML = '';
-      if (!filtered.length) {
+      if (!users.length) {
         const empty = document.createElement('div');
         empty.className = 'user-selector__empty';
         empty.textContent = 'Пользователи не найдены';
         dropdown.appendChild(empty);
         return;
       }
-      filtered.slice(0, 20).forEach((user) => {
+      users.slice(0, 20).forEach((user) => {
         const item = document.createElement('div');
         item.className = 'user-selector__option';
         item.appendChild(_pickerAvatar(user, 26));
@@ -2507,8 +2508,13 @@
         dropdown.appendChild(item);
       });
     };
-    if (inputEl) inputEl.addEventListener('input', () => renderItems(inputEl.value));
-    renderItems('');
+    if (inputEl) {
+      inputEl.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { _appSearchUsers(inputEl.value).then(renderItems); }, 200);
+      });
+    }
+    _appSearchUsers('').then(renderItems);
     return dropdown;
   };
 
@@ -2591,24 +2597,21 @@
     return chip;
   };
 
-  const _pickerDropdown = (users, onSelect, inputEl) => {
+  const _pickerDropdown = (onSelect, inputEl) => {
     const dropdown = document.createElement('div');
     dropdown.className = 'border rounded-3 shadow-sm bg-white overflow-auto position-absolute w-100';
     dropdown.style.cssText = 'top:100%;left:0;z-index:1055;max-height:200px;';
-    const renderItems = (q) => {
-      const lower = (q || '').toLowerCase().trim();
-      const filtered = lower
-        ? users.filter((u) => u.display_name.toLowerCase().includes(lower) || (u.email || '').toLowerCase().includes(lower) || (u.led_team || '').toLowerCase().includes(lower))
-        : users;
+    let searchTimer = null;
+    const renderItems = (users) => {
       dropdown.innerHTML = '';
-      if (!filtered.length) {
+      if (!users.length) {
         const empty = document.createElement('div');
         empty.className = 'p-2 text-muted small';
         empty.textContent = 'Пользователи не найдены';
         dropdown.appendChild(empty);
         return;
       }
-      filtered.slice(0, 20).forEach((user) => {
+      users.slice(0, 20).forEach((user) => {
         const item = document.createElement('div');
         item.className = 'd-flex align-items-center gap-2 px-3 py-2';
         item.style.cursor = 'pointer';
@@ -2633,8 +2636,13 @@
         dropdown.appendChild(item);
       });
     };
-    if (inputEl) inputEl.addEventListener('input', () => renderItems(inputEl.value));
-    renderItems('');
+    if (inputEl) {
+      inputEl.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { _appSearchUsers(inputEl.value).then(renderItems); }, 200);
+      });
+    }
+    _appSearchUsers('').then(renderItems);
     return dropdown;
   };
 
@@ -2679,8 +2687,7 @@
         const openDropdown = async () => {
           if (dropdown) return;
           field.classList.add('user-selector__field--open');
-          const users = await _fetchUsersForPicker();
-          dropdown = _userPickerDropdown(users, (user) => {
+          dropdown = _userPickerDropdown((user) => {
             hidden.value = user.display_name;
             selectedUser = user;
             closeDropdown();
@@ -2738,8 +2745,7 @@
         input.style.width = '180px';
         input.placeholder = 'Поиск…';
         addWrap.appendChild(input);
-        const users = await _fetchUsersForPicker();
-        const dropdown = _pickerDropdown(users, (user) => {
+        const dropdown = _pickerDropdown((user) => {
           if (!selected.find((s) => s.name === user.display_name)) {
             selected.push({ user, name: user.display_name });
           }
@@ -2801,12 +2807,12 @@
     }
     const names = ownerText.split(',').map((n) => n.trim()).filter(Boolean);
     container.textContent = ownerText;
-    _fetchUsersForPicker().then((users) => {
-      const byName = new Map(users.map((u) => [u.display_name.toLowerCase(), u]));
+    _appLoadUsers().then(allUsers => {
       container.innerHTML = '';
       names.forEach((name, i) => {
         if (i > 0) container.appendChild(document.createTextNode(', '));
-        container.appendChild(_renderOwnerSpan(name, byName.get(name.toLowerCase()) || null));
+        const u = allUsers.find(u => u.display_name?.toLowerCase() === name.toLowerCase()) || null;
+        container.appendChild(_renderOwnerSpan(name, u));
       });
     });
   };

@@ -3,6 +3,7 @@ package teams
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
@@ -71,7 +72,9 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, newTeamOKRResponse(okr))
+	names := collectOKRUserNames(okr)
+	users, _ := h.service.GetUsersByDisplayNames(r.Context(), names)
+	v1.WriteJSON(w, http.StatusOK, newTeamOKRResponse(okr, v1.BuildUserRefMap(users)))
 }
 
 func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +102,9 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load team overview", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, newTeamOverviewResponse(period, overview))
+	names := collectOverviewUserNames(overview)
+	users, _ := h.service.GetUsersByDisplayNames(r.Context(), names)
+	v1.WriteJSON(w, http.StatusOK, newTeamOverviewResponse(period, overview, v1.BuildUserRefMap(users)))
 }
 
 func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +139,39 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func collectOKRUserNames(okr service.TeamOKR) []string {
+	seen := make(map[string]struct{})
+	if okr.Team.Lead != "" {
+		seen[okr.Team.Lead] = struct{}{}
+	}
+	for _, g := range okr.Goals {
+		for _, part := range strings.Split(g.Goal.OwnerText, ",") {
+			if name := strings.TrimSpace(part); name != "" {
+				seen[name] = struct{}{}
+			}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
+}
+
+func collectOverviewUserNames(overview service.TeamOverview) []string {
+	seen := make(map[string]struct{})
+	for _, item := range overview.ChildrenSummary {
+		if item.Team.Lead != "" {
+			seen[item.Team.Lead] = struct{}{}
+		}
+	}
+	names := make([]string, 0, len(seen))
+	for name := range seen {
+		names = append(names, name)
+	}
+	return names
 }
 
 // POST /api/v1/teams/{teamID}/goals
