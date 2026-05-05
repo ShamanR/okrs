@@ -1349,7 +1349,16 @@ function App() {
           </select>
         </div>
         <div className="sidebar__tree">
-          {hierarchy.map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} />)}
+          {!loading && hierarchy.length === 0
+            ? (
+              <div className="no-access">
+                <div className="no-access__icon">🔒</div>
+                <div className="no-access__text">Нет доступа к командам</div>
+                <div className="no-access__hint">За доступом обратитесь к администратору</div>
+              </div>
+            )
+            : hierarchy.map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} />)
+          }
         </div>
       </div>
 
@@ -1380,7 +1389,14 @@ function App() {
 
         <div className="content">
           {overview && (overview.children_summary?.items?.length > 0) && <ClusterView overview={overview} onSelect={selectTeam} />}
-          {goals.length === 0 && !overview && (
+          {goals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
+            <div className="empty-state">
+              <div className="empty-state__icon">🔒</div>
+              <div className="empty-state__title">Нет доступа</div>
+              <div className="empty-state__text">За доступом обратитесь к администратору</div>
+            </div>
+          )}
+          {goals.length === 0 && !overview && hierarchy.length > 0 && (
             <div className="empty-state">
               <div className="empty-state__icon">📋</div>
               <div className="empty-state__title">Цели не добавлены</div>

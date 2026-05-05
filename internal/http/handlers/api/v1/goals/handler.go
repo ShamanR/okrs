@@ -122,6 +122,11 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
+	goal, err := h.service.GetGoal(r.Context(), goalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
 	var req struct {
 		Text string `json:"text"`
 	}
@@ -196,9 +201,6 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {

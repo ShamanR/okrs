@@ -17,6 +17,10 @@
 .sidebar__period-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
 .sidebar__period-select { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: #e5e7eb; border-radius: 6px; padding: 6px 8px; font-size: 13px; outline: none; cursor: pointer; }
 .sidebar__tree { flex: 1; overflow: auto; padding: 6px 0; }
+.no-access { padding: 24px 16px; text-align: center; color: #6b7280; }
+.no-access__icon { font-size: 28px; margin-bottom: 8px; }
+.no-access__text { font-size: 13px; font-weight: 600; color: #9ca3af; margin-bottom: 4px; }
+.no-access__hint { font-size: 12px; color: #6b7280; line-height: 1.4; }
 
 .sidebar-node__row { display: flex; align-items: center; gap: 5px; cursor: pointer; border-left: 2px solid transparent; transition: background 0.1s; }
 .sidebar-node__row:hover { background: rgba(255,255,255,0.06); }
