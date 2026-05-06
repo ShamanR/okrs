@@ -77,7 +77,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	payload, _ := json.Marshal(map[string]string{"text": "comment"})
 
 	t.Run("denied when user has no access to team", func(t *testing.T) {

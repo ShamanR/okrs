@@ -104,7 +104,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	payload, _ := json.Marshal(map[string]float64{"current_value": 50})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
@@ -168,7 +168,7 @@ func TestKRCommentAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	payload, _ := json.Marshal(map[string]string{"text": "comment"})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
@@ -204,7 +204,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, goalID, _ := buildKRAccessFixture(t, pool, repo)
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 
 	body, ct := multipartBody(map[string]string{
 		"title": "New KR", "kind": "PERCENT", "weight": "50",

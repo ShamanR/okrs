@@ -87,7 +87,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("soft delete team: %v", err)
 	}
 
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
@@ -295,7 +295,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 		t.Fatalf("set status: %v", err)
 	}
 
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 

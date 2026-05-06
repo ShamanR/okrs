@@ -92,7 +92,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("meta: %v", err)
 	}
 
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
@@ -205,7 +205,7 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 		t.Fatalf("create kr: %v", err)
 	}
 
-	svc := service.New(repo)
+	svc := service.New(repo, store.NewGrantsCache(repo))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
