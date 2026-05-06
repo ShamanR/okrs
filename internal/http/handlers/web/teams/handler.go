@@ -19,7 +19,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-
 type Handler struct {
 	deps common.Dependencies
 }
@@ -176,7 +175,7 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "teams-content",
 	}
 	persistTeamsFilters(w, periodValue, selectedFilter)
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleTeamManagement(w http.ResponseWriter, r *http.Request) {
@@ -279,7 +278,7 @@ func (h *Handler) renderTeamManagement(w http.ResponseWriter, r *http.Request, f
 		Teams:           buildTeamManagementRows(activeTeams),
 		DeletedTeams:    buildTeamManagementRows(deletedTeams),
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
@@ -496,7 +495,7 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 		ContentTemplate: "team-form-content",
 		BreadcrumbTitle: map[bool]string{true: "Редактирование", false: "Новая команда"}[isEdit],
 		Title:           map[bool]string{true: "Редактировать команду", false: "Создать команду"}[isEdit],
-		FormAction:      map[bool]string{true: fmt.Sprintf("/teams/%d/update", teamID), false: "/teams"}[isEdit],
+		FormAction:      map[bool]string{true: fmt.Sprintf("/admin/teams/%d/update", teamID), false: "/admin/teams"}[isEdit],
 		SubmitLabel:     map[bool]string{true: "Сохранить", false: "Создать"}[isEdit],
 		TeamName:        values.Name,
 		TeamLead:        values.Lead,
@@ -504,7 +503,7 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 		TeamTypes:       types,
 		ParentTeams:     parentOptions,
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
@@ -581,7 +580,7 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		PageTitle:       fmt.Sprintf("OKR %s", team.Name),
 		ContentTemplate: "team-okr-content",
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
@@ -717,7 +716,7 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		ContentTemplate:  "team-okr-content",
 		ObjectiveBlockV2: common.FeatureEnabled("okr_objective_block_ui_v2"),
 	}
-	common.RenderTemplate(w, h.deps.Templates, "base", page, h.deps.Logger)
+	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
 func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {
@@ -789,7 +788,7 @@ func buildShareTargets(rootTeams []domain.Team, childrenMap map[int64][]domain.T
 func appendShareTarget(options *[]shareTeamOption, team domain.Team, childrenMap map[int64][]domain.Team, statuses map[int64]domain.TeamPeriodStatus, level int) {
 	label := fmt.Sprintf("%s%s %s", teamHierarchyPrefix(level), common.TeamTypeLabel(team.Type), team.Name)
 	status := statuses[team.ID]
-	disabled := status == domain.TeamPeriodStatusValidated || status == domain.TeamPeriodStatusClosed
+	disabled := status == domain.TeamPeriodStatusInProgress || status == domain.TeamPeriodStatusClosed
 	*options = append(*options, shareTeamOption{
 		ID:       team.ID,
 		Label:    label,
@@ -930,7 +929,7 @@ func buildTeamStatusOptions(selected domain.TeamPeriodStatus) []teamStatusOption
 		{Value: string(domain.TeamPeriodStatusNoGoals), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusNoGoals), Selected: selected == domain.TeamPeriodStatusNoGoals},
 		{Value: string(domain.TeamPeriodStatusForming), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusForming), Selected: selected == domain.TeamPeriodStatusForming},
 		{Value: string(domain.TeamPeriodStatusInProgress), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusInProgress), Selected: selected == domain.TeamPeriodStatusInProgress},
-		{Value: string(domain.TeamPeriodStatusValidated), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusValidated), Selected: selected == domain.TeamPeriodStatusValidated},
+		{Value: string(domain.TeamPeriodStatusReady), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusReady), Selected: selected == domain.TeamPeriodStatusReady},
 		{Value: string(domain.TeamPeriodStatusClosed), Label: common.TeamPeriodStatusLabel(domain.TeamPeriodStatusClosed), Selected: selected == domain.TeamPeriodStatusClosed},
 	}
 }

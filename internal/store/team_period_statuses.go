@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"time"
 
 	"okrs/internal/domain"
 
@@ -21,12 +22,25 @@ func (s *Store) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64)
 	return status, nil
 }
 
+func (s *Store) GetTeamPeriodStatusWithTime(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
+	var status domain.TeamPeriodStatus
+	var updatedAt *time.Time
+	row := s.DB.QueryRow(ctx, `SELECT status, updated_at FROM team_period_statuses WHERE team_id=$1 AND period_id=$2`, teamID, periodID)
+	if err := row.Scan(&status, &updatedAt); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.TeamPeriodStatusNoGoals, nil, nil
+		}
+		return "", nil, err
+	}
+	return status, updatedAt, nil
+}
+
 func (s *Store) SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
 	_, err := s.DB.Exec(ctx, `
-		INSERT INTO team_period_statuses (team_id, period_id, status)
-		VALUES ($1,$2,$3)
+		INSERT INTO team_period_statuses (team_id, period_id, status, updated_at)
+		VALUES ($1,$2,$3,NOW())
 		ON CONFLICT (team_id, period_id)
-		DO UPDATE SET status=EXCLUDED.status`,
+		DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
 		teamID, periodID, status,
 	)
 	return err

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"okrs/internal/auth"
+	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
@@ -14,11 +16,10 @@ import (
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
+	apiusers "okrs/internal/http/handlers/api/v1/users"
+	"okrs/internal/http/handlers/web/authhandler"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/http/handlers/web/goals"
-	"okrs/internal/http/handlers/web/keyresults"
-	"okrs/internal/http/handlers/web/periods"
-	"okrs/internal/http/handlers/web/teams"
 	"okrs/internal/http/middleware"
 	"okrs/internal/service"
 	"okrs/internal/store"
@@ -30,14 +31,17 @@ import (
 var templatesFS embed.FS
 
 type Server struct {
-	store   *store.Store
-	logger  *slog.Logger
-	tmpl    *template.Template
-	zone    *time.Location
-	service *service.Service
+	store       *store.Store
+	logger      *slog.Logger
+	tmpl        *template.Template
+	zone        *time.Location
+	service     *service.Service
+	auth        *auth.Manager
+	policy      *auth.PolicyEvaluator
+	grantsCache *store.GrantsCache
 }
 
-func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*Server, error) {
+func NewServer(st *store.Store, grants *store.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"sumKRWeights": func(keyResults []domain.KeyResult) int {
 			total := 0
@@ -69,7 +73,16 @@ func NewServer(store *store.Store, logger *slog.Logger, zone *time.Location) (*S
 	if err != nil {
 		return nil, err
 	}
-	return &Server{store: store, logger: logger, tmpl: tmpl, zone: zone, service: service.New(store)}, nil
+	return &Server{
+		store:       st,
+		logger:      logger,
+		tmpl:        tmpl,
+		zone:        zone,
+		service:     service.New(st, grants),
+		auth:        authMgr,
+		policy:      auth.NewPolicyEvaluator(grants, logger),
+		grantsCache: grants,
+	}, nil
 }
 
 func (s *Server) Routes() http.Handler {
@@ -77,69 +90,137 @@ func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
 
 	csrf := middleware.NewCSRF()
-	r.Use(csrf.Handler)
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
-	s.registerWebRoutes(r, deps)
-	s.registerApiRoutes(r)
+
+	r.Group(func(r chi.Router) {
+		r.Use(auth.AccessLogMiddleware(s.logger))
+
+		if s.auth.Disabled() {
+			r.Use(auth.AnonymousUserMiddleware)
+		} else {
+			r.Use(auth.SessionMiddleware(s.auth))
+		}
+
+		// Auth routes — public, no CSRF (OAuth callbacks use GET).
+		authH := authhandler.New(s.auth, s.tmpl, s.logger)
+		r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
+			if s.auth.Disabled() {
+				http.Redirect(w, r, "/teamOkrs", http.StatusFound)
+				return
+			}
+			authH.HandleLogin(w, r)
+		})
+		r.Get("/auth/{provider}/start", authH.HandleProviderStart)
+		r.Get("/auth/{provider}/callback", authH.HandleCallback)
+		r.Post("/logout", authH.HandleLogout)
+
+		// Legacy redirects for bookmarks.
+		r.Get("/teams", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/admin/teams", http.StatusFound)
+		})
+		r.Get("/periods", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/admin/periods", http.StatusFound)
+		})
+
+		// Protected routes.
+		r.Group(func(r chi.Router) {
+			if !s.auth.Disabled() {
+				r.Use(auth.RequireAuthMiddleware)
+				r.Use(auth.ScopeMiddleware(s.policy, s.auth))
+			}
+			r.Use(csrf.Handler)
+
+			s.registerWebRoutes(r, deps)
+			s.registerApiRoutes(r)
+			s.registerAdminRoutes(r, deps)
+		})
+	})
+
 	return r
 }
 
 func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
-	teamsHandler := teams.New(deps)
 	goalsHandler := goals.New(deps)
-	krHandler := keyresults.New(deps)
-	periodsHandler := periods.New(deps)
 
-	// Teams and OKR pages (SSR + form actions).
-	r.Get("/teams", teamsHandler.HandleTeamManagement)
-	r.Get("/teamOkrs", teamsHandler.HandleTeamOKRs)
-	r.Get("/teams/new", teamsHandler.HandleNewTeam)
-	r.Post("/teams", teamsHandler.HandleCreateTeam)
-	r.Get("/teams/{teamID}/edit", teamsHandler.HandleEditTeam)
-	r.Post("/teams/{teamID}/update", teamsHandler.HandleUpdateTeam)
-	r.Post("/teams/{teamID}/delete", teamsHandler.HandleDeleteTeam)
-	r.Post("/teams/{teamID}/restore", teamsHandler.HandleRestoreTeam)
-	r.Post("/teams/{teamID}/hard-delete", teamsHandler.HandleHardDeleteTeam)
-	r.Get("/teams/{teamID}/okr", teamsHandler.HandleTeamOKR)
-	r.Post("/teams/{teamID}/okr", teamsHandler.HandleCreateGoal)
+	// Tracker SPA — serves the React shell for the main OKR tracker.
+	trackerShell := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "tracker-shell", nil)
+	}
+	r.Get("/teamOkrs", trackerShell)
+	r.Get("/teams/{teamID}/okr", trackerShell)
 
-	// Period management (SSR + form actions).
-	r.Get("/periods", periodsHandler.HandlePeriods)
-	r.Post("/periods", periodsHandler.HandleCreatePeriod)
-	r.Get("/periods/{periodID}/edit", periodsHandler.HandleEditPeriod)
-	r.Post("/periods/{periodID}/update", periodsHandler.HandleUpdatePeriod)
-	r.Post("/periods/{periodID}/delete", periodsHandler.HandleDeletePeriod)
-	r.Post("/periods/{periodID}/move-up", periodsHandler.HandleMovePeriodUp)
-	r.Post("/periods/{periodID}/move-down", periodsHandler.HandleMovePeriodDown)
-
-	// Goal-level actions.
-	r.Post("/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
-	r.Post("/goals/{goalID}/key-results", goalsHandler.HandleAddKeyResult)
+	// Goal delete is still used by tracker.js via the legacy form endpoint.
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
-	r.Post("/goals/{goalID}/update", goalsHandler.HandleUpdateGoal)
-	r.Post("/goals/{goalID}/share", goalsHandler.HandleUpdateGoalShare)
+}
 
-	// Key Result and stage form actions.
-	r.Post("/key-results/{krID}/comments", krHandler.HandleAddKRComment)
-	r.Post("/key-results/{krID}/move-up", krHandler.HandleMoveKeyResultUp)
-	r.Post("/key-results/{krID}/move-down", krHandler.HandleMoveKeyResultDown)
-	r.Post("/key-results/{krID}/delete", krHandler.HandleDeleteKeyResult)
-	r.Post("/key-results/{krID}/update", krHandler.HandleUpdateKeyResult)
+func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
+	adminAPI := apiadmin.New(s.store, s.auth, s.grantsCache)
+	serviceH := apiadmin.NewServiceHandler(s.service)
+
+	r.Group(func(r chi.Router) {
+		if !s.auth.Disabled() {
+			r.Use(auth.RequireAdminMiddleware)
+		}
+
+		// Admin SPA — all web admin pages serve the React shell.
+		adminShell := func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = s.tmpl.ExecuteTemplate(w, "admin-shell", nil)
+		}
+		r.Get("/admin", adminShell)
+		r.Get("/admin/access", adminShell)
+		r.Get("/admin/teams", adminShell)
+		r.Get("/admin/periods", adminShell)
+		// Legacy deep-links → root SPA.
+		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
+		r.Get("/admin/teams/new", redirect)
+		r.Get("/admin/teams/{teamID}/edit", redirect)
+		r.Get("/admin/periods/{periodID}/edit", redirect)
+		r.Get("/admin/users/{userID}", redirect)
+
+		// Admin user API.
+		r.Get("/api/v1/admin/users", adminAPI.HandleListUsers)
+		r.Get("/api/v1/admin/users/{userID}", adminAPI.HandleGetUser)
+		r.Post("/api/v1/admin/users/{userID}/admin", adminAPI.HandleGrantAdmin)
+		r.Delete("/api/v1/admin/users/{userID}/admin", adminAPI.HandleRevokeAdmin)
+		r.Get("/api/v1/admin/users/{userID}/grants", adminAPI.HandleListGrants)
+		r.Post("/api/v1/admin/users/{userID}/grants", adminAPI.HandleAddGrant)
+		r.Delete("/api/v1/admin/users/{userID}/grants/{teamID}", adminAPI.HandleRemoveGrant)
+		r.Get("/api/v1/admin/settings/access", adminAPI.HandleGetAccessSettings)
+		r.Post("/api/v1/admin/settings/access", adminAPI.HandleUpdateAccessSettings)
+
+		// Admin periods API.
+		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)
+		r.Patch("/api/v1/admin/periods/{periodID}", serviceH.HandleUpdatePeriod)
+		r.Delete("/api/v1/admin/periods/{periodID}", serviceH.HandleDeletePeriod)
+		r.Post("/api/v1/admin/periods/{periodID}/move-up", serviceH.HandleMovePeriodUp)
+		r.Post("/api/v1/admin/periods/{periodID}/move-down", serviceH.HandleMovePeriodDown)
+
+		// Admin teams API.
+		r.Get("/api/v1/admin/teams", serviceH.HandleListTeams)
+		r.Post("/api/v1/admin/teams", serviceH.HandleCreateTeam)
+		r.Patch("/api/v1/admin/teams/{teamID}", serviceH.HandleUpdateTeam)
+		r.Delete("/api/v1/admin/teams/{teamID}", serviceH.HandleDeleteTeam)
+		r.Post("/api/v1/admin/teams/{teamID}/restore", serviceH.HandleRestoreTeam)
+		r.Delete("/api/v1/admin/teams/{teamID}/hard", serviceH.HandleHardDeleteTeam)
+	})
 }
 
 func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
+	r.Get("/api/v1/me", apiadmin.HandleMe)
+	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 
-	// teamHandlers
 	teamHandlers := apiteams.New(s.service)
 	r.Get("/api/v1/teams/{teamID}", teamHandlers.HandleTeam)
 	r.Get("/api/v1/teams/{teamID}/okrs", teamHandlers.HandleTeamOKRs)
 	r.Get("/api/v1/teams/{teamID}/overview", teamHandlers.HandleTeamOverview)
 	r.Post("/api/v1/teams/{teamID}/status", teamHandlers.HandleUpdateTeamPeriodStatus)
+	r.Post("/api/v1/teams/{teamID}/goals", teamHandlers.HandleCreateGoal)
 
-	// goals
 	goalsHandler := apigoals.New(s.service)
 	r.Get("/api/v1/goals/{goalID}", goalsHandler.HandleGoal)
 	r.Post("/api/v1/goals/{goalID}/share", goalsHandler.HandleShareGoal)
@@ -148,8 +229,8 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/goals/{goalID}", goalsHandler.HandleUpdateGoal)
 	r.Post("/api/v1/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
 	r.Post("/api/v1/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
+	r.Delete("/api/v1/goals/{goalID}", goalsHandler.HandleDeleteGoal)
 
-	// krs
 	krsHandler := apikrs.New(s.service)
 	r.Post("/api/v1/goals/{goalID}/key-results", krsHandler.HandleCreateKeyResult)
 	r.Post("/api/v1/krs/{krID}/progress/percent", krsHandler.HandleUpdatePercentProgress)
@@ -159,6 +240,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/krs/{krID}", krsHandler.HandleUpdateKeyResult)
 	r.Post("/api/v1/krs/{krID}/move-up", krsHandler.HandleMoveKeyResultUp)
 	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
+	r.Delete("/api/v1/krs/{krID}", krsHandler.HandleDeleteKeyResult)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)

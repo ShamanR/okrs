@@ -10,10 +10,18 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
+	"okrs/internal/auth"
 	httpserver "okrs/internal/http"
 	"okrs/internal/store"
+
+	// Register OAuth2 providers via side-effect imports.
+	_ "okrs/internal/auth/providers/github"
+	_ "okrs/internal/auth/providers/google"
+	_ "okrs/internal/auth/providers/keycloak"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -83,7 +91,18 @@ func main() {
 		logger.Info("seed data created")
 	}
 
-	server, err := httpserver.NewServer(pgstore, logger, zone)
+	grantsCache := store.NewGrantsCache(pgstore)
+
+	authCfg := loadAuthConfig()
+	authMgr, err := auth.NewManager(authCfg, pgstore, grantsCache)
+	if err != nil {
+		logger.Error("failed to init auth", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+	logger.Info("auth mode", slog.String("mode", string(authCfg.Mode)),
+		slog.Any("providers", authCfg.EnabledProviders))
+
+	server, err := httpserver.NewServer(pgstore, grantsCache, logger, zone, authMgr)
 	if err != nil {
 		logger.Error("failed to start", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -95,6 +114,65 @@ func main() {
 		logger.Error("server stopped", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+}
+
+func loadAuthConfig() auth.Config {
+	cfg := auth.DefaultConfig()
+
+	if mode := os.Getenv("AUTH_MODE"); mode != "" {
+		cfg.Mode = auth.Mode(mode)
+	}
+	if providers := os.Getenv("AUTH_ENABLED_PROVIDERS"); providers != "" {
+		cfg.EnabledProviders = splitTrimmed(providers, ",")
+	}
+	if cookie := os.Getenv("AUTH_SESSION_COOKIE_NAME"); cookie != "" {
+		cfg.SessionCookie = cookie
+	}
+	if ttl := os.Getenv("AUTH_SESSION_TTL"); ttl != "" {
+		if d, err := time.ParseDuration(ttl); err == nil {
+			cfg.SessionTTL = d
+		}
+	}
+	if base := os.Getenv("AUTH_BASE_URL"); base != "" {
+		cfg.BaseURL = base
+	}
+	if policy := os.Getenv("AUTH_DEFAULT_NEW_USER_POLICY"); policy != "" {
+		cfg.NewUserPolicy = auth.NewUserPolicy(policy)
+	}
+	if nodeID := os.Getenv("AUTH_DEFAULT_NODE_ID"); nodeID != "" {
+		if id, err := strconv.ParseInt(nodeID, 10, 64); err == nil {
+			cfg.DefaultNodeID = id
+		}
+	}
+
+	// Google
+	cfg.Google.ClientID = os.Getenv("AUTH_GOOGLE_CLIENT_ID")
+	cfg.Google.ClientSecret = os.Getenv("AUTH_GOOGLE_CLIENT_SECRET")
+	cfg.Google.RedirectURL = os.Getenv("AUTH_GOOGLE_REDIRECT_URL")
+
+	// GitHub
+	cfg.GitHub.ClientID = os.Getenv("AUTH_GITHUB_CLIENT_ID")
+	cfg.GitHub.ClientSecret = os.Getenv("AUTH_GITHUB_CLIENT_SECRET")
+	cfg.GitHub.RedirectURL = os.Getenv("AUTH_GITHUB_REDIRECT_URL")
+
+	// Keycloak
+	cfg.Keycloak.IssuerURL = os.Getenv("AUTH_KEYCLOAK_ISSUER_URL")
+	cfg.Keycloak.ClientID = os.Getenv("AUTH_KEYCLOAK_CLIENT_ID")
+	cfg.Keycloak.ClientSecret = os.Getenv("AUTH_KEYCLOAK_CLIENT_SECRET")
+	cfg.Keycloak.RedirectURL = os.Getenv("AUTH_KEYCLOAK_REDIRECT_URL")
+
+	return cfg
+}
+
+func splitTrimmed(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func envOrDefault(key, def string) string {

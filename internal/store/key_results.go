@@ -91,14 +91,19 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 	return krs, nil
 }
 
-func (s *Store) AddKeyResultComment(ctx context.Context, krID int64, text string) error {
-	_, err := s.DB.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text) VALUES ($1,$2)`, krID, text)
+func (s *Store) AddKeyResultComment(ctx context.Context, krID int64, text string, authorUserID int64) error {
+	_, err := s.DB.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, author_user_id) VALUES ($1,$2,$3)`, krID, text, authorUserID)
 	return err
 }
 
 func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
 	const Limit = 3
-	rows, err := s.DB.Query(ctx, `SELECT id, key_result_id, text, created_at FROM key_result_comments WHERE key_result_id=$1 ORDER BY created_at DESC LIMIT $2`, krID, Limit)
+	rows, err := s.DB.Query(ctx, `
+		SELECT krc.id, krc.key_result_id, krc.text, u.display_name, u.udid, krc.created_at
+		FROM key_result_comments krc
+		JOIN users u ON u.id = krc.author_user_id
+		WHERE krc.key_result_id = $1
+		ORDER BY krc.created_at DESC LIMIT $2`, krID, Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +111,7 @@ func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain
 	var comments []domain.KeyResultComment
 	for rows.Next() {
 		var c domain.KeyResultComment
-		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)

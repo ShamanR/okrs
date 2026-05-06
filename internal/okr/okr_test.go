@@ -67,3 +67,60 @@ func TestPercentProgressCheckpoints(t *testing.T) {
 		t.Fatalf("expected 100 got %d", got)
 	}
 }
+
+func TestBooleanProgress(t *testing.T) {
+	if got := BooleanProgress(true); got != 100 {
+		t.Fatalf("done=true: expected 100, got %d", got)
+	}
+	if got := BooleanProgress(false); got != 0 {
+		t.Fatalf("done=false: expected 0, got %d", got)
+	}
+}
+
+func TestLinearProgress(t *testing.T) {
+	cases := []struct {
+		name           string
+		start, target, current float64
+		expect         int
+	}{
+		{"midpoint", 0, 100, 50, 50},
+		{"at start", 0, 100, 0, 0},
+		{"at target", 0, 100, 100, 100},
+		{"above target clamped", 0, 100, 150, 100},
+		{"below start clamped", 0, 100, -50, 0},
+		{"offset range", 100, 200, 150, 50},
+		{"equal start and target", 100, 100, 100, 0},
+	}
+	for _, tc := range cases {
+		if got := LinearProgress(tc.start, tc.target, tc.current); got != tc.expect {
+			t.Fatalf("%s: expected %d got %d", tc.name, tc.expect, got)
+		}
+	}
+}
+
+func TestGoalProgressSingleKR(t *testing.T) {
+	krs := []domain.KeyResult{{Progress: 75, Weight: 100}}
+	if got := GoalProgress(krs); got != 75 {
+		t.Fatalf("expected 75, got %d", got)
+	}
+}
+
+func TestProjectProgressAllDone(t *testing.T) {
+	stages := []domain.KRProjectStage{{Weight: 60, IsDone: true}, {Weight: 40, IsDone: true}}
+	if got := ProjectProgress(stages); got != 100 {
+		t.Fatalf("expected 100, got %d", got)
+	}
+}
+
+func TestProjectProgressNoneDone(t *testing.T) {
+	stages := []domain.KRProjectStage{{Weight: 50, IsDone: false}, {Weight: 50, IsDone: false}}
+	if got := ProjectProgress(stages); got != 0 {
+		t.Fatalf("expected 0, got %d", got)
+	}
+}
+
+func TestPercentProgressEqualStartTarget(t *testing.T) {
+	if got := PercentProgress(50, 50, 50, nil); got != 0 {
+		t.Fatalf("equal start/target: expected 0, got %d", got)
+	}
+}

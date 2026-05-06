@@ -136,7 +136,7 @@ func TestMapGoalDetailsIncludesProgressMeta(t *testing.T) {
 		},
 	}
 
-	result := MapGoalDetails(detail, period)
+	result := MapGoalDetails(detail, period, nil)
 	if result.ProgressMeta.Actual != 40 {
 		t.Fatalf("expected progress_meta.actual=40, got %d", result.ProgressMeta.Actual)
 	}

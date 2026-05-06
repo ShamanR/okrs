@@ -10,4 +10,6 @@ func RegisterRoutes(r chi.Router, h *Handler) {
 	r.Post("/goals/{goalID}", h.HandleUpdateGoal)
 	r.Post("/goals/{goalID}/move-up", h.HandleMoveGoalUp)
 	r.Post("/goals/{goalID}/move-down", h.HandleMoveGoalDown)
+	r.Delete("/goals/{goalID}/share/{teamID}", h.HandleLeaveGoalShare)
+	r.Delete("/goals/{goalID}", h.HandleDeleteGoal)
 }

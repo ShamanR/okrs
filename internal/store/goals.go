@@ -407,7 +407,39 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 		}
 		goals[i].KeyResults = krs
 	}
+	commentsByGoal, err := s.listGoalCommentsBatch(ctx, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range goals {
+		goals[i].Comments = commentsByGoal[goals[i].ID]
+	}
 	return goals, nil
+}
+
+func (s *Store) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
+	if len(goalIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
+		FROM goal_comments gc
+		JOIN users u ON u.id = gc.author_user_id
+		WHERE gc.goal_id = ANY($1)
+		ORDER BY gc.created_at DESC`, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[int64][]domain.GoalComment)
+	for rows.Next() {
+		var c domain.GoalComment
+		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		result[c.GoalID] = append(result[c.GoalID], c)
+	}
+	return result, rows.Err()
 }
 
 func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (map[int64]time.Time, error) {
@@ -612,13 +644,18 @@ func (s *Store) UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weigh
 	return err
 }
 
-func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string) error {
-	_, err := s.DB.Exec(ctx, `INSERT INTO goal_comments (goal_id, text) VALUES ($1,$2)`, goalID, text)
+func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error {
+	_, err := s.DB.Exec(ctx, `INSERT INTO goal_comments (goal_id, text, author_user_id) VALUES ($1,$2,$3)`, goalID, text, authorUserID)
 	return err
 }
 
 func (s *Store) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id, goal_id, text, created_at FROM goal_comments WHERE goal_id=$1 ORDER BY created_at DESC`, goalID)
+	rows, err := s.DB.Query(ctx, `
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
+		FROM goal_comments gc
+		JOIN users u ON u.id = gc.author_user_id
+		WHERE gc.goal_id = $1
+		ORDER BY gc.created_at DESC`, goalID)
 	if err != nil {
 		return nil, err
 	}
@@ -626,7 +663,7 @@ func (s *Store) ListGoalComments(ctx context.Context, goalID int64) ([]domain.Go
 	var comments []domain.GoalComment
 	for rows.Next() {
 		var c domain.GoalComment
-		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)

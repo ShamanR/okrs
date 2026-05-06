@@ -4,11 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"okrs/internal/auth"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
@@ -25,13 +27,25 @@ import (
 )
 
 func NewAPIV1Router(service *service.Service) *chi.Mux {
-	hierarchyHandler := apihierarhy.New(service)
-	periodsHandler := apiperiods.New(service)
-	teamsHandler := apiteams.New(service)
-	goalsHandler := apigoals.New(service)
-	krsHandler := apikrs.New(service)
+	return NewAPIV1RouterWithScope(service, nil)
+}
+
+// NewAPIV1RouterWithScope returns a test router with a fixed scope injected into every request context.
+// Pass nil for unrestricted access (admin), an empty slice for no access, or a specific list of team IDs.
+func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.Mux {
+	hierarchyHandler := apihierarhy.New(svc)
+	periodsHandler := apiperiods.New(svc)
+	teamsHandler := apiteams.New(svc)
+	goalsHandler := apigoals.New(svc)
+	krsHandler := apikrs.New(svc)
 
 	router := chi.NewRouter()
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.WithAllowedTeamIDs(r.Context(), allowedTeamIDs)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	router.Route("/api/v1", func(r chi.Router) {
 		apihierarhy.RegisterRoutes(r, hierarchyHandler)
 		apiperiods.RegisterRoutes(r, periodsHandler)

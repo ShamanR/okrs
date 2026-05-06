@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
+	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 	"okrs/internal/store"
@@ -32,13 +34,26 @@ func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal))
+	if !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	var userRefs map[string]*dto.UserRef
+	if goal.OwnerText != "" {
+		users, _ := h.service.GetUsersByDisplayNames(r.Context(), []string{goal.OwnerText})
+		userRefs = v1.BuildUserRefMap(users)
+	}
+	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal, userRefs))
 }
 
 func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	var req struct {
@@ -80,6 +95,10 @@ func (h *Handler) HandleUpdateGoalWeight(w http.ResponseWriter, r *http.Request)
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
 	var req struct {
 		TeamID int64 `json:"team_id"`
 		Weight int   `json:"weight"`
@@ -109,6 +128,11 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
+	goal, err := h.service.GetGoal(r.Context(), goalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
 	var req struct {
 		Text string `json:"text"`
 	}
@@ -120,7 +144,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
-	if err := h.service.AddGoalComment(r.Context(), goalID, req.Text); err != nil {
+	if err := h.service.AddGoalComment(r.Context(), goalID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to add comment", nil)
 		return
 	}
@@ -131,6 +155,10 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -181,9 +209,6 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) {
-}
-
 func (h *Handler) HandleMoveGoalUp(w http.ResponseWriter, r *http.Request) {
 	h.handleMoveGoal(w, r, -1)
 }
@@ -198,12 +223,52 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+	if goal, err := h.service.GetGoal(r.Context(), goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	if err := h.service.MoveGoal(r.Context(), goalID, direction); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move goal", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) HandleLeaveGoalShare(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "access denied", nil)
+		return
+	}
+	if _, _, err := h.service.DeleteGoal(r.Context(), goalID, teamID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), goalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	if _, _, err := h.service.DeleteGoal(r.Context(), goalID, goal.TeamID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})

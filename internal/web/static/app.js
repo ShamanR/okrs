@@ -309,8 +309,7 @@
     const owner = document.createElement('span');
     owner.append('Владелец: ');
     const ownerValue = document.createElement('span');
-    ownerValue.className = 'text-decoration-underline';
-    ownerValue.textContent = goal.owner_text || '—';
+    renderOwnerField(ownerValue, goal.owner_text || '');
     owner.appendChild(ownerValue);
 
     meta.append(workBadge, focusBadge, updated, owner);
@@ -829,6 +828,12 @@
     const item = document.createElement('li');
     item.className = 'small okr-kr-comment is-clamped';
     item.textContent = latestComment.text;
+    if (latestComment.author_name) {
+      const author = document.createElement('span');
+      author.className = 'text-muted ms-1';
+      author.textContent = '— ' + latestComment.author_name;
+      item.appendChild(author);
+    }
     list.appendChild(item);
     container.append(title, list);
     return container;
@@ -1051,7 +1056,7 @@
           </div>
           <div class="col-md-6">
             <label class="form-label">Владелец</label>
-            <input class="form-control" name="owner_text" value="${escapeHTML(goal.owner_text || '')}" />
+            <div data-user-picker-multi data-name="owner_text" data-value="${escapeHTML(goal.owner_text || '')}"></div>
           </div>
         </div>
         ${includePeriod ? `<input type="hidden" name="period_id" value="${goal.period_id ?? ''}" />` : ''}
@@ -1059,6 +1064,7 @@
         <button class="btn btn-primary" type="submit">${submitLabel}</button>
       </form>`;
     const modalEl = openModal(titleText, body);
+    initUserPickers(modalEl);
     const form = modalEl.querySelector('[data-goal-edit-form]');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -1683,8 +1689,7 @@
 
       const owner = document.createElement('td');
       const ownerValue = document.createElement('span');
-      ownerValue.className = 'text-decoration-underline';
-      ownerValue.textContent = goal.owner_text || '—';
+      renderOwnerField(ownerValue, goal.owner_text || '');
       owner.appendChild(ownerValue);
 
       const work = document.createElement('td');
@@ -2434,9 +2439,391 @@
     });
   };
 
+  // ---- User Picker ----
+
+  let _appAllUsers = null;
+  const _appLoadUsers = async () => {
+    if (_appAllUsers) return _appAllUsers;
+    try {
+      const data = await fetchJSON('/api/v1/admin/users');
+      _appAllUsers = Array.isArray(data) ? data : [];
+      return _appAllUsers;
+    } catch { return []; }
+  };
+  const _appSearchUsers = async (q) => {
+    const all = await _appLoadUsers();
+    if (!q) return all;
+    const low = q.toLowerCase();
+    return all.filter(u => u.display_name?.toLowerCase().includes(low) || u.email?.toLowerCase().includes(low));
+  };
+
+  const _pickerAvatar = (user, size = 24) => {
+    if (user && user.avatar_url) {
+      const img = document.createElement('img');
+      img.src = user.avatar_url;
+      img.width = size;
+      img.height = size;
+      img.style.cssText = `border-radius:50%;object-fit:cover;flex-shrink:0;display:block`;
+      img.alt = '';
+      return img;
+    }
+    const el = document.createElement('span');
+    el.className = 'user-avatar__fallback';
+    el.style.cssText = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.45)}px;line-height:1`;
+    el.textContent = user && user.display_name ? user.display_name[0].toUpperCase() : '?';
+    return el;
+  };
+
+  const _userPickerDropdown = (onSelect, inputEl) => {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'user-selector__dropdown';
+    let searchTimer = null;
+    const renderItems = (users) => {
+      dropdown.innerHTML = '';
+      if (!users.length) {
+        const empty = document.createElement('div');
+        empty.className = 'user-selector__empty';
+        empty.textContent = 'Пользователи не найдены';
+        dropdown.appendChild(empty);
+        return;
+      }
+      users.slice(0, 20).forEach((user) => {
+        const item = document.createElement('div');
+        item.className = 'user-selector__option';
+        item.appendChild(_pickerAvatar(user, 26));
+        const info = document.createElement('div');
+        info.className = 'user-selector__option-info';
+        const nameEl = document.createElement('span');
+        nameEl.className = 'user-selector__option-name';
+        nameEl.textContent = user.display_name;
+        info.appendChild(nameEl);
+        if (user.led_team) {
+          const teamEl = document.createElement('span');
+          teamEl.className = 'user-selector__option-team';
+          teamEl.textContent = user.led_team;
+          info.appendChild(teamEl);
+        }
+        item.appendChild(info);
+        item.addEventListener('mousedown', (e) => { e.preventDefault(); onSelect(user); });
+        dropdown.appendChild(item);
+      });
+    };
+    if (inputEl) {
+      inputEl.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { _appSearchUsers(inputEl.value).then(renderItems); }, 200);
+      });
+    }
+    _appSearchUsers('').then(renderItems);
+    return dropdown;
+  };
+
+  const _userSelectorChip = (user, label, onRemove) => {
+    const chip = document.createElement('span');
+    chip.className = 'user-chip';
+    chip.appendChild(_pickerAvatar(user, 18));
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'user-chip__name';
+    nameSpan.textContent = label;
+    chip.appendChild(nameSpan);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'user-chip__remove';
+    btn.textContent = '×';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); onRemove(); });
+    chip.appendChild(btn);
+    return chip;
+  };
+
+  const _attachHoverPopover = (el, html) => {
+    if (!window.bootstrap) return;
+    const popover = bootstrap.Popover.getOrCreateInstance(el, {
+      trigger: 'manual',
+      content: html,
+      html: true,
+      placement: 'top',
+      container: 'body',
+    });
+    let hideTimeout = null;
+    const getActiveTip = () => { const id = el.getAttribute('aria-describedby'); return id ? document.getElementById(id) : null; };
+    const cancelHide = () => { if (hideTimeout) { clearTimeout(hideTimeout); hideTimeout = null; } };
+    const scheduleHide = () => {
+      cancelHide();
+      hideTimeout = setTimeout(() => {
+        const tip = getActiveTip();
+        if (tip && tip.matches(':hover')) return;
+        popover.hide();
+      }, 300);
+    };
+    el.addEventListener('mouseenter', () => { cancelHide(); popover.show(); });
+    el.addEventListener('mouseleave', scheduleHide);
+    el.addEventListener('shown.bs.popover', () => {
+      const tip = getActiveTip();
+      if (!tip || tip.dataset.hoverBound === 'true') return;
+      tip.dataset.hoverBound = 'true';
+      tip.addEventListener('mouseenter', cancelHide);
+      tip.addEventListener('mouseleave', scheduleHide);
+    });
+  };
+
+  const _userPopHtml = (user) => [
+    user.avatar_url ? `<img src="${escapeHTML(user.avatar_url)}" width="32" height="32" class="rounded-circle me-2">` : '',
+    `<strong>${escapeHTML(user.display_name)}</strong>`,
+    user.led_team ? `<br><span class="text-muted small">${escapeHTML(user.led_team)}</span>`
+      : user.provider ? `<br><span class="text-muted small">${escapeHTML(user.provider)}</span>` : '',
+  ].join('');
+
+  const _pickerChip = (user, label, onRemove) => {
+    const chip = document.createElement('span');
+    chip.className = 'd-inline-flex align-items-center gap-1 badge text-bg-light border me-1 mb-1';
+    chip.style.cssText = 'font-weight:normal;font-size:0.85rem;cursor:default';
+    chip.appendChild(_pickerAvatar(user, 20));
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = label;
+    chip.appendChild(nameSpan);
+    if (user && (user.provider || user.avatar_url)) {
+      chip.setAttribute('tabindex', '0');
+      _attachHoverPopover(chip, _userPopHtml(user));
+    }
+    if (onRemove) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-close ms-1';
+      btn.style.cssText = 'width:0.6em;height:0.6em;font-size:0.6rem';
+      btn.setAttribute('aria-label', 'Удалить');
+      btn.addEventListener('click', (e) => { e.stopPropagation(); onRemove(); });
+      chip.appendChild(btn);
+    }
+    return chip;
+  };
+
+  const _pickerDropdown = (onSelect, inputEl) => {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'border rounded-3 shadow-sm bg-white overflow-auto position-absolute w-100';
+    dropdown.style.cssText = 'top:100%;left:0;z-index:1055;max-height:200px;';
+    let searchTimer = null;
+    const renderItems = (users) => {
+      dropdown.innerHTML = '';
+      if (!users.length) {
+        const empty = document.createElement('div');
+        empty.className = 'p-2 text-muted small';
+        empty.textContent = 'Пользователи не найдены';
+        dropdown.appendChild(empty);
+        return;
+      }
+      users.slice(0, 20).forEach((user) => {
+        const item = document.createElement('div');
+        item.className = 'd-flex align-items-center gap-2 px-3 py-2';
+        item.style.cursor = 'pointer';
+        item.appendChild(_pickerAvatar(user, 24));
+        const info = document.createElement('div');
+        info.className = 'd-flex flex-column';
+        const nameEl = document.createElement('span');
+        nameEl.textContent = user.display_name;
+        info.appendChild(nameEl);
+        const subLabel = user.led_team || user.provider;
+        if (subLabel) {
+          const subEl = document.createElement('span');
+          subEl.className = 'text-muted';
+          subEl.style.fontSize = '0.75rem';
+          subEl.textContent = subLabel;
+          info.appendChild(subEl);
+        }
+        item.appendChild(info);
+        item.addEventListener('mouseenter', () => { item.style.background = '#f0f1ff'; });
+        item.addEventListener('mouseleave', () => { item.style.background = ''; });
+        item.addEventListener('mousedown', (e) => { e.preventDefault(); onSelect(user); });
+        dropdown.appendChild(item);
+      });
+    };
+    if (inputEl) {
+      inputEl.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { _appSearchUsers(inputEl.value).then(renderItems); }, 200);
+      });
+    }
+    _appSearchUsers('').then(renderItems);
+    return dropdown;
+  };
+
+  const _initSingleUserPicker = (container) => {
+    const fieldName = container.dataset.name;
+    const initialValue = container.dataset.value || '';
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = fieldName;
+    hidden.value = initialValue;
+    container.appendChild(hidden);
+    let selectedUser = null;
+
+    const root = document.createElement('div');
+    root.className = 'user-selector';
+    container.appendChild(root);
+
+    const render = () => {
+      root.innerHTML = '';
+      const field = document.createElement('div');
+      field.className = 'user-selector__field';
+      root.appendChild(field);
+
+      if (hidden.value) {
+        field.appendChild(_userSelectorChip(selectedUser, hidden.value, () => {
+          hidden.value = '';
+          selectedUser = null;
+          render();
+        }));
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'user-selector__input';
+        input.placeholder = 'Поиск пользователя…';
+        field.appendChild(input);
+        let dropdown = null;
+        const closeDropdown = () => {
+          dropdown?.remove();
+          dropdown = null;
+          field.classList.remove('user-selector__field--open');
+        };
+        const openDropdown = async () => {
+          if (dropdown) return;
+          field.classList.add('user-selector__field--open');
+          dropdown = _userPickerDropdown((user) => {
+            hidden.value = user.display_name;
+            selectedUser = user;
+            closeDropdown();
+            render();
+          }, input);
+          root.appendChild(dropdown);
+        };
+        input.addEventListener('focus', openDropdown);
+        input.addEventListener('blur', () => {
+          setTimeout(() => {
+            closeDropdown();
+            const typed = input.value.trim();
+            if (typed) { hidden.value = typed; selectedUser = null; render(); }
+          }, 200);
+        });
+      }
+    };
+    render();
+  };
+
+  const _initMultiUserPicker = (container) => {
+    const fieldName = container.dataset.name;
+    const initialValue = container.dataset.value || '';
+    const selected = initialValue.trim()
+      ? initialValue.split(',').map((n) => n.trim()).filter(Boolean).map((name) => ({ user: null, name }))
+      : [];
+    const hidden = document.createElement('input');
+    hidden.type = 'hidden';
+    hidden.name = fieldName;
+    container.appendChild(hidden);
+    const sync = () => { hidden.value = selected.map((s) => s.name).join(', '); };
+    const render = () => {
+      Array.from(container.children).forEach((el) => { if (el !== hidden) el.remove(); });
+      sync();
+      const wrap = document.createElement('div');
+      wrap.className = 'd-flex flex-wrap align-items-center gap-1';
+      selected.forEach((sel, idx) => {
+        wrap.appendChild(_pickerChip(sel.user, sel.name, () => {
+          selected.splice(idx, 1);
+          render();
+        }));
+      });
+      const addWrap = document.createElement('div');
+      addWrap.className = 'position-relative';
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-outline-secondary btn-sm';
+      addBtn.textContent = '+ Добавить';
+      addWrap.appendChild(addBtn);
+      addBtn.addEventListener('click', async () => {
+        addBtn.hidden = true;
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control form-control-sm';
+        input.style.width = '180px';
+        input.placeholder = 'Поиск…';
+        addWrap.appendChild(input);
+        const dropdown = _pickerDropdown((user) => {
+          if (!selected.find((s) => s.name === user.display_name)) {
+            selected.push({ user, name: user.display_name });
+          }
+          render();
+        }, input);
+        addWrap.appendChild(dropdown);
+        input.focus();
+        input.addEventListener('keydown', (e) => { if (e.key === 'Escape') render(); });
+        input.addEventListener('blur', () => {
+          setTimeout(() => {
+            const typed = input.value.trim();
+            if (typed && !selected.find((s) => s.name === typed)) {
+              selected.push({ user: null, name: typed });
+            }
+            render();
+          }, 200);
+        });
+      });
+      wrap.appendChild(addWrap);
+      container.appendChild(wrap);
+    };
+    render();
+  };
+
+  const initUserPickers = (root = document) => {
+    root.querySelectorAll('[data-user-picker-single]:not([data-picker-init])').forEach((el) => {
+      el.dataset.pickerInit = 'true';
+      _initSingleUserPicker(el);
+    });
+    root.querySelectorAll('[data-user-picker-multi]:not([data-picker-init])').forEach((el) => {
+      el.dataset.pickerInit = 'true';
+      _initMultiUserPicker(el);
+    });
+  };
+  window.initUserPickers = initUserPickers;
+
+  const _renderOwnerSpan = (name, user) => {
+    const span = document.createElement('span');
+    span.className = 'd-inline-flex align-items-center gap-1';
+    span.style.cssText = 'cursor:default;white-space:nowrap';
+    if (user && user.avatar_url) {
+      span.appendChild(_pickerAvatar(user, 18));
+    }
+    const nameEl = document.createElement('span');
+    nameEl.className = 'text-decoration-underline';
+    nameEl.textContent = name;
+    span.appendChild(nameEl);
+    if (user && (user.provider || user.avatar_url)) {
+      span.setAttribute('tabindex', '0');
+      _attachHoverPopover(span, _userPopHtml(user));
+    }
+    return span;
+  };
+
+  const renderOwnerField = (container, ownerText) => {
+    if (!ownerText || !ownerText.trim()) {
+      container.textContent = '—';
+      return;
+    }
+    const names = ownerText.split(',').map((n) => n.trim()).filter(Boolean);
+    container.textContent = ownerText;
+    _appLoadUsers().then(allUsers => {
+      container.innerHTML = '';
+      names.forEach((name, i) => {
+        if (i > 0) container.appendChild(document.createTextNode(', '));
+        const u = allUsers.find(u => u.display_name?.toLowerCase() === name.toLowerCase()) || null;
+        container.appendChild(_renderOwnerSpan(name, u));
+      });
+    });
+  };
+
   document.addEventListener('DOMContentLoaded', () => {
     initTeamsPage();
     initTeamOKRPage();
+    initUserPickers(document);
+    document.querySelectorAll('[data-lead-display]').forEach((el) => {
+      renderOwnerField(el, el.dataset.leadDisplay);
+    });
   });
 
   const initPopovers = () => {

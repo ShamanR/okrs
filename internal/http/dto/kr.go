@@ -3,9 +3,11 @@ package dto
 import "time"
 
 type KRComment struct {
-	ID        int64     `json:"id"`
-	Text      string    `json:"text"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int64     `json:"id"`
+	Text       string    `json:"text"`
+	AuthorName string    `json:"author_name"`
+	AuthorUDID string    `json:"author_udid"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type PercentCheckpoint struct {

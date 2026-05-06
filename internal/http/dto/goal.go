@@ -11,9 +11,11 @@ type ShareTeam struct {
 }
 
 type GoalComment struct {
-	ID        int64     `json:"id"`
-	Text      string    `json:"text"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         int64     `json:"id"`
+	Text       string    `json:"text"`
+	AuthorName string    `json:"author_name"`
+	AuthorUDID string    `json:"author_udid"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type GoalDetails struct {
@@ -26,11 +28,12 @@ type GoalDetails struct {
 	Weight       int             `json:"weight"`
 	WorkType     string          `json:"work_type"`
 	FocusType    string          `json:"focus_type"`
-	OwnerText    string          `json:"owner_text"`
+	Owners       []UserRef       `json:"owners"`
 	Progress     int             `json:"progress"`
 	ProgressMeta ProgressBarInfo `json:"progress_meta"`
 	KeyResults   []KeyResult     `json:"key_results"`
 	ShareTeams   []ShareTeam     `json:"share_teams"`
+	Comments     []GoalComment   `json:"comments"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
 }

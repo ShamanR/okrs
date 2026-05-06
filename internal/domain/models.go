@@ -47,11 +47,11 @@ const (
 type TeamPeriodStatus string
 
 const (
-	TeamPeriodStatusNoGoals    TeamPeriodStatus = "no_goals"
-	TeamPeriodStatusForming    TeamPeriodStatus = "forming"
-	TeamPeriodStatusInProgress TeamPeriodStatus = "in_progress"
-	TeamPeriodStatusValidated  TeamPeriodStatus = "validated"
-	TeamPeriodStatusClosed     TeamPeriodStatus = "closed"
+	TeamPeriodStatusNoGoals    TeamPeriodStatus = "no_goals"    // computed: no goals in period
+	TeamPeriodStatusForming    TeamPeriodStatus = "forming"     // черновик: full edit
+	TeamPeriodStatusReady      TeamPeriodStatus = "ready"       // к валидации: full edit
+	TeamPeriodStatusInProgress TeamPeriodStatus = "in_progress" // в работе: progress/comments only
+	TeamPeriodStatusClosed     TeamPeriodStatus = "closed"      // закрыты: comments only
 )
 
 type Team struct {
@@ -85,10 +85,12 @@ type Goal struct {
 }
 
 type GoalComment struct {
-	ID        int64
-	GoalID    int64
-	Text      string
-	CreatedAt time.Time
+	ID          int64
+	GoalID      int64
+	Text        string
+	AuthorName  string
+	AuthorUDID  string
+	CreatedAt   time.Time
 }
 
 type KeyResult struct {
@@ -113,6 +115,8 @@ type KeyResultComment struct {
 	ID          int64
 	KeyResultID int64
 	Text        string
+	AuthorName  string
+	AuthorUDID  string
 	CreatedAt   time.Time
 }
 
@@ -162,3 +166,35 @@ type Period struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+type User struct {
+	ID                 int64
+	UDID               string
+	ProviderSubjectKey string
+	Provider           string
+	Subject            string
+	DisplayName        string
+	AvatarURL          string
+	Email              string
+	AttributesJSON     map[string]any
+	IsAdmin            bool
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	LastLoginAt        time.Time
+}
+
+type AuthSession struct {
+	ID          string
+	UserID      int64
+	Provider    string
+	CreatedAt   time.Time
+	ExpiresAt   time.Time
+	LastSeenAt  time.Time
+	UserAgent   string
+	IP          string
+}
+
+const (
+	SystemUserAnonymous int64 = 1
+	SystemUserMigration int64 = 2
+)

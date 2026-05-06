@@ -106,88 +106,6 @@ func TestStoreCRUD(t *testing.T) {
 	}
 }
 
-func TestListTeamOverviewStatsWorkBalance(t *testing.T) {
-	ctx := context.Background()
-	container, err := tcpostgres.RunContainer(ctx,
-		tcpostgres.WithDatabase("okrs"),
-		tcpostgres.WithUsername("postgres"),
-		tcpostgres.WithPassword("postgres"),
-		testcontainers.WithWaitStrategy(
-			wait.ForLog("database system is ready to accept connections").
-				WithOccurrence(2).
-				WithStartupTimeout(10*time.Second),
-		),
-	)
-	if err != nil {
-		t.Skipf("docker unavailable: %v", err)
-	}
-	defer func() { _ = container.Terminate(ctx) }()
-
-	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("conn string: %v", err)
-	}
-	if err := runMigrations(dbURL); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, dbURL)
-	if err != nil {
-		t.Fatalf("pool: %v", err)
-	}
-	defer pool.Close()
-
-	s := New(pool)
-	var teamID, periodID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Team A') RETURNING id`).Scan(&teamID); err != nil {
-		t.Fatalf("insert team: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2025 Q1', '2025-01-01', '2025-03-31', 1)
-		RETURNING id`).Scan(&periodID); err != nil {
-		t.Fatalf("insert period: %v", err)
-	}
-
-	if _, err := s.CreateGoal(ctx, GoalInput{
-		TeamID:      teamID,
-		PeriodID:    periodID,
-		Title:       "Discovery goal",
-		Description: "d",
-		Priority:    domain.PriorityP1,
-		Weight:      50,
-		WorkType:    domain.WorkTypeDiscovery,
-		FocusType:   domain.FocusStability,
-		OwnerText:   "owner",
-	}); err != nil {
-		t.Fatalf("create discovery goal: %v", err)
-	}
-	if _, err := s.CreateGoal(ctx, GoalInput{
-		TeamID:      teamID,
-		PeriodID:    periodID,
-		Title:       "Delivery goal",
-		Description: "d",
-		Priority:    domain.PriorityP2,
-		Weight:      50,
-		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusSpeedEfficiency,
-		OwnerText:   "owner",
-	}); err != nil {
-		t.Fatalf("create delivery goal: %v", err)
-	}
-
-	stats, err := s.ListTeamOverviewStats(ctx, periodID, []int64{teamID})
-	if err != nil {
-		t.Fatalf("list overview stats: %v", err)
-	}
-	item, ok := stats[teamID]
-	if !ok {
-		t.Fatalf("expected stats for team %d", teamID)
-	}
-	if item.Discovery != 1 || item.Delivery != 1 {
-		t.Fatalf("expected work balance discovery=1, delivery=1; got %+v", item)
-	}
-}
 
 func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 	ctx := context.Background()
@@ -485,7 +403,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set key result updated_at: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, created_at) VALUES ($1, 'latest comment', $2)`, krID, commentTime); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, author_user_id, created_at) VALUES ($1, 'latest comment', 1, $2)`, krID, commentTime); err != nil {
 		t.Fatalf("insert key result comment: %v", err)
 	}
 

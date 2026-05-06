@@ -1,10 +1,12 @@
 package krs
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
@@ -22,10 +24,25 @@ func New(service *service.Service) *Handler {
 	return &Handler{service: service}
 }
 
+// goalForKR resolves the parent goal of a KR and returns it.
+// Returns an error if the KR or its goal cannot be found.
+func (h *Handler) goalForKR(ctx context.Context, krID int64) (domain.Goal, error) {
+	kr, err := h.service.GetKeyResult(ctx, krID)
+	if err != nil {
+		return domain.Goal{}, err
+	}
+	return h.service.GetGoal(ctx, kr.GoalID)
+}
+
 func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), goalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
@@ -67,6 +84,11 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
 	if err := r.ParseMultipartForm(32 << 20); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
@@ -105,6 +127,11 @@ func (h *Handler) HandleUpdatePercentProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
 	var req struct {
 		CurrentValue float64 `json:"current_value"`
 	}
@@ -125,6 +152,11 @@ func (h *Handler) HandleUpdateBooleanProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
 	var req struct {
 		Done bool `json:"done"`
 	}
@@ -143,6 +175,11 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
 	}
 	var req struct {
@@ -180,6 +217,11 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
 	var req struct {
 		Text string `json:"text"`
 	}
@@ -192,7 +234,7 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
-	if err := h.service.AddKeyResultComment(r.Context(), krID, req.Text); err != nil {
+	if err := h.service.AddKeyResultComment(r.Context(), krID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to add comment", nil)
 		return
 	}
@@ -207,14 +249,38 @@ func (h *Handler) HandleMoveKeyResultDown(w http.ResponseWriter, r *http.Request
 	h.handleMoveKeyResult(w, r, 1)
 }
 
+func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) {
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
+		return
+	}
+	kr, err := h.service.GetKeyResult(r.Context(), krID)
+	if err != nil {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), kr.GoalID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	if err := h.service.DeleteKeyResult(r.Context(), krID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete key result", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, direction int) {
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	if err := r.ParseMultipartForm(32 << 20); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
 	}
 	if err := h.service.MoveKeyResult(r.Context(), krID, direction); err != nil {

@@ -1,0 +1,143 @@
+{{define "admin-user-detail"}}
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>{{.PageTitle}} — OKR Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  <header class="navbar navbar-dark bg-dark mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/teamOkrs">OKR Tracker</a>
+      <div class="d-flex gap-2">
+        <a href="/admin/access" class="btn btn-outline-light btn-sm">← Доступ</a>
+      </div>
+    </div>
+  </header>
+  <div class="container" style="max-width:640px">
+    <div class="card p-4 mb-4">
+      <div class="d-flex align-items-center gap-3 mb-3">
+        {{if .User.AvatarURL}}
+          <img src="{{.User.AvatarURL}}" width="64" height="64" class="rounded-circle" alt="">
+        {{end}}
+        <div>
+          <h5 class="mb-0">{{.User.DisplayName}}</h5>
+          <span class="text-muted small">{{.User.Provider}} · {{.User.Email}}</span>
+        </div>
+      </div>
+      <div class="mb-2">
+        {{if .User.IsAdmin}}
+          <span class="badge text-bg-warning me-2">Admin</span>
+          <button class="btn btn-sm btn-outline-danger"
+            onclick="if(confirm('Снять admin?')) fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'DELETE',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
+            Снять admin
+          </button>
+        {{else}}
+          <button class="btn btn-sm btn-outline-warning"
+            onclick="fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'POST',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
+            Выдать admin
+          </button>
+        {{end}}
+      </div>
+      <p class="text-muted small mb-0">Последний вход: {{.User.LastLoginAt.Format "02.01.2006 15:04"}}</p>
+    </div>
+
+    <h6 class="mb-2">Доступ к иерархии</h6>
+    <ul id="grants-list" class="list-group mb-3">
+      {{range .Grants}}
+        <li class="list-group-item d-flex justify-content-between align-items-center" data-team-id="{{.TeamID}}">
+          <span class="grant-team-name text-muted small">Team ID: {{.TeamID}}</span>
+          <button class="btn btn-sm btn-outline-danger"
+            onclick="revokeGrant({{.UserID}}, {{.TeamID}})">
+            Отозвать
+          </button>
+        </li>
+      {{else}}
+        <li id="no-grants-msg" class="list-group-item text-muted small">Нет выданных узлов.</li>
+      {{end}}
+    </ul>
+
+    <div class="d-flex gap-2 mb-4" style="max-width:400px">
+      <select id="grant-team-select" class="form-select" disabled>
+        <option value="">Загрузка иерархии…</option>
+      </select>
+      <button id="grant-btn" class="btn btn-outline-primary" disabled onclick="addGrant({{.User.ID}})">
+        Добавить узел
+      </button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    function readCSRFCookie() {
+      const t = document.cookie.split(';').map(p => p.trim()).find(p => p.startsWith('okr_csrf_token='));
+      if (!t) return '';
+      return decodeURIComponent(t.split('=').slice(1).join('='));
+    }
+    window.getCSRFToken = readCSRFCookie;
+
+    const teamNames = new Map();
+
+    function buildOptions(tree, level = 0) {
+      let html = '';
+      for (const node of tree) {
+        const prefix = '\u00a0'.repeat(level * 3);
+        html += `<option value="${node.id}">${prefix}${node.type_label} ${node.name}</option>`;
+        teamNames.set(node.id, `${node.type_label} ${node.name}`);
+        if (node.children && node.children.length) {
+          html += buildOptions(node.children, level + 1);
+        }
+      }
+      return html;
+    }
+
+    function enrichGrantLabels() {
+      document.querySelectorAll('#grants-list [data-team-id]').forEach(li => {
+        const id = parseInt(li.dataset.teamId, 10);
+        const label = teamNames.get(id);
+        if (label) {
+          li.querySelector('.grant-team-name').textContent = label;
+        }
+      });
+    }
+
+    async function loadHierarchy() {
+      try {
+        const data = await fetch('/api/v1/hierarchy').then(r => r.json());
+        const items = data.items || [];
+        const select = document.getElementById('grant-team-select');
+        select.innerHTML = '<option value="">— выберите команду —</option>' + buildOptions(items);
+        select.disabled = false;
+        document.getElementById('grant-btn').disabled = false;
+        enrichGrantLabels();
+      } catch (e) {
+        document.getElementById('grant-team-select').innerHTML = '<option value="">Ошибка загрузки</option>';
+      }
+    }
+
+    async function addGrant(userID) {
+      const select = document.getElementById('grant-team-select');
+      const teamID = parseInt(select.value, 10);
+      if (!teamID) return;
+      await fetch(`/api/v1/admin/users/${userID}/grants`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': window.getCSRFToken() },
+        body: JSON.stringify({ team_id: teamID }),
+      });
+      location.reload();
+    }
+
+    async function revokeGrant(userID, teamID) {
+      await fetch(`/api/v1/admin/users/${userID}/grants/${teamID}`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-Token': window.getCSRFToken() },
+      });
+      location.reload();
+    }
+
+    loadHierarchy();
+  </script>
+</body>
+</html>
+{{end}}
