@@ -91,8 +91,10 @@ func main() {
 		logger.Info("seed data created")
 	}
 
+	grantsCache := store.NewGrantsCache(pgstore)
+
 	authCfg := loadAuthConfig()
-	authMgr, err := auth.NewManager(authCfg, pgstore)
+	authMgr, err := auth.NewManager(authCfg, pgstore, grantsCache)
 	if err != nil {
 		logger.Error("failed to init auth", slog.String("error", err.Error()))
 		os.Exit(1)
@@ -100,7 +102,7 @@ func main() {
 	logger.Info("auth mode", slog.String("mode", string(authCfg.Mode)),
 		slog.Any("providers", authCfg.EnabledProviders))
 
-	server, err := httpserver.NewServer(pgstore, logger, zone, authMgr)
+	server, err := httpserver.NewServer(pgstore, grantsCache, logger, zone, authMgr)
 	if err != nil {
 		logger.Error("failed to start", slog.String("error", err.Error()))
 		os.Exit(1)

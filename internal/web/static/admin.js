@@ -592,9 +592,17 @@ let _adminAllUsers = null;
 async function _adminLoadUsers() {
   if (_adminAllUsers) return _adminAllUsers;
   try {
-    const users = (await apiGet('/api/v1/admin/users')) || [];
-    _adminAllUsers = users;
-    return users;
+    const res = await apiGet('/api/v1/admin/users');
+    const data = res ? await res.json() : [];
+    _adminAllUsers = Array.isArray(data) ? data.map(u => ({
+      id: u.ID,
+      udid: u.UDID,
+      display_name: u.DisplayName,
+      avatar_url: u.AvatarURL,
+      email: u.Email,
+      is_admin: u.IsAdmin,
+    })) : [];
+    return _adminAllUsers;
   } catch { return []; }
 }
 

@@ -31,16 +31,17 @@ import (
 var templatesFS embed.FS
 
 type Server struct {
-	store   *store.Store
-	logger  *slog.Logger
-	tmpl    *template.Template
-	zone    *time.Location
-	service *service.Service
-	auth    *auth.Manager
-	policy  *auth.PolicyEvaluator
+	store       *store.Store
+	logger      *slog.Logger
+	tmpl        *template.Template
+	zone        *time.Location
+	service     *service.Service
+	auth        *auth.Manager
+	policy      *auth.PolicyEvaluator
+	grantsCache *store.GrantsCache
 }
 
-func NewServer(st *store.Store, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
+func NewServer(st *store.Store, grants *store.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"sumKRWeights": func(keyResults []domain.KeyResult) int {
 			total := 0
@@ -73,13 +74,14 @@ func NewServer(st *store.Store, logger *slog.Logger, zone *time.Location, authMg
 		return nil, err
 	}
 	return &Server{
-		store:   st,
-		logger:  logger,
-		tmpl:    tmpl,
-		zone:    zone,
-		service: service.New(st),
-		auth:    authMgr,
-		policy:  auth.NewPolicyEvaluator(st, logger),
+		store:       st,
+		logger:      logger,
+		tmpl:        tmpl,
+		zone:        zone,
+		service:     service.New(st, grants),
+		auth:        authMgr,
+		policy:      auth.NewPolicyEvaluator(grants, logger),
+		grantsCache: grants,
 	}, nil
 }
 
@@ -154,7 +156,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store, s.auth)
+	adminAPI := apiadmin.New(s.store, s.auth, s.grantsCache)
 	serviceH := apiadmin.NewServiceHandler(s.service)
 
 	r.Group(func(r chi.Router) {
@@ -210,7 +212,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
 	r.Get("/api/v1/me", apiadmin.HandleMe)
-	r.Get("/api/v1/users", apiusers.New(s.store).Handle)
+	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 
 	teamHandlers := apiteams.New(s.service)
 	r.Get("/api/v1/teams/{teamID}", teamHandlers.HandleTeam)

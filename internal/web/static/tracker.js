@@ -1110,7 +1110,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             <UserSelector multiple
               value={(form.ownerText || '').split(',').map(s => s.trim()).filter(Boolean)}
               onChange={arr => set('ownerText', arr.join(', '))}
-              fetchFn={q => apiGet(`/api/v1/users?q=${encodeURIComponent(q)}`)}
+              fetchFn={q => apiGet(`/api/v1/users?q=${encodeURIComponent(q)}&scope_team_id=${teamId}`)}
               placeholder="Добавить владельца" />
           </div>
           <div className="toggle-box">

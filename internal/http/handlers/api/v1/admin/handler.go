@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -11,13 +12,21 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type Handler struct {
-	store *store.Store
-	mgr   *auth.Manager
+// grantsStore covers the user_hierarchy_grants operations. *store.GrantsCache satisfies it.
+type grantsStore interface {
+	ListUserGrants(ctx context.Context, userID int64) ([]store.HierarchyGrant, error)
+	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
+	RemoveUserGrant(ctx context.Context, userID, teamID int64) error
 }
 
-func New(st *store.Store, mgr *auth.Manager) *Handler {
-	return &Handler{store: st, mgr: mgr}
+type Handler struct {
+	store  *store.Store
+	mgr    *auth.Manager
+	grants grantsStore
+}
+
+func New(st *store.Store, mgr *auth.Manager, grants grantsStore) *Handler {
+	return &Handler{store: st, mgr: mgr, grants: grants}
 }
 
 // GET /api/v1/admin/users
@@ -80,7 +89,7 @@ func (h *Handler) HandleListGrants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	grants, err := h.store.ListUserGrants(r.Context(), userID)
+	grants, err := h.grants.ListUserGrants(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -102,11 +111,8 @@ func (h *Handler) HandleAddGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "team_id required")
 		return
 	}
-	currentUser := auth.UserFromContext(r.Context())
-	var grantedBy int64 = auth.UserIDFromContext(r.Context())
-	_ = currentUser
-
-	if err := h.store.AddUserGrant(r.Context(), userID, body.TeamID, grantedBy); err != nil {
+	grantedBy := auth.UserIDFromContext(r.Context())
+	if err := h.grants.AddUserGrant(r.Context(), userID, body.TeamID, grantedBy); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -125,7 +131,7 @@ func (h *Handler) HandleRemoveGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid team id")
 		return
 	}
-	if err := h.store.RemoveUserGrant(r.Context(), userID, teamID); err != nil {
+	if err := h.grants.RemoveUserGrant(r.Context(), userID, teamID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

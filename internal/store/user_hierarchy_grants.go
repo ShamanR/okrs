@@ -46,6 +46,26 @@ func (s *Store) RemoveUserGrant(ctx context.Context, userID, teamID int64) error
 	return err
 }
 
+// listAllGrants loads the full user_hierarchy_grants table as a map[userID][]HierarchyGrant.
+func (s *Store) listAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT id, user_id, team_id, created_at, created_by_user_id
+		FROM user_hierarchy_grants`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[int64][]HierarchyGrant)
+	for rows.Next() {
+		var g HierarchyGrant
+		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
+			return nil, err
+		}
+		result[g.UserID] = append(result[g.UserID], g)
+	}
+	return result, rows.Err()
+}
+
 // ListDescendantTeamIDs returns the given root team IDs plus all their recursive children IDs.
 func (s *Store) ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error) {
 	if len(rootIDs) == 0 {

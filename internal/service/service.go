@@ -12,6 +12,12 @@ import (
 	"okrs/internal/store"
 )
 
+// GrantsProvider gives the service access to the cached user_hierarchy_grants snapshot.
+// *store.GrantsCache satisfies this interface.
+type GrantsProvider interface {
+	AllGrants(ctx context.Context) (map[int64][]store.HierarchyGrant, error)
+}
+
 type Store interface {
 	ListTeams(ctx context.Context) ([]domain.Team, error)
 	ListDeletedTeams(ctx context.Context) ([]domain.Team, error)
@@ -71,10 +77,15 @@ type Store interface {
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
 	ReplaceProjectStages(ctx context.Context, krID int64, stages []store.ProjectStageInput) error
 	GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error)
+	SearchUsersUnrestricted(ctx context.Context, q string, limit int) ([]*domain.User, error)
+	SearchUsersInSet(ctx context.Context, userIDs []int64, leadNames []string, q string, limit int) ([]*domain.User, error)
+	GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
+	ListUserLeadTeams(ctx context.Context) (map[string]string, error)
 }
 
 type Service struct {
-	store Store
+	store  Store
+	grants GrantsProvider
 }
 
 var (
@@ -84,8 +95,8 @@ var (
 	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
 )
 
-func New(store Store) *Service {
-	return &Service{store: store}
+func New(store Store, grants GrantsProvider) *Service {
+	return &Service{store: store, grants: grants}
 }
 
 type TeamNode struct {
@@ -836,6 +847,105 @@ func (s *Service) MovePeriod(ctx context.Context, periodID int64, direction int)
 
 func (s *Service) GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {
 	return s.store.GetUsersByDisplayNames(ctx, names)
+}
+
+func (s *Service) GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error) {
+	return s.store.GetUsersByUDIDs(ctx, udids)
+}
+
+func (s *Service) ListUserLeadTeams(ctx context.Context) (map[string]string, error) {
+	return s.store.ListUserLeadTeams(ctx)
+}
+
+// SearchUsersInScope returns up to 20 non-system users visible in the given scope.
+//   - scopeTeamIDs == nil → admin/unrestricted: all users
+//   - scopeTeamIDs != nil → users with a hierarchy grant to any team related to the scope nodes:
+//     ancestors (access from above), the nodes themselves, or descendants (access from below).
+//
+// Uses the GrantsProvider cache; falls back to empty result when cache is unavailable.
+func (s *Service) SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if scopeTeamIDs == nil {
+		return s.store.SearchUsersUnrestricted(ctx, q, limit)
+	}
+	if len(scopeTeamIDs) == 0 || s.grants == nil {
+		return nil, nil
+	}
+
+	allTeams, err := s.store.ListAllTeams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build both maps for bidirectional tree traversal.
+	parentMap := make(map[int64]int64, len(allTeams))
+	childrenMap := make(map[int64][]int64, len(allTeams))
+	for _, t := range allTeams {
+		if t.ParentID != nil {
+			parentMap[t.ID] = *t.ParentID
+			childrenMap[*t.ParentID] = append(childrenMap[*t.ParentID], t.ID)
+		}
+	}
+
+	// Related set: scope nodes + all their ancestors + all their descendants.
+	// Ancestors: users with grants here have the scope node inside their subtree.
+	// Descendants: users with grants here work within the scope node's subtree.
+	relatedSet := make(map[int64]struct{})
+	for _, id := range scopeTeamIDs {
+		// Walk up.
+		cur := id
+		for {
+			relatedSet[cur] = struct{}{}
+			parent, ok := parentMap[cur]
+			if !ok {
+				break
+			}
+			cur = parent
+		}
+		// Walk down via BFS.
+		queue := []int64{id}
+		for len(queue) > 0 {
+			cur, queue = queue[0], queue[1:]
+			for _, child := range childrenMap[cur] {
+				if _, visited := relatedSet[child]; !visited {
+					relatedSet[child] = struct{}{}
+					queue = append(queue, child)
+				}
+			}
+		}
+	}
+
+	allGrants, err := s.grants.AllGrants(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Collect IDs of users whose grants intersect the related set.
+	eligibleIDs := make([]int64, 0)
+	seen := make(map[int64]struct{})
+	for userID, grants := range allGrants {
+		for _, g := range grants {
+			if _, ok := relatedSet[g.TeamID]; ok {
+				if _, dup := seen[userID]; !dup {
+					seen[userID] = struct{}{}
+					eligibleIDs = append(eligibleIDs, userID)
+				}
+				break
+			}
+		}
+	}
+
+	// Team leads of all related nodes are eligible regardless of explicit grants.
+	leadNames := make([]string, 0)
+	for _, t := range allTeams {
+		if _, ok := relatedSet[t.ID]; ok && t.Lead != "" && t.DeletedAt == nil {
+			leadNames = append(leadNames, t.Lead)
+		}
+	}
+
+	return s.store.SearchUsersInSet(ctx, eligibleIDs, leadNames, q, limit)
 }
 
 // — Goal passthroughs —

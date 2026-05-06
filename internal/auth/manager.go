@@ -12,19 +12,27 @@ import (
 	"okrs/internal/store"
 )
 
+// userGranter is the minimal interface Manager needs for the new-user grant policy.
+// Both *store.Store and *store.GrantsCache satisfy it.
+type userGranter interface {
+	ListUserGrants(ctx context.Context, userID int64) ([]store.HierarchyGrant, error)
+	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
+}
+
 // Manager handles provider selection, session creation, and user upsert.
 type Manager struct {
 	cfg       Config
 	providers map[string]Provider
 	store     *store.Store
+	grants    userGranter
 }
 
-func NewManager(cfg Config, st *store.Store) (*Manager, error) {
+func NewManager(cfg Config, st *store.Store, grants userGranter) (*Manager, error) {
 	providers, err := buildProviders(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{cfg: cfg, providers: providers, store: st}, nil
+	return &Manager{cfg: cfg, providers: providers, store: st, grants: grants}, nil
 }
 
 func (m *Manager) Disabled() bool {
@@ -103,14 +111,14 @@ func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) err
 		return nil
 	}
 
-	grants, err := m.store.ListUserGrants(ctx, user.ID)
+	grants, err := m.grants.ListUserGrants(ctx, user.ID)
 	if err != nil {
 		return err
 	}
 	if len(grants) > 0 {
 		return nil
 	}
-	return m.store.AddUserGrant(ctx, user.ID, nodeID, domain.SystemUserAnonymous)
+	return m.grants.AddUserGrant(ctx, user.ID, nodeID, domain.SystemUserAnonymous)
 }
 
 // ResolveSession loads the session and user by session ID.

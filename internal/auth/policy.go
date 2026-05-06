@@ -17,14 +17,21 @@ type policyContextKey int
 
 const allowedTeamsKey policyContextKey = 0
 
+// grantsReader is the minimal interface PolicyEvaluator needs for scope resolution.
+// Both *store.Store and *store.GrantsCache satisfy it.
+type grantsReader interface {
+	ListUserGrants(ctx context.Context, userID int64) ([]store.HierarchyGrant, error)
+	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
+}
+
 // PolicyEvaluator resolves and caches per-request team access scope.
 type PolicyEvaluator struct {
-	store  *store.Store
+	grants grantsReader
 	logger *slog.Logger
 }
 
-func NewPolicyEvaluator(st *store.Store, logger *slog.Logger) *PolicyEvaluator {
-	return &PolicyEvaluator{store: st, logger: logger}
+func NewPolicyEvaluator(grants grantsReader, logger *slog.Logger) *PolicyEvaluator {
+	return &PolicyEvaluator{grants: grants, logger: logger}
 }
 
 // AllowedTeamIDs returns the set of team IDs the user may access.
@@ -46,7 +53,7 @@ func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg 
 		return context.WithValue(ctx, allowedTeamsKey, []int64(nil)), nil
 	}
 
-	grants, err := e.store.ListUserGrants(ctx, user.ID)
+	grants, err := e.grants.ListUserGrants(ctx, user.ID)
 	if err != nil {
 		return ctx, err
 	}
@@ -62,7 +69,7 @@ func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg 
 		}
 	}
 
-	allIDs, err := e.store.ListDescendantTeamIDs(ctx, rootIDs)
+	allIDs, err := e.grants.ListDescendantTeamIDs(ctx, rootIDs)
 	if err != nil {
 		return ctx, err
 	}

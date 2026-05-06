@@ -280,12 +280,24 @@ func (f *fakeStore) FindGoalIDByStage(context.Context, int64) (int64, error) {
 func (f *fakeStore) GetUsersByDisplayNames(context.Context, []string) ([]*domain.User, error) {
 	return nil, nil
 }
+func (f *fakeStore) SearchUsersUnrestricted(context.Context, string, int) ([]*domain.User, error) {
+	return nil, nil
+}
+func (f *fakeStore) SearchUsersInSet(context.Context, []int64, []string, string, int) ([]*domain.User, error) {
+	return nil, nil
+}
+func (f *fakeStore) GetUsersByUDIDs(context.Context, []string) ([]*domain.User, error) {
+	return nil, nil
+}
+func (f *fakeStore) ListUserLeadTeams(context.Context) (map[string]string, error) {
+	return nil, nil
+}
 
 func TestUpdateKRProgressPercent(t *testing.T) {
 	store := newFakeStore()
 	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindPercent}
 	store.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindLinear}
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.UpdateKRProgressPercent(context.Background(), 1, 42); err != nil {
 		t.Fatalf("update percent: %v", err)
@@ -304,7 +316,7 @@ func TestUpdateKRProgressPercent(t *testing.T) {
 func TestUpdateKRProgressBoolean(t *testing.T) {
 	store := newFakeStore()
 	store.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindBoolean}
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.UpdateKRProgressBoolean(context.Background(), 3, true); err != nil {
 		t.Fatalf("update boolean: %v", err)
@@ -318,7 +330,7 @@ func TestUpdateKRProgressProject(t *testing.T) {
 	store := newFakeStore()
 	store.keyResults[4] = domain.KeyResult{ID: 4, Kind: domain.KRKindProject}
 	store.projectStages[4] = []domain.KRProjectStage{{ID: 100, IsDone: false}, {ID: 101, IsDone: true}}
-	service := New(store)
+	service := New(store, nil)
 
 	updates := []ProjectStageUpdate{{ID: 100, IsDone: true}}
 	if err := service.UpdateKRProgressProject(context.Background(), 4, updates); err != nil {
@@ -331,7 +343,7 @@ func TestUpdateKRProgressProject(t *testing.T) {
 
 func TestMoveGoal(t *testing.T) {
 	store := newFakeStore()
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.MoveGoal(context.Background(), 10, -1); err != nil {
 		t.Fatalf("move goal: %v", err)
@@ -343,7 +355,7 @@ func TestMoveGoal(t *testing.T) {
 
 func TestMoveKeyResult(t *testing.T) {
 	store := newFakeStore()
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.MoveKeyResult(context.Background(), 20, 1); err != nil {
 		t.Fatalf("move kr: %v", err)
@@ -356,7 +368,7 @@ func TestMoveKeyResult(t *testing.T) {
 func TestDeleteTeamUsesSoftDeleteWhenTeamHasGoals(t *testing.T) {
 	store := newFakeStore()
 	store.goalsByTeam[10] = map[int64][]domain.Goal{1: {{ID: 1, TeamID: 10, PeriodID: 1}}}
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.DeleteTeam(context.Background(), 10); err != nil {
 		t.Fatalf("delete team: %v", err)
@@ -371,7 +383,7 @@ func TestDeleteTeamUsesSoftDeleteWhenTeamHasGoals(t *testing.T) {
 
 func TestDeleteTeamUsesHardDeleteWhenTeamHasNoGoals(t *testing.T) {
 	store := newFakeStore()
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.DeleteTeam(context.Background(), 10); err != nil {
 		t.Fatalf("delete team: %v", err)
@@ -384,7 +396,7 @@ func TestDeleteTeamUsesHardDeleteWhenTeamHasNoGoals(t *testing.T) {
 func TestHardDeleteTeamRejectsTeamsWithGoals(t *testing.T) {
 	store := newFakeStore()
 	store.goalsByTeam[10] = map[int64][]domain.Goal{1: {{ID: 1, TeamID: 10, PeriodID: 1}}}
-	service := New(store)
+	service := New(store, nil)
 
 	if err := service.HardDeleteTeam(context.Background(), 10); err != ErrTeamHasGoals {
 		t.Fatalf("expected ErrTeamHasGoals, got %v", err)
@@ -402,7 +414,7 @@ func TestGetTeamsWithPeriodSummaryKeepsActiveTeamsWithoutHistoricalGoalsVisible(
 	}
 	store.goalsByTeam[2] = map[int64][]domain.Goal{1: {{ID: 100, TeamID: 2, PeriodID: 1, Title: "Historic"}}}
 	store.statuses[[2]int64{2, 1}] = domain.TeamPeriodStatusClosed
-	service := New(store)
+	service := New(store, nil)
 
 	rows, err := service.GetTeamsWithPeriodSummary(context.Background(), 1, nil)
 	if err != nil {
@@ -427,7 +439,7 @@ func TestGetTeamsWithPeriodSummaryShowsOnlyActiveTeamsInCurrentPeriod(t *testing
 		{ID: 1, Name: "Active", Type: domain.TeamTypeUnit},
 		{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt},
 	}
-	service := New(store)
+	service := New(store, nil)
 
 	rows, err := service.GetTeamsWithPeriodSummary(context.Background(), 2, nil)
 	if err != nil {
@@ -447,7 +459,7 @@ func TestGetTeamsWithPeriodSummaryKeepsDeletedTeamsWithCurrentGoalsVisible(t *te
 		{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt},
 	}
 	store.goalsByTeam[2] = map[int64][]domain.Goal{2: {{ID: 200, TeamID: 2, PeriodID: 2, Title: "Current"}}}
-	service := New(store)
+	service := New(store, nil)
 
 	rows, err := service.GetTeamsWithPeriodSummary(context.Background(), 2, nil)
 	if err != nil {
@@ -467,7 +479,7 @@ func TestGetTeamOKRAllowsDeletedTeamInHistoricalPeriodWithGoals(t *testing.T) {
 	store.currentPeriod = domain.Period{ID: 2}
 	store.teams = []domain.Team{{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt}}
 	store.goalsByTeam[2] = map[int64][]domain.Goal{1: {{ID: 100, TeamID: 2, PeriodID: 1, Title: "Historic"}}}
-	service := New(store)
+	service := New(store, nil)
 
 	okr, err := service.GetTeamOKR(context.Background(), 2, 1, domain.Period{ID: 1, Name: "2024 Q4"})
 	if err != nil {
@@ -482,7 +494,7 @@ func TestGetTeamOKRAllowsActiveTeamWithoutHistoricalGoals(t *testing.T) {
 	store := newFakeStore()
 	store.currentPeriod = domain.Period{ID: 2}
 	store.teams = []domain.Team{{ID: 1, Name: "Active", Type: domain.TeamTypeTeam}}
-	service := New(store)
+	service := New(store, nil)
 
 	okr, err := service.GetTeamOKR(context.Background(), 1, 1, domain.Period{ID: 1, Name: "2024 Q4"})
 	if err != nil {
@@ -498,7 +510,7 @@ func TestGetTeamOKRRejectsDeletedTeamInCurrentPeriod(t *testing.T) {
 	store := newFakeStore()
 	store.currentPeriod = domain.Period{ID: 2}
 	store.teams = []domain.Team{{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt}}
-	service := New(store)
+	service := New(store, nil)
 
 	_, err := service.GetTeamOKR(context.Background(), 2, 2, domain.Period{ID: 2, Name: "2025 Q1"})
 	if err != ErrTeamNotVisibleInPeriod {
@@ -512,7 +524,7 @@ func TestGetTeamOKRAllowsDeletedTeamInCurrentPeriodWhenGoalsExist(t *testing.T) 
 	store.currentPeriod = domain.Period{ID: 2}
 	store.teams = []domain.Team{{ID: 2, Name: "Deleted", Type: domain.TeamTypeTeam, DeletedAt: &deletedAt}}
 	store.goalsByTeam[2] = map[int64][]domain.Goal{2: {{ID: 200, TeamID: 2, PeriodID: 2, Title: "Current"}}}
-	service := New(store)
+	service := New(store, nil)
 
 	okr, err := service.GetTeamOKR(context.Background(), 2, 2, domain.Period{ID: 2, Name: "2025 Q1"})
 	if err != nil {
@@ -533,7 +545,7 @@ func TestGetHierarchyWithoutPeriodHidesDeletedTeams(t *testing.T) {
 	store.goalsByTeam[2] = map[int64][]domain.Goal{
 		1: {{ID: 100, TeamID: 2, PeriodID: 1, Title: "Historical"}},
 	}
-	service := New(store)
+	service := New(store, nil)
 
 	nodes, err := service.GetHierarchy(context.Background(), nil)
 	if err != nil {
@@ -559,7 +571,7 @@ func TestGetHierarchyWithPeriodIncludesDeletedTeamsWithGoals(t *testing.T) {
 	store.goalsByTeam[2] = map[int64][]domain.Goal{
 		5: {{ID: 200, TeamID: 2, PeriodID: 5, Title: "Current"}},
 	}
-	service := New(store)
+	service := New(store, nil)
 	periodID := int64(5)
 
 	nodes, err := service.GetHierarchy(context.Background(), &periodID)
@@ -597,7 +609,7 @@ func TestGetTeamOverview(t *testing.T) {
 		}},
 	}
 	store.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
-	svc := New(store)
+	svc := New(store, nil)
 	overview, err := svc.GetTeamOverview(context.Background(), 1, 10)
 	if err != nil {
 		t.Fatalf("get team overview: %v", err)
@@ -691,7 +703,7 @@ func TestBuildDirectChildrenSummaryWithoutSummaryMap(t *testing.T) {
 			UpdatedAt: now,
 		}},
 	}
-	svc := New(store)
+	svc := New(store, nil)
 	children := []TeamNode{{Team: domain.Team{ID: 2, Name: "Child", ParentID: ptr(1)}}}
 
 	rows, err := svc.buildDirectChildrenSummary(context.Background(), 11, children, nil)

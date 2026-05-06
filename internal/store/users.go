@@ -87,22 +87,13 @@ func (s *Store) GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.
 	return users, rows.Err()
 }
 
-// SearchUsersInScope returns up to limit non-system users matching q (case-insensitive substring of
-// display_name or email) that are visible in the given scope:
-//   - scopeTeamIDs == nil  → admin/unrestricted: search all users
-//   - scopeTeamIDs != nil  → only users who have a hierarchy grant covering ≥1 scoped team
-//     OR are a lead of any team in the scope
-//
+// SearchUsersUnrestricted returns up to limit non-system users matching q with no scope filter.
 // q == "" returns the most-recently-logged-in users.
-func (s *Store) SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error) {
+func (s *Store) SearchUsersUnrestricted(ctx context.Context, q string, limit int) ([]*domain.User, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-
-	if scopeTeamIDs == nil {
-		return s.searchUsersUnrestricted(ctx, q, limit)
-	}
-	return s.searchUsersScoped(ctx, scopeTeamIDs, q, limit)
+	return s.searchUsersUnrestricted(ctx, q, limit)
 }
 
 func (s *Store) searchUsersUnrestricted(ctx context.Context, q string, limit int) ([]*domain.User, error) {
@@ -120,41 +111,24 @@ func (s *Store) searchUsersUnrestricted(ctx context.Context, q string, limit int
 	return scanUsersRows(rows)
 }
 
-func (s *Store) searchUsersScoped(ctx context.Context, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error) {
-	// Scoped search: users who have a grant to any team that covers ≥1 scope node
-	// (scope nodes + their ancestors form the set of "covering" teams), plus team leads.
-	// The recursive CTE walks up from scope nodes to their ancestors so that a grant
-	// to a parent team is correctly recognised as covering the child scope node.
+// SearchUsersInSet returns up to limit non-system users whose id is in userIDs OR whose
+// display_name is in leadNames, filtered by optional text query q.
+// Returns nil when both userIDs and leadNames are empty.
+func (s *Store) SearchUsersInSet(ctx context.Context, userIDs []int64, leadNames []string, q string, limit int) ([]*domain.User, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if len(userIDs) == 0 && len(leadNames) == 0 {
+		return nil, nil
+	}
 	rows, err := s.DB.Query(ctx, `
-		WITH RECURSIVE ancestor_scope AS (
-			SELECT id, parent_id FROM teams WHERE id = ANY($1)
-			UNION ALL
-			SELECT t.id, t.parent_id FROM teams t
-			JOIN ancestor_scope a ON t.id = a.parent_id
-		)
-		SELECT
-			u.id, u.udid, u.provider_subject_key, u.provider, u.subject,
-			u.display_name, u.avatar_url, COALESCE(u.email,''), u.attributes_json,
-			u.is_admin, u.created_at, u.updated_at, u.last_login_at
-		FROM users u
-		WHERE u.provider NOT IN ('system')
-		AND (
-			EXISTS (
-				SELECT 1 FROM user_hierarchy_grants g
-				JOIN ancestor_scope a ON g.team_id = a.id
-				WHERE g.user_id = u.id
-			)
-			OR EXISTS (
-				SELECT 1 FROM teams t
-				WHERE t.id = ANY($1)
-				AND t.lead = u.display_name
-				AND t.deleted_at IS NULL
-				AND t.lead != ''
-			)
-		)
-		AND ($2 = '' OR LOWER(u.display_name) LIKE '%' || LOWER($2) || '%' OR LOWER(COALESCE(u.email,'')) LIKE '%' || LOWER($2) || '%')
-		ORDER BY u.last_login_at DESC NULLS LAST
-		LIMIT $3`, scopeTeamIDs, q, limit)
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		FROM users
+		WHERE provider NOT IN ('system')
+		AND (id = ANY($1) OR display_name = ANY($2))
+		AND ($3 = '' OR LOWER(display_name) LIKE '%' || LOWER($3) || '%' OR LOWER(COALESCE(email,'')) LIKE '%' || LOWER($3) || '%')
+		ORDER BY last_login_at DESC NULLS LAST
+		LIMIT $4`, userIDs, leadNames, q, limit)
 	if err != nil {
 		return nil, err
 	}

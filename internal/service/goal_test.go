@@ -205,13 +205,25 @@ func (f *goalFakeStore) UpdateProjectStageDone(_ context.Context, _ int64, _ boo
 func (f *goalFakeStore) GetUsersByDisplayNames(_ context.Context, _ []string) ([]*domain.User, error) {
 	return nil, nil
 }
+func (f *goalFakeStore) SearchUsersUnrestricted(_ context.Context, _ string, _ int) ([]*domain.User, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) SearchUsersInSet(_ context.Context, _ []int64, _ []string, _ string, _ int) ([]*domain.User, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) GetUsersByUDIDs(_ context.Context, _ []string) ([]*domain.User, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) ListUserLeadTeams(_ context.Context) (map[string]string, error) {
+	return nil, nil
+}
 
 // ── CreateGoal tests ──────────────────────────────────────────────────────────
 
 func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 	st := newGoalFakeStore()
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 1, PeriodID: 10})
 	if err != ErrPeriodClosed {
@@ -222,7 +234,7 @@ func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 	st := newGoalFakeStore()
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 1, PeriodID: 10})
 	if err != ErrPeriodClosed {
@@ -233,7 +245,7 @@ func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 	st := newGoalFakeStore()
 	// no entry in statuses → defaults to NoGoals
-	svc := New(st)
+	svc := New(st, nil)
 
 	goalID, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 2, PeriodID: 5})
 	if err != nil {
@@ -254,7 +266,7 @@ func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 	st := newGoalFakeStore()
 	st.statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 2, PeriodID: 5})
 	if err != nil {
@@ -270,7 +282,7 @@ func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 func TestDeleteGoalBySharedTeamRemovesShareOnly(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[7] = domain.Goal{ID: 7, TeamID: 1, PeriodID: 5}
-	svc := New(st)
+	svc := New(st, nil)
 
 	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), 7, 2)
 	if err != nil {
@@ -291,7 +303,7 @@ func TestDeleteGoalByOwnerTransfersOwnershipWhenShared(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[8] = domain.Goal{ID: 8, TeamID: 1, PeriodID: 5, Weight: 50}
 	st.goalShares[8] = []store.GoalShare{{GoalID: 8, TeamID: 3, Weight: 30}}
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 8, 1)
 	if err != nil {
@@ -315,7 +327,7 @@ func TestDeleteGoalByOwnerDeletesGoalWhenNoSharesAndPeriodOpen(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[9] = domain.Goal{ID: 9, TeamID: 1, PeriodID: 5}
 	// statuses defaults to NoGoals → open period
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 9, 1)
 	if err != nil {
@@ -330,7 +342,7 @@ func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 5}
 	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 10, 1)
 	if err != ErrPeriodClosed {
@@ -346,7 +358,7 @@ func TestDeleteGoalResetsStatusWhenLastGoalRemoved(t *testing.T) {
 	st.goals[11] = domain.Goal{ID: 11, TeamID: 1, PeriodID: 5}
 	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusForming
 	// goalsAfterDelete is empty → no goals remain after deletion
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 11, 1)
 	if err != nil {
@@ -371,7 +383,7 @@ func TestUpdateGoalOwnerAndSharesBlockedByInProgressPeriod(t *testing.T) {
 	st.goals[20] = domain.Goal{ID: 20, TeamID: 1, PeriodID: 10, Weight: 40}
 	// team 2 is in_progress
 	st.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), 20, []int64{2})
 	if err != ErrCannotShareWithClosedPeriod {
@@ -383,7 +395,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 	st := newGoalFakeStore()
 	st.goals[21] = domain.Goal{ID: 21, TeamID: 1, PeriodID: 10, Weight: 40}
 	// team 3 has open period (defaults to NoGoals)
-	svc := New(st)
+	svc := New(st, nil)
 
 	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), 21, []int64{3})
 	if err != nil {
@@ -405,7 +417,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 func TestUpdateKRProgressPercentRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
-	svc := New(st)
+	svc := New(st, nil)
 
 	if err := svc.UpdateKRProgressPercent(context.Background(), 1, 50); err == nil {
 		t.Fatal("expected error for boolean KR with percent update")
@@ -415,7 +427,7 @@ func TestUpdateKRProgressPercentRejectsUnsupportedKind(t *testing.T) {
 func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindPercent}
-	svc := New(st)
+	svc := New(st, nil)
 
 	if err := svc.UpdateKRProgressBoolean(context.Background(), 2, true); err == nil {
 		t.Fatal("expected error for percent KR with boolean update")
@@ -425,7 +437,7 @@ func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindPercent}
-	svc := New(st)
+	svc := New(st, nil)
 
 	if err := svc.UpdateKRProgressProject(context.Background(), 3, nil); err == nil {
 		t.Fatal("expected error for percent KR with project update")
@@ -436,7 +448,7 @@ func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesPercentMeta(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
 		store.KeyResultInput{Kind: domain.KRKindPercent},
@@ -456,7 +468,7 @@ func TestCreateKeyResultWithMetaAppliesPercentMeta(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesLinearMeta(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
 		store.KeyResultInput{Kind: domain.KRKindLinear},
@@ -476,7 +488,7 @@ func TestCreateKeyResultWithMetaAppliesLinearMeta(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesBooleanMeta(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st)
+	svc := New(st, nil)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
 		store.KeyResultInput{Kind: domain.KRKindBoolean},
@@ -492,7 +504,7 @@ func TestCreateKeyResultWithMetaAppliesBooleanMeta(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesProjectStages(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st)
+	svc := New(st, nil)
 
 	stages := []store.ProjectStageInput{{Title: "Step 1", Weight: 60}, {Title: "Step 2", Weight: 40}}
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
