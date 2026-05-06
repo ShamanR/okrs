@@ -843,10 +843,12 @@ function UserAvatar({ user, size = 24 }) {
   );
 }
 
-function UserSelector({ value, onChange, multiple = false, placeholder = 'Поиск пользователя…' }) {
+function UserSelector({ value, onChange, multiple = false, placeholder = 'Поиск пользователя…', fetchFn }) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
+  const [fetchedUsers, setFetchedUsers] = useState(null);
+  const fetchTimer = useRef(null);
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
 
@@ -857,12 +859,26 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const qLow = q.toLowerCase();
-  const users = qLow
-    ? _cachedUsersList().filter(u => u.display_name?.toLowerCase().includes(qLow))
-    : _cachedUsersList();
+  useEffect(() => {
+    if (!fetchFn || !open) return;
+    clearTimeout(fetchTimer.current);
+    fetchTimer.current = setTimeout(() => {
+      fetchFn(q).then(data => {
+        if (Array.isArray(data)) {
+          data.forEach(u => _cacheUserRef(u));
+          setFetchedUsers(data);
+        }
+      }).catch(() => {});
+    }, q ? 200 : 0);
+    return () => clearTimeout(fetchTimer.current);
+  }, [q, open, fetchFn]);
 
-  const handleQueryChange = newQ => { setQ(newQ); };
+  const qLow = q.toLowerCase();
+  const users = fetchFn
+    ? (fetchedUsers || [])
+    : (qLow ? _cachedUsersList().filter(u => u.display_name?.toLowerCase().includes(qLow)) : _cachedUsersList());
+
+  const handleQueryChange = newQ => { setQ(newQ); if (fetchFn) setFetchedUsers(null); };
 
   const values = multiple ? (Array.isArray(value) ? value : []) : (value ? [value] : []);
   const findUser = name => _userByName.get(name) || users.find(u => u.display_name === name);
@@ -1094,6 +1110,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             <UserSelector multiple
               value={(form.ownerText || '').split(',').map(s => s.trim()).filter(Boolean)}
               onChange={arr => set('ownerText', arr.join(', '))}
+              fetchFn={q => apiGet(`/api/v1/users?q=${encodeURIComponent(q)}`)}
               placeholder="Добавить владельца" />
           </div>
           <div className="toggle-box">

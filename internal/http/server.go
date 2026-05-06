@@ -16,6 +16,7 @@ import (
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
+	apiusers "okrs/internal/http/handlers/api/v1/users"
 	"okrs/internal/http/handlers/web/authhandler"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/http/handlers/web/goals"
@@ -209,6 +210,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
 	r.Get("/api/v1/me", apiadmin.HandleMe)
+	r.Get("/api/v1/users", apiusers.New(s.store).Handle)
 
 	teamHandlers := apiteams.New(s.service)
 	r.Get("/api/v1/teams/{teamID}", teamHandlers.HandleTeam)
