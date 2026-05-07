@@ -7,31 +7,46 @@ import (
 	"strconv"
 
 	"okrs/internal/auth"
-	"okrs/internal/store"
+	"okrs/internal/domain"
+	"okrs/internal/store/grants"
 
 	"github.com/go-chi/chi/v5"
 )
 
+// userAdminStore covers user operations. *store.UserRepository satisfies it.
+type userAdminStore interface {
+	ListUsers(ctx context.Context) ([]*domain.User, error)
+	GetUser(ctx context.Context, id int64) (*domain.User, error)
+	SetUserAdmin(ctx context.Context, userID int64, isAdmin bool) error
+}
+
+// settingsStore covers system settings. *store.SettingsRepository satisfies it.
+type settingsStore interface {
+	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
+	SetSetting(ctx context.Context, key string, value any) error
+}
+
 // grantsStore covers the user_hierarchy_grants operations. *store.GrantsCache satisfies it.
 type grantsStore interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]store.HierarchyGrant, error)
+	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
 	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
 	RemoveUserGrant(ctx context.Context, userID, teamID int64) error
 }
 
 type Handler struct {
-	store  *store.Store
-	mgr    *auth.Manager
-	grants grantsStore
+	users    userAdminStore
+	settings settingsStore
+	mgr      *auth.Manager
+	grants   grantsStore
 }
 
-func New(st *store.Store, mgr *auth.Manager, grants grantsStore) *Handler {
-	return &Handler{store: st, mgr: mgr, grants: grants}
+func New(users userAdminStore, settings settingsStore, mgr *auth.Manager, grants grantsStore) *Handler {
+	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants}
 }
 
 // GET /api/v1/admin/users
 func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.store.ListUsers(r.Context())
+	users, err := h.users.ListUsers(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -46,7 +61,7 @@ func (h *Handler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	user, err := h.store.GetUser(r.Context(), userID)
+	user, err := h.users.GetUser(r.Context(), userID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "user not found")
 		return
@@ -61,7 +76,7 @@ func (h *Handler) HandleGrantAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	if err := h.store.SetUserAdmin(r.Context(), userID, true); err != nil {
+	if err := h.users.SetUserAdmin(r.Context(), userID, true); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -75,7 +90,7 @@ func (h *Handler) HandleRevokeAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	if err := h.store.SetUserAdmin(r.Context(), userID, false); err != nil {
+	if err := h.users.SetUserAdmin(r.Context(), userID, false); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -140,10 +155,10 @@ func (h *Handler) HandleRemoveGrant(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/admin/settings/access
 func (h *Handler) HandleGetAccessSettings(w http.ResponseWriter, r *http.Request) {
-	policy, _ := h.store.GetSetting(r.Context(), "new_user_policy")
-	nodeID, _ := h.store.GetSetting(r.Context(), "default_hierarchy_node_id")
+	policy, _ := h.settings.GetSetting(r.Context(), "new_user_policy")
+	nodeID, _ := h.settings.GetSetting(r.Context(), "default_hierarchy_node_id")
 	writeJSON(w, map[string]any{
-		"new_user_policy":          json.RawMessage(policy),
+		"new_user_policy":           json.RawMessage(policy),
 		"default_hierarchy_node_id": json.RawMessage(nodeID),
 	})
 }
@@ -151,7 +166,7 @@ func (h *Handler) HandleGetAccessSettings(w http.ResponseWriter, r *http.Request
 // POST /api/v1/admin/settings/access  body: {"new_user_policy":"default_node","default_hierarchy_node_id":5}
 func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		NewUserPolicy         string `json:"new_user_policy"`
+		NewUserPolicy          string `json:"new_user_policy"`
 		DefaultHierarchyNodeID *int64 `json:"default_hierarchy_node_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -159,13 +174,13 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if body.NewUserPolicy != "" {
-		if err := h.store.SetSetting(r.Context(), "new_user_policy", body.NewUserPolicy); err != nil {
+		if err := h.settings.SetSetting(r.Context(), "new_user_policy", body.NewUserPolicy); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
 	if body.DefaultHierarchyNodeID != nil {
-		if err := h.store.SetSetting(r.Context(), "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
+		if err := h.settings.SetSetting(r.Context(), "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

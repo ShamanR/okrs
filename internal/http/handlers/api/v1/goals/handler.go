@@ -10,7 +10,7 @@ import (
 	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/goals"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -187,7 +187,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		}
 		goalWeight = goal.Weight
 	}
-	if err := h.service.UpdateGoal(r.Context(), store.GoalUpdateInput{
+	if err := h.service.UpdateGoal(r.Context(), goals.GoalUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),

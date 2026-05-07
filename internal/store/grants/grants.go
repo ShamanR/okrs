@@ -1,13 +1,112 @@
-package store
+package grants
 
 import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// GrantRepository handles user_hierarchy_grants persistence.
+type GrantRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewGrantRepository(db *pgxpool.Pool) *GrantRepository {
+	return &GrantRepository{db: db}
+}
+
+type HierarchyGrant struct {
+	ID              int64
+	UserID          int64
+	TeamID          int64
+	CreatedAt       time.Time
+	CreatedByUserID int64
+}
+
+func (r *GrantRepository) ListUserGrants(ctx context.Context, userID int64) ([]HierarchyGrant, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, user_id, team_id, created_at, created_by_user_id
+		FROM user_hierarchy_grants WHERE user_id = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var grants []HierarchyGrant
+	for rows.Next() {
+		var g HierarchyGrant
+		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
+			return nil, err
+		}
+		grants = append(grants, g)
+	}
+	return grants, rows.Err()
+}
+
+func (r *GrantRepository) AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO user_hierarchy_grants (user_id, team_id, created_by_user_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, team_id) DO NOTHING`,
+		userID, teamID, grantedByUserID)
+	return err
+}
+
+func (r *GrantRepository) RemoveUserGrant(ctx context.Context, userID, teamID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM user_hierarchy_grants WHERE user_id = $1 AND team_id = $2`, userID, teamID)
+	return err
+}
+
+// listAllGrants loads the full user_hierarchy_grants table as a map[userID][]HierarchyGrant.
+func (r *GrantRepository) listAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, user_id, team_id, created_at, created_by_user_id
+		FROM user_hierarchy_grants`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := make(map[int64][]HierarchyGrant)
+	for rows.Next() {
+		var g HierarchyGrant
+		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
+			return nil, err
+		}
+		result[g.UserID] = append(result[g.UserID], g)
+	}
+	return result, rows.Err()
+}
+
+// ListDescendantTeamIDs returns the given root team IDs plus all their recursive children IDs.
+func (r *GrantRepository) ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error) {
+	if len(rootIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		WITH RECURSIVE tree AS (
+			SELECT id FROM teams WHERE id = ANY($1) AND deleted_at IS NULL
+			UNION ALL
+			SELECT t.id FROM teams t JOIN tree p ON t.parent_id = p.id WHERE t.deleted_at IS NULL
+		)
+		SELECT id FROM tree`, rootIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // grantsBackend is the persistence contract used by GrantsCache.
-// *Store satisfies it; tests can inject a fake.
+// *GrantRepository satisfies it; tests can inject a fake.
 type grantsBackend interface {
 	loadAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error)
 	addUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
@@ -15,20 +114,20 @@ type grantsBackend interface {
 	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
 }
 
-// storeGrantsBackend adapts *Store to grantsBackend.
-type storeGrantsBackend struct{ st *Store }
+// storeGrantsBackend adapts *GrantRepository to grantsBackend.
+type storeGrantsBackend struct{ r *GrantRepository }
 
 func (b *storeGrantsBackend) loadAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
-	return b.st.listAllGrants(ctx)
+	return b.r.listAllGrants(ctx)
 }
 func (b *storeGrantsBackend) addUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error {
-	return b.st.AddUserGrant(ctx, userID, teamID, grantedByUserID)
+	return b.r.AddUserGrant(ctx, userID, teamID, grantedByUserID)
 }
 func (b *storeGrantsBackend) removeUserGrant(ctx context.Context, userID, teamID int64) error {
-	return b.st.RemoveUserGrant(ctx, userID, teamID)
+	return b.r.RemoveUserGrant(ctx, userID, teamID)
 }
 func (b *storeGrantsBackend) ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error) {
-	return b.st.ListDescendantTeamIDs(ctx, rootIDs)
+	return b.r.ListDescendantTeamIDs(ctx, rootIDs)
 }
 
 // GrantsCache is an in-memory read-through cache for the user_hierarchy_grants table.
@@ -47,10 +146,10 @@ type GrantsCache struct {
 
 const defaultGrantsCacheTTL = 5 * time.Minute
 
-// NewGrantsCache wraps st with a 5-minute in-memory cache for user_hierarchy_grants.
-func NewGrantsCache(st *Store) *GrantsCache {
+// NewGrantsCache wraps a GrantRepository with a 5-minute in-memory cache for user_hierarchy_grants.
+func NewGrantsCache(r *GrantRepository) *GrantsCache {
 	return &GrantsCache{
-		backend: &storeGrantsBackend{st},
+		backend: &storeGrantsBackend{r},
 		ttl:     defaultGrantsCacheTTL,
 	}
 }

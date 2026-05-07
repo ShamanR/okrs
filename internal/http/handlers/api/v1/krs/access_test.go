@@ -16,6 +16,9 @@ import (
 	"okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/grants"
+	"okrs/internal/store/krs"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -68,7 +71,7 @@ func buildKRAccessFixture(t *testing.T, pool *pgxpool.Pool, repo *store.Store) (
 		t.Fatalf("insert period: %v", err)
 	}
 	var err error
-	goalID, err = repo.CreateGoal(ctx, store.GoalInput{
+	goalID, err = repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Goal",
 		Priority: domain.PriorityP1, Weight: 100,
 		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
@@ -76,13 +79,13 @@ func buildKRAccessFixture(t *testing.T, pool *pgxpool.Pool, repo *store.Store) (
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
 	}
-	krID, err = repo.CreateKeyResult(ctx, store.KeyResultInput{
+	krID, err = repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID: goalID, Title: "KR", Weight: 100, Kind: domain.KRKindPercent,
 	})
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.UpsertPercentMeta(ctx, store.PercentMetaInput{
+	if err := repo.KRs.UpsertPercentMeta(ctx, krs.PercentMetaInput{
 		KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0,
 	}); err != nil {
 		t.Fatalf("upsert percent meta: %v", err)
@@ -104,7 +107,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	payload, _ := json.Marshal(map[string]float64{"current_value": 50})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
@@ -168,7 +171,7 @@ func TestKRCommentAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	payload, _ := json.Marshal(map[string]string{"text": "comment"})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
@@ -204,7 +207,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, goalID, _ := buildKRAccessFixture(t, pool, repo)
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 
 	body, ct := multipartBody(map[string]string{
 		"title": "New KR", "kind": "PERCENT", "weight": "50",

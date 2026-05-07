@@ -1,4 +1,4 @@
-package store
+package krs
 
 import (
 	"context"
@@ -7,19 +7,28 @@ import (
 	"okrs/internal/domain"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func (s *Store) CreateKeyResult(ctx context.Context, input KeyResultInput) (int64, error) {
-	var id int64
-	err := s.DB.QueryRow(ctx, `
-		INSERT INTO key_results (goal_id, title, description, weight, kind, sort_order)
-		VALUES ($1,$2,$3,$4,$5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1))
-		RETURNING id`,
-		input.GoalID, input.Title, input.Description, input.Weight, input.Kind,
-	).Scan(&id)
-	return id, err
+// KRRepository handles key result persistence including meta and progress.
+type KRRepository struct {
+	db *pgxpool.Pool
 }
 
+func NewKRRepository(db *pgxpool.Pool) *KRRepository {
+	return &KRRepository{db: db}
+}
+
+// KeyResultInput is used by CreateKeyResult.
+type KeyResultInput struct {
+	GoalID      int64
+	Title       string
+	Description string
+	Weight      int
+	Kind        domain.KRKind
+}
+
+// KeyResultUpdateInput is used by UpdateKeyResult.
 type KeyResultUpdateInput struct {
 	ID          int64
 	Title       string
@@ -28,8 +37,51 @@ type KeyResultUpdateInput struct {
 	Kind        domain.KRKind
 }
 
-func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domain.KeyResult, error) {
-	rows, err := s.DB.Query(ctx, `
+// ProjectStageInput is used by ReplaceProjectStages.
+type ProjectStageInput struct {
+	KeyResultID int64
+	Title       string
+	Weight      int
+	SortOrder   int
+	IsDone      bool
+}
+
+// PercentMetaInput is used by UpsertPercentMeta.
+type PercentMetaInput struct {
+	KeyResultID  int64
+	StartValue   float64
+	TargetValue  float64
+	CurrentValue float64
+}
+
+// PercentCheckpointInput is used by AddPercentCheckpoint.
+type PercentCheckpointInput struct {
+	KeyResultID int64
+	MetricValue float64
+	KRPercent   int
+}
+
+// LinearMetaInput is used by UpsertLinearMeta.
+type LinearMetaInput struct {
+	KeyResultID  int64
+	StartValue   float64
+	TargetValue  float64
+	CurrentValue float64
+}
+
+func (r *KRRepository) CreateKeyResult(ctx context.Context, input KeyResultInput) (int64, error) {
+	var id int64
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO key_results (goal_id, title, description, weight, kind, sort_order)
+		VALUES ($1,$2,$3,$4,$5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1))
+		RETURNING id`,
+		input.GoalID, input.Title, input.Description, input.Weight, input.Kind,
+	).Scan(&id)
+	return id, err
+}
+
+func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domain.KeyResult, error) {
+	rows, err := r.db.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
 		FROM key_results WHERE goal_id=$1 ORDER BY sort_order, id`, goalID)
 	if err != nil {
@@ -52,13 +104,13 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 		kr := &krs[i]
 		switch kr.Kind {
 		case domain.KRKindProject:
-			stages, err := s.ListProjectStages(ctx, kr.ID)
+			stages, err := r.ListProjectStages(ctx, kr.ID)
 			if err != nil {
 				return nil, err
 			}
 			kr.Project = &domain.KRProject{Stages: stages}
 		case domain.KRKindPercent:
-			meta, checkpoints, err := s.GetPercentMeta(ctx, kr.ID)
+			meta, checkpoints, err := r.GetPercentMeta(ctx, kr.ID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return nil, err
 			}
@@ -67,7 +119,7 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 				kr.Percent = meta
 			}
 		case domain.KRKindLinear:
-			meta, err := s.GetLinearMeta(ctx, kr.ID)
+			meta, err := r.GetLinearMeta(ctx, kr.ID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return nil, err
 			}
@@ -75,7 +127,7 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 				kr.Linear = meta
 			}
 		case domain.KRKindBoolean:
-			meta, err := s.GetBooleanMeta(ctx, kr.ID)
+			meta, err := r.GetBooleanMeta(ctx, kr.ID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return nil, err
 			}
@@ -84,21 +136,21 @@ func (s *Store) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domai
 			}
 		}
 
-		comments, _ := s.LastKeyResultComments(ctx, kr.ID)
+		comments, _ := r.LastKeyResultComments(ctx, kr.ID)
 		kr.Comments = comments
 	}
 
 	return krs, nil
 }
 
-func (s *Store) AddKeyResultComment(ctx context.Context, krID int64, text string, authorUserID int64) error {
-	_, err := s.DB.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, author_user_id) VALUES ($1,$2,$3)`, krID, text, authorUserID)
+func (r *KRRepository) AddKeyResultComment(ctx context.Context, krID int64, text string, authorUserID int64) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, author_user_id) VALUES ($1,$2,$3)`, krID, text, authorUserID)
 	return err
 }
 
-func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
+func (r *KRRepository) LastKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
 	const Limit = 3
-	rows, err := s.DB.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT krc.id, krc.key_result_id, krc.text, u.display_name, u.udid, krc.created_at
 		FROM key_result_comments krc
 		JOIN users u ON u.id = krc.author_user_id
@@ -119,8 +171,8 @@ func (s *Store) LastKeyResultComments(ctx context.Context, krID int64) ([]domain
 	return comments, rows.Err()
 }
 
-func (s *Store) AddProjectStage(ctx context.Context, input ProjectStageInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) AddProjectStage(ctx context.Context, input ProjectStageInput) error {
+	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_project_stages (key_result_id, title, weight, is_done, sort_order)
 		VALUES ($1,$2,$3,$4,$5)`,
 		input.KeyResultID, input.Title, input.Weight, input.IsDone, input.SortOrder,
@@ -128,23 +180,23 @@ func (s *Store) AddProjectStage(ctx context.Context, input ProjectStageInput) er
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
-func (s *Store) UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error {
-	_, err := s.DB.Exec(ctx, `UPDATE kr_project_stages SET is_done=$1 WHERE id=$2`, done, stageID)
+func (r *KRRepository) UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error {
+	_, err := r.db.Exec(ctx, `UPDATE kr_project_stages SET is_done=$1 WHERE id=$2`, done, stageID)
 	if err != nil {
 		return err
 	}
-	_, err = s.DB.Exec(ctx, `
+	_, err = r.db.Exec(ctx, `
 		UPDATE key_results
 		SET updated_at=NOW(), progress_updated_at=NOW()
 		WHERE id=(SELECT key_result_id FROM kr_project_stages WHERE id=$1)`, stageID)
 	return err
 }
 
-func (s *Store) ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error) {
-	rows, err := s.DB.Query(ctx, `
+func (r *KRRepository) ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error) {
+	rows, err := r.db.Query(ctx, `
 		SELECT id, key_result_id, title, weight, is_done, sort_order
 		FROM kr_project_stages WHERE key_result_id=$1 ORDER BY sort_order`, krID)
 	if err != nil {
@@ -162,13 +214,13 @@ func (s *Store) ListProjectStages(ctx context.Context, krID int64) ([]domain.KRP
 	return stages, rows.Err()
 }
 
-func (s *Store) ReplaceProjectStages(ctx context.Context, krID int64, stages []ProjectStageInput) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM kr_project_stages WHERE key_result_id=$1`, krID)
+func (r *KRRepository) ReplaceProjectStages(ctx context.Context, krID int64, stages []ProjectStageInput) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM kr_project_stages WHERE key_result_id=$1`, krID)
 	if err != nil {
 		return err
 	}
 	for _, stage := range stages {
-		if _, err := s.DB.Exec(ctx, `
+		if _, err := r.db.Exec(ctx, `
 			INSERT INTO kr_project_stages (key_result_id, title, weight, is_done, sort_order)
 			VALUES ($1,$2,$3,$4,$5)`,
 			krID, stage.Title, stage.Weight, stage.IsDone, stage.SortOrder,
@@ -176,11 +228,11 @@ func (s *Store) ReplaceProjectStages(ctx context.Context, krID int64, stages []P
 			return err
 		}
 	}
-	return s.touchKeyResultUpdatedAt(ctx, krID)
+	return r.touchKeyResultUpdatedAt(ctx, krID)
 }
 
-func (s *Store) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput) error {
+	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET title=$1, description=$2, weight=$3, kind=$4, updated_at=NOW()
 		WHERE id=$5`,
@@ -189,8 +241,8 @@ func (s *Store) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput)
 	return err
 }
 
-func (s *Store) UpdateKeyResultWeight(ctx context.Context, krID int64, weight int) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) UpdateKeyResultWeight(ctx context.Context, krID int64, weight int) error {
+	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET weight=$1, updated_at=NOW()
 		WHERE id=$2`,
@@ -199,8 +251,8 @@ func (s *Store) UpdateKeyResultWeight(ctx context.Context, krID int64, weight in
 	return err
 }
 
-func (s *Store) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) error {
+	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_percent_meta (key_result_id, start_value, target_value, current_value)
 		VALUES ($1,$2,$3,$4)
 		ON CONFLICT (key_result_id) DO UPDATE SET
@@ -212,19 +264,19 @@ func (s *Store) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) e
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
-func (s *Store) UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error {
-	_, err := s.DB.Exec(ctx, `UPDATE kr_percent_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
+func (r *KRRepository) UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error {
+	_, err := r.db.Exec(ctx, `UPDATE kr_percent_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultProgressUpdatedAt(ctx, krID)
+	return r.touchKeyResultProgressUpdatedAt(ctx, krID)
 }
 
-func (s *Store) UpsertLinearMeta(ctx context.Context, input LinearMetaInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) UpsertLinearMeta(ctx context.Context, input LinearMetaInput) error {
+	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_linear_meta (key_result_id, start_value, target_value, current_value)
 		VALUES ($1,$2,$3,$4)
 		ON CONFLICT (key_result_id) DO UPDATE SET
@@ -236,27 +288,27 @@ func (s *Store) UpsertLinearMeta(ctx context.Context, input LinearMetaInput) err
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
-func (s *Store) UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error {
-	_, err := s.DB.Exec(ctx, `UPDATE kr_linear_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
+func (r *KRRepository) UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error {
+	_, err := r.db.Exec(ctx, `UPDATE kr_linear_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultProgressUpdatedAt(ctx, krID)
+	return r.touchKeyResultProgressUpdatedAt(ctx, krID)
 }
 
-func (s *Store) UpdateBoolean(ctx context.Context, krID int64, done bool) error {
-	if err := s.UpsertBooleanMeta(ctx, krID, done); err != nil {
+func (r *KRRepository) UpdateBoolean(ctx context.Context, krID int64, done bool) error {
+	if err := r.UpsertBooleanMeta(ctx, krID, done); err != nil {
 		return err
 	}
-	return s.touchKeyResultProgressUpdatedAt(ctx, krID)
+	return r.touchKeyResultProgressUpdatedAt(ctx, krID)
 }
 
-func (s *Store) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
+func (r *KRRepository) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
 	var kr domain.KeyResult
-	row := s.DB.QueryRow(ctx, `
+	row := r.db.QueryRow(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
 		FROM key_results WHERE id=$1`, id)
 	if err := row.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
@@ -265,8 +317,8 @@ func (s *Store) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, e
 	return kr, nil
 }
 
-func (s *Store) AddPercentCheckpoint(ctx context.Context, input PercentCheckpointInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) AddPercentCheckpoint(ctx context.Context, input PercentCheckpointInput) error {
+	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_percent_checkpoints (key_result_id, metric_value, kr_percent)
 		VALUES ($1,$2,$3)`,
 		input.KeyResultID, input.MetricValue, input.KRPercent,
@@ -274,33 +326,33 @@ func (s *Store) AddPercentCheckpoint(ctx context.Context, input PercentCheckpoin
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
 }
 
-func (s *Store) GetPercentMeta(ctx context.Context, krID int64) (*domain.KRPercent, []domain.KRPercentCheckpoint, error) {
+func (r *KRRepository) GetPercentMeta(ctx context.Context, krID int64) (*domain.KRPercent, []domain.KRPercentCheckpoint, error) {
 	var meta domain.KRPercent
-	row := s.DB.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_percent_meta WHERE key_result_id=$1`, krID)
+	row := r.db.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_percent_meta WHERE key_result_id=$1`, krID)
 	if err := row.Scan(&meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
 		return nil, nil, err
 	}
-	checkpoints, err := s.ListPercentCheckpoints(ctx, krID)
+	checkpoints, err := r.ListPercentCheckpoints(ctx, krID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &meta, checkpoints, nil
 }
 
-func (s *Store) GetLinearMeta(ctx context.Context, krID int64) (*domain.KRLinear, error) {
+func (r *KRRepository) GetLinearMeta(ctx context.Context, krID int64) (*domain.KRLinear, error) {
 	var meta domain.KRLinear
-	row := s.DB.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_linear_meta WHERE key_result_id=$1`, krID)
+	row := r.db.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_linear_meta WHERE key_result_id=$1`, krID)
 	if err := row.Scan(&meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
 		return nil, err
 	}
 	return &meta, nil
 }
 
-func (s *Store) ListPercentCheckpoints(ctx context.Context, krID int64) ([]domain.KRPercentCheckpoint, error) {
-	rows, err := s.DB.Query(ctx, `
+func (r *KRRepository) ListPercentCheckpoints(ctx context.Context, krID int64) ([]domain.KRPercentCheckpoint, error) {
+	rows, err := r.db.Query(ctx, `
 		SELECT id, key_result_id, metric_value, kr_percent
 		FROM kr_percent_checkpoints WHERE key_result_id=$1 ORDER BY metric_value`, krID)
 	if err != nil {
@@ -318,8 +370,8 @@ func (s *Store) ListPercentCheckpoints(ctx context.Context, krID int64) ([]domai
 	return checkpoints, rows.Err()
 }
 
-func (s *Store) UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error {
+	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_boolean_meta (key_result_id, is_done)
 		VALUES ($1,$2)
 		ON CONFLICT (key_result_id) DO UPDATE SET is_done=EXCLUDED.is_done`,
@@ -328,25 +380,25 @@ func (s *Store) UpsertBooleanMeta(ctx context.Context, krID int64, done bool) er
 	if err != nil {
 		return err
 	}
-	return s.touchKeyResultUpdatedAt(ctx, krID)
+	return r.touchKeyResultUpdatedAt(ctx, krID)
 }
 
-func (s *Store) GetBooleanMeta(ctx context.Context, krID int64) (*domain.KRBoolean, error) {
+func (r *KRRepository) GetBooleanMeta(ctx context.Context, krID int64) (*domain.KRBoolean, error) {
 	var meta domain.KRBoolean
-	row := s.DB.QueryRow(ctx, `SELECT is_done FROM kr_boolean_meta WHERE key_result_id=$1`, krID)
+	row := r.db.QueryRow(ctx, `SELECT is_done FROM kr_boolean_meta WHERE key_result_id=$1`, krID)
 	if err := row.Scan(&meta.IsDone); err != nil {
 		return nil, err
 	}
 	return &meta, nil
 }
 
-func (s *Store) DeleteKeyResult(ctx context.Context, id int64) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM key_results WHERE id=$1`, id)
+func (r *KRRepository) DeleteKeyResult(ctx context.Context, id int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM key_results WHERE id=$1`, id)
 	return err
 }
 
-func (s *Store) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
-	tx, err := s.DB.Begin(ctx)
+func (r *KRRepository) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -391,25 +443,25 @@ func (s *Store) MoveKeyResult(ctx context.Context, krID int64, direction int) er
 	return tx.Commit(ctx)
 }
 
-func (s *Store) touchKeyResultUpdatedAt(ctx context.Context, krID int64) error {
-	_, err := s.DB.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1`, krID)
+func (r *KRRepository) touchKeyResultUpdatedAt(ctx context.Context, krID int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1`, krID)
 	return err
 }
 
-func (s *Store) touchKeyResultProgressUpdatedAt(ctx context.Context, krID int64) error {
-	_, err := s.DB.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
+func (r *KRRepository) touchKeyResultProgressUpdatedAt(ctx context.Context, krID int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
 	return err
 }
 
-func (s *Store) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
+func (r *KRRepository) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
 	var goalID int64
-	err := s.DB.QueryRow(ctx, `SELECT goal_id FROM key_results WHERE id=$1`, krID).Scan(&goalID)
+	err := r.db.QueryRow(ctx, `SELECT goal_id FROM key_results WHERE id=$1`, krID).Scan(&goalID)
 	return goalID, err
 }
 
-func (s *Store) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
+func (r *KRRepository) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
 	var goalID int64
-	err := s.DB.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		SELECT kr.goal_id
 		FROM kr_project_stages s
 		JOIN key_results kr ON kr.id = s.key_result_id

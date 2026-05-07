@@ -14,6 +14,9 @@ import (
 	"okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/grants"
+	"okrs/internal/store/krs"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -63,7 +66,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       "API Goal",
@@ -78,7 +81,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := repo.CreateKeyResult(ctx, store.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR",
 		Description: "",
@@ -88,11 +91,11 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.UpsertPercentMeta(ctx, store.PercentMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0}); err != nil {
+	if err := repo.KRs.UpsertPercentMeta(ctx, krs.PercentMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0}); err != nil {
 		t.Fatalf("meta: %v", err)
 	}
 
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
@@ -179,7 +182,7 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       "API Goal",
@@ -194,7 +197,7 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := repo.CreateKeyResult(ctx, store.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR",
 		Description: "",
@@ -205,7 +208,7 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 		t.Fatalf("create kr: %v", err)
 	}
 
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
@@ -220,7 +223,7 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
-	comments, err := repo.LastKeyResultComments(ctx, krID)
+	comments, err := repo.KRs.LastKeyResultComments(ctx, krID)
 	if err != nil {
 		t.Fatalf("list comments: %v", err)
 	}

@@ -1,11 +1,21 @@
-package store
+package shares
 
 import (
 	"context"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// GoalShareRepository handles goal_shares persistence.
+type GoalShareRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewGoalShareRepository(db *pgxpool.Pool) *GoalShareRepository {
+	return &GoalShareRepository{db: db}
+}
 
 type GoalShare struct {
 	GoalID    int64
@@ -19,8 +29,8 @@ type GoalShareInput struct {
 	Weight int
 }
 
-func (s *Store) ListGoalShares(ctx context.Context, goalID int64) ([]GoalShare, error) {
-	rows, err := s.DB.Query(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1`, goalID)
+func (r *GoalShareRepository) ListGoalShares(ctx context.Context, goalID int64) ([]GoalShare, error) {
+	rows, err := r.db.Query(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1`, goalID)
 	if err != nil {
 		return nil, err
 	}
@@ -36,17 +46,17 @@ func (s *Store) ListGoalShares(ctx context.Context, goalID int64) ([]GoalShare, 
 	return shares, rows.Err()
 }
 
-func (s *Store) GetGoalShare(ctx context.Context, goalID, teamID int64) (GoalShare, error) {
+func (r *GoalShareRepository) GetGoalShare(ctx context.Context, goalID, teamID int64) (GoalShare, error) {
 	var share GoalShare
-	row := s.DB.QueryRow(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1 AND team_id=$2`, goalID, teamID)
+	row := r.db.QueryRow(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1 AND team_id=$2`, goalID, teamID)
 	if err := row.Scan(&share.GoalID, &share.TeamID, &share.Weight, &share.SortOrder); err != nil {
 		return GoalShare{}, err
 	}
 	return share, nil
 }
 
-func (s *Store) ReplaceGoalShares(ctx context.Context, goalID int64, shares []GoalShareInput) error {
-	tx, err := s.DB.Begin(ctx)
+func (r *GoalShareRepository) ReplaceGoalShares(ctx context.Context, goalID int64, shares []GoalShareInput) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -78,13 +88,13 @@ func (s *Store) ReplaceGoalShares(ctx context.Context, goalID int64, shares []Go
 	return tx.Commit(ctx)
 }
 
-func (s *Store) DeleteGoalShare(ctx context.Context, goalID, teamID int64) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM goal_shares WHERE goal_id=$1 AND team_id=$2`, goalID, teamID)
+func (r *GoalShareRepository) DeleteGoalShare(ctx context.Context, goalID, teamID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM goal_shares WHERE goal_id=$1 AND team_id=$2`, goalID, teamID)
 	return err
 }
 
-func (s *Store) UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, weight int) error {
-	res, err := s.DB.Exec(ctx, `UPDATE goals SET weight=$1, updated_at=NOW() WHERE id=$2 AND team_id=$3`, weight, goalID, teamID)
+func (r *GoalShareRepository) UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, weight int) error {
+	res, err := r.db.Exec(ctx, `UPDATE goals SET weight=$1, updated_at=NOW() WHERE id=$2 AND team_id=$3`, weight, goalID, teamID)
 	if err != nil {
 		return err
 	}
@@ -92,7 +102,7 @@ func (s *Store) UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, 
 		return nil
 	}
 
-	_, err = s.DB.Exec(ctx, `UPDATE goal_shares SET weight=$1, updated_at=NOW() WHERE goal_id=$2 AND team_id=$3`, weight, goalID, teamID)
+	_, err = r.db.Exec(ctx, `UPDATE goal_shares SET weight=$1, updated_at=NOW() WHERE goal_id=$2 AND team_id=$3`, weight, goalID, teamID)
 	return err
 }
 

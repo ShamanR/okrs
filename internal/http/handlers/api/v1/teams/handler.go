@@ -10,7 +10,7 @@ import (
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/goals"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -214,7 +214,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg, nil)
 		return
 	}
-	goalID, err := h.service.CreateGoal(r.Context(), store.GoalInput{
+	goalID, err := h.service.CreateGoal(r.Context(), goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    req.PeriodID,
 		Title:       req.Title,

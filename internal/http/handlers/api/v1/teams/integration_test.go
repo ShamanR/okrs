@@ -13,6 +13,9 @@ import (
 	"okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/grants"
+	"okrs/internal/store/krs"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -70,7 +73,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("insert current period: %v", err)
 	}
 
-	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+	if _, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      deletedTeamID,
 		PeriodID:    historyPeriodID,
 		Title:       "History goal",
@@ -83,11 +86,11 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create historical goal: %v", err)
 	}
-	if err := repo.SoftDeleteTeam(ctx, deletedTeamID); err != nil {
+	if err := repo.Teams.SoftDeleteTeam(ctx, deletedTeamID); err != nil {
 		t.Fatalf("soft delete team: %v", err)
 	}
 
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
@@ -168,7 +171,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("expected 404 for deleted team in current period, got %d", currentDeletedResp.StatusCode)
 	}
 
-	if _, err := repo.CreateGoal(ctx, store.GoalInput{
+	if _, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      deletedTeamID,
 		PeriodID:    currentPeriodID,
 		Title:       "Current goal",
@@ -264,7 +267,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      childID,
 		PeriodID:    periodID,
 		Title:       "Child goal",
@@ -278,7 +281,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create child goal: %v", err)
 	}
-	krID, err := repo.CreateKeyResult(ctx, store.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR bool",
 		Description: "",
@@ -288,14 +291,14 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create child key result: %v", err)
 	}
-	if err := repo.UpdateBoolean(ctx, krID, true); err != nil {
+	if err := repo.KRs.UpdateBoolean(ctx, krID, true); err != nil {
 		t.Fatalf("update child key result progress: %v", err)
 	}
-	if err := repo.SetTeamPeriodStatus(ctx, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
+	if err := repo.Statuses.SetTeamPeriodStatus(ctx, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
 		t.Fatalf("set status: %v", err)
 	}
 
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 

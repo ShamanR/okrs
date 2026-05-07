@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/krs"
 
 	"github.com/golang-migrate/migrate/v4"
 	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -65,7 +67,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.CreateGoal(ctx, GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       "Ship something",
@@ -80,7 +82,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := s.CreateKeyResult(ctx, KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR 1",
 		Description: "",
@@ -90,19 +92,19 @@ func TestStoreCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := s.UpsertBooleanMeta(ctx, krID, true); err != nil {
+	if err := s.KRs.UpsertBooleanMeta(ctx, krID, true); err != nil {
 		t.Fatalf("update boolean: %v", err)
 	}
 
-	goals, err := s.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
 	if err != nil {
 		t.Fatalf("list goals: %v", err)
 	}
-	if len(goals) != 1 {
-		t.Fatalf("expected 1 goal got %d", len(goals))
+	if len(goalsList) != 1 {
+		t.Fatalf("expected 1 goal got %d", len(goalsList))
 	}
-	if len(goals[0].KeyResults) != 1 {
-		t.Fatalf("expected 1 kr got %d", len(goals[0].KeyResults))
+	if len(goalsList[0].KeyResults) != 1 {
+		t.Fatalf("expected 1 kr got %d", len(goalsList[0].KeyResults))
 	}
 }
 
@@ -153,7 +155,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.CreateGoal(ctx, GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      ownerID,
 		PeriodID:    periodID,
 		Title:       "Shared goal",
@@ -171,7 +173,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert goal share: %v", err)
 	}
 
-	krID, err := s.CreateKeyResult(ctx, KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR bool",
 		Description: "",
@@ -181,23 +183,23 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create key result: %v", err)
 	}
-	if err := s.UpsertBooleanMeta(ctx, krID, true); err != nil {
+	if err := s.KRs.UpsertBooleanMeta(ctx, krID, true); err != nil {
 		t.Fatalf("upsert boolean meta: %v", err)
 	}
 
-	goalsByTeam, err := s.ListGoalsByTeamsPeriod(ctx, periodID, []int64{ownerID, sharedTeamID})
+	goalsByTeam, err := s.Goals.ListGoalsByTeamsPeriod(ctx, periodID, []int64{ownerID, sharedTeamID})
 	if err != nil {
 		t.Fatalf("list goals by teams period: %v", err)
 	}
 	for _, teamID := range []int64{ownerID, sharedTeamID} {
-		goals := goalsByTeam[teamID]
-		if len(goals) != 1 {
-			t.Fatalf("team %d expected exactly one goal, got %d", teamID, len(goals))
+		goalsList := goalsByTeam[teamID]
+		if len(goalsList) != 1 {
+			t.Fatalf("team %d expected exactly one goal, got %d", teamID, len(goalsList))
 		}
-		if len(goals[0].KeyResults) != 1 {
-			t.Fatalf("team %d expected one key result, got %d", teamID, len(goals[0].KeyResults))
+		if len(goalsList[0].KeyResults) != 1 {
+			t.Fatalf("team %d expected one key result, got %d", teamID, len(goalsList[0].KeyResults))
 		}
-		if goals[0].KeyResults[0].Boolean == nil || !goals[0].KeyResults[0].Boolean.IsDone {
+		if goalsList[0].KeyResults[0].Boolean == nil || !goalsList[0].KeyResults[0].Boolean.IsDone {
 			t.Fatalf("team %d expected boolean KR meta to be loaded for shared goal", teamID)
 		}
 	}
@@ -255,7 +257,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	if _, err := s.CreateGoal(ctx, GoalInput{
+	if _, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      teamWithGoalsID,
 		PeriodID:    periodID,
 		Title:       "Historic goal",
@@ -269,31 +271,31 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	if hasGoals, err := s.TeamHasGoals(ctx, teamWithGoalsID); err != nil || !hasGoals {
+	if hasGoals, err := s.Teams.TeamHasGoals(ctx, teamWithGoalsID); err != nil || !hasGoals {
 		t.Fatalf("expected team with goals to be detected, got %v %v", hasGoals, err)
 	}
-	if hasGoals, err := s.TeamHasGoals(ctx, childNoGoalsID); err != nil || hasGoals {
+	if hasGoals, err := s.Teams.TeamHasGoals(ctx, childNoGoalsID); err != nil || hasGoals {
 		t.Fatalf("expected team without goals to be clean, got %v %v", hasGoals, err)
 	}
 
-	if err := s.HardDeleteTeam(ctx, childNoGoalsID); err != nil {
+	if err := s.Teams.HardDeleteTeam(ctx, childNoGoalsID); err != nil {
 		t.Fatalf("hard delete no goals: %v", err)
 	}
-	if _, err := s.GetTeam(ctx, childNoGoalsID); err == nil {
+	if _, err := s.Teams.GetTeam(ctx, childNoGoalsID); err == nil {
 		t.Fatalf("expected hard-deleted team to be removed")
 	}
 
-	if err := s.SoftDeleteTeam(ctx, teamWithGoalsID); err != nil {
+	if err := s.Teams.SoftDeleteTeam(ctx, teamWithGoalsID); err != nil {
 		t.Fatalf("soft delete team with goals: %v", err)
 	}
-	teamWithGoals, err := s.GetTeam(ctx, teamWithGoalsID)
+	teamWithGoals, err := s.Teams.GetTeam(ctx, teamWithGoalsID)
 	if err != nil {
 		t.Fatalf("get soft-deleted team: %v", err)
 	}
 	if teamWithGoals.DeletedAt == nil {
 		t.Fatalf("expected deleted_at to be set")
 	}
-	childOfDeleted, err := s.GetTeam(ctx, childOfDeletedID)
+	childOfDeleted, err := s.Teams.GetTeam(ctx, childOfDeletedID)
 	if err != nil {
 		t.Fatalf("get reparented child: %v", err)
 	}
@@ -301,7 +303,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("expected child to be reparented to original parent, got %+v", childOfDeleted.ParentID)
 	}
 
-	deletedTeams, err := s.ListDeletedTeams(ctx)
+	deletedTeams, err := s.Teams.ListDeletedTeams(ctx)
 	if err != nil {
 		t.Fatalf("list deleted teams: %v", err)
 	}
@@ -309,10 +311,10 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("expected deleted team list to contain team with goals, got %+v", deletedTeams)
 	}
 
-	if err := s.RestoreTeam(ctx, teamWithGoalsID); err != nil {
+	if err := s.Teams.RestoreTeam(ctx, teamWithGoalsID); err != nil {
 		t.Fatalf("restore team: %v", err)
 	}
-	restored, err := s.GetTeam(ctx, teamWithGoalsID)
+	restored, err := s.Teams.GetTeam(ctx, teamWithGoalsID)
 	if err != nil {
 		t.Fatalf("get restored team: %v", err)
 	}
@@ -367,7 +369,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.CreateGoal(ctx, GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      ownerID,
 		PeriodID:    periodID,
 		Title:       "Goal with KR activity",
@@ -384,7 +386,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight) VALUES ($1, $2, 100)`, goalID, sharedID); err != nil {
 		t.Fatalf("insert goal share: %v", err)
 	}
-	krID, err := s.CreateKeyResult(ctx, KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR for timestamp aggregation",
 		Description: "desc",
@@ -407,21 +409,21 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert key result comment: %v", err)
 	}
 
-	goals, err := s.ListGoalsByTeamPeriod(ctx, ownerID, periodID)
+	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, ownerID, periodID)
 	if err != nil {
 		t.Fatalf("list goals by team period: %v", err)
 	}
-	if len(goals) != 1 {
-		t.Fatalf("expected one goal, got %d", len(goals))
+	if len(goalsList) != 1 {
+		t.Fatalf("expected one goal, got %d", len(goalsList))
 	}
-	if !goals[0].UpdatedAt.Equal(commentTime) {
-		t.Fatalf("expected goal updated_at from latest KR comment %s, got %s", commentTime, goals[0].UpdatedAt)
+	if !goalsList[0].UpdatedAt.Equal(commentTime) {
+		t.Fatalf("expected goal updated_at from latest KR comment %s, got %s", commentTime, goalsList[0].UpdatedAt)
 	}
 
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set metadata-only key result updated_at: %v", err)
 	}
-	updatesAfterMetadataEdit, err := s.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	updatesAfterMetadataEdit, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
 	if err != nil {
 		t.Fatalf("list team last update after metadata edit: %v", err)
 	}
@@ -432,7 +434,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {
 		t.Fatalf("set newer key result progress_updated_at: %v", err)
 	}
-	updates, err := s.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	updates, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
 	if err != nil {
 		t.Fatalf("list team last update: %v", err)
 	}

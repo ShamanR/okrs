@@ -13,7 +13,8 @@ import (
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/okr"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	storeteams "okrs/internal/store/teams"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/pkg/errors"
@@ -335,7 +336,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 		}, teams, 0, false)
 		return
 	}
-	if _, err := h.deps.Service.CreateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
+	if _, err := h.deps.Service.CreateTeam(ctx, storeteams.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -470,7 +471,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := h.deps.Service.UpdateTeam(ctx, store.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
+	if err := h.deps.Service.UpdateTeam(ctx, storeteams.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -610,7 +611,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goalID, err := h.deps.Service.CreateGoal(ctx, store.GoalInput{
+	goalID, err := h.deps.Service.CreateGoal(ctx, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       common.TrimmedFormValue(r, "title"),

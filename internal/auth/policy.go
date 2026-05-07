@@ -8,6 +8,7 @@ import (
 
 	"okrs/internal/domain"
 	"okrs/internal/store"
+	"okrs/internal/store/grants"
 )
 
 // sentinel for "no access" — non-nil empty slice stored in context
@@ -20,7 +21,7 @@ const allowedTeamsKey policyContextKey = 0
 // grantsReader is the minimal interface PolicyEvaluator needs for scope resolution.
 // Both *store.Store and *store.GrantsCache satisfy it.
 type grantsReader interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]store.HierarchyGrant, error)
+	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
 	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
 }
 
