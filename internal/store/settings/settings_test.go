@@ -79,7 +79,9 @@ func TestSettingsJsonTypes(t *testing.T) {
 		t.Fatalf("GetSetting struct: %v", err)
 	}
 	// Postgres may normalise JSON spacing; compare parsed content.
-	var got struct{ Mode string `json:"mode"` }
+	var got struct {
+		Mode string `json:"mode"`
+	}
 	if err := json.Unmarshal(raw, &got); err != nil || got.Mode != "oidc" {
 		t.Fatalf("expected mode=oidc, got %s", raw)
 	}

@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	apiusers "okrs/internal/http/handlers/api/v1/users"
 	"okrs/internal/http/handlers/api/v1/testutil"
+	apiusers "okrs/internal/http/handlers/api/v1/users"
 	"okrs/internal/service"
 	"okrs/internal/store"
 

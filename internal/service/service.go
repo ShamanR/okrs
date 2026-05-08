@@ -59,6 +59,7 @@ type GoalRepo interface {
 
 type GoalShareRepo interface {
 	ListGoalShares(ctx context.Context, goalID int64) ([]shares.GoalShare, error)
+	ListGoalSharesByGoalIDs(ctx context.Context, goalIDs []int64) (map[int64][]shares.GoalShare, error)
 	GetGoalShare(ctx context.Context, goalID, teamID int64) (shares.GoalShare, error)
 	ReplaceGoalShares(ctx context.Context, goalID int64, shares []shares.GoalShareInput) error
 	DeleteGoalShare(ctx context.Context, goalID, teamID int64) error
@@ -89,6 +90,7 @@ type KRRepo interface {
 	UpdateBoolean(ctx context.Context, krID int64, done bool) error
 	ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error)
 	UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error
+	BatchUpdateProjectStagesDone(ctx context.Context, krID int64, updates map[int64]bool) error
 	UpsertPercentMeta(ctx context.Context, input krs.PercentMetaInput) error
 	UpsertLinearMeta(ctx context.Context, input krs.LinearMetaInput) error
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
@@ -220,14 +222,14 @@ type TeamOverview struct {
 }
 
 type TeamOKR struct {
-	Team              domain.Team
-	Period            domain.Period
-	PeriodStatus      domain.TeamPeriodStatus
-	StatusChangedAt   *time.Time
-	PeriodProgress    int
-	GoalsCount        int
-	GoalsWeight       int
-	Goals             []GoalDetails
+	Team            domain.Team
+	Period          domain.Period
+	PeriodStatus    domain.TeamPeriodStatus
+	StatusChangedAt *time.Time
+	PeriodProgress  int
+	GoalsCount      int
+	GoalsWeight     int
+	Goals           []GoalDetails
 }
 
 type GoalDetails struct {
@@ -295,8 +297,53 @@ func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, periodID int64,
 	return s.getTeamsWithPeriodSummaryFromTeams(ctx, allTeams, periodID, orgID)
 }
 
+// teamSummaryBatch holds pre-loaded data for building TeamSummary without per-team DB queries.
+type teamSummaryBatch struct {
+	teamIDsWithGoals map[int64]struct{}
+	goalsByTeam      map[int64][]domain.Goal
+	statuses         map[int64]domain.TeamPeriodStatus
+	sharesByGoal     map[int64][]shares.GoalShare
+}
+
 func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, allTeams []domain.Team, periodID int64, orgID *int64) ([]TeamSummary, error) {
 	teamsByID, childrenMap, roots := buildTeamHierarchy(allTeams)
+
+	allTeamIDs := make([]int64, len(allTeams))
+	for i, t := range allTeams {
+		allTeamIDs[i] = t.ID
+	}
+
+	teamIDsWithGoals, err := s.teams.ListTeamIDsWithGoalsInPeriod(ctx, periodID)
+	if err != nil {
+		return nil, err
+	}
+	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, periodID, allTeamIDs)
+	if err != nil {
+		return nil, err
+	}
+	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, periodID, allTeamIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	allGoalIDs := make([]int64, 0)
+	for _, gList := range goalsByTeam {
+		for _, g := range gList {
+			allGoalIDs = append(allGoalIDs, g.ID)
+		}
+	}
+	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, allGoalIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	batch := &teamSummaryBatch{
+		teamIDsWithGoals: teamIDsWithGoals,
+		goalsByTeam:      goalsByTeam,
+		statuses:         statuses,
+		sharesByGoal:     sharesByGoal,
+	}
+
 	filteredRoots := roots
 	if orgID != nil {
 		if team, ok := teamsByID[*orgID]; ok {
@@ -305,11 +352,62 @@ func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, allTea
 	}
 	rows := make([]TeamSummary, 0, len(allTeams))
 	for _, team := range filteredRoots {
-		if err := s.appendTeamSummary(ctx, &rows, team, 0, periodID, childrenMap, teamsByID); err != nil {
-			return nil, err
-		}
+		s.appendTeamSummaryFromBatch(&rows, team, 0, childrenMap, teamsByID, batch)
 	}
 	return rows, nil
+}
+
+func (s *Service) appendTeamSummaryFromBatch(rows *[]TeamSummary, team domain.Team, level int, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team, batch *teamSummaryBatch) {
+	_, hasGoals := batch.teamIDsWithGoals[team.ID]
+	visible := team.DeletedAt == nil || hasGoals
+
+	if visible {
+		goalsList := batch.goalsByTeam[team.ID]
+
+		status := domain.TeamPeriodStatusNoGoals
+		if s, ok := batch.statuses[team.ID]; ok {
+			status = s
+		}
+
+		goalRows := make([]TeamGoalSummary, 0, len(goalsList))
+		goalsWeight := 0
+		for i := range goalsList {
+			goalsList[i].Progress = CalculateGoalProgress(&goalsList[i])
+			goalsWeight += goalsList[i].Weight
+			shareTeams := buildShareInfosFromBatch(goalsList[i], batch.sharesByGoal[goalsList[i].ID], teamsByID)
+			goalRows = append(goalRows, TeamGoalSummary{
+				ID:         goalsList[i].ID,
+				Title:      goalsList[i].Title,
+				Weight:     goalsList[i].Weight,
+				Progress:   goalsList[i].Progress,
+				ShareTeams: shareTeams,
+				Priority:   string(goalsList[i].Priority),
+				WorkType:   goalsList[i].WorkType,
+			})
+		}
+
+		*rows = append(*rows, TeamSummary{
+			ID:             team.ID,
+			Name:           team.Name,
+			Type:           team.Type,
+			Indent:         level * 24,
+			Status:         status,
+			PeriodProgress: okr.PeriodProgress(goalsList),
+			GoalsCount:     len(goalsList),
+			GoalsWeight:    goalsWeight,
+			Goals:          goalRows,
+		})
+	}
+
+	nextLevel := level
+	if visible {
+		nextLevel = level + 1
+	}
+	children := childrenMap[team.ID]
+	sort.Slice(children, func(i, j int) bool { return children[i].Name < children[j].Name })
+	for _, child := range children {
+		s.appendTeamSummaryFromBatch(rows, child, nextLevel, childrenMap, teamsByID, batch)
+	}
 }
 
 func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period domain.Period) (TeamOKR, error) {
@@ -328,30 +426,40 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 	if err != nil {
 		return TeamOKR{}, err
 	}
-	shareInfos := make(map[int64][]TeamShareInfo, len(goalsList))
-	for i := range goalsList {
-		goalsList[i].Progress = CalculateGoalProgress(&goalsList[i])
-		shareTeams, err := s.listGoalShareTeams(ctx, goalsList[i], nil)
-		if err != nil {
-			return TeamOKR{}, err
-		}
-		shareInfos[goalsList[i].ID] = shareTeams
+
+	goalIDs := make([]int64, len(goalsList))
+	for i, g := range goalsList {
+		goalIDs[i] = g.ID
 	}
-	periodProgress := okr.PeriodProgress(goalsList)
-	goalsWeight := 0
-	for _, goal := range goalsList {
-		goalsWeight += goal.Weight
-	}
-	status, statusChangedAt, err := s.statuses.GetTeamPeriodStatusWithTime(ctx, teamID, periodID)
+	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, goalIDs)
 	if err != nil {
 		return TeamOKR{}, err
 	}
+	allTeams, err := s.teams.ListAllTeams(ctx)
+	if err != nil {
+		return TeamOKR{}, err
+	}
+	teamsByID := make(map[int64]domain.Team, len(allTeams))
+	for _, t := range allTeams {
+		teamsByID[t.ID] = t
+	}
+
+	goalsWeight := 0
 	goalDetails := make([]GoalDetails, 0, len(goalsList))
-	for _, goal := range goalsList {
+	for i := range goalsList {
+		goalsList[i].Progress = CalculateGoalProgress(&goalsList[i])
+		goalsWeight += goalsList[i].Weight
+		shareTeams := buildShareInfosFromBatch(goalsList[i], sharesByGoal[goalsList[i].ID], teamsByID)
 		goalDetails = append(goalDetails, GoalDetails{
-			Goal:       goal,
-			ShareTeams: shareInfos[goal.ID],
+			Goal:       goalsList[i],
+			ShareTeams: shareTeams,
 		})
+	}
+
+	periodProgress := okr.PeriodProgress(goalsList)
+	status, statusChangedAt, err := s.statuses.GetTeamPeriodStatusWithTime(ctx, teamID, periodID)
+	if err != nil {
+		return TeamOKR{}, err
 	}
 	return TeamOKR{
 		Team:            team,
@@ -363,6 +471,33 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 		GoalsWeight:     goalsWeight,
 		Goals:           goalDetails,
 	}, nil
+}
+
+// buildShareInfosFromBatch builds TeamShareInfo slice from pre-loaded shares and teams.
+// This avoids per-goal DB calls in loops.
+func buildShareInfosFromBatch(goal domain.Goal, shareList []shares.GoalShare, teamsByID map[int64]domain.Team) []TeamShareInfo {
+	teamIDs := make(map[int64]struct{}, len(shareList)+1)
+	teamIDs[goal.TeamID] = struct{}{}
+	for _, share := range shareList {
+		teamIDs[share.TeamID] = struct{}{}
+	}
+	teamInfos := make([]TeamShareInfo, 0, len(teamIDs))
+	for teamID := range teamIDs {
+		team, ok := teamsByID[teamID]
+		if !ok {
+			continue
+		}
+		weight := goal.Weight
+		for _, share := range shareList {
+			if share.TeamID == teamID {
+				weight = share.Weight
+				break
+			}
+		}
+		teamInfos = append(teamInfos, TeamShareInfo{ID: team.ID, Name: team.Name, Type: team.Type, Weight: weight})
+	}
+	sort.Slice(teamInfos, func(i, j int) bool { return teamInfos[i].Name < teamInfos[j].Name })
+	return teamInfos
 }
 
 func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID int64) ([]TeamChildSummary, error) {
@@ -576,18 +711,17 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, krID int64, updat
 	if err != nil {
 		return err
 	}
-	updatesByID := make(map[int64]ProjectStageUpdate, len(updates))
-	for _, update := range updates {
-		updatesByID[update.ID] = update
+	updatesByID := make(map[int64]bool, len(updates))
+	for _, u := range updates {
+		updatesByID[u.ID] = u.IsDone
 	}
+	validUpdates := make(map[int64]bool, len(updates))
 	for _, stage := range stages {
-		if update, ok := updatesByID[stage.ID]; ok {
-			if err := s.krs.UpdateProjectStageDone(ctx, stage.ID, update.IsDone); err != nil {
-				return err
-			}
+		if done, ok := updatesByID[stage.ID]; ok {
+			validUpdates[stage.ID] = done
 		}
 	}
-	return nil
+	return s.krs.BatchUpdateProjectStagesDone(ctx, krID, validUpdates)
 }
 
 type ShareTarget struct {
@@ -724,74 +858,7 @@ func (s *Service) HardDeleteTeam(ctx context.Context, teamID int64) error {
 	return s.teams.HardDeleteTeam(ctx, teamID)
 }
 
-func (s *Service) appendTeamSummary(ctx context.Context, rows *[]TeamSummary, team domain.Team, level int, periodID int64, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team) error {
-	visible, err := s.isTeamVisibleInPeriod(ctx, team, periodID)
-	if err != nil {
-		return err
-	}
-	if visible {
-		goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, team.ID, periodID)
-		if err != nil {
-			return err
-		}
-		status, err := s.statuses.GetTeamPeriodStatus(ctx, team.ID, periodID)
-		if err != nil {
-			return err
-		}
-		goalRows := make([]TeamGoalSummary, 0, len(goalsList))
-		for i := range goalsList {
-			goalsList[i].Progress = CalculateGoalProgress(&goalsList[i])
-			shareTeams, err := s.listGoalShareTeams(ctx, goalsList[i], teamsByID)
-			if err != nil {
-				return err
-			}
-			goalRows = append(goalRows, TeamGoalSummary{
-				ID:         goalsList[i].ID,
-				Title:      goalsList[i].Title,
-				Weight:     goalsList[i].Weight,
-				Progress:   goalsList[i].Progress,
-				ShareTeams: shareTeams,
-				Priority:   string(goalsList[i].Priority),
-				WorkType:   goalsList[i].WorkType,
-			})
-		}
-		periodProgress := okr.PeriodProgress(goalsList)
-		goalsWeight := 0
-		for _, goal := range goalsList {
-			goalsWeight += goal.Weight
-		}
-		*rows = append(*rows, TeamSummary{
-			ID:             team.ID,
-			Name:           team.Name,
-			Type:           team.Type,
-			Indent:         level * 24,
-			Status:         status,
-			PeriodProgress: periodProgress,
-			GoalsCount:     len(goalsList),
-			GoalsWeight:    goalsWeight,
-			Goals:          goalRows,
-		})
-	}
-
-	nextLevel := level
-	if visible {
-		nextLevel = level + 1
-	}
-	children := childrenMap[team.ID]
-	sort.Slice(children, func(i, j int) bool { return children[i].Name < children[j].Name })
-	for _, child := range children {
-		if err := s.appendTeamSummary(ctx, rows, child, nextLevel, periodID, childrenMap, teamsByID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (s *Service) isTeamVisibleInPeriod(ctx context.Context, team domain.Team, periodID int64) (bool, error) {
-	return s.isTeamVisibleInPeriodWithCurrent(ctx, team, periodID)
-}
-
-func (s *Service) isTeamVisibleInPeriodWithCurrent(ctx context.Context, team domain.Team, periodID int64) (bool, error) {
 	hasGoals, err := s.teams.TeamHasGoalsInPeriod(ctx, team.ID, periodID)
 	if err != nil {
 		return false, err
@@ -800,45 +867,6 @@ func (s *Service) isTeamVisibleInPeriodWithCurrent(ctx context.Context, team dom
 		return true, nil
 	}
 	return team.DeletedAt == nil, nil
-}
-
-func (s *Service) listGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]TeamShareInfo, error) {
-	shareList, err := s.shares.ListGoalShares(ctx, goal.ID)
-	if err != nil {
-		return nil, err
-	}
-	teamIDs := make(map[int64]struct{}, len(shareList)+1)
-	teamIDs[goal.TeamID] = struct{}{}
-	for _, share := range shareList {
-		teamIDs[share.TeamID] = struct{}{}
-	}
-	teamInfos := make([]TeamShareInfo, 0, len(teamIDs))
-	if teamsByID == nil {
-		teamsByID = make(map[int64]domain.Team)
-		allTeams, err := s.teams.ListAllTeams(ctx)
-		if err != nil {
-			return nil, err
-		}
-		for _, team := range allTeams {
-			teamsByID[team.ID] = team
-		}
-	}
-	for teamID := range teamIDs {
-		team, ok := teamsByID[teamID]
-		if !ok {
-			continue
-		}
-		weight := goal.Weight
-		for _, share := range shareList {
-			if share.TeamID == teamID {
-				weight = share.Weight
-				break
-			}
-		}
-		teamInfos = append(teamInfos, TeamShareInfo{ID: team.ID, Name: team.Name, Type: team.Type, Weight: weight})
-	}
-	sort.Slice(teamInfos, func(i, j int) bool { return teamInfos[i].Name < teamInfos[j].Name })
-	return teamInfos, nil
 }
 
 func buildTeamHierarchy(allTeams []domain.Team) (map[int64]domain.Team, map[int64][]domain.Team, []domain.Team) {

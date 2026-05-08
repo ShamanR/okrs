@@ -451,12 +451,8 @@ func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, teamID, peri
 		}
 	}
 
-	for i := range goals {
-		krsSlice, err := r.krs.ListKeyResultsByGoal(ctx, goals[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		goals[i].KeyResults = krsSlice
+	if err := r.loadKRsForGoals(ctx, goals, goalIDs); err != nil {
+		return nil, err
 	}
 	commentsByGoal, err := r.listGoalCommentsBatch(ctx, goalIDs)
 	if err != nil {
@@ -466,6 +462,224 @@ func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, teamID, peri
 		goals[i].Comments = commentsByGoal[goals[i].ID]
 	}
 	return goals, nil
+}
+
+// loadKRsForGoals batch-loads key results (all meta + last 3 comments) for the given goals.
+// Updates goals[i].KeyResults in place. goalIDs must match the goals slice indices.
+func (r *GoalRepository) loadKRsForGoals(ctx context.Context, goals []domain.Goal, goalIDs []int64) error {
+	if len(goalIDs) == 0 {
+		return nil
+	}
+
+	// Index goals by ID to attach KRs without re-scanning.
+	goalByID := make(map[int64]*domain.Goal, len(goals))
+	for i := range goals {
+		goalByID[goals[i].ID] = &goals[i]
+	}
+
+	krRows, err := r.db.Query(ctx, `
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		FROM key_results
+		WHERE goal_id = ANY($1)
+		ORDER BY goal_id, sort_order, id`, goalIDs)
+	if err != nil {
+		return err
+	}
+	defer krRows.Close()
+
+	krsByID := make(map[int64]*domain.KeyResult)
+	for krRows.Next() {
+		var kr domain.KeyResult
+		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+			return err
+		}
+		g, ok := goalByID[kr.GoalID]
+		if !ok {
+			continue
+		}
+		g.KeyResults = append(g.KeyResults, kr)
+	}
+	if err := krRows.Err(); err != nil {
+		return err
+	}
+
+	// Build KR pointer map after all appends — avoids stale pointers on slice reallocation.
+	krIDs := make([]int64, 0)
+	for i := range goals {
+		for j := range goals[i].KeyResults {
+			kr := &goals[i].KeyResults[j]
+			krsByID[kr.ID] = kr
+			krIDs = append(krIDs, kr.ID)
+		}
+	}
+	if len(krIDs) == 0 {
+		return nil
+	}
+
+	if err := r.loadProjectStages(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadPercentMeta(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadPercentCheckpoints(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadLinearMeta(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadBooleanMeta(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	return r.loadKRComments(ctx, krIDs, krsByID)
+}
+
+func (r *GoalRepository) loadProjectStages(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, key_result_id, title, weight, is_done, sort_order
+		FROM kr_project_stages
+		WHERE key_result_id = ANY($1)
+		ORDER BY key_result_id, sort_order`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var stage domain.KRProjectStage
+		if err := rows.Scan(&stage.ID, &stage.KeyResultID, &stage.Title, &stage.Weight, &stage.IsDone, &stage.SortOrder); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[stage.KeyResultID]; ok {
+			if kr.Project == nil {
+				kr.Project = &domain.KRProject{}
+			}
+			kr.Project.Stages = append(kr.Project.Stages, stage)
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadPercentMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT key_result_id, start_value, target_value, current_value
+		FROM kr_percent_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var krID int64
+		var meta domain.KRPercent
+		if err := rows.Scan(&krID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[krID]; ok {
+			value := meta
+			kr.Percent = &value
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadPercentCheckpoints(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, key_result_id, metric_value, kr_percent
+		FROM kr_percent_checkpoints
+		WHERE key_result_id = ANY($1)
+		ORDER BY key_result_id, metric_value`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cp domain.KRPercentCheckpoint
+		if err := rows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[cp.KeyResultID]; ok {
+			if kr.Percent == nil {
+				kr.Percent = &domain.KRPercent{}
+			}
+			kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadLinearMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT key_result_id, start_value, target_value, current_value
+		FROM kr_linear_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var krID int64
+		var meta domain.KRLinear
+		if err := rows.Scan(&krID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[krID]; ok {
+			value := meta
+			kr.Linear = &value
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadBooleanMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT key_result_id, is_done
+		FROM kr_boolean_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var krID int64
+		var meta domain.KRBoolean
+		if err := rows.Scan(&krID, &meta.IsDone); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[krID]; ok {
+			value := meta
+			kr.Boolean = &value
+		}
+	}
+	return rows.Err()
+}
+
+// loadKRComments batch-loads the last 3 comments per KR using a window function.
+func (r *GoalRepository) loadKRComments(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT c.id, c.key_result_id, c.text, u.display_name, u.udid, c.created_at
+		FROM (
+			SELECT krc.*,
+				ROW_NUMBER() OVER (PARTITION BY krc.key_result_id ORDER BY krc.created_at DESC) AS rn
+			FROM key_result_comments krc
+			WHERE krc.key_result_id = ANY($1)
+		) c
+		JOIN users u ON u.id = c.author_user_id
+		WHERE c.rn <= 3
+		ORDER BY c.key_result_id, c.created_at DESC`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c domain.KeyResultComment
+		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[c.KeyResultID]; ok {
+			kr.Comments = append(kr.Comments, c)
+		}
+	}
+	return rows.Err()
 }
 
 func (r *GoalRepository) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map[int64][]domain.GoalComment, error) {

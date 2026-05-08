@@ -46,6 +46,32 @@ func (r *GoalShareRepository) ListGoalShares(ctx context.Context, goalID int64) 
 	return shares, rows.Err()
 }
 
+// ListGoalSharesByGoalIDs loads shares for all given goals in a single query.
+// Returns a map[goalID][]GoalShare; goals without shares are absent from the map.
+func (r *GoalShareRepository) ListGoalSharesByGoalIDs(ctx context.Context, goalIDs []int64) (map[int64][]GoalShare, error) {
+	result := make(map[int64][]GoalShare, len(goalIDs))
+	if len(goalIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT goal_id, team_id, weight, sort_order
+		FROM goal_shares
+		WHERE goal_id = ANY($1)
+		ORDER BY goal_id, sort_order`, goalIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var share GoalShare
+		if err := rows.Scan(&share.GoalID, &share.TeamID, &share.Weight, &share.SortOrder); err != nil {
+			return nil, err
+		}
+		result[share.GoalID] = append(result[share.GoalID], share)
+	}
+	return result, rows.Err()
+}
+
 func (r *GoalShareRepository) GetGoalShare(ctx context.Context, goalID, teamID int64) (GoalShare, error) {
 	var share GoalShare
 	row := r.db.QueryRow(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1 AND team_id=$2`, goalID, teamID)

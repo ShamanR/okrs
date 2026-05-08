@@ -108,7 +108,6 @@ func TestStoreCRUD(t *testing.T) {
 	}
 }
 
-
 func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,

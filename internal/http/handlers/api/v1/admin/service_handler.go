@@ -192,11 +192,11 @@ func (h *ServiceHandler) HandleListTeams(w http.ResponseWriter, r *http.Request)
 // POST /api/v1/admin/teams
 func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string  `json:"name"`
-		Type        string  `json:"type"`
-		ParentID    *int64  `json:"parent_id"`
-		Lead        string  `json:"lead"`
-		Description string  `json:"description"`
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		ParentID    *int64 `json:"parent_id"`
+		Lead        string `json:"lead"`
+		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
@@ -230,11 +230,11 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Name        string  `json:"name"`
-		Type        string  `json:"type"`
-		ParentID    *int64  `json:"parent_id"`
-		Lead        string  `json:"lead"`
-		Description string  `json:"description"`
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		ParentID    *int64 `json:"parent_id"`
+		Lead        string `json:"lead"`
+		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)

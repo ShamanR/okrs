@@ -137,6 +137,9 @@ func (f *fakeStore) listTeamOverviewStatsUnused(_ context.Context, periodID int6
 func (f *fakeStore) ListGoalShares(context.Context, int64) ([]shares.GoalShare, error) {
 	return nil, nil
 }
+func (f *fakeStore) ListGoalSharesByGoalIDs(_ context.Context, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
+	return make(map[int64][]shares.GoalShare, len(goalIDs)), nil
+}
 func (f *fakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
 	if status, ok := f.statuses[[2]int64{teamID, periodID}]; ok {
 		return status, nil
@@ -225,6 +228,12 @@ func (f *fakeStore) UpdateProjectStageDone(_ context.Context, stageID int64, don
 	f.stageUpdates[stageID] = done
 	return nil
 }
+func (f *fakeStore) BatchUpdateProjectStagesDone(_ context.Context, _ int64, updates map[int64]bool) error {
+	for id, done := range updates {
+		f.stageUpdates[id] = done
+	}
+	return nil
+}
 func (f *fakeStore) ReplaceGoalShares(context.Context, int64, []shares.GoalShareInput) error {
 	return nil
 }
@@ -232,10 +241,10 @@ func (f *fakeStore) UpdateGoalTeamWeight(context.Context, int64, int64, int) err
 func (f *fakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
-func (f *fakeStore) AddGoalComment(context.Context, int64, string, int64) error { return nil }
+func (f *fakeStore) AddGoalComment(context.Context, int64, string, int64) error      { return nil }
 func (f *fakeStore) AddKeyResultComment(context.Context, int64, string, int64) error { return nil }
-func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error)      { return domain.Goal{}, nil }
-func (f *fakeStore) UpdateGoal(context.Context, goals.GoalUpdateInput) error  { return nil }
+func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
+func (f *fakeStore) UpdateGoal(context.Context, goals.GoalUpdateInput) error         { return nil }
 func (f *fakeStore) CreateKeyResult(context.Context, krs.KeyResultInput) (int64, error) {
 	return 0, nil
 }
@@ -250,17 +259,17 @@ func (f *fakeStore) MoveKeyResult(_ context.Context, krID int64, direction int) 
 }
 func (f *fakeStore) UpsertPercentMeta(context.Context, krs.PercentMetaInput) error { return nil }
 func (f *fakeStore) UpsertLinearMeta(context.Context, krs.LinearMetaInput) error   { return nil }
-func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error            { return nil }
+func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error          { return nil }
 func (f *fakeStore) ReplaceProjectStages(context.Context, int64, []krs.ProjectStageInput) error {
 	return nil
 }
 func (f *fakeStore) SetTeamPeriodStatus(context.Context, int64, int64, domain.TeamPeriodStatus) error {
 	return nil
 }
-func (f *fakeStore) CreateTeam(context.Context, storeteams.TeamInput) (int64, error)          { return 0, nil }
-func (f *fakeStore) UpdateTeam(context.Context, storeteams.TeamInput, int64) error            { return nil }
-func (f *fakeStore) CreatePeriod(context.Context, periods.PeriodInput) (int64, error)      { return 0, nil }
-func (f *fakeStore) UpdatePeriod(context.Context, int64, periods.PeriodInput) error        { return nil }
+func (f *fakeStore) CreateTeam(context.Context, storeteams.TeamInput) (int64, error)     { return 0, nil }
+func (f *fakeStore) UpdateTeam(context.Context, storeteams.TeamInput, int64) error       { return nil }
+func (f *fakeStore) CreatePeriod(context.Context, periods.PeriodInput) (int64, error)    { return 0, nil }
+func (f *fakeStore) UpdatePeriod(context.Context, int64, periods.PeriodInput) error      { return nil }
 func (f *fakeStore) DeletePeriod(context.Context, int64) error                           { return nil }
 func (f *fakeStore) MovePeriod(context.Context, int64, int) error                        { return nil }
 func (f *fakeStore) CreateGoal(context.Context, goals.GoalInput) (int64, error)          { return 0, nil }

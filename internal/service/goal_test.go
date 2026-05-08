@@ -36,12 +36,27 @@ type goalFakeStore struct {
 	replaceStageCalls  []replaceStagesArg
 }
 
-type setStatusArg    struct{ teamID, periodID int64; status domain.TeamPeriodStatus }
-type deleteShareArg  struct{ goalID, teamID int64 }
-type updateOwnerArg  struct{ goalID, teamID int64; weight int }
-type replaceSharesArg struct{ goalID int64; shares []shares.GoalShareInput }
-type upsertBoolArg   struct{ krID int64; done bool }
-type replaceStagesArg struct{ krID int64; stages []krs.ProjectStageInput }
+type setStatusArg struct {
+	teamID, periodID int64
+	status           domain.TeamPeriodStatus
+}
+type deleteShareArg struct{ goalID, teamID int64 }
+type updateOwnerArg struct {
+	goalID, teamID int64
+	weight         int
+}
+type replaceSharesArg struct {
+	goalID int64
+	shares []shares.GoalShareInput
+}
+type upsertBoolArg struct {
+	krID int64
+	done bool
+}
+type replaceStagesArg struct {
+	krID   int64
+	stages []krs.ProjectStageInput
+}
 
 func newGoalFakeStore() *goalFakeStore {
 	return &goalFakeStore{
@@ -113,6 +128,15 @@ func (f *goalFakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID 
 func (f *goalFakeStore) ListGoalShares(_ context.Context, goalID int64) ([]shares.GoalShare, error) {
 	return f.goalShares[goalID], nil
 }
+func (f *goalFakeStore) ListGoalSharesByGoalIDs(_ context.Context, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
+	result := make(map[int64][]shares.GoalShare, len(goalIDs))
+	for _, id := range goalIDs {
+		if sl := f.goalShares[id]; len(sl) > 0 {
+			result[id] = sl
+		}
+	}
+	return result, nil
+}
 func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID int64) ([]domain.Goal, error) {
 	if m := f.goalsAfterDelete[teamID]; m != nil {
 		return m[periodID], nil
@@ -130,7 +154,7 @@ func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ krs.KeyResultInput)
 
 // — no-op implementations for the remaining Store interface methods —
 
-func (f *goalFakeStore) ListTeams(context.Context) ([]domain.Team, error)       { return nil, nil }
+func (f *goalFakeStore) ListTeams(context.Context) ([]domain.Team, error)        { return nil, nil }
 func (f *goalFakeStore) ListDeletedTeams(context.Context) ([]domain.Team, error) { return nil, nil }
 func (f *goalFakeStore) ListAllTeams(context.Context) ([]domain.Team, error)     { return nil, nil }
 func (f *goalFakeStore) GetTeam(_ context.Context, _ int64) (domain.Team, error) {
@@ -139,8 +163,10 @@ func (f *goalFakeStore) GetTeam(_ context.Context, _ int64) (domain.Team, error)
 func (f *goalFakeStore) CreateTeam(_ context.Context, _ storeteams.TeamInput) (int64, error) {
 	return 0, nil
 }
-func (f *goalFakeStore) UpdateTeam(_ context.Context, _ storeteams.TeamInput, _ int64) error { return nil }
-func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error)           { return nil, nil }
+func (f *goalFakeStore) UpdateTeam(_ context.Context, _ storeteams.TeamInput, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error) { return nil, nil }
 func (f *goalFakeStore) GetPeriod(_ context.Context, _ int64) (domain.Period, error) {
 	return domain.Period{}, nil
 }
@@ -153,7 +179,7 @@ func (f *goalFakeStore) CreatePeriod(_ context.Context, _ periods.PeriodInput) (
 func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ int64, _ periods.PeriodInput) error {
 	return nil
 }
-func (f *goalFakeStore) DeletePeriod(_ context.Context, _ int64) error   { return nil }
+func (f *goalFakeStore) DeletePeriod(_ context.Context, _ int64) error      { return nil }
 func (f *goalFakeStore) MovePeriod(_ context.Context, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ int64, _ []int64) (map[int64][]domain.Goal, error) {
 	return nil, nil
@@ -162,7 +188,7 @@ func (f *goalFakeStore) UpdateGoal(_ context.Context, _ goals.GoalUpdateInput) e
 func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ goals.GoalFieldsUpdateInput) error {
 	return nil
 }
-func (f *goalFakeStore) MoveGoal(_ context.Context, _ int64, _ int) error   { return nil }
+func (f *goalFakeStore) MoveGoal(_ context.Context, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) AddGoalComment(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
@@ -183,18 +209,20 @@ func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ int64, _ []i
 func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ int64, _ []int64) (map[int64]time.Time, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ int64) (bool, error)            { return false, nil }
-func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _, _ int64) (bool, error) { return false, nil }
+func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ int64) (bool, error) { return false, nil }
+func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _, _ int64) (bool, error) {
+	return false, nil
+}
 func (f *goalFakeStore) ListTeamIDsWithGoalsInPeriod(_ context.Context, _ int64) (map[int64]struct{}, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ int64) error  { return nil }
-func (f *goalFakeStore) RestoreTeam(_ context.Context, _ int64) error     { return nil }
-func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ int64) error  { return nil }
+func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ int64) error { return nil }
+func (f *goalFakeStore) RestoreTeam(_ context.Context, _ int64) error    { return nil }
+func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ int64) error { return nil }
 func (f *goalFakeStore) UpdateKeyResult(_ context.Context, _ krs.KeyResultUpdateInput) error {
 	return nil
 }
-func (f *goalFakeStore) DeleteKeyResult(_ context.Context, _ int64) error  { return nil }
+func (f *goalFakeStore) DeleteKeyResult(_ context.Context, _ int64) error      { return nil }
 func (f *goalFakeStore) MoveKeyResult(_ context.Context, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) AddKeyResultComment(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
@@ -210,6 +238,9 @@ func (f *goalFakeStore) ListProjectStages(_ context.Context, _ int64) ([]domain.
 	return nil, nil
 }
 func (f *goalFakeStore) UpdateProjectStageDone(_ context.Context, _ int64, _ bool) error { return nil }
+func (f *goalFakeStore) BatchUpdateProjectStagesDone(_ context.Context, _ int64, _ map[int64]bool) error {
+	return nil
+}
 func (f *goalFakeStore) GetUsersByDisplayNames(_ context.Context, _ []string) ([]*domain.User, error) {
 	return nil, nil
 }

@@ -195,6 +195,30 @@ func (r *KRRepository) UpdateProjectStageDone(ctx context.Context, stageID int64
 	return err
 }
 
+// BatchUpdateProjectStagesDone updates is_done for multiple stages in two queries:
+// one batch UPDATE for stages, one touch on the parent key_result.
+func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, krID int64, updates map[int64]bool) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	stageIDs := make([]int64, 0, len(updates))
+	doneValues := make([]bool, 0, len(updates))
+	for id, done := range updates {
+		stageIDs = append(stageIDs, id)
+		doneValues = append(doneValues, done)
+	}
+	_, err := r.db.Exec(ctx, `
+		UPDATE kr_project_stages SET is_done = u.done
+		FROM (SELECT unnest($1::bigint[]) AS id, unnest($2::boolean[]) AS done) u
+		WHERE kr_project_stages.id = u.id`, stageIDs, doneValues)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.Exec(ctx, `
+		UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
+	return err
+}
+
 func (r *KRRepository) ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, key_result_id, title, weight, is_done, sort_order

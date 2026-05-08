@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
+	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"

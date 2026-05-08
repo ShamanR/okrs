@@ -8,7 +8,7 @@ import (
 
 func TestCalculateKRProgressPercent(t *testing.T) {
 	kr := domain.KeyResult{
-		Kind: domain.KRKindPercent,
+		Kind:    domain.KRKindPercent,
 		Percent: &domain.KRPercent{StartValue: 0, TargetValue: 100, CurrentValue: 60},
 	}
 	if got := CalculateKRProgress(kr); got != 60 {
