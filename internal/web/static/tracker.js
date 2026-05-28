@@ -574,6 +574,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
           <div className="kr-weight-chip">{kr.weight}</div>
           <div className="kr-info">
             <div className="kr-name">{kr.name}</div>
+            {kr.desc && <div className="kr-desc">{kr.desc}</div>}
             <div className="kr-detail-row">
               <div className="kr-bar-wrap"><ProgressBar value={progress} h={4} color={accent} /></div>
               <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
