@@ -130,7 +130,7 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
-func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
@@ -143,7 +143,7 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 	}
 	text := common.TrimmedFormValue(r, "text")
 	if text != "" {
-		if err := h.deps.Service.AddKeyResultComment(ctx, krID, text, auth.UserIDFromContext(ctx)); err != nil {
+		if err := h.deps.Service.UpsertKeyResultNote(ctx, krID, text, auth.UserIDFromContext(ctx)); err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}

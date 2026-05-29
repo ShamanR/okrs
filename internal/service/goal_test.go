@@ -224,7 +224,7 @@ func (f *goalFakeStore) UpdateKeyResult(_ context.Context, _ krs.KeyResultUpdate
 }
 func (f *goalFakeStore) DeleteKeyResult(_ context.Context, _ int64) error      { return nil }
 func (f *goalFakeStore) MoveKeyResult(_ context.Context, _ int64, _ int) error { return nil }
-func (f *goalFakeStore) AddKeyResultComment(_ context.Context, _ int64, _ string, _ int64) error {
+func (f *goalFakeStore) UpsertKeyResultNote(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
 func (f *goalFakeStore) FindGoalIDByKR(_ context.Context, _ int64) (int64, error)    { return 0, nil }

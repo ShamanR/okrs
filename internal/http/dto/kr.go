@@ -2,12 +2,11 @@ package dto
 
 import "time"
 
-type KRComment struct {
-	ID         int64     `json:"id"`
+type KRNote struct {
 	Text       string    `json:"text"`
 	AuthorName string    `json:"author_name"`
 	AuthorUDID string    `json:"author_udid"`
-	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 type PercentCheckpoint struct {
@@ -53,15 +52,15 @@ type Measure struct {
 }
 
 type KeyResult struct {
-	ID          int64       `json:"id"`
-	GoalID      int64       `json:"goal_id"`
-	Title       string      `json:"title"`
-	Description string      `json:"description"`
-	Weight      int         `json:"weight"`
-	Kind        string      `json:"kind"`
-	Progress    int         `json:"progress"`
-	Measure     Measure     `json:"measure"`
-	Comments    []KRComment `json:"comments"`
-	CreatedAt   time.Time   `json:"created_at"`
-	UpdatedAt   time.Time   `json:"updated_at"`
+	ID          int64     `json:"id"`
+	GoalID      int64     `json:"goal_id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Weight      int       `json:"weight"`
+	Kind        string    `json:"kind"`
+	Progress    int       `json:"progress"`
+	Measure     Measure   `json:"measure"`
+	Note        *KRNote   `json:"note"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }

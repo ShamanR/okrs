@@ -136,39 +136,61 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) (
 			}
 		}
 
-		comments, _ := r.LastKeyResultComments(ctx, kr.ID)
-		kr.Comments = comments
+	}
+
+	krIDs := make([]int64, len(krs))
+	for i, kr := range krs {
+		krIDs[i] = kr.ID
+	}
+	notes, err := r.BatchLoadNotes(ctx, krIDs)
+	if err != nil {
+		return nil, err
+	}
+	for i := range krs {
+		krs[i].Note = notes[krs[i].ID]
 	}
 
 	return krs, nil
 }
 
-func (r *KRRepository) AddKeyResultComment(ctx context.Context, krID int64, text string, authorUserID int64) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, author_user_id) VALUES ($1,$2,$3)`, krID, text, authorUserID)
+func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error {
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (key_result_id) DO UPDATE
+		SET text = EXCLUDED.text,
+		    author_user_id = EXCLUDED.author_user_id,
+		    updated_at = NOW()`,
+		krID, text, authorUserID,
+	)
 	return err
 }
 
-func (r *KRRepository) LastKeyResultComments(ctx context.Context, krID int64) ([]domain.KeyResultComment, error) {
-	const Limit = 3
+// BatchLoadNotes returns a map from krID to *domain.KeyResultNote.
+// KRs without a note are absent from the map (not nil-keyed).
+func (r *KRRepository) BatchLoadNotes(ctx context.Context, krIDs []int64) (map[int64]*domain.KeyResultNote, error) {
+	if len(krIDs) == 0 {
+		return map[int64]*domain.KeyResultNote{}, nil
+	}
 	rows, err := r.db.Query(ctx, `
-		SELECT krc.id, krc.key_result_id, krc.text, u.display_name, u.udid, krc.created_at
-		FROM key_result_comments krc
-		JOIN users u ON u.id = krc.author_user_id
-		WHERE krc.key_result_id = $1
-		ORDER BY krc.created_at DESC LIMIT $2`, krID, Limit)
+		SELECT krn.key_result_id, krn.text, u.display_name, u.udid, krn.updated_at
+		FROM key_result_notes krn
+		JOIN users u ON u.id = krn.author_user_id
+		WHERE krn.key_result_id = ANY($1)`, krIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var comments []domain.KeyResultComment
+	result := make(map[int64]*domain.KeyResultNote, len(krIDs))
 	for rows.Next() {
-		var c domain.KeyResultComment
-		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+		var n domain.KeyResultNote
+		if err := rows.Scan(&n.KeyResultID, &n.Text, &n.AuthorName, &n.AuthorUDID, &n.UpdatedAt); err != nil {
 			return nil, err
 		}
-		comments = append(comments, c)
+		note := n
+		result[n.KeyResultID] = &note
 	}
-	return comments, rows.Err()
+	return result, rows.Err()
 }
 
 func (r *KRRepository) AddProjectStage(ctx context.Context, input ProjectStageInput) error {

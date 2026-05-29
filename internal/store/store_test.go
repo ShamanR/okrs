@@ -396,7 +396,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("create key result: %v", err)
 	}
 
-	commentTime := time.Date(2026, 4, 6, 10, 0, 0, 0, time.UTC)
+	noteTime := time.Date(2026, 4, 6, 10, 0, 0, 0, time.UTC)
 	progressTime := time.Date(2026, 4, 7, 9, 0, 0, 0, time.UTC)
 	if _, err := pool.Exec(ctx, `UPDATE goals SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 1, 8, 0, 0, 0, time.UTC), goalID); err != nil {
 		t.Fatalf("set goal updated_at: %v", err)
@@ -404,8 +404,8 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), time.Date(2026, 4, 5, 9, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set key result updated_at: %v", err)
 	}
-	if _, err := pool.Exec(ctx, `INSERT INTO key_result_comments (key_result_id, text, author_user_id, created_at) VALUES ($1, 'latest comment', 1, $2)`, krID, commentTime); err != nil {
-		t.Fatalf("insert key result comment: %v", err)
+	if _, err := pool.Exec(ctx, `INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at) VALUES ($1, 'latest note', 1, $2)`, krID, noteTime); err != nil {
+		t.Fatalf("insert key result note: %v", err)
 	}
 
 	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, ownerID, periodID)
@@ -415,8 +415,8 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if len(goalsList) != 1 {
 		t.Fatalf("expected one goal, got %d", len(goalsList))
 	}
-	if !goalsList[0].UpdatedAt.Equal(commentTime) {
-		t.Fatalf("expected goal updated_at from latest KR comment %s, got %s", commentTime, goalsList[0].UpdatedAt)
+	if !goalsList[0].UpdatedAt.Equal(noteTime) {
+		t.Fatalf("expected goal updated_at from latest KR note %s, got %s", noteTime, goalsList[0].UpdatedAt)
 	}
 
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
@@ -426,8 +426,8 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list team last update after metadata edit: %v", err)
 	}
-	if !updatesAfterMetadataEdit[ownerID].Equal(commentTime) {
-		t.Fatalf("expected owner update to ignore metadata edit and remain %s, got %s", commentTime, updatesAfterMetadataEdit[ownerID])
+	if !updatesAfterMetadataEdit[ownerID].Equal(noteTime) {
+		t.Fatalf("expected owner update to ignore metadata edit and remain %s, got %s", noteTime, updatesAfterMetadataEdit[ownerID])
 	}
 
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {

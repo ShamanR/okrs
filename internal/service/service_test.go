@@ -242,7 +242,7 @@ func (f *fakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult,
 	return f.keyResults[id], nil
 }
 func (f *fakeStore) AddGoalComment(context.Context, int64, string, int64) error      { return nil }
-func (f *fakeStore) AddKeyResultComment(context.Context, int64, string, int64) error { return nil }
+func (f *fakeStore) UpsertKeyResultNote(context.Context, int64, string, int64) error { return nil }
 func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
 func (f *fakeStore) UpdateGoal(context.Context, goals.GoalUpdateInput) error         { return nil }
 func (f *fakeStore) CreateKeyResult(context.Context, krs.KeyResultInput) (int64, error) {

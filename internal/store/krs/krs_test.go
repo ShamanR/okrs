@@ -1,0 +1,121 @@
+package krs_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"okrs/internal/http/handlers/api/v1/testutil"
+	"okrs/internal/store/krs"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/testcontainers/testcontainers-go"
+	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
+)
+
+func setupKRTestDB(t *testing.T) (*pgxpool.Pool, *krs.KRRepository, func()) {
+	t.Helper()
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).
+				WithStartupTimeout(10*time.Second),
+		),
+	)
+	testutil.RequireDockerOrSkip(t, err)
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := testutil.RunMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	repo := krs.NewKRRepository(pool)
+	return pool, repo, func() {
+		pool.Close()
+		_ = container.Terminate(ctx)
+	}
+}
+
+func TestUpsertKeyResultNote(t *testing.T) {
+	ctx := context.Background()
+	pool, repo, cleanup := setupKRTestDB(t)
+	defer cleanup()
+
+	var teamID int64
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
+	var periodID int64
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q1', '2024-01-01', '2024-03-31', 1) RETURNING id`).Scan(&periodID)
+	var goalID int64
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	var userID int64
+	pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name) VALUES ('system:test','system','test','Test User') RETURNING id`).Scan(&userID)
+	var krID int64
+	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'KR1',100,'PERCENT',1) RETURNING id`, goalID).Scan(&krID)
+
+	// First upsert — creates
+	if err := repo.UpsertKeyResultNote(ctx, krID, "first note", userID); err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+
+	notes, err := repo.BatchLoadNotes(ctx, []int64{krID})
+	if err != nil {
+		t.Fatalf("batch load: %v", err)
+	}
+	note, ok := notes[krID]
+	if !ok {
+		t.Fatal("note not found after first upsert")
+	}
+	if note.Text != "first note" {
+		t.Fatalf("expected 'first note', got %q", note.Text)
+	}
+	if note.AuthorName != "Test User" {
+		t.Fatalf("expected 'Test User', got %q", note.AuthorName)
+	}
+
+	// Second upsert — updates
+	if err := repo.UpsertKeyResultNote(ctx, krID, "updated note", userID); err != nil {
+		t.Fatalf("second upsert: %v", err)
+	}
+	notes2, _ := repo.BatchLoadNotes(ctx, []int64{krID})
+	if notes2[krID].Text != "updated note" {
+		t.Fatalf("expected 'updated note', got %q", notes2[krID].Text)
+	}
+}
+
+func TestBatchLoadNotes_AbsentKR(t *testing.T) {
+	ctx := context.Background()
+	_, repo, cleanup := setupKRTestDB(t)
+	defer cleanup()
+
+	notes, err := repo.BatchLoadNotes(ctx, []int64{99999})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := notes[99999]; ok {
+		t.Fatal("expected no entry for KR without note")
+	}
+}
+
+func TestBatchLoadNotes_Empty(t *testing.T) {
+	ctx := context.Background()
+	_, repo, cleanup := setupKRTestDB(t)
+	defer cleanup()
+
+	notes, err := repo.BatchLoadNotes(ctx, []int64{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(notes) != 0 {
+		t.Fatalf("expected empty map, got %d entries", len(notes))
+	}
+}
