@@ -9,13 +9,26 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/store"
+	"okrs/internal/store/grants"
+	"okrs/internal/store/users"
 )
+
+// authStorage is the persistence contract Manager needs.
+// *store.Store satisfies it via its forwarding methods.
+type authStorage interface {
+	UpsertUser(ctx context.Context, in users.UpsertUserInput) (*domain.User, error)
+	GetUser(ctx context.Context, id int64) (*domain.User, error)
+	CreateSession(ctx context.Context, sessionID string, userID int64, provider string, ttl time.Duration, userAgent, ip string) (*domain.AuthSession, error)
+	GetSession(ctx context.Context, sessionID string) (*domain.AuthSession, error)
+	TouchSession(ctx context.Context, sessionID string) error
+	DeleteSession(ctx context.Context, sessionID string) error
+	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
+}
 
 // userGranter is the minimal interface Manager needs for the new-user grant policy.
 // Both *store.Store and *store.GrantsCache satisfy it.
 type userGranter interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]store.HierarchyGrant, error)
+	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
 	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
 }
 
@@ -23,11 +36,11 @@ type userGranter interface {
 type Manager struct {
 	cfg       Config
 	providers map[string]Provider
-	store     *store.Store
+	store     authStorage
 	grants    userGranter
 }
 
-func NewManager(cfg Config, st *store.Store, grants userGranter) (*Manager, error) {
+func NewManager(cfg Config, st authStorage, grants userGranter) (*Manager, error) {
 	providers, err := buildProviders(cfg)
 	if err != nil {
 		return nil, err
@@ -60,7 +73,7 @@ func (m *Manager) Config() Config {
 
 // Login upserts the user from an identity, creates a session, and returns both.
 func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip string) (*domain.User, *domain.AuthSession, error) {
-	user, err := m.store.UpsertUser(ctx, store.UpsertUserInput{
+	user, err := m.store.UpsertUser(ctx, users.UpsertUserInput{
 		ProviderSubjectKey: ProviderSubjectKey(identity.Provider, identity.Subject),
 		Provider:           identity.Provider,
 		Subject:            identity.Subject,

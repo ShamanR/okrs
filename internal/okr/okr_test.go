@@ -79,9 +79,9 @@ func TestBooleanProgress(t *testing.T) {
 
 func TestLinearProgress(t *testing.T) {
 	cases := []struct {
-		name           string
+		name                   string
 		start, target, current float64
-		expect         int
+		expect                 int
 	}{
 		{"midpoint", 0, 100, 50, 50},
 		{"at start", 0, 100, 0, 0},

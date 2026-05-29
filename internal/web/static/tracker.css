@@ -238,10 +238,11 @@
 
 /* ── KR ROW ──────────────────────────────────────────────────────────────────── */
 .kr-row { padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
-.kr-row__main { display: flex; align-items: center; gap: 10px; }
+.kr-row__main { display: flex; align-items: flex-start; gap: 10px; }
 .kr-weight-chip { width: 26px; height: 26px; border-radius: 6px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #6b7280; flex-shrink: 0; }
 .kr-info { flex: 1; min-width: 0; }
 .kr-name { font-size: 13px; font-weight: 500; color: #111827; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kr-desc { font-size: 11px; color: #6b7280; white-space: pre-wrap; word-break: break-word; margin-top: 2px; line-height: 1.4; }
 .kr-detail-row { display: flex; align-items: center; gap: 10px; }
 .kr-bar-wrap { flex: 1; max-width: 160px; }
 .kr-pct { font-size: 11px; font-weight: 700; flex-shrink: 0; }

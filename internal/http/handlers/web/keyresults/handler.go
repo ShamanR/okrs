@@ -9,7 +9,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/krs"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -80,7 +80,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		meta.ProjectStages = stages
 	}
 
-	if err := h.deps.Service.UpdateKeyResultWithMeta(ctx, store.KeyResultUpdateInput{
+	if err := h.deps.Service.UpdateKeyResultWithMeta(ctx, krs.KeyResultUpdateInput{
 		ID:          krID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -179,8 +179,8 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
-func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
-	stages := make([]store.ProjectStageInput, 0, 4)
+func parseProjectStages(r *http.Request) ([]krs.ProjectStageInput, error) {
+	stages := make([]krs.ProjectStageInput, 0, 4)
 	titles := r.Form["step_title[]"]
 	weights := r.Form["step_weight[]"]
 	dones := r.Form["step_done[]"]
@@ -203,7 +203,7 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 		if i < len(dones) {
 			isDone = dones[i] == "true"
 		}
-		stages = append(stages, store.ProjectStageInput{
+		stages = append(stages, krs.ProjectStageInput{
 			Title:     trimmed,
 			Weight:    weight,
 			IsDone:    isDone,
@@ -222,7 +222,7 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 			if weight <= 0 || weight > 100 {
 				return nil, fmt.Errorf("Вес шага должен быть 1..100")
 			}
-			stages = append(stages, store.ProjectStageInput{
+			stages = append(stages, krs.ProjectStageInput{
 				Title:     title,
 				Weight:    weight,
 				IsDone:    r.FormValue(fmt.Sprintf("step_done_%d", i)) == "true",

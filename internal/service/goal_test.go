@@ -6,14 +6,18 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/krs"
+	"okrs/internal/store/periods"
+	"okrs/internal/store/shares"
+	storeteams "okrs/internal/store/teams"
 )
 
 // ── goalFakeStore ─────────────────────────────────────────────────────────────
 
 type goalFakeStore struct {
 	goals      map[int64]domain.Goal
-	goalShares map[int64][]store.GoalShare
+	goalShares map[int64][]shares.GoalShare
 	statuses   map[[2]int64]domain.TeamPeriodStatus
 	// goals remaining after a delete (used to drive resetStatusIfNoGoals)
 	goalsAfterDelete map[int64]map[int64][]domain.Goal
@@ -26,23 +30,38 @@ type goalFakeStore struct {
 	deleteShareCalls   []deleteShareArg
 	updateOwnerCalls   []updateOwnerArg
 	replaceSharesCalls []replaceSharesArg
-	upsertPercentCalls []store.PercentMetaInput
-	upsertLinearCalls  []store.LinearMetaInput
+	upsertPercentCalls []krs.PercentMetaInput
+	upsertLinearCalls  []krs.LinearMetaInput
 	upsertBoolCalls    []upsertBoolArg
 	replaceStageCalls  []replaceStagesArg
 }
 
-type setStatusArg    struct{ teamID, periodID int64; status domain.TeamPeriodStatus }
-type deleteShareArg  struct{ goalID, teamID int64 }
-type updateOwnerArg  struct{ goalID, teamID int64; weight int }
-type replaceSharesArg struct{ goalID int64; shares []store.GoalShareInput }
-type upsertBoolArg   struct{ krID int64; done bool }
-type replaceStagesArg struct{ krID int64; stages []store.ProjectStageInput }
+type setStatusArg struct {
+	teamID, periodID int64
+	status           domain.TeamPeriodStatus
+}
+type deleteShareArg struct{ goalID, teamID int64 }
+type updateOwnerArg struct {
+	goalID, teamID int64
+	weight         int
+}
+type replaceSharesArg struct {
+	goalID int64
+	shares []shares.GoalShareInput
+}
+type upsertBoolArg struct {
+	krID int64
+	done bool
+}
+type replaceStagesArg struct {
+	krID   int64
+	stages []krs.ProjectStageInput
+}
 
 func newGoalFakeStore() *goalFakeStore {
 	return &goalFakeStore{
 		goals:            make(map[int64]domain.Goal),
-		goalShares:       make(map[int64][]store.GoalShare),
+		goalShares:       make(map[int64][]shares.GoalShare),
 		statuses:         make(map[[2]int64]domain.TeamPeriodStatus),
 		goalsAfterDelete: make(map[int64]map[int64][]domain.Goal),
 		keyResults:       make(map[int64]domain.KeyResult),
@@ -50,12 +69,16 @@ func newGoalFakeStore() *goalFakeStore {
 	}
 }
 
+func newGoalTestService(gf *goalFakeStore) *Service {
+	return New(Deps{Teams: gf, Goals: gf, Shares: gf, Periods: gf, KRs: gf, Statuses: gf, Users: gf})
+}
+
 // — Store interface implementation (tracking methods first) —
 
 func (f *goalFakeStore) GetGoal(_ context.Context, id int64) (domain.Goal, error) {
 	return f.goals[id], nil
 }
-func (f *goalFakeStore) CreateGoal(_ context.Context, input store.GoalInput) (int64, error) {
+func (f *goalFakeStore) CreateGoal(_ context.Context, input goals.GoalInput) (int64, error) {
 	id := f.nextGoalID
 	f.nextGoalID++
 	return id, nil
@@ -76,15 +99,15 @@ func (f *goalFakeStore) SetTeamPeriodStatus(_ context.Context, teamID, periodID 
 	f.setStatusCalls = append(f.setStatusCalls, setStatusArg{teamID, periodID, status})
 	return nil
 }
-func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, goalID int64, shares []store.GoalShareInput) error {
+func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, goalID int64, shares []shares.GoalShareInput) error {
 	f.replaceSharesCalls = append(f.replaceSharesCalls, replaceSharesArg{goalID, shares})
 	return nil
 }
-func (f *goalFakeStore) UpsertPercentMeta(_ context.Context, input store.PercentMetaInput) error {
+func (f *goalFakeStore) UpsertPercentMeta(_ context.Context, input krs.PercentMetaInput) error {
 	f.upsertPercentCalls = append(f.upsertPercentCalls, input)
 	return nil
 }
-func (f *goalFakeStore) UpsertLinearMeta(_ context.Context, input store.LinearMetaInput) error {
+func (f *goalFakeStore) UpsertLinearMeta(_ context.Context, input krs.LinearMetaInput) error {
 	f.upsertLinearCalls = append(f.upsertLinearCalls, input)
 	return nil
 }
@@ -92,7 +115,7 @@ func (f *goalFakeStore) UpsertBooleanMeta(_ context.Context, krID int64, done bo
 	f.upsertBoolCalls = append(f.upsertBoolCalls, upsertBoolArg{krID, done})
 	return nil
 }
-func (f *goalFakeStore) ReplaceProjectStages(_ context.Context, krID int64, stages []store.ProjectStageInput) error {
+func (f *goalFakeStore) ReplaceProjectStages(_ context.Context, krID int64, stages []krs.ProjectStageInput) error {
 	f.replaceStageCalls = append(f.replaceStageCalls, replaceStagesArg{krID, stages})
 	return nil
 }
@@ -102,8 +125,17 @@ func (f *goalFakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID 
 	}
 	return domain.TeamPeriodStatusNoGoals, nil
 }
-func (f *goalFakeStore) ListGoalShares(_ context.Context, goalID int64) ([]store.GoalShare, error) {
+func (f *goalFakeStore) ListGoalShares(_ context.Context, goalID int64) ([]shares.GoalShare, error) {
 	return f.goalShares[goalID], nil
+}
+func (f *goalFakeStore) ListGoalSharesByGoalIDs(_ context.Context, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
+	result := make(map[int64][]shares.GoalShare, len(goalIDs))
+	for _, id := range goalIDs {
+		if sl := f.goalShares[id]; len(sl) > 0 {
+			result[id] = sl
+		}
+	}
+	return result, nil
 }
 func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID int64) ([]domain.Goal, error) {
 	if m := f.goalsAfterDelete[teamID]; m != nil {
@@ -114,7 +146,7 @@ func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodI
 func (f *goalFakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
-func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ store.KeyResultInput) (int64, error) {
+func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ krs.KeyResultInput) (int64, error) {
 	id := f.nextGoalID
 	f.nextGoalID++
 	return id, nil
@@ -122,47 +154,49 @@ func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ store.KeyResultInpu
 
 // — no-op implementations for the remaining Store interface methods —
 
-func (f *goalFakeStore) ListTeams(context.Context) ([]domain.Team, error)       { return nil, nil }
+func (f *goalFakeStore) ListTeams(context.Context) ([]domain.Team, error)        { return nil, nil }
 func (f *goalFakeStore) ListDeletedTeams(context.Context) ([]domain.Team, error) { return nil, nil }
 func (f *goalFakeStore) ListAllTeams(context.Context) ([]domain.Team, error)     { return nil, nil }
 func (f *goalFakeStore) GetTeam(_ context.Context, _ int64) (domain.Team, error) {
 	return domain.Team{}, nil
 }
-func (f *goalFakeStore) CreateTeam(_ context.Context, _ store.TeamInput) (int64, error) {
+func (f *goalFakeStore) CreateTeam(_ context.Context, _ storeteams.TeamInput) (int64, error) {
 	return 0, nil
 }
-func (f *goalFakeStore) UpdateTeam(_ context.Context, _ store.TeamInput, _ int64) error { return nil }
-func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error)           { return nil, nil }
+func (f *goalFakeStore) UpdateTeam(_ context.Context, _ storeteams.TeamInput, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error) { return nil, nil }
 func (f *goalFakeStore) GetPeriod(_ context.Context, _ int64) (domain.Period, error) {
 	return domain.Period{}, nil
 }
 func (f *goalFakeStore) FindPeriodForDate(_ context.Context, _ time.Time) (domain.Period, error) {
 	return domain.Period{}, nil
 }
-func (f *goalFakeStore) CreatePeriod(_ context.Context, _ store.PeriodInput) (int64, error) {
+func (f *goalFakeStore) CreatePeriod(_ context.Context, _ periods.PeriodInput) (int64, error) {
 	return 0, nil
 }
-func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ int64, _ store.PeriodInput) error {
+func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ int64, _ periods.PeriodInput) error {
 	return nil
 }
-func (f *goalFakeStore) DeletePeriod(_ context.Context, _ int64) error   { return nil }
+func (f *goalFakeStore) DeletePeriod(_ context.Context, _ int64) error      { return nil }
 func (f *goalFakeStore) MovePeriod(_ context.Context, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ int64, _ []int64) (map[int64][]domain.Goal, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) UpdateGoal(_ context.Context, _ store.GoalUpdateInput) error { return nil }
-func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ store.GoalFieldsUpdateInput) error {
+func (f *goalFakeStore) UpdateGoal(_ context.Context, _ goals.GoalUpdateInput) error { return nil }
+func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ goals.GoalFieldsUpdateInput) error {
 	return nil
 }
-func (f *goalFakeStore) MoveGoal(_ context.Context, _ int64, _ int) error   { return nil }
+func (f *goalFakeStore) MoveGoal(_ context.Context, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) AddGoalComment(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
 func (f *goalFakeStore) ListGoalComments(_ context.Context, _ int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) GetGoalShare(_ context.Context, _, _ int64) (store.GoalShare, error) {
-	return store.GoalShare{}, nil
+func (f *goalFakeStore) GetGoalShare(_ context.Context, _, _ int64) (shares.GoalShare, error) {
+	return shares.GoalShare{}, nil
 }
 func (f *goalFakeStore) UpdateGoalTeamWeight(_ context.Context, _, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) GetTeamPeriodStatusWithTime(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
@@ -175,18 +209,20 @@ func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ int64, _ []i
 func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ int64, _ []int64) (map[int64]time.Time, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ int64) (bool, error)            { return false, nil }
-func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _, _ int64) (bool, error) { return false, nil }
+func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ int64) (bool, error) { return false, nil }
+func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _, _ int64) (bool, error) {
+	return false, nil
+}
 func (f *goalFakeStore) ListTeamIDsWithGoalsInPeriod(_ context.Context, _ int64) (map[int64]struct{}, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ int64) error  { return nil }
-func (f *goalFakeStore) RestoreTeam(_ context.Context, _ int64) error     { return nil }
-func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ int64) error  { return nil }
-func (f *goalFakeStore) UpdateKeyResult(_ context.Context, _ store.KeyResultUpdateInput) error {
+func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ int64) error { return nil }
+func (f *goalFakeStore) RestoreTeam(_ context.Context, _ int64) error    { return nil }
+func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ int64) error { return nil }
+func (f *goalFakeStore) UpdateKeyResult(_ context.Context, _ krs.KeyResultUpdateInput) error {
 	return nil
 }
-func (f *goalFakeStore) DeleteKeyResult(_ context.Context, _ int64) error  { return nil }
+func (f *goalFakeStore) DeleteKeyResult(_ context.Context, _ int64) error      { return nil }
 func (f *goalFakeStore) MoveKeyResult(_ context.Context, _ int64, _ int) error { return nil }
 func (f *goalFakeStore) AddKeyResultComment(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
@@ -202,6 +238,9 @@ func (f *goalFakeStore) ListProjectStages(_ context.Context, _ int64) ([]domain.
 	return nil, nil
 }
 func (f *goalFakeStore) UpdateProjectStageDone(_ context.Context, _ int64, _ bool) error { return nil }
+func (f *goalFakeStore) BatchUpdateProjectStagesDone(_ context.Context, _ int64, _ map[int64]bool) error {
+	return nil
+}
 func (f *goalFakeStore) GetUsersByDisplayNames(_ context.Context, _ []string) ([]*domain.User, error) {
 	return nil, nil
 }
@@ -223,9 +262,9 @@ func (f *goalFakeStore) ListUserLeadTeams(_ context.Context) (map[string]string,
 func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 	st := newGoalFakeStore()
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 1, PeriodID: 10})
+	_, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 1, PeriodID: 10})
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed, got %v", err)
 	}
@@ -234,9 +273,9 @@ func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 	st := newGoalFakeStore()
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 1, PeriodID: 10})
+	_, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 1, PeriodID: 10})
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed for in_progress, got %v", err)
 	}
@@ -245,9 +284,9 @@ func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 	st := newGoalFakeStore()
 	// no entry in statuses → defaults to NoGoals
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
-	goalID, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 2, PeriodID: 5})
+	goalID, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 2, PeriodID: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -266,9 +305,9 @@ func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 	st := newGoalFakeStore()
 	st.statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), store.GoalInput{TeamID: 2, PeriodID: 5})
+	_, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 2, PeriodID: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -282,7 +321,7 @@ func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 func TestDeleteGoalBySharedTeamRemovesShareOnly(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[7] = domain.Goal{ID: 7, TeamID: 1, PeriodID: 5}
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), 7, 2)
 	if err != nil {
@@ -302,8 +341,8 @@ func TestDeleteGoalBySharedTeamRemovesShareOnly(t *testing.T) {
 func TestDeleteGoalByOwnerTransfersOwnershipWhenShared(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[8] = domain.Goal{ID: 8, TeamID: 1, PeriodID: 5, Weight: 50}
-	st.goalShares[8] = []store.GoalShare{{GoalID: 8, TeamID: 3, Weight: 30}}
-	svc := New(st, nil)
+	st.goalShares[8] = []shares.GoalShare{{GoalID: 8, TeamID: 3, Weight: 30}}
+	svc := newGoalTestService(st)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 8, 1)
 	if err != nil {
@@ -327,7 +366,7 @@ func TestDeleteGoalByOwnerDeletesGoalWhenNoSharesAndPeriodOpen(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[9] = domain.Goal{ID: 9, TeamID: 1, PeriodID: 5}
 	// statuses defaults to NoGoals → open period
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 9, 1)
 	if err != nil {
@@ -342,7 +381,7 @@ func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 5}
 	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 10, 1)
 	if err != ErrPeriodClosed {
@@ -358,7 +397,7 @@ func TestDeleteGoalResetsStatusWhenLastGoalRemoved(t *testing.T) {
 	st.goals[11] = domain.Goal{ID: 11, TeamID: 1, PeriodID: 5}
 	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusForming
 	// goalsAfterDelete is empty → no goals remain after deletion
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, _, err := svc.DeleteGoal(context.Background(), 11, 1)
 	if err != nil {
@@ -383,7 +422,7 @@ func TestUpdateGoalOwnerAndSharesBlockedByInProgressPeriod(t *testing.T) {
 	st.goals[20] = domain.Goal{ID: 20, TeamID: 1, PeriodID: 10, Weight: 40}
 	// team 2 is in_progress
 	st.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), 20, []int64{2})
 	if err != ErrCannotShareWithClosedPeriod {
@@ -395,7 +434,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 	st := newGoalFakeStore()
 	st.goals[21] = domain.Goal{ID: 21, TeamID: 1, PeriodID: 10, Weight: 40}
 	// team 3 has open period (defaults to NoGoals)
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), 21, []int64{3})
 	if err != nil {
@@ -417,7 +456,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 func TestUpdateKRProgressPercentRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressPercent(context.Background(), 1, 50); err == nil {
 		t.Fatal("expected error for boolean KR with percent update")
@@ -427,7 +466,7 @@ func TestUpdateKRProgressPercentRejectsUnsupportedKind(t *testing.T) {
 func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindPercent}
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressBoolean(context.Background(), 2, true); err == nil {
 		t.Fatal("expected error for percent KR with boolean update")
@@ -437,7 +476,7 @@ func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindPercent}
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressProject(context.Background(), 3, nil); err == nil {
 		t.Fatal("expected error for percent KR with project update")
@@ -448,10 +487,10 @@ func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesPercentMeta(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
-		store.KeyResultInput{Kind: domain.KRKindPercent},
+		krs.KeyResultInput{Kind: domain.KRKindPercent},
 		KeyResultMetaInput{PercentStart: 0, PercentTarget: 100, PercentCurrent: 30},
 	)
 	if err != nil {
@@ -468,10 +507,10 @@ func TestCreateKeyResultWithMetaAppliesPercentMeta(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesLinearMeta(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
-		store.KeyResultInput{Kind: domain.KRKindLinear},
+		krs.KeyResultInput{Kind: domain.KRKindLinear},
 		KeyResultMetaInput{LinearStart: 10, LinearTarget: 200, LinearCurrent: 50},
 	)
 	if err != nil {
@@ -488,10 +527,10 @@ func TestCreateKeyResultWithMetaAppliesLinearMeta(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesBooleanMeta(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
-		store.KeyResultInput{Kind: domain.KRKindBoolean},
+		krs.KeyResultInput{Kind: domain.KRKindBoolean},
 		KeyResultMetaInput{BooleanDone: true},
 	)
 	if err != nil {
@@ -504,11 +543,11 @@ func TestCreateKeyResultWithMetaAppliesBooleanMeta(t *testing.T) {
 
 func TestCreateKeyResultWithMetaAppliesProjectStages(t *testing.T) {
 	st := newGoalFakeStore()
-	svc := New(st, nil)
+	svc := newGoalTestService(st)
 
-	stages := []store.ProjectStageInput{{Title: "Step 1", Weight: 60}, {Title: "Step 2", Weight: 40}}
+	stages := []krs.ProjectStageInput{{Title: "Step 1", Weight: 60}, {Title: "Step 2", Weight: 40}}
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
-		store.KeyResultInput{Kind: domain.KRKindProject},
+		krs.KeyResultInput{Kind: domain.KRKindProject},
 		KeyResultMetaInput{ProjectStages: stages},
 	)
 	if err != nil {

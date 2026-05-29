@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
+	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
@@ -23,6 +23,7 @@ import (
 	"okrs/internal/http/middleware"
 	"okrs/internal/service"
 	"okrs/internal/store"
+	"okrs/internal/store/grants"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -38,10 +39,10 @@ type Server struct {
 	service     *service.Service
 	auth        *auth.Manager
 	policy      *auth.PolicyEvaluator
-	grantsCache *store.GrantsCache
+	grantsCache *grants.GrantsCache
 }
 
-func NewServer(st *store.Store, grants *store.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
+func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
 	tmpl, err := template.New("").Funcs(template.FuncMap{
 		"sumKRWeights": func(keyResults []domain.KeyResult) int {
 			total := 0
@@ -78,10 +79,10 @@ func NewServer(st *store.Store, grants *store.GrantsCache, logger *slog.Logger, 
 		logger:      logger,
 		tmpl:        tmpl,
 		zone:        zone,
-		service:     service.New(st, grants),
+		service:     service.NewFromStore(st, grantsCache),
 		auth:        authMgr,
-		policy:      auth.NewPolicyEvaluator(grants, logger),
-		grantsCache: grants,
+		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
+		grantsCache: grantsCache,
 	}, nil
 }
 
@@ -156,7 +157,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store, s.auth, s.grantsCache)
+	adminAPI := apiadmin.New(s.store.Users, s.store.Settings, s.auth, s.grantsCache)
 	serviceH := apiadmin.NewServiceHandler(s.service)
 
 	r.Group(func(r chi.Router) {

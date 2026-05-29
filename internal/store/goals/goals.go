@@ -1,4 +1,4 @@
-package store
+package goals
 
 import (
 	"context"
@@ -6,9 +6,60 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/store/krs"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// GoalRepository handles all goal persistence (goals, comments).
+// It depends on KRRepository to load key results as part of the goal aggregate.
+type GoalRepository struct {
+	db  *pgxpool.Pool
+	krs *krs.KRRepository
+}
+
+func NewGoalRepository(db *pgxpool.Pool, krsRepo *krs.KRRepository) *GoalRepository {
+	return &GoalRepository{db: db, krs: krsRepo}
+}
+
+// DB returns the underlying connection pool (used by seed helpers).
+func (r *GoalRepository) DB() *pgxpool.Pool {
+	return r.db
+}
+
+type GoalInput struct {
+	TeamID      int64
+	PeriodID    int64
+	Title       string
+	Description string
+	Priority    domain.Priority
+	Weight      int
+	WorkType    domain.WorkType
+	FocusType   domain.FocusType
+	OwnerText   string
+}
+
+type GoalUpdateInput struct {
+	ID          int64
+	Title       string
+	Description string
+	Priority    domain.Priority
+	Weight      int
+	WorkType    domain.WorkType
+	FocusType   domain.FocusType
+	OwnerText   string
+}
+
+type GoalFieldsUpdateInput struct {
+	ID          int64
+	Title       string
+	Description string
+	Priority    domain.Priority
+	WorkType    domain.WorkType
+	FocusType   domain.FocusType
+	OwnerText   string
+}
 
 type TeamOverviewStats struct {
 	TeamID     int64
@@ -21,7 +72,7 @@ type TeamOverviewStats struct {
 	Delivery   int
 }
 
-func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
+func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
 	result := make(map[int64][]domain.Goal, len(teamIDs))
 	if len(teamIDs) == 0 {
 		return result, nil
@@ -29,7 +80,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	teamGoalOrder := make(map[int64][]int64, len(teamIDs))
 	teamGoals := make(map[int64]map[int64]*domain.Goal, len(teamIDs))
 
-	goalRows, err := s.DB.Query(ctx, `
+	goalRows, err := r.db.Query(ctx, `
 		SELECT g.id, t.team_id, g.period_id, g.title, g.description, g.priority,
 		       COALESCE(gs.weight, g.weight) AS weight,
 		       g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at
@@ -88,7 +139,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 	if err := goalRows.Err(); err != nil {
 		return nil, err
 	}
-	goalLastKRActivity, err := s.listGoalLastKRActivity(ctx, goalIDs)
+	goalLastKRActivity, err := r.listGoalLastKRActivity(ctx, goalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +154,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
 
-	krRows, err := s.DB.Query(ctx, `
+	krRows, err := r.db.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
 		FROM key_results
 		WHERE goal_id = ANY($1)
@@ -151,7 +202,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return resultFromGoalPointers(teamGoals, teamGoalOrder), nil
 	}
 
-	projectRows, err := s.DB.Query(ctx, `
+	projectRows, err := r.db.Query(ctx, `
 		SELECT id, key_result_id, title, weight, is_done, sort_order
 		FROM kr_project_stages
 		WHERE key_result_id = ANY($1)
@@ -165,8 +216,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := projectRows.Scan(&stage.ID, &stage.KeyResultID, &stage.Title, &stage.Weight, &stage.IsDone, &stage.SortOrder); err != nil {
 			return nil, err
 		}
-		if krs, ok := krByID[stage.KeyResultID]; ok {
-			for _, kr := range krs {
+		if krsSlice, ok := krByID[stage.KeyResultID]; ok {
+			for _, kr := range krsSlice {
 				if kr.Project == nil {
 					kr.Project = &domain.KRProject{}
 				}
@@ -178,7 +229,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
-	percentRows, err := s.DB.Query(ctx, `
+	percentRows, err := r.db.Query(ctx, `
 		SELECT key_result_id, start_value, target_value, current_value
 		FROM kr_percent_meta
 		WHERE key_result_id = ANY($1)`, krIDs)
@@ -192,8 +243,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := percentRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
 			return nil, err
 		}
-		if krs, ok := krByID[keyResultID]; ok {
-			for _, kr := range krs {
+		if krsSlice, ok := krByID[keyResultID]; ok {
+			for _, kr := range krsSlice {
 				value := meta
 				kr.Percent = &value
 			}
@@ -203,7 +254,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
-	checkpointRows, err := s.DB.Query(ctx, `
+	checkpointRows, err := r.db.Query(ctx, `
 		SELECT id, key_result_id, metric_value, kr_percent
 		FROM kr_percent_checkpoints
 		WHERE key_result_id = ANY($1)
@@ -217,8 +268,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := checkpointRows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
 			return nil, err
 		}
-		if krs, ok := krByID[cp.KeyResultID]; ok {
-			for _, kr := range krs {
+		if krsSlice, ok := krByID[cp.KeyResultID]; ok {
+			for _, kr := range krsSlice {
 				if kr.Percent == nil {
 					kr.Percent = &domain.KRPercent{}
 				}
@@ -230,7 +281,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
-	linearRows, err := s.DB.Query(ctx, `
+	linearRows, err := r.db.Query(ctx, `
 		SELECT key_result_id, start_value, target_value, current_value
 		FROM kr_linear_meta
 		WHERE key_result_id = ANY($1)`, krIDs)
@@ -244,8 +295,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := linearRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
 			return nil, err
 		}
-		if krs, ok := krByID[keyResultID]; ok {
-			for _, kr := range krs {
+		if krsSlice, ok := krByID[keyResultID]; ok {
+			for _, kr := range krsSlice {
 				value := meta
 				kr.Linear = &value
 			}
@@ -255,7 +306,7 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		return nil, err
 	}
 
-	booleanRows, err := s.DB.Query(ctx, `
+	booleanRows, err := r.db.Query(ctx, `
 		SELECT key_result_id, is_done
 		FROM kr_boolean_meta
 		WHERE key_result_id = ANY($1)`, krIDs)
@@ -269,8 +320,8 @@ func (s *Store) ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, team
 		if err := booleanRows.Scan(&keyResultID, &meta.IsDone); err != nil {
 			return nil, err
 		}
-		if krs, ok := krByID[keyResultID]; ok {
-			for _, kr := range krs {
+		if krsSlice, ok := krByID[keyResultID]; ok {
+			for _, kr := range krsSlice {
 				value := meta
 				kr.Boolean = &value
 			}
@@ -297,9 +348,9 @@ func resultFromGoalPointers(teamGoals map[int64]map[int64]*domain.Goal, teamGoal
 	return result
 }
 
-func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
+func (r *GoalRepository) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
 	var id int64
-	err := s.DB.QueryRow(ctx, `
+	err := r.db.QueryRow(ctx, `
 		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, sort_order)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM goals WHERE team_id=$1 AND period_id=$2))
 		RETURNING id`,
@@ -308,12 +359,12 @@ func (s *Store) CreateGoal(ctx context.Context, input GoalInput) (int64, error) 
 	return id, err
 }
 
-func (s *Store) ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]TeamOverviewStats, error) {
+func (r *GoalRepository) ListTeamOverviewStats(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]TeamOverviewStats, error) {
 	stats := make(map[int64]TeamOverviewStats, len(teamIDs))
 	if len(teamIDs) == 0 {
 		return stats, nil
 	}
-	rows, err := s.DB.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT
 			t.team_id,
 			COUNT(*)::bigint AS goals_count,
@@ -359,8 +410,8 @@ func (s *Store) ListTeamOverviewStats(ctx context.Context, periodID int64, teamI
 	return stats, rows.Err()
 }
 
-func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error) {
-	rows, err := s.DB.Query(ctx, `
+func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error) {
+	rows, err := r.db.Query(ctx, `
 		SELECT g.id, g.team_id, g.period_id, g.title, g.description, g.priority,
 		       COALESCE(gs.weight, g.weight) AS weight,
 		       g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
@@ -390,7 +441,7 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 	for _, goal := range goals {
 		goalIDs = append(goalIDs, goal.ID)
 	}
-	goalLastKRActivity, err := s.listGoalLastKRActivity(ctx, goalIDs)
+	goalLastKRActivity, err := r.listGoalLastKRActivity(ctx, goalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -400,14 +451,10 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 		}
 	}
 
-	for i := range goals {
-		krs, err := s.ListKeyResultsByGoal(ctx, goals[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		goals[i].KeyResults = krs
+	if err := r.loadKRsForGoals(ctx, goals, goalIDs); err != nil {
+		return nil, err
 	}
-	commentsByGoal, err := s.listGoalCommentsBatch(ctx, goalIDs)
+	commentsByGoal, err := r.listGoalCommentsBatch(ctx, goalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -417,11 +464,229 @@ func (s *Store) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int6
 	return goals, nil
 }
 
-func (s *Store) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
+// loadKRsForGoals batch-loads key results (all meta + last 3 comments) for the given goals.
+// Updates goals[i].KeyResults in place. goalIDs must match the goals slice indices.
+func (r *GoalRepository) loadKRsForGoals(ctx context.Context, goals []domain.Goal, goalIDs []int64) error {
+	if len(goalIDs) == 0 {
+		return nil
+	}
+
+	// Index goals by ID to attach KRs without re-scanning.
+	goalByID := make(map[int64]*domain.Goal, len(goals))
+	for i := range goals {
+		goalByID[goals[i].ID] = &goals[i]
+	}
+
+	krRows, err := r.db.Query(ctx, `
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		FROM key_results
+		WHERE goal_id = ANY($1)
+		ORDER BY goal_id, sort_order, id`, goalIDs)
+	if err != nil {
+		return err
+	}
+	defer krRows.Close()
+
+	krsByID := make(map[int64]*domain.KeyResult)
+	for krRows.Next() {
+		var kr domain.KeyResult
+		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+			return err
+		}
+		g, ok := goalByID[kr.GoalID]
+		if !ok {
+			continue
+		}
+		g.KeyResults = append(g.KeyResults, kr)
+	}
+	if err := krRows.Err(); err != nil {
+		return err
+	}
+
+	// Build KR pointer map after all appends — avoids stale pointers on slice reallocation.
+	krIDs := make([]int64, 0)
+	for i := range goals {
+		for j := range goals[i].KeyResults {
+			kr := &goals[i].KeyResults[j]
+			krsByID[kr.ID] = kr
+			krIDs = append(krIDs, kr.ID)
+		}
+	}
+	if len(krIDs) == 0 {
+		return nil
+	}
+
+	if err := r.loadProjectStages(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadPercentMeta(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadPercentCheckpoints(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadLinearMeta(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	if err := r.loadBooleanMeta(ctx, krIDs, krsByID); err != nil {
+		return err
+	}
+	return r.loadKRComments(ctx, krIDs, krsByID)
+}
+
+func (r *GoalRepository) loadProjectStages(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, key_result_id, title, weight, is_done, sort_order
+		FROM kr_project_stages
+		WHERE key_result_id = ANY($1)
+		ORDER BY key_result_id, sort_order`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var stage domain.KRProjectStage
+		if err := rows.Scan(&stage.ID, &stage.KeyResultID, &stage.Title, &stage.Weight, &stage.IsDone, &stage.SortOrder); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[stage.KeyResultID]; ok {
+			if kr.Project == nil {
+				kr.Project = &domain.KRProject{}
+			}
+			kr.Project.Stages = append(kr.Project.Stages, stage)
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadPercentMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT key_result_id, start_value, target_value, current_value
+		FROM kr_percent_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var krID int64
+		var meta domain.KRPercent
+		if err := rows.Scan(&krID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[krID]; ok {
+			value := meta
+			kr.Percent = &value
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadPercentCheckpoints(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, key_result_id, metric_value, kr_percent
+		FROM kr_percent_checkpoints
+		WHERE key_result_id = ANY($1)
+		ORDER BY key_result_id, metric_value`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cp domain.KRPercentCheckpoint
+		if err := rows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[cp.KeyResultID]; ok {
+			if kr.Percent == nil {
+				kr.Percent = &domain.KRPercent{}
+			}
+			kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadLinearMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT key_result_id, start_value, target_value, current_value
+		FROM kr_linear_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var krID int64
+		var meta domain.KRLinear
+		if err := rows.Scan(&krID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[krID]; ok {
+			value := meta
+			kr.Linear = &value
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) loadBooleanMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT key_result_id, is_done
+		FROM kr_boolean_meta
+		WHERE key_result_id = ANY($1)`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var krID int64
+		var meta domain.KRBoolean
+		if err := rows.Scan(&krID, &meta.IsDone); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[krID]; ok {
+			value := meta
+			kr.Boolean = &value
+		}
+	}
+	return rows.Err()
+}
+
+// loadKRComments batch-loads the last 3 comments per KR using a window function.
+func (r *GoalRepository) loadKRComments(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+	rows, err := r.db.Query(ctx, `
+		SELECT c.id, c.key_result_id, c.text, u.display_name, u.udid, c.created_at
+		FROM (
+			SELECT krc.*,
+				ROW_NUMBER() OVER (PARTITION BY krc.key_result_id ORDER BY krc.created_at DESC) AS rn
+			FROM key_result_comments krc
+			WHERE krc.key_result_id = ANY($1)
+		) c
+		JOIN users u ON u.id = c.author_user_id
+		WHERE c.rn <= 3
+		ORDER BY c.key_result_id, c.created_at DESC`, krIDs)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c domain.KeyResultComment
+		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+			return err
+		}
+		if kr, ok := krsByID[c.KeyResultID]; ok {
+			kr.Comments = append(kr.Comments, c)
+		}
+	}
+	return rows.Err()
+}
+
+func (r *GoalRepository) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
 	if len(goalIDs) == 0 {
 		return nil, nil
 	}
-	rows, err := s.DB.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
@@ -442,12 +707,12 @@ func (s *Store) listGoalCommentsBatch(ctx context.Context, goalIDs []int64) (map
 	return result, rows.Err()
 }
 
-func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (map[int64]time.Time, error) {
+func (r *GoalRepository) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (map[int64]time.Time, error) {
 	result := make(map[int64]time.Time, len(goalIDs))
 	if len(goalIDs) == 0 {
 		return result, nil
 	}
-	rows, err := s.DB.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT
 			kr.goal_id,
 			CASE
@@ -475,8 +740,8 @@ func (s *Store) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (ma
 	return result, rows.Err()
 }
 
-func (s *Store) MoveGoal(ctx context.Context, goalID int64, direction int) error {
-	tx, err := s.DB.Begin(ctx)
+func (r *GoalRepository) MoveGoal(ctx context.Context, goalID int64, direction int) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -522,34 +787,34 @@ func (s *Store) MoveGoal(ctx context.Context, goalID int64, direction int) error
 	return tx.Commit(ctx)
 }
 
-func (s *Store) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
+func (r *GoalRepository) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 	var goal domain.Goal
-	row := s.DB.QueryRow(ctx, `
+	row := r.db.QueryRow(ctx, `
 		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, created_at, updated_at
 		FROM goals WHERE id=$1`, id)
 	if err := row.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 		return domain.Goal{}, err
 	}
-	krs, err := s.ListKeyResultsByGoal(ctx, goal.ID)
+	krsSlice, err := r.krs.ListKeyResultsByGoal(ctx, goal.ID)
 	if err != nil {
 		return domain.Goal{}, err
 	}
-	goal.KeyResults = krs
-	goal.Comments, _ = s.ListGoalComments(ctx, goal.ID)
+	goal.KeyResults = krsSlice
+	goal.Comments, _ = r.ListGoalComments(ctx, goal.ID)
 	return goal, nil
 }
 
-func (s *Store) DeleteGoal(ctx context.Context, id int64) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM goals WHERE id=$1`, id)
+func (r *GoalRepository) DeleteGoal(ctx context.Context, id int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM goals WHERE id=$1`, id)
 	return err
 }
 
-func (s *Store) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
+func (r *GoalRepository) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
 	updates := make(map[int64]time.Time, len(teamIDs))
 	if len(teamIDs) == 0 {
 		return updates, nil
 	}
-	rows, err := s.DB.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		WITH team_goals AS (
 			SELECT g.id AS goal_id, g.team_id AS team_id
 			FROM goals g
@@ -593,29 +858,8 @@ func (s *Store) ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int
 	return updates, rows.Err()
 }
 
-type GoalUpdateInput struct {
-	ID          int64
-	Title       string
-	Description string
-	Priority    domain.Priority
-	Weight      int
-	WorkType    domain.WorkType
-	FocusType   domain.FocusType
-	OwnerText   string
-}
-
-type GoalFieldsUpdateInput struct {
-	ID          int64
-	Title       string
-	Description string
-	Priority    domain.Priority
-	WorkType    domain.WorkType
-	FocusType   domain.FocusType
-	OwnerText   string
-}
-
-func (s *Store) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *GoalRepository) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {
+	_, err := r.db.Exec(ctx, `
 		UPDATE goals
 		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, focus_type=$6, owner_text=$7, updated_at=NOW()
 		WHERE id=$8`,
@@ -624,8 +868,8 @@ func (s *Store) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {
 	return err
 }
 
-func (s *Store) UpdateGoalFields(ctx context.Context, input GoalFieldsUpdateInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *GoalRepository) UpdateGoalFields(ctx context.Context, input GoalFieldsUpdateInput) error {
+	_, err := r.db.Exec(ctx, `
 		UPDATE goals
 		SET title=$1, description=$2, priority=$3, work_type=$4, focus_type=$5, owner_text=$6, updated_at=NOW()
 		WHERE id=$7`,
@@ -634,8 +878,8 @@ func (s *Store) UpdateGoalFields(ctx context.Context, input GoalFieldsUpdateInpu
 	return err
 }
 
-func (s *Store) UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *GoalRepository) UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error {
+	_, err := r.db.Exec(ctx, `
 		UPDATE goals
 		SET team_id=$1, weight=$2, updated_at=NOW()
 		WHERE id=$3`,
@@ -644,13 +888,13 @@ func (s *Store) UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weigh
 	return err
 }
 
-func (s *Store) AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error {
-	_, err := s.DB.Exec(ctx, `INSERT INTO goal_comments (goal_id, text, author_user_id) VALUES ($1,$2,$3)`, goalID, text, authorUserID)
+func (r *GoalRepository) AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error {
+	_, err := r.db.Exec(ctx, `INSERT INTO goal_comments (goal_id, text, author_user_id) VALUES ($1,$2,$3)`, goalID, text, authorUserID)
 	return err
 }
 
-func (s *Store) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
-	rows, err := s.DB.Query(ctx, `
+func (r *GoalRepository) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
+	rows, err := r.db.Query(ctx, `
 		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id

@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/store"
+	"okrs/internal/store/grants"
 )
 
 // fakeGrantsProvider implements GrantsProvider for tests.
 type fakeGrantsProvider struct {
-	data map[int64][]store.HierarchyGrant
+	data map[int64][]grants.HierarchyGrant
 }
 
-func (f *fakeGrantsProvider) AllGrants(_ context.Context) (map[int64][]store.HierarchyGrant, error) {
+func (f *fakeGrantsProvider) AllGrants(_ context.Context) (map[int64][]grants.HierarchyGrant, error) {
 	return f.data, nil
 }
 
@@ -42,10 +42,14 @@ func newSearchStore() *searchCapturingStore {
 	return &searchCapturingStore{fakeStore: newFakeStore()}
 }
 
+func newSearchTestService(st *searchCapturingStore, grants GrantsProvider) *Service {
+	return New(Deps{Teams: st, Goals: st, Shares: st, Periods: st, KRs: st, Statuses: st, Users: st, Grants: grants})
+}
+
 func TestSearchUsersInScopeUnrestricted(t *testing.T) {
 	st := newSearchStore()
 	st.returnUsers = []*domain.User{{ID: 1, DisplayName: "Alice"}}
-	svc := New(st, &fakeGrantsProvider{data: nil})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: nil})
 
 	// nil scopeTeamIDs = admin / unrestricted
 	users, err := svc.SearchUsersInScope(context.Background(), nil, "", 10)
@@ -62,7 +66,7 @@ func TestSearchUsersInScopeUnrestricted(t *testing.T) {
 
 func TestSearchUsersInScopeEmptyGrantsReturnsNil(t *testing.T) {
 	st := newSearchStore()
-	svc := New(st, &fakeGrantsProvider{data: make(map[int64][]store.HierarchyGrant)})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
 	// empty scope slice = user with no grants
 	users, err := svc.SearchUsersInScope(context.Background(), []int64{}, "", 10)
@@ -83,14 +87,14 @@ func TestSearchUsersInScopeFiltersGrantsByAncestor(t *testing.T) {
 		{ID: 3, Name: "Grandchild", Type: domain.TeamTypeTeam, ParentID: ptr(2)},
 	}
 
-	grants := map[int64][]store.HierarchyGrant{
+	grants := map[int64][]grants.HierarchyGrant{
 		// user 10 has a grant to root (ID=1) — covers all scope nodes
 		10: {{ID: 1, UserID: 10, TeamID: 1}},
 		// user 20 has a grant to an unrelated team (ID=99) — should be excluded
 		20: {{ID: 2, UserID: 20, TeamID: 99}},
 	}
 	st.returnUsers = []*domain.User{{ID: 10, DisplayName: "Root granter"}}
-	svc := New(st, &fakeGrantsProvider{data: grants})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: grants})
 
 	// scope = [3] (grandchild); ancestors are {3, 2, 1}
 	_, err := svc.SearchUsersInScope(context.Background(), []int64{3}, "", 20)
@@ -111,7 +115,7 @@ func TestSearchUsersInScopeIncludesTeamLeads(t *testing.T) {
 		{ID: 5, Name: "TeamA", Type: domain.TeamTypeTeam, Lead: "Alice"},
 	}
 	// No grants at all — but Alice is a lead of scope team 5.
-	svc := New(st, &fakeGrantsProvider{data: make(map[int64][]store.HierarchyGrant)})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
 	_, err := svc.SearchUsersInScope(context.Background(), []int64{5}, "", 20)
 	if err != nil {
@@ -132,14 +136,14 @@ func TestSearchUsersInScopeFiltersGrantsByDescendant(t *testing.T) {
 		{ID: 3, Name: "Grandchild", Type: domain.TeamTypeTeam, ParentID: ptr(2)},
 	}
 
-	grants := map[int64][]store.HierarchyGrant{
+	grants := map[int64][]grants.HierarchyGrant{
 		// user 30 has a grant only to grandchild(3) — a descendant of scope node 1
 		30: {{ID: 3, UserID: 30, TeamID: 3}},
 		// user 20 has a grant to an unrelated team — excluded
 		20: {{ID: 2, UserID: 20, TeamID: 99}},
 	}
 	st.returnUsers = []*domain.User{{ID: 30, DisplayName: "Grandchild granter"}}
-	svc := New(st, &fakeGrantsProvider{data: grants})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: grants})
 
 	// scope = [1] (root); descendants are {2, 3}
 	_, err := svc.SearchUsersInScope(context.Background(), []int64{1}, "", 20)
@@ -158,7 +162,7 @@ func TestSearchUsersInScopeIncludesDescendantTeamLeads(t *testing.T) {
 		{ID: 1, Name: "Parent", Type: domain.TeamTypeUnit},
 		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1), Lead: "Charlie"},
 	}
-	svc := New(st, &fakeGrantsProvider{data: make(map[int64][]store.HierarchyGrant)})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
 	// scope = [1] (parent); child is a descendant with lead Charlie
 	_, err := svc.SearchUsersInScope(context.Background(), []int64{1}, "", 20)
@@ -183,7 +187,7 @@ func TestSearchUsersInScopeExcludesDeletedTeamLeads(t *testing.T) {
 	st.teams = []domain.Team{
 		{ID: 5, Name: "Deleted", Type: domain.TeamTypeTeam, Lead: "Bob", DeletedAt: &deletedAt},
 	}
-	svc := New(st, &fakeGrantsProvider{data: make(map[int64][]store.HierarchyGrant)})
+	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
 	_, err := svc.SearchUsersInScope(context.Background(), []int64{5}, "", 20)
 	if err != nil {

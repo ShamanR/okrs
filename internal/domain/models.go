@@ -85,12 +85,12 @@ type Goal struct {
 }
 
 type GoalComment struct {
-	ID          int64
-	GoalID      int64
-	Text        string
-	AuthorName  string
-	AuthorUDID  string
-	CreatedAt   time.Time
+	ID         int64
+	GoalID     int64
+	Text       string
+	AuthorName string
+	AuthorUDID string
+	CreatedAt  time.Time
 }
 
 type KeyResult struct {
@@ -184,14 +184,14 @@ type User struct {
 }
 
 type AuthSession struct {
-	ID          string
-	UserID      int64
-	Provider    string
-	CreatedAt   time.Time
-	ExpiresAt   time.Time
-	LastSeenAt  time.Time
-	UserAgent   string
-	IP          string
+	ID         string
+	UserID     int64
+	Provider   string
+	CreatedAt  time.Time
+	ExpiresAt  time.Time
+	LastSeenAt time.Time
+	UserAgent  string
+	IP         string
 }
 
 const (

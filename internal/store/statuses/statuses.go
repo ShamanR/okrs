@@ -1,4 +1,4 @@
-package store
+package statuses
 
 import (
 	"context"
@@ -8,11 +8,21 @@ import (
 	"okrs/internal/domain"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func (s *Store) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
+// TeamStatusRepository handles team_period_statuses persistence.
+type TeamStatusRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewTeamStatusRepository(db *pgxpool.Pool) *TeamStatusRepository {
+	return &TeamStatusRepository{db: db}
+}
+
+func (r *TeamStatusRepository) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
 	var status domain.TeamPeriodStatus
-	row := s.DB.QueryRow(ctx, `SELECT status FROM team_period_statuses WHERE team_id=$1 AND period_id=$2`, teamID, periodID)
+	row := r.db.QueryRow(ctx, `SELECT status FROM team_period_statuses WHERE team_id=$1 AND period_id=$2`, teamID, periodID)
 	if err := row.Scan(&status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.TeamPeriodStatusNoGoals, nil
@@ -22,10 +32,10 @@ func (s *Store) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64)
 	return status, nil
 }
 
-func (s *Store) GetTeamPeriodStatusWithTime(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
+func (r *TeamStatusRepository) GetTeamPeriodStatusWithTime(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
 	var status domain.TeamPeriodStatus
 	var updatedAt *time.Time
-	row := s.DB.QueryRow(ctx, `SELECT status, updated_at FROM team_period_statuses WHERE team_id=$1 AND period_id=$2`, teamID, periodID)
+	row := r.db.QueryRow(ctx, `SELECT status, updated_at FROM team_period_statuses WHERE team_id=$1 AND period_id=$2`, teamID, periodID)
 	if err := row.Scan(&status, &updatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return domain.TeamPeriodStatusNoGoals, nil, nil
@@ -35,8 +45,8 @@ func (s *Store) GetTeamPeriodStatusWithTime(ctx context.Context, teamID, periodI
 	return status, updatedAt, nil
 }
 
-func (s *Store) SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *TeamStatusRepository) SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
+	_, err := r.db.Exec(ctx, `
 		INSERT INTO team_period_statuses (team_id, period_id, status, updated_at)
 		VALUES ($1,$2,$3,NOW())
 		ON CONFLICT (team_id, period_id)
@@ -46,12 +56,12 @@ func (s *Store) SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64,
 	return err
 }
 
-func (s *Store) ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
+func (r *TeamStatusRepository) ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
 	statuses := make(map[int64]domain.TeamPeriodStatus, len(teamIDs))
 	if len(teamIDs) == 0 {
 		return statuses, nil
 	}
-	rows, err := s.DB.Query(ctx, `
+	rows, err := r.db.Query(ctx, `
 		SELECT team_id, status
 		FROM team_period_statuses
 		WHERE period_id=$1 AND team_id = ANY($2)`, periodID, teamIDs)

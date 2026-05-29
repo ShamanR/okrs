@@ -7,7 +7,7 @@ import (
 
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
-	"okrs/internal/store"
+	"okrs/internal/store/periods"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -93,7 +93,7 @@ func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
 		h.renderPeriodsWithError(w, r, "Дата окончания должна быть позже даты начала")
 		return
 	}
-	if _, err := h.deps.Service.CreatePeriod(r.Context(), store.PeriodInput{
+	if _, err := h.deps.Service.CreatePeriod(r.Context(), periods.PeriodInput{
 		Name:      name,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -135,7 +135,7 @@ func (h *Handler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
 		h.renderPeriodEditWithError(w, r, periodID, "Дата окончания должна быть позже даты начала")
 		return
 	}
-	if err := h.deps.Service.UpdatePeriod(r.Context(), periodID, store.PeriodInput{
+	if err := h.deps.Service.UpdatePeriod(r.Context(), periodID, periods.PeriodInput{
 		Name:      name,
 		StartDate: startDate,
 		EndDate:   endDate,

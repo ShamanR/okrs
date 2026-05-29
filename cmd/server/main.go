@@ -17,6 +17,8 @@ import (
 	"okrs/internal/auth"
 	httpserver "okrs/internal/http"
 	"okrs/internal/store"
+	"okrs/internal/store/grants"
+	"okrs/internal/store/periods"
 
 	// Register OAuth2 providers via side-effect imports.
 	_ "okrs/internal/auth/providers/github"
@@ -63,12 +65,12 @@ func main() {
 	pgstore := store.New(pool)
 	if seed {
 		now := time.Now().In(zone)
-		period, err := pgstore.FindPeriodForDate(context.Background(), now)
+		period, err := pgstore.Periods.FindPeriodForDate(context.Background(), now)
 		var periodID int64
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				name, startDate, endDate := quarterPeriod(now)
-				periodID, err = pgstore.CreatePeriod(context.Background(), store.PeriodInput{
+				periodID, err = pgstore.Periods.CreatePeriod(context.Background(), periods.PeriodInput{
 					Name:      name,
 					StartDate: startDate,
 					EndDate:   endDate,
@@ -91,7 +93,7 @@ func main() {
 		logger.Info("seed data created")
 	}
 
-	grantsCache := store.NewGrantsCache(pgstore)
+	grantsCache := grants.NewGrantsCache(pgstore.Grants)
 
 	authCfg := loadAuthConfig()
 	authMgr, err := auth.NewManager(authCfg, pgstore, grantsCache)

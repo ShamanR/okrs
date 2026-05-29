@@ -5,14 +5,16 @@ import (
 	"fmt"
 
 	"okrs/internal/domain"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/krs"
 )
 
-func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
-	teams := []string{"Platform", "Payments", "Growth"}
-	teamIDs := make([]int64, 0, len(teams))
-	for _, name := range teams {
+func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs.KRRepository, periodID int64) error {
+	teamNames := []string{"Platform", "Payments", "Growth"}
+	teamIDs := make([]int64, 0, len(teamNames))
+	for _, name := range teamNames {
 		var id int64
-		err := s.DB.QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ($1,$2) ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
+		err := goalsRepo.DB().QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ($1,$2) ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -20,7 +22,7 @@ func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 	}
 
 	for _, teamID := range teamIDs {
-		goalID, err := s.CreateGoal(ctx, GoalInput{
+		goalID, err := goalsRepo.CreateGoal(ctx, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Improve reliability for team %d", teamID),
@@ -34,7 +36,7 @@ func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 		if err != nil {
 			return err
 		}
-		krID, err := s.CreateKeyResult(ctx, KeyResultInput{
+		krID, err := krsRepo.CreateKeyResult(ctx, krs.KeyResultInput{
 			GoalID:      goalID,
 			Title:       "Incident reduction project",
 			Description: "Deliver reliability initiatives.",
@@ -44,10 +46,10 @@ func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 		if err != nil {
 			return err
 		}
-		_ = s.AddProjectStage(ctx, ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
-		_ = s.AddProjectStage(ctx, ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
+		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
+		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
 
-		goalID2, err := s.CreateGoal(ctx, GoalInput{
+		goalID2, err := goalsRepo.CreateGoal(ctx, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Grow adoption for team %d", teamID),
@@ -61,7 +63,7 @@ func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 		if err != nil {
 			return err
 		}
-		krID2, err := s.CreateKeyResult(ctx, KeyResultInput{
+		krID2, err := krsRepo.CreateKeyResult(ctx, krs.KeyResultInput{
 			GoalID:      goalID2,
 			Title:       "MAU growth",
 			Description: "Increase monthly active usage.",
@@ -71,7 +73,7 @@ func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 		if err != nil {
 			return err
 		}
-		_ = s.UpsertPercentMeta(ctx, PercentMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200})
+		_ = krsRepo.UpsertPercentMeta(ctx, krs.PercentMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200})
 	}
 
 	return nil

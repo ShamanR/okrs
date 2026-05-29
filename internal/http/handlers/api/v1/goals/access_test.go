@@ -14,6 +14,8 @@ import (
 	"okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/grants"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/testcontainers/testcontainers-go"
@@ -68,7 +70,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 		Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	goalID, err := repo.CreateGoal(ctx, store.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Goal",
 		Priority: domain.PriorityP1, Weight: 100,
 		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
@@ -77,7 +79,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	svc := service.New(repo, store.NewGrantsCache(repo))
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
 	payload, _ := json.Marshal(map[string]string{"text": "comment"})
 
 	t.Run("denied when user has no access to team", func(t *testing.T) {

@@ -1,25 +1,35 @@
 package admin
 
 import (
+	"context"
 	"html/template"
 	"log/slog"
 	"net/http"
 	"strconv"
 
 	"okrs/internal/auth"
-	"okrs/internal/store"
+	"okrs/internal/domain"
+	"okrs/internal/store/grants"
 
 	"github.com/go-chi/chi/v5"
 )
 
+// webAdminStore covers the operations the web admin handler needs.
+// *store.UserRepository satisfies the user methods; *store.GrantRepository satisfies grants.
+type webAdminStore interface {
+	ListUsers(ctx context.Context) ([]*domain.User, error)
+	GetUser(ctx context.Context, id int64) (*domain.User, error)
+	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
+}
+
 type Handler struct {
-	store  *store.Store
+	store  webAdminStore
 	tmpl   *template.Template
 	policy *auth.PolicyEvaluator
 	logger *slog.Logger
 }
 
-func New(st *store.Store, tmpl *template.Template, policy *auth.PolicyEvaluator, logger *slog.Logger) *Handler {
+func New(st webAdminStore, tmpl *template.Template, policy *auth.PolicyEvaluator, logger *slog.Logger) *Handler {
 	return &Handler{store: st, tmpl: tmpl, policy: policy, logger: logger}
 }
 
@@ -55,7 +65,7 @@ func (h *Handler) HandleUserDetail(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
-	grants, err := h.store.ListUserGrants(r.Context(), userID)
+	userGrants, err := h.store.ListUserGrants(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
@@ -63,7 +73,7 @@ func (h *Handler) HandleUserDetail(w http.ResponseWriter, r *http.Request) {
 	if err := h.tmpl.ExecuteTemplate(w, "admin-user-detail", map[string]any{
 		"PageTitle":   "Пользователь",
 		"User":        user,
-		"Grants":      grants,
+		"Grants":      userGrants,
 		"CurrentUser": auth.UserFromContext(r.Context()),
 	}); err != nil {
 		h.logger.Error("admin-user-detail template", slog.String("error", err.Error()))

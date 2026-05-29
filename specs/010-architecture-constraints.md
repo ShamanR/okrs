@@ -19,13 +19,37 @@ AI должен сохранять разделение ответственно
 
 - `internal/domain` — доменные типы и enum, включая `User`, `AuthSession`;
 - `internal/okr` — расчёты прогресса;
-- `internal/store` — SQL и persistence; auth-методы (users, sessions, grants, settings) живут здесь;
-- `internal/service` — доменные сценарии и orchestration;
+- `internal/store` — SQL и persistence; каждый тип сущности имеет свой отдельный repository-тип; `store.Store` — composite-фабрика; auth-методы (users, sessions, grants, settings) живут здесь;
+- `internal/service` — доменные сценарии и orchestration; использует репозитории через интерфейсы (`TeamRepo`, `GoalRepo`, `KRRepo` и т.д.); инициализируется через `service.Deps`;
 - `internal/auth` — auth manager, middleware chain, provider interface, policy evaluator;
 - `internal/auth/providers/{name}` — реализации провайдеров; каждый провайдер — изолированный пакет;
 - `internal/http` — SSR handlers и templates;
 - `internal/http/handlers/api/v1` — API-контракт для JSON/form-data;
 - `internal/http/handlers/web/admin` — admin SSR handlers.
+
+## Repository layer
+
+`internal/store` содержит отдельные repository-типы по одному на тип сущности:
+
+| Тип | Файл | Сущности |
+|-----|------|----------|
+| `TeamRepository` | `teams.go` | teams CRUD |
+| `GoalRepository` | `goals.go` | goals, comments, KR-loading (aggregate) |
+| `GoalShareRepository` | `goal_shares.go` | goal shares |
+| `PeriodRepository` | `periods.go` | periods CRUD |
+| `KRRepository` | `key_results.go` | key results, meta, progress, project stages |
+| `TeamStatusRepository` | `team_period_statuses.go` | team period statuses |
+| `UserRepository` | `users.go` | users |
+| `SessionRepository` | `auth_sessions.go` | auth sessions |
+| `GrantRepository` | `user_hierarchy_grants.go` | hierarchy grants |
+| `SettingsRepository` | `settings.go` | system settings |
+
+`store.Store` — composite, созданный через `store.New(db)`. Содержит поля `Teams`, `Goals`, `Periods`, `KRs`, `Shares`, `Statuses`, `Users`, `Sessions`, `Grants`, `Settings`. Дополнительно реализует `auth.authStorage` интерфейс (forwarding-методы к подрепозиториям) для совместимости с `auth.Manager`.
+
+Правила:
+- С базой данных работает только repository-слой — никаких прямых SQL-запросов в service/handler.
+- Каждый repository отвечает ровно за одну сущность или агрегат.
+- `GoalRepository` зависит от `KRRepository` (инжектируется в конструкторе) для загрузки KR как части goal-агрегата.
 
 ## Auth layer
 

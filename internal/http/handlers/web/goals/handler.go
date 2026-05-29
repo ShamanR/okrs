@@ -10,7 +10,8 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/goals"
+	"okrs/internal/store/krs"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -108,7 +109,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		meta.ProjectStages = stages
 	}
 
-	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, store.KeyResultInput{
+	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -187,7 +188,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("%s", errMsg))
 		return
 	}
-	if err := h.deps.Service.UpdateGoalFields(ctx, store.GoalFieldsUpdateInput{
+	if err := h.deps.Service.UpdateGoalFields(ctx, goals.GoalFieldsUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -206,8 +207,8 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	redirectToTeam(w, r, teamID, goal.PeriodID)
 }
 
-func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
-	stages := make([]store.ProjectStageInput, 0, 4)
+func parseProjectStages(r *http.Request) ([]krs.ProjectStageInput, error) {
+	stages := make([]krs.ProjectStageInput, 0, 4)
 	titles := r.Form["step_title[]"]
 	weights := r.Form["step_weight[]"]
 	dones := r.Form["step_done[]"]
@@ -229,7 +230,7 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 		if i < len(dones) {
 			isDone = dones[i] == "true"
 		}
-		stages = append(stages, store.ProjectStageInput{
+		stages = append(stages, krs.ProjectStageInput{
 			Title:     trimmed,
 			Weight:    weight,
 			IsDone:    isDone,

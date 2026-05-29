@@ -9,7 +9,8 @@ import (
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/periods"
+	"okrs/internal/store/teams"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -53,7 +54,7 @@ func (h *ServiceHandler) HandleCreatePeriod(w http.ResponseWriter, r *http.Reque
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "end_date must be after start_date", nil)
 		return
 	}
-	id, err := h.service.CreatePeriod(r.Context(), store.PeriodInput{Name: req.Name, StartDate: start, EndDate: end})
+	id, err := h.service.CreatePeriod(r.Context(), periods.PeriodInput{Name: req.Name, StartDate: start, EndDate: end})
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create period", nil)
 		return
@@ -91,7 +92,7 @@ func (h *ServiceHandler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Reque
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "end_date must be after start_date", nil)
 		return
 	}
-	if err := h.service.UpdatePeriod(r.Context(), periodID, store.PeriodInput{Name: req.Name, StartDate: start, EndDate: end}); err != nil {
+	if err := h.service.UpdatePeriod(r.Context(), periodID, periods.PeriodInput{Name: req.Name, StartDate: start, EndDate: end}); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update period", nil)
 		return
 	}
@@ -191,11 +192,11 @@ func (h *ServiceHandler) HandleListTeams(w http.ResponseWriter, r *http.Request)
 // POST /api/v1/admin/teams
 func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string  `json:"name"`
-		Type        string  `json:"type"`
-		ParentID    *int64  `json:"parent_id"`
-		Lead        string  `json:"lead"`
-		Description string  `json:"description"`
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		ParentID    *int64 `json:"parent_id"`
+		Lead        string `json:"lead"`
+		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
@@ -210,7 +211,7 @@ func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team type", nil)
 		return
 	}
-	id, err := h.service.CreateTeam(r.Context(), store.TeamInput{
+	id, err := h.service.CreateTeam(r.Context(), teams.TeamInput{
 		Name: req.Name, Type: teamType, ParentID: req.ParentID,
 		Lead: req.Lead, Description: req.Description,
 	})
@@ -229,11 +230,11 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Name        string  `json:"name"`
-		Type        string  `json:"type"`
-		ParentID    *int64  `json:"parent_id"`
-		Lead        string  `json:"lead"`
-		Description string  `json:"description"`
+		Name        string `json:"name"`
+		Type        string `json:"type"`
+		ParentID    *int64 `json:"parent_id"`
+		Lead        string `json:"lead"`
+		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
@@ -248,7 +249,7 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team type", nil)
 		return
 	}
-	if err := h.service.UpdateTeam(r.Context(), store.TeamInput{
+	if err := h.service.UpdateTeam(r.Context(), teams.TeamInput{
 		Name: req.Name, Type: teamType, ParentID: req.ParentID,
 		Lead: req.Lead, Description: req.Description,
 	}, teamID); err != nil {

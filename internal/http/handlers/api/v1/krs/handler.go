@@ -11,7 +11,7 @@ import (
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/krs"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -64,7 +64,7 @@ func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 		return
 	}
-	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), store.KeyResultInput{
+	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -108,7 +108,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 		return
 	}
-	if err := h.service.UpdateKeyResultWithMeta(r.Context(), store.KeyResultUpdateInput{
+	if err := h.service.UpdateKeyResultWithMeta(r.Context(), krs.KeyResultUpdateInput{
 		ID:          krID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),

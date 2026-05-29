@@ -6,7 +6,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
-	"okrs/internal/store"
+	"okrs/internal/store/krs"
 	"strings"
 )
 
@@ -50,8 +50,8 @@ func parseKeyResultMeta(r *http.Request, kind domain.KRKind) (service.KeyResultM
 }
 
 // parseProjectStages parses project stage fields from a multipart form.
-func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
-	stages := make([]store.ProjectStageInput, 0, 4)
+func parseProjectStages(r *http.Request) ([]krs.ProjectStageInput, error) {
+	stages := make([]krs.ProjectStageInput, 0, 4)
 	titles := r.Form["step_title[]"]
 	weights := r.Form["step_weight[]"]
 	dones := r.Form["step_done[]"]
@@ -74,7 +74,7 @@ func parseProjectStages(r *http.Request) ([]store.ProjectStageInput, error) {
 		if i < len(dones) {
 			isDone = dones[i] == "true"
 		}
-		stages = append(stages, store.ProjectStageInput{
+		stages = append(stages, krs.ProjectStageInput{
 			Title:     trimmed,
 			Weight:    weight,
 			IsDone:    isDone,

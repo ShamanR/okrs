@@ -1,14 +1,32 @@
-package store
+package periods
 
 import (
 	"context"
 	"time"
 
 	"okrs/internal/domain"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func (s *Store) ListPeriods(ctx context.Context) ([]domain.Period, error) {
-	rows, err := s.DB.Query(ctx, `
+// PeriodRepository handles all period persistence.
+type PeriodRepository struct {
+	db *pgxpool.Pool
+}
+
+func NewPeriodRepository(db *pgxpool.Pool) *PeriodRepository {
+	return &PeriodRepository{db: db}
+}
+
+// PeriodInput is used by CreatePeriod and UpdatePeriod.
+type PeriodInput struct {
+	Name      string
+	StartDate time.Time
+	EndDate   time.Time
+}
+
+func (r *PeriodRepository) ListPeriods(ctx context.Context) ([]domain.Period, error) {
+	rows, err := r.db.Query(ctx, `
 		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
 		FROM periods
 		ORDER BY sort_order, start_date, id`)
@@ -28,9 +46,9 @@ func (s *Store) ListPeriods(ctx context.Context) ([]domain.Period, error) {
 	return periods, rows.Err()
 }
 
-func (s *Store) GetPeriod(ctx context.Context, periodID int64) (domain.Period, error) {
+func (r *PeriodRepository) GetPeriod(ctx context.Context, periodID int64) (domain.Period, error) {
 	var period domain.Period
-	row := s.DB.QueryRow(ctx, `
+	row := r.db.QueryRow(ctx, `
 		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
 		FROM periods
 		WHERE id=$1`, periodID)
@@ -40,9 +58,9 @@ func (s *Store) GetPeriod(ctx context.Context, periodID int64) (domain.Period, e
 	return period, nil
 }
 
-func (s *Store) FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error) {
+func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error) {
 	var period domain.Period
-	row := s.DB.QueryRow(ctx, `
+	row := r.db.QueryRow(ctx, `
 		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
 		FROM periods
 		WHERE $1::date BETWEEN start_date AND end_date
@@ -54,9 +72,9 @@ func (s *Store) FindPeriodForDate(ctx context.Context, date time.Time) (domain.P
 	return period, nil
 }
 
-func (s *Store) CreatePeriod(ctx context.Context, input PeriodInput) (int64, error) {
+func (r *PeriodRepository) CreatePeriod(ctx context.Context, input PeriodInput) (int64, error) {
 	var id int64
-	row := s.DB.QueryRow(ctx, `
+	row := r.db.QueryRow(ctx, `
 		INSERT INTO periods (name, start_date, end_date, sort_order)
 		VALUES ($1, $2, $3, COALESCE((SELECT MAX(sort_order) + 1 FROM periods), 1))
 		RETURNING id`, input.Name, input.StartDate, input.EndDate)
@@ -66,8 +84,8 @@ func (s *Store) CreatePeriod(ctx context.Context, input PeriodInput) (int64, err
 	return id, nil
 }
 
-func (s *Store) MovePeriod(ctx context.Context, periodID int64, direction int) error {
-	tx, err := s.DB.Begin(ctx)
+func (r *PeriodRepository) MovePeriod(ctx context.Context, periodID int64, direction int) error {
+	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -109,15 +127,15 @@ func (s *Store) MovePeriod(ctx context.Context, periodID int64, direction int) e
 	return tx.Commit(ctx)
 }
 
-func (s *Store) UpdatePeriod(ctx context.Context, periodID int64, input PeriodInput) error {
-	_, err := s.DB.Exec(ctx, `
+func (r *PeriodRepository) UpdatePeriod(ctx context.Context, periodID int64, input PeriodInput) error {
+	_, err := r.db.Exec(ctx, `
 		UPDATE periods
 		SET name=$1, start_date=$2, end_date=$3, updated_at=NOW()
 		WHERE id=$4`, input.Name, input.StartDate, input.EndDate, periodID)
 	return err
 }
 
-func (s *Store) DeletePeriod(ctx context.Context, periodID int64) error {
-	_, err := s.DB.Exec(ctx, `DELETE FROM periods WHERE id=$1`, periodID)
+func (r *PeriodRepository) DeletePeriod(ctx context.Context, periodID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM periods WHERE id=$1`, periodID)
 	return err
 }
