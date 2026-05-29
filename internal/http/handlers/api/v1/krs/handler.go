@@ -211,7 +211,7 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
@@ -234,8 +234,8 @@ func (h *Handler) HandleAddKRComment(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
-	if err := h.service.AddKeyResultComment(r.Context(), krID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to add comment", nil)
+	if err := h.service.UpsertKeyResultNote(r.Context(), krID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to upsert note", nil)
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})

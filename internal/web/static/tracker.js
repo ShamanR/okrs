@@ -70,7 +70,7 @@ function mapKR(kr) {
     id: kr.id, goalId: kr.goal_id, name: kr.title, desc: kr.description,
     weight: kr.weight, krType: kr.kind, progress: kr.progress,
     start, target, current, done, stages,
-    notes: (kr.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text })),
+    note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at) } : null,
     updatedAt: kr.updated_at, updatedDaysAgo: daysAgo(kr.updated_at),
   };
 }
@@ -327,7 +327,7 @@ function StatusStepper({ status, hasGoals, onChange, accent, statusChangedAt }) 
 // ── KR PROGRESS MODAL ─────────────────────────────────────────────────────────
 function KRProgressModal({ kr, onSave, onClose, accent }) {
   const [form, setForm] = useState({ ...kr, stages: (kr.stages || []).map(s => ({ ...s })) });
-  const [note, setNote] = useState(''); const [saving, setSaving] = useState(false);
+  const [note, setNote] = useState(kr.note?.text ?? ''); const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setStage = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const progress = calcKRProgress(form);
@@ -341,7 +341,10 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
       } else if (form.krType === 'PROJECT') {
         await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })) });
       }
-      if (note.trim()) await apiPost(`/api/v1/krs/${kr.id}/comments`, { text: note.trim() });
+      const trimmed = note.trim();
+      if (trimmed && trimmed !== (kr.note?.text ?? '')) {
+        await apiPost(`/api/v1/krs/${kr.id}/note`, { text: trimmed });
+      }
       onSave();
     } catch (e) { alert('Ошибка сохранения: ' + e.message); }
     finally { setSaving(false); }
@@ -401,6 +404,9 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
             <div className="kr-note-label">Заметка <span className="kr-note-optional">(опционально)</span></div>
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Контекст, блокеры…"
               className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+            {kr.note && (
+              <div className="kr-note-meta">{kr.note.author} · {kr.note.date}</div>
+            )}
           </div>
         </div>
         <div className="modal-footer">
@@ -558,7 +564,7 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
 // ── KR ROW ────────────────────────────────────────────────────────────────────
 function KRRow({ kr, goalId, editMode, onReload, accent }) {
   const [modal, setModal] = useState(null);
-  const [showNotes, setShowNotes] = useState(false);
+  const [showNote, setShowNote] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const progress = kr.progress;
   const staleC = kr.updatedDaysAgo > 7 ? '#dc2626' : kr.updatedDaysAgo > 4 ? '#d97706' : '#10b981';
@@ -583,7 +589,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
           </div>
           <Badge label={kr.krType} color={KR_TYPE_C[kr.krType]} />
           <span className="kr-updated" style={{ color: staleC }}>{kr.updatedDaysAgo === 0 ? 'сегодня' : `${kr.updatedDaysAgo}д назад`}</span>
-          {kr.notes && kr.notes.length > 0 && <button onClick={() => setShowNotes(!showNotes)} className="kr-notes-btn">📝 {kr.notes.length}</button>}
+          {kr.note && <button onClick={() => setShowNote(!showNote)} className="kr-notes-btn">📝</button>}
           {editMode === 'full' && <>
             <button onClick={() => setModal('edit')} className="kr-edit-btn">Редактировать</button>
             <button onClick={() => setConfirmDelete(true)} title="Удалить KR" className="kr-delete-btn">×</button>
@@ -595,20 +601,18 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
             </button>
           )}
         </div>
-        {showNotes && (kr.notes || []).length > 0 && (
+        {showNote && kr.note && (
           <div className="kr-notes">
-            {(kr.notes || []).map((n, i) => (
-              <div key={n.id || i} className="kr-note">
-                <Avatar name={n.author} size={22} />
-                <div className="kr-note__content">
-                  <div className="kr-note__header">
-                    <span className="kr-note__author">{n.author}</span>
-                    <span className="kr-note__date">{n.date}</span>
-                  </div>
-                  <div className="kr-note__text">{n.text}</div>
+            <div className="kr-note">
+              <Avatar name={kr.note.author} size={22} />
+              <div className="kr-note__content">
+                <div className="kr-note__header">
+                  <span className="kr-note__author">{kr.note.author}</span>
+                  <span className="kr-note__date">{kr.note.date}</span>
                 </div>
+                <div className="kr-note__text" style={{ whiteSpace: 'pre-wrap' }}>{kr.note.text}</div>
               </div>
-            ))}
+            </div>
           </div>
         )}
       </div>

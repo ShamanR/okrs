@@ -140,7 +140,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	}
 }
 
-func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
+func TestUpsertKRNoteIntegration(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
 		tcpostgres.WithDatabase("okrs"),
@@ -162,7 +162,6 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 	if err := testutil.RunMigrations(dbURL); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		t.Fatalf("pool: %v", err)
@@ -171,67 +170,94 @@ func TestAddKRCommentPreservesMultilineIntegration(t *testing.T) {
 
 	repo := store.New(pool)
 	var teamID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('API') RETURNING id`).Scan(&teamID); err != nil {
-		t.Fatalf("insert team: %v", err)
-	}
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('NoteIntegTeam') RETURNING id`).Scan(&teamID)
 	var periodID int64
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
-		RETURNING id`).Scan(&periodID); err != nil {
-		t.Fatalf("insert period: %v", err)
-	}
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q2', '2024-04-01', '2024-06-30', 2) RETURNING id`).Scan(&periodID)
 
 	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
-		TeamID:      teamID,
-		PeriodID:    periodID,
-		Title:       "API Goal",
-		Description: "desc",
-		Priority:    domain.PriorityP1,
-		Weight:      100,
-		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
-		OwnerText:   "Owner",
+		TeamID: teamID, PeriodID: periodID, Title: "Note Goal",
+		Priority: domain.PriorityP1, Weight: 100,
+		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
 	}
-
 	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
-		GoalID:      goalID,
-		Title:       "KR",
-		Description: "",
-		Weight:      100,
-		Kind:        domain.KRKindBoolean,
+		GoalID: goalID, Title: "Note KR", Weight: 100, Kind: domain.KRKindBoolean,
 	})
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
 
 	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
-	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
 	defer server.Close()
 
-	commentText := "Первая строка\r\nВторая строка\r\nТретья строка"
-	payload, _ := json.Marshal(map[string]string{"text": commentText})
-	resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/comments", server.URL, krID), "application/json", bytes.NewBuffer(payload))
-	if err != nil {
-		t.Fatalf("post comment: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
+	t.Run("empty text returns 400", func(t *testing.T) {
+		payload, _ := json.Marshal(map[string]string{"text": ""})
+		resp, err := http.Post(
+			fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
+			"application/json", bytes.NewReader(payload),
+		)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d", resp.StatusCode)
+		}
+	})
 
-	comments, err := repo.KRs.LastKeyResultComments(ctx, krID)
-	if err != nil {
-		t.Fatalf("list comments: %v", err)
-	}
-	if len(comments) != 1 {
-		t.Fatalf("expected one comment, got %d", len(comments))
-	}
-	want := "Первая строка\nВторая строка\nТретья строка"
-	if comments[0].Text != want {
-		t.Fatalf("expected %q, got %q", want, comments[0].Text)
-	}
+	t.Run("valid note returns 200", func(t *testing.T) {
+		payload, _ := json.Marshal(map[string]string{"text": "integration note"})
+		resp, err := http.Post(
+			fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
+			"application/json", bytes.NewReader(payload),
+		)
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("note appears in OKR response", func(t *testing.T) {
+		resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, teamID, periodID))
+		if err != nil {
+			t.Fatalf("request: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 for okrs, got %d", resp.StatusCode)
+		}
+		var body struct {
+			Goals []struct {
+				KeyResults []struct {
+					ID   int64 `json:"id"`
+					Note *struct {
+						Text string `json:"text"`
+					} `json:"note"`
+				} `json:"key_results"`
+			} `json:"goals"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		for _, g := range body.Goals {
+			for _, kr := range g.KeyResults {
+				if kr.ID == krID {
+					if kr.Note == nil {
+						t.Fatal("note is nil in OKR response")
+					}
+					if kr.Note.Text != "integration note" {
+						t.Fatalf("expected 'integration note', got %q", kr.Note.Text)
+					}
+					return
+				}
+			}
+		}
+		t.Fatalf("KR %d not found in response", krID)
+	})
 }

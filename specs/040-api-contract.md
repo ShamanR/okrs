@@ -173,7 +173,7 @@ CSRF token должен быть ротационным (не постоянны
 - create KR — `POST /api/v1/goals/{goalID}/key-results`
 - move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`
 - update KR progress — `POST /api/v1/krs/{krID}/progress/percent|boolean|project`
-- add KR comment — `POST /api/v1/krs/{krID}/comments`
+- upsert KR note — `POST /api/v1/krs/{krID}/note`
 - update KR — `POST /api/v1/krs/{krID}`
 - move KR up / down — `POST /api/v1/krs/{krID}/move-up`, `POST /api/v1/krs/{krID}/move-down`
 - update team status — `POST /api/v1/teams/{teamID}/status`
@@ -270,7 +270,7 @@ Hierarchy node shape расширен полем:
 ]
 ```
 
-Аналогично `key_results[].comments[]` содержит `author_udid`.
+`key_results[].note` содержит `{ text, author_name, author_udid, updated_at }` или `null`.
 
 `author_udid` — UDID автора комментария; клиент использует его для загрузки данных пользователя через `GET /api/v1/users?ids[]=<udid>`.
 

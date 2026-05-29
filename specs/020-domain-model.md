@@ -74,6 +74,7 @@
 - weight
 - kind
 - sort_order
+- note (nullable, 1:1 — см. KeyResultNote)
 
 **Типы:**
 
@@ -88,12 +89,12 @@
 - weight в диапазоне 0..100;
 - порядок KR управляется отдельно внутри goal.
 
-### GoalComment / KeyResultComment
+### GoalComment
 
 **Поля:**
 
 - id
-- goal_id / key_result_id
+- goal_id
 - text
 - author_user_id (ссылка на users.id, NOT NULL)
 - created_at
@@ -103,6 +104,22 @@
 - комментарий всегда имеет автора;
 - в режиме `auth.mode=disabled` автором выступает системный пользователь `anonymous-local` (id=1);
 - исторические комментарии, созданные до миграции, бэкфиллены системным пользователем `migration` (id=2).
+
+### KeyResultNote
+
+**Поля:**
+
+- key_result_id (PK, FK → key_results.id)
+- text
+- author_user_id (FK → users.id)
+- updated_at
+
+**Инварианты:**
+
+- одна заметка на один KR (key_result_id — PRIMARY KEY);
+- заметку нельзя удалить через API — только перезаписать;
+- при удалении KR заметка удаляется каскадно;
+- автор заметки — текущий пользователь на момент записи; в режиме `auth.mode=disabled` — `anonymous-local`.
 
 ### GoalShare
 

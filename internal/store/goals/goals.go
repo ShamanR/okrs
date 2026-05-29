@@ -531,7 +531,7 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, goals []domain.Goa
 	if err := r.loadBooleanMeta(ctx, krIDs, krsByID); err != nil {
 		return err
 	}
-	return r.loadKRComments(ctx, krIDs, krsByID)
+	return r.loadKRNotes(ctx, krIDs, krsByID)
 }
 
 func (r *GoalRepository) loadProjectStages(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
@@ -653,30 +653,25 @@ func (r *GoalRepository) loadBooleanMeta(ctx context.Context, krIDs []int64, krs
 	return rows.Err()
 }
 
-// loadKRComments batch-loads the last 3 comments per KR using a window function.
-func (r *GoalRepository) loadKRComments(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
+// loadKRNotes batch-loads the single note per KR using key_result_notes.
+func (r *GoalRepository) loadKRNotes(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
 	rows, err := r.db.Query(ctx, `
-		SELECT c.id, c.key_result_id, c.text, u.display_name, u.udid, c.created_at
-		FROM (
-			SELECT krc.*,
-				ROW_NUMBER() OVER (PARTITION BY krc.key_result_id ORDER BY krc.created_at DESC) AS rn
-			FROM key_result_comments krc
-			WHERE krc.key_result_id = ANY($1)
-		) c
-		JOIN users u ON u.id = c.author_user_id
-		WHERE c.rn <= 3
-		ORDER BY c.key_result_id, c.created_at DESC`, krIDs)
+		SELECT krn.key_result_id, krn.text, u.display_name, u.udid, krn.updated_at
+		FROM key_result_notes krn
+		JOIN users u ON u.id = krn.author_user_id
+		WHERE krn.key_result_id = ANY($1)`, krIDs)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var c domain.KeyResultComment
-		if err := rows.Scan(&c.ID, &c.KeyResultID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+		var n domain.KeyResultNote
+		if err := rows.Scan(&n.KeyResultID, &n.Text, &n.AuthorName, &n.AuthorUDID, &n.UpdatedAt); err != nil {
 			return err
 		}
-		if kr, ok := krsByID[c.KeyResultID]; ok {
-			kr.Comments = append(kr.Comments, c)
+		if kr, ok := krsByID[n.KeyResultID]; ok {
+			note := n
+			kr.Note = &note
 		}
 	}
 	return rows.Err()
@@ -716,15 +711,15 @@ func (r *GoalRepository) listGoalLastKRActivity(ctx context.Context, goalIDs []i
 		SELECT
 			kr.goal_id,
 			CASE
-				WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krc.created_at)
-				WHEN MAX(krc.created_at) IS NULL THEN MAX(kr.progress_updated_at)
-				ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krc.created_at))
+				WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krn.updated_at)
+				WHEN MAX(krn.updated_at) IS NULL THEN MAX(kr.progress_updated_at)
+				ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krn.updated_at))
 			END AS last_updated
 		FROM key_results kr
-		LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
+		LEFT JOIN key_result_notes krn ON krn.key_result_id = kr.id
 		WHERE kr.goal_id = ANY($1)
 		GROUP BY kr.goal_id
-		HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krc.created_at) IS NOT NULL`, goalIDs)
+		HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krn.updated_at) IS NOT NULL`, goalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -829,15 +824,15 @@ func (r *GoalRepository) ListTeamLastGoalUpdateInPeriod(ctx context.Context, per
 				SELECT
 					kr.goal_id,
 					CASE
-						WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krc.created_at)
-						WHEN MAX(krc.created_at) IS NULL THEN MAX(kr.progress_updated_at)
-						ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krc.created_at))
+						WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krn.updated_at)
+						WHEN MAX(krn.updated_at) IS NULL THEN MAX(kr.progress_updated_at)
+						ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krn.updated_at))
 					END AS last_update_at
 					FROM key_results kr
-				LEFT JOIN key_result_comments krc ON krc.key_result_id = kr.id
+				LEFT JOIN key_result_notes krn ON krn.key_result_id = kr.id
 				WHERE kr.goal_id IN (SELECT DISTINCT goal_id FROM team_goals)
 				GROUP BY kr.goal_id
-				HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krc.created_at) IS NOT NULL
+				HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krn.updated_at) IS NOT NULL
 			)
 		SELECT tg.team_id, MAX(gu.last_update_at) AS last_update_at
 		FROM team_goals tg

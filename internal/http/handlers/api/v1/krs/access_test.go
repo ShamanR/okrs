@@ -167,17 +167,31 @@ func TestKRProgressAccessControl(t *testing.T) {
 	})
 }
 
-func TestKRCommentAccessControl(t *testing.T) {
+func TestKRNoteAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
 	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants))
-	payload, _ := json.Marshal(map[string]string{"text": "comment"})
+	payload, _ := json.Marshal(map[string]string{"text": "test note"})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{}))
 		defer server.Close()
-		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/comments", server.URL, krID),
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
+			"application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("denied when team not in scope", func(t *testing.T) {
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID + 999}))
+		defer server.Close()
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -191,7 +205,21 @@ func TestKRCommentAccessControl(t *testing.T) {
 	t.Run("allowed when team in scope", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
 		defer server.Close()
-		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/comments", server.URL, krID),
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
+			"application/json", bytes.NewBuffer(payload))
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("allowed for admin (nil scope)", func(t *testing.T) {
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
+		defer server.Close()
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			t.Fatalf("post: %v", err)

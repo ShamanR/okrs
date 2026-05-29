@@ -148,9 +148,14 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period, userRefs m
 }
 
 func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
-	comments := make([]dto.KRComment, 0, len(kr.Comments))
-	for _, comment := range kr.Comments {
-		comments = append(comments, dto.KRComment{ID: comment.ID, Text: comment.Text, AuthorName: comment.AuthorName, AuthorUDID: comment.AuthorUDID, CreatedAt: comment.CreatedAt})
+	var note *dto.KRNote
+	if kr.Note != nil {
+		note = &dto.KRNote{
+			Text:       kr.Note.Text,
+			AuthorName: kr.Note.AuthorName,
+			AuthorUDID: kr.Note.AuthorUDID,
+			UpdatedAt:  kr.Note.UpdatedAt,
+		}
 	}
 	return dto.KeyResult{
 		ID:          kr.ID,
@@ -161,7 +166,7 @@ func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 		Kind:        string(kr.Kind),
 		Progress:    kr.Progress,
 		Measure:     buildMeasure(kr),
-		Comments:    comments,
+		Note:        note,
 		CreatedAt:   kr.CreatedAt,
 		UpdatedAt:   kr.UpdatedAt,
 	}

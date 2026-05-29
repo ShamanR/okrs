@@ -93,6 +93,14 @@ type GoalComment struct {
 	CreatedAt  time.Time
 }
 
+type KeyResultNote struct {
+	KeyResultID int64
+	Text        string
+	AuthorName  string
+	AuthorUDID  string
+	UpdatedAt   time.Time
+}
+
 type KeyResult struct {
 	ID          int64
 	GoalID      int64
@@ -106,18 +114,9 @@ type KeyResult struct {
 	Percent     *KRPercent
 	Linear      *KRLinear
 	Boolean     *KRBoolean
-	Comments    []KeyResultComment
+	Note        *KeyResultNote
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-}
-
-type KeyResultComment struct {
-	ID          int64
-	KeyResultID int64
-	Text        string
-	AuthorName  string
-	AuthorUDID  string
-	CreatedAt   time.Time
 }
 
 type KRProject struct {
