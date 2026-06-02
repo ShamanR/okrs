@@ -79,7 +79,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		logger:      logger,
 		tmpl:        tmpl,
 		zone:        zone,
-		service:     service.NewFromStore(st, grantsCache),
+		service:     service.NewFromStore(st, grantsCache, nil),
 		auth:        authMgr,
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,

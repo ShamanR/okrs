@@ -399,3 +399,20 @@ func emptyCategories(cfg HealthCheckInConfig) map[string]*HealthCheckInCategory 
 	}
 	return cats
 }
+
+// GetHealthCheckIn computes the health check-in for the given user and period.
+// Uses cached period data; loads from DB on first call or after TTL.
+func (s *Service) GetHealthCheckIn(ctx context.Context, userDisplayName string, periodID int64, cfg HealthCheckInConfig) (*HealthCheckInResult, error) {
+	if s.hcCache == nil {
+		return &HealthCheckInResult{HasScope: false}, nil
+	}
+	data, err := s.hcCache.Get(ctx, periodID)
+	if err != nil {
+		return nil, err
+	}
+	scopeIDs := computeScope(data.Teams, data.GoalsByTeam, userDisplayName)
+	if scopeIDs == nil {
+		return &HealthCheckInResult{HasScope: false, PeriodID: periodID, Categories: emptyCategories(cfg)}, nil
+	}
+	return computeCategories(data, scopeIDs, cfg, time.Now()), nil
+}
