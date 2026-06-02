@@ -155,7 +155,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 	}
 
 	krRows, err := r.db.Query(ctx, `
-		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at, progress_updated_at
 		FROM key_results
 		WHERE goal_id = ANY($1)
 		ORDER BY goal_id, sort_order, id`, goalIDs)
@@ -169,7 +169,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 	krIDSeen := map[int64]struct{}{}
 	for krRows.Next() {
 		var kr domain.KeyResult
-		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt, &kr.ProgressUpdatedAt); err != nil {
 			return nil, err
 		}
 		goals, ok := goalsByID[kr.GoalID]

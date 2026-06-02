@@ -122,6 +122,7 @@ type Deps struct {
 	Statuses TeamStatusRepo
 	Users    UserRepo
 	Grants   GrantsProvider
+	HCCache  *HealthCheckInCache
 }
 
 type Service struct {
@@ -133,6 +134,7 @@ type Service struct {
 	statuses TeamStatusRepo
 	users    UserRepo
 	grants   GrantsProvider
+	hcCache  *HealthCheckInCache
 }
 
 var (
@@ -153,12 +155,13 @@ func New(deps Deps) *Service {
 		statuses: deps.Statuses,
 		users:    deps.Users,
 		grants:   deps.Grants,
+		hcCache:  deps.HCCache,
 	}
 }
 
 // NewFromStore constructs a Service from a *store.Store and a GrantsProvider.
 // Use this at the wiring layer instead of building Deps manually.
-func NewFromStore(st *store.Store, grantsProvider GrantsProvider) *Service {
+func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *HealthCheckInCache) *Service {
 	return New(Deps{
 		Teams:    st.Teams,
 		Goals:    st.Goals,
@@ -168,6 +171,7 @@ func NewFromStore(st *store.Store, grantsProvider GrantsProvider) *Service {
 		Statuses: st.Statuses,
 		Users:    st.Users,
 		Grants:   grantsProvider,
+		HCCache:  hcCache,
 	})
 }
 

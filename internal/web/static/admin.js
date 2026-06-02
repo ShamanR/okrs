@@ -327,6 +327,7 @@ function Shell({section, setSection, currentUser, children}) {
     {id:'teams',    label:'Команды',     hint:'Иерархия и руководители', icon:'👥'},
     {id:'users',    label:'Пользователи',hint:'Админы и доступ',         icon:'🔑'},
     {id:'settings', label:'Настройки',   hint:'Доступ и политики',       icon:'⚙'},
+    {id:'health-checkin', label:'Health Check-in', hint:'Настройки проверок', icon:'⚡'},
   ];
   const cur = sections.find(s=>s.id===section);
   return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
@@ -749,6 +750,131 @@ function TeamEditor({value, teams, onSave, onCancel, onDelete, onRestore, onHard
   </div>;
 }
 
+// ── HEALTH CHECK-IN SETTINGS PANEL ───────────────────────────────────────────
+function HealthCheckInSettingsPanel() {
+  const [cfg, setCfg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    apiGet('/api/v1/admin/settings/health-checkin')
+      .then(r => r && r.json())
+      .then(d => d && setCfg(d));
+  }, []);
+
+  if (!cfg) return <div style={{padding:24, color: T.mutedFg}}>Загрузка…</div>;
+
+  const update = (key, val) => setCfg(prev => ({...prev, [key]: val}));
+  const updateCounter = (k, val) => setCfg(prev => ({...prev, in_counter: {...prev.in_counter, [k]: val}}));
+
+  const save = async () => {
+    setSaving(true); setMsg('');
+    const res = await apiPost('/api/v1/admin/settings/health-checkin', cfg);
+    setSaving(false);
+    setMsg(res && res.ok ? 'Сохранено' : 'Ошибка сохранения');
+  };
+
+  const catConfig = [
+    {
+      key: 'stale', icon: '🕐', label: 'Нет обновлений',
+      hint: 'Цели и KR без обновления прогресса более N дней. Руководителю нужно напомнить команде обновить прогресс.',
+      param: { field: 'stale_days', label: 'Порог (дней без обновления)', min: 1 },
+    },
+    {
+      key: 'no_goals', icon: '○', label: 'Не заведены цели',
+      hint: 'Команды без ни одной цели в периоде. Руководителю нужно инициировать заведение OKR.',
+    },
+    {
+      key: 'awaiting_validation', icon: '○', label: 'Ожидают перевода в работу',
+      hint: 'Команды со статусом «Черновик» или «К валидации». Нужно перевести в «В работе».',
+    },
+    {
+      key: 'formation_errors', icon: '⚠', label: 'Ошибки формирования',
+      hint: 'Суммы весов ≠ 100%, отсутствие KR, нулевые диапазоны. Мешают корректному расчёту прогресса.',
+      param: { field: 'weight_tolerance', label: 'Допуск по весам (%)', min: 0 },
+    },
+    {
+      key: 'lagging', icon: '▼', label: 'Отстающие',
+      hint: 'Цели ниже ожидаемого темпа периода. Информационная категория — показывает риски.',
+      param: { field: 'behind_margin', label: 'Отставание (п.п.)', min: 1 },
+    },
+  ];
+
+  const fieldStyle = {background:'#f8fafc', border:'1px solid #e5e7eb', borderRadius:6, padding:'6px 10px', fontSize:13, width:70, fontFamily:'inherit'};
+  const labelStyle = {fontSize:13, color: T.bodyFg, fontWeight:500};
+  const hintStyle  = {fontSize:12, color: T.mutedFg, marginTop:4, lineHeight:1.5};
+
+  return (
+    <div style={{padding:'20px 24px 32px'}}>
+      <div style={{background:'white', borderRadius:12, border:'1px solid '+T.cardBorder, padding:'20px 24px'}}>
+        <div style={{fontSize:15, fontWeight:700, color: T.headingFg, marginBottom:4}}>⚡ Health Check-in — настройки</div>
+        <div style={{fontSize:13, color: T.mutedFg, marginBottom:24}}>
+          Определяют, какие проблемы попадают в счётчик кнопки ⚡ Health Check-in в трекере.
+        </div>
+
+        {catConfig.map(cat => (
+          <div key={cat.key} style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
+            <div style={{display:'flex', alignItems:'flex-start', gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4}}>
+                  <span style={{fontSize:16}}>{cat.icon}</span>
+                  <span style={{fontSize:14, fontWeight:600, color: T.headingFg}}>{cat.label}</span>
+                </div>
+                <div style={hintStyle}>{cat.hint}</div>
+                {cat.param && (
+                  <div style={{display:'flex', alignItems:'center', gap:8, marginTop:10}}>
+                    <span style={labelStyle}>{cat.param.label}:</span>
+                    <input
+                      type="number" min={cat.param.min}
+                      value={cfg[cat.param.field] ?? ''}
+                      onChange={e => update(cat.param.field, Number(e.target.value))}
+                      style={fieldStyle}
+                    />
+                  </div>
+                )}
+              </div>
+              <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4, flexShrink:0}}>
+                <label style={{display:'flex', alignItems:'center', gap:6, cursor:'pointer'}}>
+                  <input
+                    type="checkbox"
+                    checked={cfg.in_counter?.[cat.key] ?? false}
+                    onChange={e => updateCounter(cat.key, e.target.checked)}
+                  />
+                  <span style={{fontSize:12, color: T.mutedFg}}>В счётчик</span>
+                </label>
+              </div>
+            </div>
+          </div>
+        ))}
+
+        <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
+          <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>Кеш</div>
+          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+            <span style={labelStyle}>Время жизни (мин):</span>
+            <input
+              type="number" min={1}
+              value={cfg.cache_ttl_minutes ?? 5}
+              onChange={e => update('cache_ttl_minutes', Number(e.target.value))}
+              style={fieldStyle}
+            />
+          </div>
+          <div style={hintStyle}>Интервал фонового пересчёта. Меньше — актуальнее данные, больше — меньше нагрузка на БД.</div>
+        </div>
+
+        <div style={{marginTop:24, display:'flex', alignItems:'center', gap:12}}>
+          <button
+            onClick={save}
+            disabled={saving}
+            style={{padding:'8px 20px', background: T.accent, color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer'}}>
+            {saving ? 'Сохранение…' : 'Сохранить'}
+          </button>
+          {msg && <span style={{fontSize:13, color: msg.startsWith('Ош') ? T.danger : T.success}}>{msg}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── ACCESS SETTINGS PANEL ────────────────────────────────────────────────────
 function AccessSettingsPanel({teams}) {
   const [policy, setPolicy] = useState('empty');
@@ -1002,6 +1128,7 @@ function App() {
     {section==='teams'   &&<TeamsSection teams={teams} reload={loadAll}/>}
     {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={loadAll}/>}
     {section==='settings'&&<div style={{padding:'20px 24px 24px'}}><div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div></div>}
+    {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}
   </Shell>;
 }
 

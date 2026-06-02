@@ -1250,6 +1250,154 @@ function ClusterView({ overview, onSelect }) {
   );
 }
 
+// ── HEALTH CHECK-IN ───────────────────────────────────────────────────────────
+const HCI_CAT_META = {
+  stale:               { icon: '🕐', label: 'Нет обновлений',      color: '#f59e0b' },
+  no_goals:            { icon: '○',  label: 'Нет целей',           color: '#6b7280' },
+  awaiting_validation: { icon: '○',  label: 'Ожидают валидации',   color: '#6b7280' },
+  formation_errors:    { icon: '⚠',  label: 'Ошибки формирования', color: '#ef4444' },
+  lagging:             { icon: '▼',  label: 'Отстающие',           color: '#3b82f6' },
+};
+const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging'];
+const HCI_ACTION_LABEL = {
+  stale:               '→ Обновить прогресс',
+  no_goals:            '→ Перейти к команде',
+  awaiting_validation: '→ Перейти к команде',
+  formation_errors:    '→ Исправить',
+  lagging:             '→ Перейти к цели',
+};
+
+function HealthCheckInButton({ data, onClick }) {
+  if (!data || !data.has_scope) return null;
+  const count = data.total_problems;
+  return (
+    <button className="hci-button" onClick={onClick}>
+      <span>⚡ Health Check-in</span>
+      <span className={`hci-badge${count === 0 ? ' hci-badge--zero' : ''}`}>{count}</span>
+    </button>
+  );
+}
+
+function formatHCIErrorType(errType, item) {
+  const labels = {
+    weight_sum_not_100: `Сумма весов целей: ${item.actual_weight_sum ?? '?'}% (должно быть 100%)`,
+    no_krs: 'У цели нет ключевых результатов',
+    kr_weight_sum_not_100: 'Сумма весов KR ≠ 100%',
+    project_no_stages: 'PROJECT KR без шагов',
+    project_stage_weight_sum_not_100: 'Сумма весов шагов ≠ 100%',
+    kr_zero_range: 'Нулевой диапазон (start = target)',
+    kr_no_title: 'KR без названия',
+  };
+  return labels[errType] || errType;
+}
+
+function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
+  const [filter, setFilter] = useState(null);
+  if (!data) return null;
+
+  const subtitle = (() => {
+    if (data.total_problems > 0) return `Найдено проблем: ${data.total_problems}`;
+    const lagging = data.categories?.lagging?.count ?? 0;
+    if (lagging > 0) return 'Проблем нет · есть отстающие цели';
+    return 'Всё в порядке';
+  })();
+
+  const nonEmptyCats = HCI_CAT_ORDER.filter(k => (data.categories?.[k]?.count ?? 0) > 0);
+  const visibleCats = filter ? [filter] : HCI_CAT_ORDER;
+
+  return (
+    <>
+      {open && <div className="hci-backdrop" onClick={onClose}/>}
+      <div className={`hci-panel${open ? ' hci-panel--open' : ''}`}>
+        <div className="hci-panel__header">
+          <div style={{flex:1}}>
+            <p className="hci-panel__title">⚡ Health Check-in</p>
+            <p className="hci-panel__subtitle">{subtitle}</p>
+          </div>
+          <button className="hci-panel__close" onClick={onClose}>✕</button>
+        </div>
+
+        {nonEmptyCats.length > 0 && (
+          <div className="hci-chips">
+            <button
+              className={`hci-chip${!filter ? ' hci-chip--active' : ''}`}
+              onClick={() => setFilter(null)}>
+              Все · {data.total_problems + (data.categories?.lagging?.count ?? 0)}
+            </button>
+            {nonEmptyCats.map(k => {
+              const cat = data.categories[k];
+              const meta = HCI_CAT_META[k];
+              const isActive = filter === k;
+              const chipStyle = isActive
+                ? { background: meta.color, borderColor: meta.color, color: '#fff' }
+                : { borderColor: meta.color + '60', color: meta.color };
+              return (
+                <button key={k}
+                  className="hci-chip"
+                  style={chipStyle}
+                  onClick={() => setFilter(isActive ? null : k)}>
+                  {meta.icon} {meta.label} · {cat.count}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="hci-body">
+          {visibleCats.every(k => (data.categories?.[k]?.count ?? 0) === 0) ? (
+            <div className="hci-empty">
+              <span className="hci-empty__icon">{filter ? '🔍' : '✅'}</span>
+              <span>{filter ? 'По выбранному фильтру ничего нет' : 'Всё ok'}</span>
+            </div>
+          ) : (
+            visibleCats.map(k => {
+              const cat = data.categories?.[k];
+              if (!cat || cat.count === 0) return null;
+              const meta = HCI_CAT_META[k];
+              const byTeam = {};
+              for (const item of cat.items) {
+                if (!byTeam[item.team_id]) byTeam[item.team_id] = { name: item.team_name, path: item.team_path, items: [] };
+                byTeam[item.team_id].items.push(item);
+              }
+              return (
+                <div key={k} className="hci-section">
+                  <div className="hci-section__header" style={{color: meta.color}}>
+                    <span>{meta.icon}</span>
+                    <span>{meta.label}</span>
+                    <span className="hci-section__count">{cat.count}</span>
+                  </div>
+                  {Object.entries(byTeam).map(([teamIdStr, group]) => (
+                    <div key={teamIdStr} className="hci-team">
+                      <div className="hci-team__name">
+                        <span>▸</span>
+                        <span>{group.path?.join(' › ') || group.name}</span>
+                      </div>
+                      {group.items.map((item, idx) => (
+                        <div key={idx} className="hci-item">
+                          {item.goal_title && <div className="hci-item__title">{item.goal_title}</div>}
+                          {item.days_since_update > 0 && <div className="hci-item__meta">{item.days_since_update} дн. без обновлений</div>}
+                          {item.error_type && <div className="hci-item__meta">{formatHCIErrorType(item.error_type, item)}</div>}
+                          {item.progress !== undefined && item.expected_pace !== undefined && (
+                            <div className="hci-item__meta">Прогресс: {item.progress}% · Ожидалось: {item.expected_pace}%</div>
+                          )}
+                          <button className="hci-item__action"
+                            onClick={() => { onSelectTeam(item.team_id, item.goal_id); onClose(); }}>
+                            {HCI_ACTION_LABEL[k]}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ── APP ───────────────────────────────────────────────────────────────────────
 function App() {
   const [me, setMe] = useState(null);
@@ -1263,6 +1411,14 @@ function App() {
   const [expanded, setExpanded] = useState({});
   const [goalModal, setGoalModal] = useState(null);
   const [accent] = useState(ACCENT);
+  const [hciData, setHciData] = useState(null);
+  const [hciOpen, setHciOpen] = useState(false);
+
+  const loadHCI = useCallback((pid) => {
+    if (!pid) return;
+    apiGet(`/api/v1/health-checkin?period_id=${pid}`)
+      .then(d => d && setHciData(d));
+  }, []);
 
   // Read desired initial team+period once from URL (highest prio) then cookie.
   const initialNavRef = useRef(null);
@@ -1325,6 +1481,8 @@ function App() {
     updateURL(selId, periodId);
     if (selId && periodId) writeLastNav(selId, periodId);
   }, [selId, periodId]);
+
+  useEffect(() => { loadHCI(periodId); }, [periodId]);
 
   const findFirstNode = nodes => {
     for (const n of nodes) { if (!n.children || n.children.length === 0) return n; const c = findFirstNode(n.children || []); if (c) return c; }
@@ -1415,6 +1573,9 @@ function App() {
             : hierarchy.map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} />)
           }
         </div>
+        <div style={{padding: '8px 8px 0'}}>
+          <HealthCheckInButton data={hciData} onClick={() => setHciOpen(true)}/>
+        </div>
       </div>
 
       <div className="main">
@@ -1481,6 +1642,20 @@ function App() {
         onSave={() => { setGoalModal(null); reload(); }}
         onClose={() => setGoalModal(null)}
         accent={accent} allTeams={hierarchy} />}
+      <HealthCheckInPanel
+        data={hciData}
+        open={hciOpen}
+        onClose={() => setHciOpen(false)}
+        onSelectTeam={(teamId, goalId) => {
+          selectTeam(teamId);
+          if (goalId) {
+            setTimeout(() => {
+              const el = document.getElementById(`goal-${goalId}`);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 400);
+          }
+        }}
+      />
     </div>
   );
 }
