@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"embed"
 	"html/template"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
+	apihealthcheckin "okrs/internal/http/handlers/api/v1/healthcheckin"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
@@ -40,6 +42,7 @@ type Server struct {
 	auth        *auth.Manager
 	policy      *auth.PolicyEvaluator
 	grantsCache *grants.GrantsCache
+	hcCache     *service.HealthCheckInCache
 }
 
 func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
@@ -74,19 +77,63 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	if err != nil {
 		return nil, err
 	}
+	hcLoader := func(ctx context.Context, periodID int64) (*service.PeriodData, error) {
+		period, err := st.Periods.GetPeriod(ctx, periodID)
+		if err != nil {
+			return nil, err
+		}
+		allTeams, err := st.Teams.ListAllTeams(ctx)
+		if err != nil {
+			return nil, err
+		}
+		allTeamIDs := make([]int64, len(allTeams))
+		for i, t := range allTeams {
+			allTeamIDs[i] = t.ID
+		}
+		goalsByTeam, err := st.Goals.ListGoalsByTeamsPeriod(ctx, periodID, allTeamIDs)
+		if err != nil {
+			return nil, err
+		}
+		statuses, err := st.Statuses.ListTeamPeriodStatuses(ctx, periodID, allTeamIDs)
+		if err != nil {
+			return nil, err
+		}
+		return &service.PeriodData{
+			PeriodID:    periodID,
+			Period:      period,
+			Teams:       allTeams,
+			GoalsByTeam: goalsByTeam,
+			Statuses:    statuses,
+			CachedAt:    time.Now(),
+		}, nil
+	}
+
+	cacheTTL := 5 * time.Minute
+	hcCache := service.NewHealthCheckInCache(hcLoader, cacheTTL, logger)
+
 	return &Server{
 		store:       st,
 		logger:      logger,
 		tmpl:        tmpl,
 		zone:        zone,
-		service:     service.NewFromStore(st, grantsCache, nil),
+		service:     service.NewFromStore(st, grantsCache, hcCache),
 		auth:        authMgr,
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,
+		hcCache:     hcCache,
 	}, nil
 }
 
 func (s *Server) Routes() http.Handler {
+	ctx := context.Background()
+	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, func(ctx context.Context) int64 {
+		p, err := s.service.FindPeriodForDate(ctx, time.Now().In(s.zone))
+		if err != nil {
+			return 0
+		}
+		return p.ID
+	})
+
 	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
 
@@ -206,6 +253,13 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Delete("/api/v1/admin/teams/{teamID}", serviceH.HandleDeleteTeam)
 		r.Post("/api/v1/admin/teams/{teamID}/restore", serviceH.HandleRestoreTeam)
 		r.Delete("/api/v1/admin/teams/{teamID}/hard", serviceH.HandleHardDeleteTeam)
+
+		// Admin health check-in settings API.
+		hcHandler := apihealthcheckin.New(s.service, s.store.Settings, s.hcCache)
+		r.Get("/api/v1/admin/settings/health-checkin", hcHandler.HandleGetHealthCheckInSettings)
+		r.Post("/api/v1/admin/settings/health-checkin", hcHandler.HandleUpdateHealthCheckInSettings)
+
+		r.Get("/admin/health-checkin", adminShell)
 	})
 }
 
@@ -242,6 +296,9 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/krs/{krID}/move-up", krsHandler.HandleMoveKeyResultUp)
 	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
 	r.Delete("/api/v1/krs/{krID}", krsHandler.HandleDeleteKeyResult)
+
+	hcHandler := apihealthcheckin.New(s.service, s.store.Settings, s.hcCache)
+	r.Get("/api/v1/health-checkin", hcHandler.HandleHealthCheckIn)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)
