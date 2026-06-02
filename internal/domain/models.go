@@ -102,21 +102,22 @@ type KeyResultNote struct {
 }
 
 type KeyResult struct {
-	ID          int64
-	GoalID      int64
-	Title       string
-	Description string
-	Weight      int
-	Kind        KRKind
-	Progress    int
-	SortOrder   int
-	Project     *KRProject
-	Percent     *KRPercent
-	Linear      *KRLinear
-	Boolean     *KRBoolean
-	Note        *KeyResultNote
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID                int64
+	GoalID            int64
+	Title             string
+	Description       string
+	Weight            int
+	Kind              KRKind
+	Progress          int
+	SortOrder         int
+	Project           *KRProject
+	Percent           *KRPercent
+	Linear            *KRLinear
+	Boolean           *KRBoolean
+	Note              *KeyResultNote
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	ProgressUpdatedAt *time.Time
 }
 
 type KRProject struct {
