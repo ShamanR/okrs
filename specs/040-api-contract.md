@@ -151,6 +151,63 @@ Response:
 - `GET /api/v1/teams/{teamID}/overview`
 - `GET /api/v1/goals/{goalID}`
 
+### `GET /api/v1/health-checkin?period_id=<int64>`
+
+Назначение: вычислить сводку Health Check-in для текущего пользователя за выбранный период.
+
+Доступен: любому авторизованному пользователю.
+
+Scope: сервер определяет по `user.display_name` из сессии:
+- lead-scope: команды, где `teams.lead = display_name` + все потомки
+- owner-scope: команды с целями, где `goal.owner_text` содержит `display_name` (word match)
+
+Request params:
+- `period_id` (int64, обязательный)
+
+Success response (`200`):
+
+```json
+{
+  "has_scope": true,
+  "period_id": 1,
+  "total_problems": 5,
+  "categories": {
+    "stale":               { "in_counter": true,  "count": 2, "items": [...] },
+    "no_goals":            { "in_counter": true,  "count": 1, "items": [...] },
+    "awaiting_validation": { "in_counter": true,  "count": 1, "items": [...] },
+    "formation_errors":    { "in_counter": true,  "count": 1, "items": [...] },
+    "lagging":             { "in_counter": false, "count": 0, "items": [] }
+  }
+}
+```
+
+`total_problems` = Σ `count` по категориям с `in_counter: true`.
+
+Errors:
+- `400 VALIDATION_ERROR` при отсутствии или невалидном `period_id`
+
+Idempotency: read-only, нет side effects.
+
+---
+
+### `GET /api/v1/admin/settings/health-checkin`
+
+Возвращает текущий конфиг Health Check-in. Default применяется если ключ в БД отсутствует.
+
+Доступен: только администраторам (при `AUTH_MODE=enabled`).
+
+---
+
+### `POST /api/v1/admin/settings/health-checkin`
+
+Обновляет конфиг Health Check-in. Требует admin-роли и CSRF token.
+
+Body: JSON объект с полями `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `in_counter`.
+
+После сохранения сбрасывает in-memory кеш.
+
+Errors: `400` при `stale_days <= 0` или `cache_ttl_minutes <= 0`.
+
 ## CSRF requirements for browser mutations
 
 Для вызовов write endpoint'ов требуется CSRF token:
