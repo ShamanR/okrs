@@ -1254,7 +1254,7 @@ function ClusterView({ overview, onSelect }) {
 const HCI_CAT_META = {
   stale:               { icon: '🕐', label: 'Нет обновлений',      color: '#f59e0b' },
   no_goals:            { icon: '○',  label: 'Нет целей',           color: '#6b7280' },
-  awaiting_validation: { icon: '○',  label: 'Ожидают перевода',    color: '#6b7280' },
+  awaiting_validation: { icon: '○',  label: 'Ожидают валидации',   color: '#6b7280' },
   formation_errors:    { icon: '⚠',  label: 'Ошибки формирования', color: '#ef4444' },
   lagging:             { icon: '▼',  label: 'Отстающие',           color: '#3b82f6' },
 };
@@ -1327,11 +1327,16 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
             {nonEmptyCats.map(k => {
               const cat = data.categories[k];
               const meta = HCI_CAT_META[k];
+              const isActive = filter === k;
+              const chipStyle = isActive
+                ? { background: meta.color, borderColor: meta.color, color: '#fff' }
+                : { borderColor: meta.color + '60', color: meta.color };
               return (
                 <button key={k}
-                  className={`hci-chip${filter === k ? ' hci-chip--active' : ''}`}
-                  onClick={() => setFilter(filter === k ? null : k)}>
-                  {meta.icon} {cat.count}
+                  className="hci-chip"
+                  style={chipStyle}
+                  onClick={() => setFilter(isActive ? null : k)}>
+                  {meta.icon} {meta.label} · {cat.count}
                 </button>
               );
             })}
