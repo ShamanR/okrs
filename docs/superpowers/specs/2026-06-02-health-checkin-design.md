@@ -11,12 +11,15 @@
 Health Check-in — инструмент руководителя/владельца дерева целей. За выбранный период автоматически находит проблемные места в OKR и показывает их сгруппированными по типам.
 
 **Цели:**
+
 - Дать руководителю единую точку, где видно что требует внимания прямо сейчас, без ручного обхода всех команд.
 - Отделить проблемы процесса (нет обновлений, не заведены цели, ошибки конфигурации) от проблем результата (отставание от плана).
 
 ---
 
 ## Scope правила
+
+> **TODO (tech debt):** Вся привязка scope к пользователю идёт через `user.display_name` (строковое совпадение с `teams.lead` и `goal.owner_text`). Это ведёт к коллизиям при одинаковых именах. Переработать на `user.ID`-based matching — в отдельной итерации.
 
 Кнопка появляется только если у пользователя есть scope:
 
@@ -148,6 +151,7 @@ func (s *Service) GetHealthCheckIn(ctx context.Context, userDisplayName string, 
 ```
 
 Метод:
+
 1. Получает `*PeriodData` из `HealthCheckInCache` (in-memory или lazy DB load).
 2. Вычисляет scope в памяти по `userDisplayName`.
 3. Запускает `computeCategories(data, scopeIDs, cfg, period)` — pure in-memory.
@@ -177,6 +181,7 @@ func (c *HealthCheckInCache) StartRefreshLoop(ctx context.Context, interval time
 ```
 
 DB-загрузка — 3 batch-запроса:
+
 1. `ListAllTeams()` — все команды для scope и hierarchy.
 2. `ListGoalsByTeamsPeriod(periodID, allTeamIDs)` — все цели с KR и метаданными.
 3. `ListTeamPeriodStatuses(periodID, allTeamIDs)` — статусы команд.
@@ -235,6 +240,7 @@ Default config (вшит в код, применяется если ключа �
 ### Компоненты в `tracker.js`
 
 **`HealthCheckInButton`** — нижняя часть sidebar, над аккаунт-виджетом:
+
 - Показывается только если `has_scope: true`.
 - Badge: число `total_problems`, amber (#f59e0b) если > 0, neutral-grey (#6b7280) если 0.
 - Клик → открывает `HealthCheckInPanel`.
@@ -242,6 +248,7 @@ Default config (вшит в код, применяется если ключа �
 **`HealthCheckInPanel`** — `position: fixed; right: 0; top: 0; height: 100vh; width: 480px`, CSS-transition slide-in, backdrop-overlay.
 
 Структура панели:
+
 ```
 [✕]  ⚡ Health Check-in
      Найдено проблем: N  /  Всё в порядке  /  Проблем нет · есть отстающие
@@ -368,6 +375,7 @@ Default config (вшит в код, применяется если ключа �
 ### Backend для admin
 
 Новые handlers в `internal/http/handlers/api/v1/admin`:
+
 - `HandleGetHealthCheckInSettings` — читает `health_checkin_config` из `system_settings`.
 - `HandleUpdateHealthCheckInSettings` — пишет, затем вызывает `hcCache.InvalidateAll()`.
 
