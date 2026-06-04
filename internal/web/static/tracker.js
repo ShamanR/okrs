@@ -39,12 +39,14 @@ function writeLastNav(teamId, periodId) {
   const exp = new Date(Date.now() + 30 * 864e5).toUTCString();
   document.cookie = 'okr_last=' + val + ';path=/;expires=' + exp;
 }
-function updateURL(teamId, periodId) {
+function updateURL(teamId, periodId, replace = false) {
   const p = new URLSearchParams();
   if (teamId) p.set('team', teamId);
   if (periodId) p.set('period', periodId);
   const qs = p.toString();
-  history.replaceState(null, '', '/teamOkrs' + (qs ? '?' + qs : ''));
+  const url = '/teamOkrs' + (qs ? '?' + qs : '');
+  if (replace) history.replaceState(null, '', url);
+  else history.pushState(null, '', url);
 }
 
 // ── DATE HELPERS ──────────────────────────────────────────────────────────────
@@ -1477,11 +1479,31 @@ function App() {
   }, [periodId, selId]);
 
   // Keep URL and cookie in sync with current navigation state.
+  // The first resolved team+period replaces the current entry; every later
+  // navigation pushes a new one so the browser Back button steps through
+  // visited teams. Changes that originate from Back/Forward (popstate) must
+  // not push again — they are flagged via fromPopRef.
+  const urlInitedRef = useRef(false);
+  const fromPopRef = useRef(false);
   useEffect(() => {
-    if (!periodId) return;
-    updateURL(selId, periodId);
-    if (selId && periodId) writeLastNav(selId, periodId);
+    if (fromPopRef.current) { fromPopRef.current = false; return; }
+    if (!periodId || !selId) return;
+    updateURL(selId, periodId, !urlInitedRef.current);
+    urlInitedRef.current = true;
+    writeLastNav(selId, periodId);
   }, [selId, periodId]);
+
+  // Browser Back/Forward: re-sync navigation state from the URL.
+  useEffect(() => {
+    const onPop = () => {
+      const { team, period } = readURLNav();
+      fromPopRef.current = true;
+      if (period) setPeriodId(period);
+      if (team) setSelId(team);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
 
   useEffect(() => { loadHCI(periodId); }, [periodId]);
 
