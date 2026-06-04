@@ -11,6 +11,7 @@
 - type: cluster | unit | team
 - parent_id
 - lead
+- lead_udid (nullable, FK → users.udid, ON DELETE SET NULL) — UDID пользователя-руководителя; NULL в режиме без авторизации
 - description
 - deleted_at nullable timestamp
 

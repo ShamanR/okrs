@@ -157,9 +157,10 @@ Response:
 
 Доступен: любому авторизованному пользователю.
 
-Scope: сервер определяет по `user.display_name` из сессии:
-- lead-scope: команды, где `teams.lead = display_name` + все потомки
-- owner-scope: команды с целями, где `goal.owner_text` содержит `display_name` (word match)
+Scope: сервер определяет по UDID пользователя из сессии.
+
+- Администраторы (включая режим `AUTH_MODE=disabled`) видят все команды без scope-фильтрации.
+- Для обычных пользователей: lead-scope: команды, где `teams.lead_udid = user.udid` + все потомки; owner-scope: команды с целями, где `user.udid = ANY(goal.owner_udids)`.
 
 Request params:
 - `period_id` (int64, обязательный)
@@ -237,6 +238,29 @@ CSRF token должен быть ротационным (не постоянны
 - delete goal — `DELETE /api/v1/goals/{goalID}`
 - delete KR — `DELETE /api/v1/krs/{krID}`
 - leave goal share — `DELETE /api/v1/goals/{goalID}/share/{teamID}`
+
+### `POST /api/v1/teams/{teamID}/goals`
+
+Создаёт goal для команды в текущем периоде.
+
+Body: JSON объект с полями `title`, `description`, `priority`, `weight`, `work_type`, `focus_type`, `owner_udids` (массив UUID).
+
+- `owner_udids`: массив UDID владельцев цели (заменяет старый `owner_text`).
+- Validation: все UDID должны существовать в таблице users → `400 VALIDATION_ERROR` иначе.
+
+### `POST /api/v1/goals/{goalID}`
+
+Обновляет goal (title, description, priority, weight, owner_udids, итд).
+
+Body: JSON объект с полями для обновления, включая `owner_udids: ["uuid1","uuid2"]`.
+
+- `owner_udids`: массив UDID владельцев цели.
+- Validation: все UDID должны существовать в таблице users → `400 VALIDATION_ERROR` иначе.
+
+### Admin team endpoints
+
+- `POST /api/v1/admin/teams` — создаёт команду; принимает `lead_udid: "uuid"` (опционально); `lead` для display сохраняется как есть.
+- `PATCH /api/v1/admin/teams/{teamID}` — обновляет команду; принимает `lead_udid: "uuid"` (опционально); `lead_udid` валидируется против users → `400 VALIDATION_ERROR` если UDID не существует.
 
 ### `DELETE /api/v1/goals/{goalID}`
 
