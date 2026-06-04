@@ -886,15 +886,15 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
   const handleQueryChange = newQ => { setQ(newQ); if (fetchFn) setFetchedUsers(null); };
 
   const values = multiple ? (Array.isArray(value) ? value : []) : (value ? [value] : []);
-  const findUser = name => _userByName.get(name) || users.find(u => u.display_name === name);
-  const available = multiple ? users.filter(u => !values.includes(u.display_name)) : users;
+  const findUserByValue = v => multiple ? (_userByUdid.get(v) || users.find(u => u.udid === v)) : (_userByName.get(v) || users.find(u => u.display_name === v));
+  const available = multiple ? users.filter(u => !values.includes(u.udid)) : users;
 
   const select = u => {
-    if (multiple) { if (!values.includes(u.display_name)) onChange([...values, u.display_name]); }
+    if (multiple) { if (!values.includes(u.udid)) onChange([...values, u.udid]); }
     else { onChange(u.display_name); setOpen(false); }
     setQ(''); inputRef.current?.focus();
   };
-  const remove = name => { if (multiple) onChange(values.filter(v => v !== name)); else onChange(''); };
+  const remove = udid => { if (multiple) onChange(values.filter(v => v !== udid)); else onChange(''); };
   const onKey = e => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi(h => Math.min(available.length - 1, h + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
@@ -907,13 +907,13 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
     <div ref={wrapRef} className="user-selector">
       <div onClick={() => { setOpen(true); inputRef.current?.focus(); }}
         className={`user-selector__field${open ? ' user-selector__field--open' : ''}`}>
-        {values.map(name => {
-          const u = findUser(name);
+        {values.map(v => {
+          const u = findUserByValue(v);
           return (
-            <span key={name} className="user-chip">
+            <span key={v} className="user-chip">
               <UserAvatar user={u} size={18} />
-              <span className="user-chip__name">{name}</span>
-              <button type="button" onClick={e => { e.stopPropagation(); remove(name); }} className="user-chip__remove">×</button>
+              <span className="user-chip__name">{u?.display_name || v}</span>
+              <button type="button" onClick={e => { e.stopPropagation(); remove(v); }} className="user-chip__remove">×</button>
             </span>
           );
         })}
@@ -1008,8 +1008,8 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   const usedWeight = (existingGoals || []).filter(g => !isEdit || g.id !== goal?.id).reduce((s, g) => s + g.weight, 0);
   const wasShared = isEdit && (goal.shareTeams || []).filter(t => t.id !== teamId).length > 0;
   const [form, setForm] = useState(goal
-    ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerText: (goal.owners || []).map(u => u.display_name).join(', ') }
-    : { title: '', desc: '', priority: 'P1', weight: Math.min(20, 100 - usedWeight), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerText: '' });
+    ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean) }
+    : { title: '', desc: '', priority: 'P1', weight: Math.min(20, 100 - usedWeight), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [] });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const totalAfter = usedWeight + (isEdit ? form.weight - (goal?.weight || 0) : form.weight);
@@ -1025,7 +1025,8 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
         fd.append('title', form.title.trim()); fd.append('description', form.desc || '');
         fd.append('priority', form.priority); fd.append('weight', String(form.weight));
         fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
-        fd.append('focus_type', form.focus); fd.append('owner_text', form.ownerText || '');
+        fd.append('focus_type', form.focus);
+        (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
         fd.append('team_id', String(teamId));
         await apiForm(`/api/v1/goals/${goal.id}`, fd);
         if (form.shared && (form.shareTeamIds || []).length > 0) {
@@ -1036,7 +1037,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           period_id: periodId, title: form.title.trim(), description: form.desc || '',
           priority: form.priority, weight: form.weight,
           work_type: form.type === 'delivery' ? 'Delivery' : 'Discovery',
-          focus_type: form.focus, owner_text: form.ownerText || '',
+          focus_type: form.focus, owner_udids: form.ownerUDIDs || [],
         });
       }
       onSave();
@@ -1113,8 +1114,8 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           <div className="form-group">
             <FieldLabel>Владелец</FieldLabel>
             <UserSelector multiple
-              value={(form.ownerText || '').split(',').map(s => s.trim()).filter(Boolean)}
-              onChange={arr => set('ownerText', arr.join(', '))}
+              value={form.ownerUDIDs}
+              onChange={arr => set('ownerUDIDs', arr)}
               fetchFn={q => apiGet(`/api/v1/users?q=${encodeURIComponent(q)}&scope_team_id=${teamId}`)}
               placeholder="Добавить владельца" />
           </div>

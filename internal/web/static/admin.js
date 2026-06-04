@@ -516,7 +516,7 @@ function TeamsSection({teams, reload}) {
   async function save(f) {
     setSaving(true);
     try {
-      const body = {name:f.name.trim(), type:f.type, parent_id:f.parent_id||null, lead:f.lead||'', description:f.description||''};
+      const body = {name:f.name.trim(), type:f.type, parent_id:f.parent_id||null, lead:f.lead||'', lead_udid:f.lead_udid||null, description:f.description||''};
       let res;
       if (f.id) res = await apiPatch(`/api/v1/admin/teams/${f.id}`, body);
       else        res = await apiPost('/api/v1/admin/teams', body);
@@ -578,7 +578,7 @@ function TeamsSection({teams, reload}) {
       </>}
       detail={
         creating
-          ? <TeamEditor value={{name:'',type:'team',parent_id:null,lead:'',description:''}} teams={activeTeams} onSave={save} onCancel={()=>setCreating(false)} saving={saving}/>
+          ? <TeamEditor value={{name:'',type:'team',parent_id:null,lead:'',lead_udid:null,description:''}} teams={activeTeams} onSave={save} onCancel={()=>setCreating(false)} saving={saving}/>
           : selected
             ? <TeamEditor value={selected} teams={activeTeams} onSave={save} onDelete={()=>remove(selected.id,selected.name)} onRestore={selected.deleted_at?()=>restore(selected.id):null} onHardDelete={selected.deleted_at?()=>hardDelete(selected.id,selected.name):null} saving={saving}/>
             : <EmptyDetail icon="👥" title="Выберите команду" hint="Кликните по узлу в списке слева или создайте новую команду."/>
@@ -641,13 +641,13 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
 
   const handleInput = v => {
     setInputVal(v); setHi(0);
-    if(!v.trim()) onChange('');
+    if(!v.trim()) onChange('', null);
   };
 
   const selectedUser = value ? (allUsers.find(u=>u.display_name===value) || null) : null;
 
-  const select = u=>{onChange(u.display_name);setInputVal(u.display_name);setOpen(false);};
-  const clear = e=>{e.stopPropagation();onChange('');setInputVal('');inputRef.current?.focus();};
+  const select = u=>{onChange(u.display_name, u.udid);setInputVal(u.display_name);setOpen(false);};
+  const clear = e=>{e.stopPropagation();onChange('', null);setInputVal('');inputRef.current?.focus();};
   const onKey = e=>{
     if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(users.length-1,h+1));}
     else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
@@ -732,7 +732,7 @@ function TeamEditor({value, teams, onSave, onCancel, onDelete, onRestore, onHard
           </select>
         </Field>
       </div>
-      <Field label="Руководитель"><UserSelector value={f.lead||''} onChange={v=>setF({...f,lead:v})} placeholder="Поиск пользователя…"/></Field>
+      <Field label="Руководитель"><UserSelector value={f.lead||''} onChange={(name, udid)=>setF({...f,lead:name,lead_udid:udid||null})} placeholder="Поиск пользователя…"/></Field>
       <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.description||''} onChange={e=>setF({...f,description:e.target.value})} style={{...inpStyle,resize:'vertical',lineHeight:1.5}}/></Field>
     </DetailSection>
     <DetailSection title="Расположение в иерархии">
