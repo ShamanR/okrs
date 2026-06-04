@@ -1486,10 +1486,13 @@ function App() {
   const urlInitedRef = useRef(false);
   const fromPopRef = useRef(false);
   useEffect(() => {
-    if (fromPopRef.current) { fromPopRef.current = false; return; }
     if (!periodId || !selId) return;
-    updateURL(selId, periodId, !urlInitedRef.current);
-    urlInitedRef.current = true;
+    if (fromPopRef.current) {
+      fromPopRef.current = false; // URL already reflects the target; don't push again
+    } else {
+      updateURL(selId, periodId, !urlInitedRef.current);
+      urlInitedRef.current = true;
+    }
     writeLastNav(selId, periodId);
   }, [selId, periodId]);
 
