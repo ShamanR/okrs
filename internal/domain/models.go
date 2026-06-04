@@ -60,6 +60,7 @@ type Team struct {
 	Type        TeamType
 	ParentID    *int64
 	Lead        string
+	LeadUDID    *string
 	Description string
 	DeletedAt   *time.Time
 	CreatedAt   time.Time
@@ -77,6 +78,7 @@ type Goal struct {
 	WorkType    WorkType
 	FocusType   FocusType
 	OwnerText   string
+	OwnerUDIDs  []string
 	Progress    int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
