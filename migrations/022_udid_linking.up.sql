@@ -13,7 +13,7 @@ FROM (
     FROM users
     WHERE provider NOT IN ('system')
 ) u
-WHERE t.lead = u.display_name
+WHERE trim(t.lead) = u.display_name
   AND u.cnt = 1;
 
 -- Backfill owner_udids: resolve each comma-separated name in owner_text to a UDID (unique matches only)
@@ -44,3 +44,6 @@ UPDATE goals g
 SET owner_udids = a.owner_udids
 FROM aggregated a
 WHERE g.id = a.goal_id;
+
+-- Create index on lead_udid for health-check scope computation
+CREATE INDEX teams_lead_udid_idx ON teams(lead_udid);
