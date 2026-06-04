@@ -10,15 +10,15 @@ import (
 	"okrs/internal/service"
 )
 
-// BuildUserRefMap builds a name→UserRef lookup from a slice of users.
+// BuildUserRefMap builds a udid→UserRef lookup from a slice of users.
 func BuildUserRefMap(users []*domain.User) map[string]*dto.UserRef {
 	m := make(map[string]*dto.UserRef, len(users))
 	for _, u := range users {
-		if u.DisplayName == "" {
+		if u.UDID == "" {
 			continue
 		}
 		ref := &dto.UserRef{UDID: u.UDID, DisplayName: u.DisplayName, AvatarURL: u.AvatarURL}
-		m[u.DisplayName] = ref
+		m[u.UDID] = ref
 	}
 	return m
 }
@@ -57,6 +57,40 @@ func ResolveOwners(ownerText string, refs map[string]*dto.UserRef) []dto.UserRef
 		out = append(out, dto.UserRef{DisplayName: name})
 	}
 	return out
+}
+
+// ResolveOwnersByUDIDs resolves owner_udids to UserRef list using the UDID-keyed refs map.
+// For each UDID not found in refs, returns a placeholder with just the UDID.
+// Falls back to ResolveOwners(ownerText, refs) when ownerUDIDs is empty (no-auth mode).
+func ResolveOwnersByUDIDs(ownerUDIDs []string, ownerText string, refs map[string]*dto.UserRef) []dto.UserRef {
+	if len(ownerUDIDs) == 0 {
+		return ResolveOwners(ownerText, refs)
+	}
+	out := make([]dto.UserRef, 0, len(ownerUDIDs))
+	for _, uid := range ownerUDIDs {
+		if refs != nil {
+			if ref, ok := refs[uid]; ok {
+				out = append(out, *ref)
+				continue
+			}
+		}
+		out = append(out, dto.UserRef{UDID: uid, DisplayName: "Удалённый пользователь"})
+	}
+	return out
+}
+
+// ResolveLeadByUDID looks up a team lead by UDID in the UDID-keyed refs map.
+// Returns nil when leadUDID is nil or the user is not found (e.g. deleted).
+func ResolveLeadByUDID(leadUDID *string, refs map[string]*dto.UserRef) *dto.UserRef {
+	if leadUDID == nil || *leadUDID == "" {
+		return nil
+	}
+	if refs != nil {
+		if ref, ok := refs[*leadUDID]; ok {
+			return ref
+		}
+	}
+	return nil
 }
 
 func MapPeriodInfo(period domain.Period) dto.PeriodInfo {
@@ -136,7 +170,7 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period, userRefs m
 		Weight:       goal.Weight,
 		WorkType:     string(goal.WorkType),
 		FocusType:    string(goal.FocusType),
-		Owners:       ResolveOwners(goal.OwnerText, userRefs),
+		Owners:       ResolveOwnersByUDIDs(goal.OwnerUDIDs, goal.OwnerText, userRefs),
 		Progress:     goal.Progress,
 		ProgressMeta: BuildProgressBarInfo(goal.Progress, period),
 		KeyResults:   krList,
