@@ -3,6 +3,7 @@ package goals
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
@@ -39,8 +40,8 @@ func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var userRefs map[string]*dto.UserRef
-	if goal.OwnerText != "" {
-		users, _ := h.service.GetUsersByDisplayNames(r.Context(), []string{goal.OwnerText})
+	if len(goal.OwnerUDIDs) > 0 {
+		users, _ := h.service.GetUsersByUDIDs(r.Context(), goal.OwnerUDIDs)
 		userRefs = v1.BuildUserRefMap(users)
 	}
 	v1.WriteJSON(w, http.StatusOK, newGoalResponse(goal, userRefs))
@@ -178,6 +179,18 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", validationErr, nil)
 		return
 	}
+	ownerUDIDs := r.Form["owner_udids"]
+	if len(ownerUDIDs) > 0 {
+		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), ownerUDIDs)
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate owners", nil)
+			return
+		}
+		if len(missing) > 0 {
+			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown owner UDIDs", map[string]string{"owner_udids": "unknown: " + strings.Join(missing, ", ")})
+			return
+		}
+	}
 	goalWeight := weight
 	if teamID != nil {
 		goal, err := h.service.GetGoal(r.Context(), goalID)
@@ -195,7 +208,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		Weight:      goalWeight,
 		WorkType:    workType,
 		FocusType:   focusType,
-		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
+		OwnerUDIDs:  ownerUDIDs,
 	}); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update goal", nil)
 		return

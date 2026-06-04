@@ -11,7 +11,7 @@ import (
 )
 
 type serviceProvider interface {
-	GetHealthCheckIn(ctx context.Context, userDisplayName string, periodID int64, cfg service.HealthCheckInConfig) (*service.HealthCheckInResult, error)
+	GetHealthCheckIn(ctx context.Context, userUDID string, isAdmin bool, periodID int64, cfg service.HealthCheckInConfig) (*service.HealthCheckInResult, error)
 }
 
 type settingsProvider interface {
@@ -54,7 +54,7 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.GetHealthCheckIn(r.Context(), user.DisplayName, periodID, cfg)
+	result, err := h.svc.GetHealthCheckIn(r.Context(), user.UDID, user.IsAdmin, periodID, cfg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

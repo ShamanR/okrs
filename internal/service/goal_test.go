@@ -256,6 +256,9 @@ func (f *goalFakeStore) GetUsersByUDIDs(_ context.Context, _ []string) ([]*domai
 func (f *goalFakeStore) ListUserLeadTeams(_ context.Context) (map[string]string, error) {
 	return nil, nil
 }
+func (f *goalFakeStore) ValidateUDIDsExist(_ context.Context, _ []string) ([]string, error) {
+	return nil, nil
+}
 
 // ── CreateGoal tests ──────────────────────────────────────────────────────────
 

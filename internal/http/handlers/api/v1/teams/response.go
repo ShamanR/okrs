@@ -14,7 +14,12 @@ func newTeamOKRResponse(data service.TeamOKR, userRefs map[string]*dto.UserRef) 
 		goals = append(goals, v1.MapGoalDetails(goal, data.Period, userRefs))
 	}
 	return dto.TeamOKRResponse{
-		Team:            dto.TeamInfo{ID: data.Team.ID, Name: data.Team.Name, Type: string(data.Team.Type), TypeLabel: common.TeamTypeLabel(data.Team.Type), Lead: v1.ResolveUserRef(data.Team.Lead, userRefs), ParentID: data.Team.ParentID},
+		Team: dto.TeamInfo{
+			ID: data.Team.ID, Name: data.Team.Name,
+			Type: string(data.Team.Type), TypeLabel: common.TeamTypeLabel(data.Team.Type),
+			Lead:     v1.ResolveLeadByUDID(data.Team.LeadUDID, userRefs),
+			ParentID: data.Team.ParentID,
+		},
 		Period:          v1.MapPeriodInfo(data.Period),
 		PeriodStatus:    string(data.PeriodStatus),
 		StatusLabel:     common.TeamPeriodStatusLabel(data.PeriodStatus),
@@ -45,7 +50,12 @@ func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamCh
 			progressMeta = &meta
 		}
 		rows = append(rows, dto.TeamChildSummaryResult{
-			Team:              dto.TeamInfo{ID: item.Team.ID, Name: item.Team.Name, Type: string(item.Team.Type), TypeLabel: common.TeamTypeLabel(item.Team.Type), Lead: v1.ResolveUserRef(item.Team.Lead, userRefs), ParentID: item.Team.ParentID},
+			Team: dto.TeamInfo{
+				ID: item.Team.ID, Name: item.Team.Name,
+				Type: string(item.Team.Type), TypeLabel: common.TeamTypeLabel(item.Team.Type),
+				Lead:     v1.ResolveLeadByUDID(item.Team.LeadUDID, userRefs),
+				ParentID: item.Team.ParentID,
+			},
 			Status:            string(item.Status),
 			StatusLabel:       common.TeamPeriodStatusLabel(item.Status),
 			HasGoals:          item.HasGoals,

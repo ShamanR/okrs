@@ -305,6 +305,9 @@ func (f *fakeStore) GetUsersByUDIDs(context.Context, []string) ([]*domain.User, 
 func (f *fakeStore) ListUserLeadTeams(context.Context) (map[string]string, error) {
 	return nil, nil
 }
+func (f *fakeStore) ValidateUDIDsExist(_ context.Context, _ []string) ([]string, error) {
+	return nil, nil
+}
 
 func newTestService(st *fakeStore, grants GrantsProvider) *Service {
 	return New(Deps{Teams: st, Goals: st, Shares: st, Periods: st, KRs: st, Statuses: st, Users: st, Grants: grants})

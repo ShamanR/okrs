@@ -72,8 +72,8 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
 	}
-	names := collectOKRUserNames(okr)
-	users, _ := h.service.GetUsersByDisplayNames(r.Context(), names)
+	udids := collectOKRUserUDIDs(okr)
+	users, _ := h.service.GetUsersByUDIDs(r.Context(), udids)
 	v1.WriteJSON(w, http.StatusOK, newTeamOKRResponse(okr, v1.BuildUserRefMap(users)))
 }
 
@@ -102,8 +102,8 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load team overview", nil)
 		return
 	}
-	names := collectOverviewUserNames(overview)
-	users, _ := h.service.GetUsersByDisplayNames(r.Context(), names)
+	udids := collectOverviewUserUDIDs(overview)
+	users, _ := h.service.GetUsersByUDIDs(r.Context(), udids)
 	v1.WriteJSON(w, http.StatusOK, newTeamOverviewResponse(period, overview, v1.BuildUserRefMap(users)))
 }
 
@@ -141,37 +141,35 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func collectOKRUserNames(okr service.TeamOKR) []string {
+func collectOKRUserUDIDs(okr service.TeamOKR) []string {
 	seen := make(map[string]struct{})
-	if okr.Team.Lead != "" {
-		seen[okr.Team.Lead] = struct{}{}
+	if okr.Team.LeadUDID != nil {
+		seen[*okr.Team.LeadUDID] = struct{}{}
 	}
 	for _, g := range okr.Goals {
-		for _, part := range strings.Split(g.Goal.OwnerText, ",") {
-			if name := strings.TrimSpace(part); name != "" {
-				seen[name] = struct{}{}
-			}
+		for _, uid := range g.Goal.OwnerUDIDs {
+			seen[uid] = struct{}{}
 		}
 	}
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		names = append(names, name)
+	udids := make([]string, 0, len(seen))
+	for uid := range seen {
+		udids = append(udids, uid)
 	}
-	return names
+	return udids
 }
 
-func collectOverviewUserNames(overview service.TeamOverview) []string {
+func collectOverviewUserUDIDs(overview service.TeamOverview) []string {
 	seen := make(map[string]struct{})
 	for _, item := range overview.ChildrenSummary {
-		if item.Team.Lead != "" {
-			seen[item.Team.Lead] = struct{}{}
+		if item.Team.LeadUDID != nil {
+			seen[*item.Team.LeadUDID] = struct{}{}
 		}
 	}
-	names := make([]string, 0, len(seen))
-	for name := range seen {
-		names = append(names, name)
+	udids := make([]string, 0, len(seen))
+	for uid := range seen {
+		udids = append(udids, uid)
 	}
-	return names
+	return udids
 }
 
 // POST /api/v1/teams/{teamID}/goals
@@ -186,14 +184,14 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		PeriodID    int64  `json:"period_id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Priority    string `json:"priority"`
-		Weight      int    `json:"weight"`
-		WorkType    string `json:"work_type"`
-		FocusType   string `json:"focus_type"`
-		OwnerText   string `json:"owner_text"`
+		PeriodID    int64    `json:"period_id"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Priority    string   `json:"priority"`
+		Weight      int      `json:"weight"`
+		WorkType    string   `json:"work_type"`
+		FocusType   string   `json:"focus_type"`
+		OwnerUDIDs  []string `json:"owner_udids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
@@ -214,6 +212,17 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg, nil)
 		return
 	}
+	if len(req.OwnerUDIDs) > 0 {
+		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), req.OwnerUDIDs)
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate owners", nil)
+			return
+		}
+		if len(missing) > 0 {
+			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown owner UDIDs", map[string]string{"owner_udids": "unknown: " + strings.Join(missing, ", ")})
+			return
+		}
+	}
 	goalID, err := h.service.CreateGoal(r.Context(), goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    req.PeriodID,
@@ -223,7 +232,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		Weight:      req.Weight,
 		WorkType:    workType,
 		FocusType:   focusType,
-		OwnerText:   req.OwnerText,
+		OwnerUDIDs:  req.OwnerUDIDs,
 	})
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create goal", nil)

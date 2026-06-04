@@ -9,6 +9,7 @@ import (
 
 func teamPtr(id int64) *int64 { return &id }
 func timePtr(t time.Time) *time.Time { return &t }
+func strPtr(s string) *string { return &s }
 
 func makeTeam(id int64, name, lead string, parentID *int64) domain.Team {
 	return domain.Team{ID: id, Name: name, Lead: lead, ParentID: parentID}
@@ -18,15 +19,23 @@ func makeGoal(id, teamID int64, ownerText string, krs []domain.KeyResult) domain
 	return domain.Goal{ID: id, TeamID: teamID, OwnerText: ownerText, KeyResults: krs, Weight: 100}
 }
 
-func TestComputeScope_LeadGetsSubtree(t *testing.T) {
+func makeTeamWithUDID(id int64, name string, leadUDID *string, parentID *int64) domain.Team {
+	return domain.Team{ID: id, Name: name, LeadUDID: leadUDID, ParentID: parentID}
+}
+
+func makeGoalWithUDIDs(id, teamID int64, ownerUDIDs []string, krs []domain.KeyResult) domain.Goal {
+	return domain.Goal{ID: id, TeamID: teamID, OwnerUDIDs: ownerUDIDs, KeyResults: krs, Weight: 100}
+}
+
+func TestComputeScope_LeadUDIDGetsSubtree(t *testing.T) {
 	teams := []domain.Team{
-		makeTeam(1, "Root", "Alice", nil),
-		makeTeam(2, "Child", "", teamPtr(1)),
-		makeTeam(3, "Grandchild", "", teamPtr(2)),
-		makeTeam(4, "Other", "Bob", nil),
+		makeTeamWithUDID(1, "Root", strPtr("udid-alice"), nil),
+		makeTeamWithUDID(2, "Child", nil, teamPtr(1)),
+		makeTeamWithUDID(3, "Grandchild", nil, teamPtr(2)),
+		makeTeamWithUDID(4, "Other", strPtr("udid-bob"), nil),
 	}
 	goals := map[int64][]domain.Goal{}
-	ids := computeScope(teams, goals, "Alice")
+	ids := computeScope(teams, goals, "udid-alice")
 	got := toSet(ids)
 	if !got[1] || !got[2] || !got[3] {
 		t.Errorf("expected IDs 1,2,3; got %v", ids)
@@ -36,15 +45,15 @@ func TestComputeScope_LeadGetsSubtree(t *testing.T) {
 	}
 }
 
-func TestComputeScope_OwnerGetsOnlyOwnerTeam(t *testing.T) {
+func TestComputeScope_OwnerUDIDGetsOnlyOwnerTeam(t *testing.T) {
 	teams := []domain.Team{
-		makeTeam(10, "Team A", "", nil),
-		makeTeam(11, "Team B", "", teamPtr(10)),
+		makeTeamWithUDID(10, "Team A", nil, nil),
+		makeTeamWithUDID(11, "Team B", nil, teamPtr(10)),
 	}
 	goals := map[int64][]domain.Goal{
-		10: {makeGoal(1, 10, "Alice, Bob", nil)},
+		10: {makeGoalWithUDIDs(1, 10, []string{"udid-alice", "udid-bob"}, nil)},
 	}
-	ids := computeScope(teams, goals, "Alice")
+	ids := computeScope(teams, goals, "udid-alice")
 	got := toSet(ids)
 	if !got[10] {
 		t.Errorf("expected team 10 in owner scope")
@@ -54,29 +63,21 @@ func TestComputeScope_OwnerGetsOnlyOwnerTeam(t *testing.T) {
 	}
 }
 
-func TestComputeScope_EmptyWhenNoMatch(t *testing.T) {
-	teams := []domain.Team{makeTeam(1, "T", "Bob", nil)}
+func TestComputeScope_EmptyWhenNoUDIDMatch(t *testing.T) {
+	teams := []domain.Team{makeTeamWithUDID(1, "T", strPtr("udid-bob"), nil)}
 	goals := map[int64][]domain.Goal{}
-	if computeScope(teams, goals, "Alice") != nil {
-		t.Error("expected nil scope for non-lead non-owner")
+	if computeScope(teams, goals, "udid-alice") != nil {
+		t.Error("expected nil scope for non-matching UDID")
 	}
 }
 
-func TestOwnerTextContains(t *testing.T) {
-	cases := []struct {
-		text, name string
-		want       bool
-	}{
-		{"Alice, Bob", "Alice", true},
-		{"Alice, Bob", "Bob", true},
-		{"Alice, Bob", "ali", false},
-		{"", "Alice", false},
-		{"Aleksander", "Alex", false},
+func TestComputeScope_EmptyOwnerUDIDsNoScope(t *testing.T) {
+	teams := []domain.Team{makeTeamWithUDID(1, "T", nil, nil)}
+	goals := map[int64][]domain.Goal{
+		1: {makeGoalWithUDIDs(1, 1, nil, nil)},
 	}
-	for _, tc := range cases {
-		if got := ownerTextContains(tc.text, tc.name); got != tc.want {
-			t.Errorf("ownerTextContains(%q,%q)=%v want %v", tc.text, tc.name, got, tc.want)
-		}
+	if computeScope(teams, goals, "udid-alice") != nil {
+		t.Error("expected nil scope when OwnerUDIDs is empty")
 	}
 }
 
