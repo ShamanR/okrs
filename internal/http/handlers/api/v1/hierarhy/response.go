@@ -38,7 +38,7 @@ func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary, u
 		Name:      node.Team.Name,
 		Type:      string(node.Team.Type),
 		TypeLabel: common.TeamTypeLabel(node.Team.Type),
-		Lead:      v1.ResolveUserRef(node.Team.Lead, userRefs),
+		Lead:      v1.ResolveLeadByUDID(node.Team.LeadUDID, userRefs),
 		HasGoals:  hasGoals,
 		Progress:  progress,
 		Children:  children,
