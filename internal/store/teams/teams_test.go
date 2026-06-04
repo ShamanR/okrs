@@ -7,6 +7,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/store/teams"
 	"okrs/internal/store/testutil"
+	"okrs/internal/store/users"
 )
 
 func TestTeamsCRUD(t *testing.T) {
@@ -157,5 +158,48 @@ func TestListAllTeamsIncludesDeleted(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected soft-deleted team in ListAllTeams")
+	}
+}
+
+func TestTeamLeadUDID(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := teams.NewTeamRepository(pool)
+	ur := users.NewUserRepository(pool)
+
+	u, err := ur.UpsertUser(ctx, users.UpsertUserInput{
+		ProviderSubjectKey: "test:lead-udid-user",
+		Provider: "test", Subject: "lead-udid-user",
+		DisplayName: "Lead User",
+	})
+	if err != nil {
+		t.Fatalf("upsert user: %v", err)
+	}
+
+	id, err := r.CreateTeam(ctx, teams.TeamInput{
+		Name: "UDID Team", Type: domain.TeamTypeTeam,
+		Lead: "Lead User", LeadUDID: &u.UDID,
+	})
+	if err != nil {
+		t.Fatalf("create team: %v", err)
+	}
+
+	team, err := r.GetTeam(ctx, id)
+	if err != nil {
+		t.Fatalf("get team: %v", err)
+	}
+	if team.LeadUDID == nil || *team.LeadUDID != u.UDID {
+		t.Errorf("LeadUDID: got %v, want %q", team.LeadUDID, u.UDID)
+	}
+
+	if err := r.UpdateTeam(ctx, teams.TeamInput{
+		Name: "UDID Team", Type: domain.TeamTypeTeam, Lead: "Lead User", LeadUDID: nil,
+	}, id); err != nil {
+		t.Fatalf("update team: %v", err)
+	}
+	team2, _ := r.GetTeam(ctx, id)
+	if team2.LeadUDID != nil {
+		t.Errorf("expected nil LeadUDID after clear, got %v", team2.LeadUDID)
 	}
 }

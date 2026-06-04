@@ -20,7 +20,7 @@ func NewTeamRepository(db *pgxpool.Pool) *TeamRepository {
 
 func (r *TeamRepository) ListTeams(ctx context.Context) ([]domain.Team, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
 		FROM teams
 		WHERE deleted_at IS NULL
 		ORDER BY name`)
@@ -33,7 +33,7 @@ func (r *TeamRepository) ListTeams(ctx context.Context) ([]domain.Team, error) {
 
 func (r *TeamRepository) ListDeletedTeams(ctx context.Context) ([]domain.Team, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
 		FROM teams
 		WHERE deleted_at IS NOT NULL
 		ORDER BY deleted_at DESC, name`)
@@ -46,7 +46,7 @@ func (r *TeamRepository) ListDeletedTeams(ctx context.Context) ([]domain.Team, e
 
 func (r *TeamRepository) ListAllTeams(ctx context.Context) ([]domain.Team, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
+		SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
 		FROM teams
 		ORDER BY name`)
 	if err != nil {
@@ -66,14 +66,16 @@ func scanTeams(rows interface {
 	for rows.Next() {
 		var team domain.Team
 		var parentID sql.NullInt64
+		var leadUDID *string
 		var deletedAt sql.NullTime
-		if err := rows.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
+		if err := rows.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &leadUDID, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if parentID.Valid {
 			value := parentID.Int64
 			team.ParentID = &value
 		}
+		team.LeadUDID = leadUDID
 		if deletedAt.Valid {
 			value := deletedAt.Time
 			team.DeletedAt = &value
@@ -86,18 +88,19 @@ func scanTeams(rows interface {
 func (r *TeamRepository) GetTeam(ctx context.Context, id int64) (domain.Team, error) {
 	var team domain.Team
 	var parentID sql.NullInt64
+	var leadUDID *string
 	var deletedAt sql.NullTime
-	row := r.db.QueryRow(ctx, `
-		SELECT id, name, team_type, parent_id, lead, description, deleted_at, created_at, updated_at
-		FROM teams
-		WHERE id=$1`, id)
-	if err := row.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
+	row := r.db.QueryRow(ctx,
+		`SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
+		 FROM teams WHERE id=$1`, id)
+	if err := row.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &leadUDID, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
 		return domain.Team{}, err
 	}
 	if parentID.Valid {
 		value := parentID.Int64
 		team.ParentID = &value
 	}
+	team.LeadUDID = leadUDID
 	if deletedAt.Valid {
 		value := deletedAt.Time
 		team.DeletedAt = &value
@@ -111,19 +114,22 @@ type TeamInput struct {
 	Type        domain.TeamType
 	ParentID    *int64
 	Lead        string
+	LeadUDID    *string
 	Description string
 }
 
 func (r *TeamRepository) CreateTeam(ctx context.Context, input TeamInput) (int64, error) {
 	var id int64
-	err := r.db.QueryRow(ctx, `INSERT INTO teams (name, team_type, parent_id, lead, description) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-		input.Name, input.Type, input.ParentID, input.Lead, input.Description).Scan(&id)
+	err := r.db.QueryRow(ctx,
+		`INSERT INTO teams (name, team_type, parent_id, lead, lead_udid, description) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+		input.Name, input.Type, input.ParentID, input.Lead, input.LeadUDID, input.Description).Scan(&id)
 	return id, err
 }
 
 func (r *TeamRepository) UpdateTeam(ctx context.Context, input TeamInput, id int64) error {
-	_, err := r.db.Exec(ctx, `UPDATE teams SET name=$1, team_type=$2, parent_id=$3, lead=$4, description=$5, updated_at=NOW() WHERE id=$6`,
-		input.Name, input.Type, input.ParentID, input.Lead, input.Description, id)
+	_, err := r.db.Exec(ctx,
+		`UPDATE teams SET name=$1, team_type=$2, parent_id=$3, lead=$4, lead_udid=$5, description=$6, updated_at=NOW() WHERE id=$7`,
+		input.Name, input.Type, input.ParentID, input.Lead, input.LeadUDID, input.Description, id)
 	return err
 }
 
