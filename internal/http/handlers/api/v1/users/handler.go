@@ -88,7 +88,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 			Provider:    u.Provider,
 			Email:       u.Email,
 		}
-		if team, ok := leadTeams[u.DisplayName]; ok {
+		if team, ok := leadTeams[u.UDID]; ok {
 			item.LedTeam = team
 		}
 		resp = append(resp, item)
