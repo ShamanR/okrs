@@ -55,6 +55,7 @@
 - work_type
 - focus_type
 - owner_text
+- owner_udids (массив UDID'ов владельцев)
 
 **Инварианты:**
 
