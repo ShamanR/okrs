@@ -107,9 +107,10 @@ type TeamStatusRepo interface {
 type UserRepo interface {
 	GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error)
 	SearchUsersUnrestricted(ctx context.Context, q string, limit int) ([]*domain.User, error)
-	SearchUsersInSet(ctx context.Context, userIDs []int64, leadNames []string, q string, limit int) ([]*domain.User, error)
+	SearchUsersInSet(ctx context.Context, userIDs []int64, leadUDIDs []string, q string, limit int) ([]*domain.User, error)
 	GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
 	ListUserLeadTeams(ctx context.Context) (map[string]string, error)
+	ValidateUDIDsExist(ctx context.Context, udids []string) ([]string, error)
 }
 
 // Deps holds all repository dependencies for the service.
@@ -959,6 +960,10 @@ func (s *Service) ListUserLeadTeams(ctx context.Context) (map[string]string, err
 	return s.users.ListUserLeadTeams(ctx)
 }
 
+func (s *Service) ValidateUserUDIDsExist(ctx context.Context, udids []string) ([]string, error) {
+	return s.users.ValidateUDIDsExist(ctx, udids)
+}
+
 // SearchUsersInScope returns up to 20 non-system users visible in the given scope.
 //   - scopeTeamIDs == nil → admin/unrestricted: all users
 //   - scopeTeamIDs != nil → users with a hierarchy grant to any team related to the scope nodes:
@@ -1038,14 +1043,14 @@ func (s *Service) SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, 
 	}
 
 	// Team leads of all related nodes are eligible regardless of explicit grants.
-	leadNames := make([]string, 0)
+	leadUDIDs := make([]string, 0)
 	for _, t := range allTeams {
-		if _, ok := relatedSet[t.ID]; ok && t.Lead != "" && t.DeletedAt == nil {
-			leadNames = append(leadNames, t.Lead)
+		if _, ok := relatedSet[t.ID]; ok && t.LeadUDID != nil && t.DeletedAt == nil {
+			leadUDIDs = append(leadUDIDs, *t.LeadUDID)
 		}
 	}
 
-	return s.users.SearchUsersInSet(ctx, eligibleIDs, leadNames, q, limit)
+	return s.users.SearchUsersInSet(ctx, eligibleIDs, leadUDIDs, q, limit)
 }
 
 // — Goal passthroughs —
