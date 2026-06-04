@@ -214,7 +214,10 @@ func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team type", nil)
 		return
 	}
-	if req.LeadUDID != nil && *req.LeadUDID != "" {
+	if req.LeadUDID != nil && *req.LeadUDID == "" {
+		req.LeadUDID = nil
+	}
+	if req.LeadUDID != nil {
 		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), []string{*req.LeadUDID})
 		if err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate lead", nil)
@@ -264,7 +267,10 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team type", nil)
 		return
 	}
-	if req.LeadUDID != nil && *req.LeadUDID != "" {
+	if req.LeadUDID != nil && *req.LeadUDID == "" {
+		req.LeadUDID = nil
+	}
+	if req.LeadUDID != nil {
 		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), []string{*req.LeadUDID})
 		if err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate lead", nil)
