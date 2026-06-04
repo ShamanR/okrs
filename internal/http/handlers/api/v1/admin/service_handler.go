@@ -145,6 +145,7 @@ type teamRow struct {
 	TypeLabel   string  `json:"type_label"`
 	ParentID    *int64  `json:"parent_id"`
 	Lead        string  `json:"lead"`
+	LeadUDID    *string `json:"lead_udid,omitempty"`
 	Description string  `json:"description"`
 	DeletedAt   *string `json:"deleted_at,omitempty"`
 }
@@ -162,6 +163,7 @@ func mapTeamRow(t domain.Team) teamRow {
 		TypeLabel:   common.TeamTypeLabel(t.Type),
 		ParentID:    t.ParentID,
 		Lead:        t.Lead,
+		LeadUDID:    t.LeadUDID,
 		Description: t.Description,
 		DeletedAt:   deletedAt,
 	}
@@ -192,11 +194,12 @@ func (h *ServiceHandler) HandleListTeams(w http.ResponseWriter, r *http.Request)
 // POST /api/v1/admin/teams
 func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string `json:"name"`
-		Type        string `json:"type"`
-		ParentID    *int64 `json:"parent_id"`
-		Lead        string `json:"lead"`
-		Description string `json:"description"`
+		Name        string  `json:"name"`
+		Type        string  `json:"type"`
+		ParentID    *int64  `json:"parent_id"`
+		Lead        string  `json:"lead"`
+		LeadUDID    *string `json:"lead_udid"`
+		Description string  `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
@@ -211,9 +214,20 @@ func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team type", nil)
 		return
 	}
+	if req.LeadUDID != nil && *req.LeadUDID != "" {
+		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), []string{*req.LeadUDID})
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate lead", nil)
+			return
+		}
+		if len(missing) > 0 {
+			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown lead_udid", map[string]string{"lead_udid": "not found"})
+			return
+		}
+	}
 	id, err := h.service.CreateTeam(r.Context(), teams.TeamInput{
 		Name: req.Name, Type: teamType, ParentID: req.ParentID,
-		Lead: req.Lead, Description: req.Description,
+		Lead: req.Lead, LeadUDID: req.LeadUDID, Description: req.Description,
 	})
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create team", nil)
@@ -230,11 +244,12 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Name        string `json:"name"`
-		Type        string `json:"type"`
-		ParentID    *int64 `json:"parent_id"`
-		Lead        string `json:"lead"`
-		Description string `json:"description"`
+		Name        string  `json:"name"`
+		Type        string  `json:"type"`
+		ParentID    *int64  `json:"parent_id"`
+		Lead        string  `json:"lead"`
+		LeadUDID    *string `json:"lead_udid"`
+		Description string  `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
@@ -249,9 +264,20 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team type", nil)
 		return
 	}
+	if req.LeadUDID != nil && *req.LeadUDID != "" {
+		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), []string{*req.LeadUDID})
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate lead", nil)
+			return
+		}
+		if len(missing) > 0 {
+			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown lead_udid", map[string]string{"lead_udid": "not found"})
+			return
+		}
+	}
 	if err := h.service.UpdateTeam(r.Context(), teams.TeamInput{
 		Name: req.Name, Type: teamType, ParentID: req.ParentID,
-		Lead: req.Lead, Description: req.Description,
+		Lead: req.Lead, LeadUDID: req.LeadUDID, Description: req.Description,
 	}, teamID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update team", nil)
 		return
