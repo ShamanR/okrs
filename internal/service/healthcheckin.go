@@ -98,15 +98,13 @@ type PeriodData struct {
 
 // ── Scope computation ─────────────────────────────────────────────────────────
 
-func computeScope(teams []domain.Team, goalsByTeam map[int64][]domain.Goal, displayName string) []int64 {
-	if displayName == "" {
+func computeScope(teams []domain.Team, goalsByTeam map[int64][]domain.Goal, userUDID string) []int64 {
+	if userUDID == "" {
 		return nil
 	}
 
-	teamsByID := make(map[int64]domain.Team, len(teams))
 	childrenMap := make(map[int64][]int64, len(teams))
 	for _, t := range teams {
-		teamsByID[t.ID] = t
 		if t.ParentID != nil {
 			childrenMap[*t.ParentID] = append(childrenMap[*t.ParentID], t.ID)
 		}
@@ -124,17 +122,20 @@ func computeScope(teams []domain.Team, goalsByTeam map[int64][]domain.Goal, disp
 			addDescendants(childID)
 		}
 	}
+
 	for _, t := range teams {
-		if t.DeletedAt == nil && t.Lead == displayName {
+		if t.DeletedAt == nil && t.LeadUDID != nil && *t.LeadUDID == userUDID {
 			addDescendants(t.ID)
 		}
 	}
 
 	for teamID, goals := range goalsByTeam {
 		for _, g := range goals {
-			if ownerTextContains(g.OwnerText, displayName) {
-				scopeSet[teamID] = struct{}{}
-				break
+			for _, uid := range g.OwnerUDIDs {
+				if uid == userUDID {
+					scopeSet[teamID] = struct{}{}
+					break
+				}
 			}
 		}
 	}
@@ -145,29 +146,6 @@ func computeScope(teams []domain.Team, goalsByTeam map[int64][]domain.Goal, disp
 	result := make([]int64, 0, len(scopeSet))
 	for id := range scopeSet {
 		result = append(result, id)
-	}
-	return result
-}
-
-func ownerTextContains(ownerText, name string) bool {
-	if ownerText == "" || name == "" {
-		return false
-	}
-	for _, part := range splitOwners(ownerText) {
-		if strings.EqualFold(part, name) {
-			return true
-		}
-	}
-	return false
-}
-
-func splitOwners(s string) []string {
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		if t := strings.TrimSpace(p); t != "" {
-			result = append(result, t)
-		}
 	}
 	return result
 }
@@ -402,7 +380,7 @@ func emptyCategories(cfg HealthCheckInConfig) map[string]*HealthCheckInCategory 
 
 // GetHealthCheckIn computes the health check-in for the given user and period.
 // Uses cached period data; loads from DB on first call or after TTL.
-func (s *Service) GetHealthCheckIn(ctx context.Context, userDisplayName string, periodID int64, cfg HealthCheckInConfig) (*HealthCheckInResult, error) {
+func (s *Service) GetHealthCheckIn(ctx context.Context, userUDID string, isAdmin bool, periodID int64, cfg HealthCheckInConfig) (*HealthCheckInResult, error) {
 	if s.hcCache == nil {
 		return &HealthCheckInResult{HasScope: false}, nil
 	}
@@ -410,9 +388,18 @@ func (s *Service) GetHealthCheckIn(ctx context.Context, userDisplayName string, 
 	if err != nil {
 		return nil, err
 	}
-	scopeIDs := computeScope(data.Teams, data.GoalsByTeam, userDisplayName)
-	if scopeIDs == nil {
-		return &HealthCheckInResult{HasScope: false, PeriodID: periodID, Categories: emptyCategories(cfg)}, nil
+
+	var scopeIDs []int64
+	if isAdmin {
+		scopeIDs = make([]int64, 0, len(data.Teams))
+		for _, t := range data.Teams {
+			scopeIDs = append(scopeIDs, t.ID)
+		}
+	} else {
+		scopeIDs = computeScope(data.Teams, data.GoalsByTeam, userUDID)
+		if scopeIDs == nil {
+			return &HealthCheckInResult{HasScope: false, PeriodID: periodID, Categories: emptyCategories(cfg)}, nil
+		}
 	}
 	return computeCategories(data, scopeIDs, cfg, time.Now()), nil
 }
