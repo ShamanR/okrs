@@ -114,25 +114,46 @@ func TestSearchUsersInSet(t *testing.T) {
 	ctx := context.Background()
 	r := users.NewUserRepository(pool)
 
-	u1, _ := r.UpsertUser(ctx, users.UpsertUserInput{ProviderSubjectKey: "p|e1", Provider: "github", Subject: "e1", DisplayName: "Eve"})
-	r.UpsertUser(ctx, users.UpsertUserInput{ProviderSubjectKey: "p|f1", Provider: "github", Subject: "f1", DisplayName: "Frank"})
+	u1, err := r.UpsertUser(ctx, users.UpsertUserInput{
+		ProviderSubjectKey: "test:set1", Provider: "test", Subject: "set1",
+		DisplayName: "Set User One",
+	})
+	if err != nil {
+		t.Fatalf("upsert u1: %v", err)
+	}
+	u2, err := r.UpsertUser(ctx, users.UpsertUserInput{
+		ProviderSubjectKey: "test:set2", Provider: "test", Subject: "set2",
+		DisplayName: "Set User Two",
+	})
+	if err != nil {
+		t.Fatalf("upsert u2: %v", err)
+	}
 
-	// Search restricted to Eve's ID only.
+	// find by integer id
 	results, err := r.SearchUsersInSet(ctx, []int64{u1.ID}, nil, "", 10)
 	if err != nil {
-		t.Fatalf("SearchUsersInSet: %v", err)
+		t.Fatalf("SearchUsersInSet by id: %v", err)
 	}
-	if len(results) != 1 || results[0].DisplayName != "Eve" {
-		t.Fatalf("expected Eve only, got %+v", results)
+	if len(results) != 1 || results[0].ID != u1.ID {
+		t.Errorf("expected u1, got %v", results)
 	}
 
-	// Empty set returns nil.
+	// find by lead UDID
+	results2, err := r.SearchUsersInSet(ctx, nil, []string{u2.UDID}, "", 10)
+	if err != nil {
+		t.Fatalf("SearchUsersInSet by UDID: %v", err)
+	}
+	if len(results2) != 1 || results2[0].ID != u2.ID {
+		t.Errorf("expected u2 by UDID, got %v", results2)
+	}
+
+	// empty inputs → nil result
 	none, err := r.SearchUsersInSet(ctx, nil, nil, "", 10)
 	if err != nil {
 		t.Fatalf("SearchUsersInSet empty: %v", err)
 	}
 	if none != nil {
-		t.Fatalf("expected nil for empty set, got %+v", none)
+		t.Errorf("expected nil for empty inputs")
 	}
 }
 
