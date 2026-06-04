@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
@@ -12,6 +14,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 )
+
+// settingKeyDocumentationURL is the system_settings key holding the optional
+// documentation link shown in the user menu. Empty value means "no link".
+const settingKeyDocumentationURL = "documentation_url"
 
 // userAdminStore covers user operations. *store.UserRepository satisfies it.
 type userAdminStore interface {
@@ -186,6 +192,55 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/v1/admin/settings/general
+func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]any{
+		"documentation_url": h.documentationURL(r.Context()),
+	})
+}
+
+// POST /api/v1/admin/settings/general  body: {"documentation_url":"https://..."}
+func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		DocumentationURL string `json:"documentation_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	link := strings.TrimSpace(body.DocumentationURL)
+	if link != "" && !isValidHTTPURL(link) {
+		writeError(w, http.StatusBadRequest, "documentation_url must be a valid http(s) URL")
+		return
+	}
+	if err := h.settings.SetSetting(r.Context(), settingKeyDocumentationURL, link); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// documentationURL reads the stored documentation link; empty string if unset.
+func (h *Handler) documentationURL(ctx context.Context) string {
+	raw, err := h.settings.GetSetting(ctx, settingKeyDocumentationURL)
+	if err != nil || raw == nil {
+		return ""
+	}
+	var link string
+	_ = json.Unmarshal(raw, &link)
+	return link
+}
+
+// isValidHTTPURL reports whether s is an absolute http(s) URL. Restricting the
+// scheme keeps unsafe values (e.g. javascript:) out of a rendered href.
+func isValidHTTPURL(s string) bool {
+	u, err := url.Parse(s)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 type meResponse struct {

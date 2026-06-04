@@ -81,6 +81,22 @@ Response:
 
 При `AUTH_MODE=disabled` возвращает системного пользователя `anonymous-local`.
 
+## Config endpoint
+
+- `GET /api/v1/config` — публичная клиентская конфигурация SPA
+
+Доступен любому авторизованному пользователю (при `AUTH_MODE=disabled` — всем). Read-only, без side effects.
+
+Response:
+
+```json
+{
+  "documentation_url": "https://github.com/ShamanR/okrs/wiki"
+}
+```
+
+- `documentation_url` — ссылка на внешнюю документацию из `system_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
+
 ## Admin API endpoints
 
 Доступны только администраторам при `AUTH_MODE=enabled`. При `AUTH_MODE=disabled` доступны всем.
@@ -119,6 +135,26 @@ Response:
 - `default_node` — новый пользователь получает грант на `default_hierarchy_node_id` при первом логине, если у него ещё нет ни одного гранта
 
 Политика хранится в `system_settings` и применяется без перезапуска. Изменение политики не влияет на уже выданные гранты.
+
+### Общие настройки
+
+- `GET /api/v1/admin/settings/general` — текущие общие настройки
+
+Response:
+
+```json
+{
+  "documentation_url": "https://github.com/ShamanR/okrs/wiki"
+}
+```
+
+- `POST /api/v1/admin/settings/general` — обновить общие настройки; body: `{"documentation_url": "https://github.com/ShamanR/okrs/wiki"}`
+
+Validation:
+
+- `documentation_url` — пустая строка (очищает ссылку, скрывает пункт меню) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
+
+Значение хранится в `system_settings` (ключ `documentation_url`) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его всем авторизованным пользователям.
 
 Все admin API endpoints требуют CSRF token при вызове из браузера.
 

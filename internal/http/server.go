@@ -12,6 +12,7 @@ import (
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiadmin "okrs/internal/http/handlers/api/v1/admin"
+	apiconfig "okrs/internal/http/handlers/api/v1/config"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihealthcheckin "okrs/internal/http/handlers/api/v1/healthcheckin"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
@@ -238,6 +239,8 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Delete("/api/v1/admin/users/{userID}/grants/{teamID}", adminAPI.HandleRemoveGrant)
 		r.Get("/api/v1/admin/settings/access", adminAPI.HandleGetAccessSettings)
 		r.Post("/api/v1/admin/settings/access", adminAPI.HandleUpdateAccessSettings)
+		r.Get("/api/v1/admin/settings/general", adminAPI.HandleGetGeneralSettings)
+		r.Post("/api/v1/admin/settings/general", adminAPI.HandleUpdateGeneralSettings)
 
 		// Admin periods API.
 		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)
@@ -267,6 +270,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
 	r.Get("/api/v1/me", apiadmin.HandleMe)
+	r.Get("/api/v1/config", apiconfig.New(s.store.Settings).HandleConfig)
 	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 
 	teamHandlers := apiteams.New(s.service)

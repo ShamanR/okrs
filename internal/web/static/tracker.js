@@ -192,7 +192,7 @@ function AvatarWithUDID({ name, udid, size = 28 }) {
 }
 
 // ── HEADER USER MENU ──────────────────────────────────────────────────────────
-function HeaderUserMenu({ user }) {
+function HeaderUserMenu({ user, docUrl }) {
   const [open, setOpen] = useState(false);
   const timer = useRef();
   const show = () => { clearTimeout(timer.current); setOpen(true); };
@@ -214,6 +214,11 @@ function HeaderUserMenu({ user }) {
               <div className="user-menu__email">{user?.email || user?.provider || ''}</div>
             </div>
           </div>
+          {docUrl && (
+            <a href={docUrl} target="_blank" rel="noopener noreferrer" className="user-menu__item">
+              <span className="user-menu__item-icon">📖</span>Документация
+            </a>
+          )}
           {user?.is_admin && (
             <a href="/admin" className="user-menu__item">
               <span className="user-menu__item-icon">⚙</span>Управление
@@ -1416,6 +1421,7 @@ function App() {
   const [accent] = useState(ACCENT);
   const [hciData, setHciData] = useState(null);
   const [hciOpen, setHciOpen] = useState(false);
+  const [docUrl, setDocUrl] = useState('');
 
   const loadHCI = useCallback((pid) => {
     if (!pid) return;
@@ -1436,8 +1442,9 @@ function App() {
   }
 
   useEffect(() => {
-    Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods')]).then(([meData, perData]) => {
+    Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
+      if (cfg) setDocUrl(cfg.documentation_url || '');
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -1579,7 +1586,7 @@ function App() {
       <div className="sidebar">
         <div className="sidebar__header">
           <div className="sidebar__logo">OKR Tracker</div>
-          {me && <HeaderUserMenu user={me} accent={accent} />}
+          {me && <HeaderUserMenu user={me} docUrl={docUrl} accent={accent} />}
         </div>
         <div className="sidebar__period">
           <div className="sidebar__period-label">Период</div>
