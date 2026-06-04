@@ -38,6 +38,7 @@ type GoalInput struct {
 	WorkType    domain.WorkType
 	FocusType   domain.FocusType
 	OwnerText   string
+	OwnerUDIDs  []string
 }
 
 type GoalUpdateInput struct {
@@ -49,6 +50,7 @@ type GoalUpdateInput struct {
 	WorkType    domain.WorkType
 	FocusType   domain.FocusType
 	OwnerText   string
+	OwnerUDIDs  []string
 }
 
 type GoalFieldsUpdateInput struct {
@@ -59,6 +61,7 @@ type GoalFieldsUpdateInput struct {
 	WorkType    domain.WorkType
 	FocusType   domain.FocusType
 	OwnerText   string
+	OwnerUDIDs  []string
 }
 
 type TeamOverviewStats struct {
@@ -83,7 +86,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 	goalRows, err := r.db.Query(ctx, `
 		SELECT g.id, t.team_id, g.period_id, g.title, g.description, g.priority,
 		       COALESCE(gs.weight, g.weight) AS weight,
-		       g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at
+		       g.work_type, g.focus_type, g.owner_text, g.owner_udids, g.created_at, g.updated_at
 		FROM (
 			SELECT g.id, g.team_id
 			FROM goals g
@@ -118,6 +121,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 			&goal.WorkType,
 			&goal.FocusType,
 			&goal.OwnerText,
+			&goal.OwnerUDIDs,
 			&goal.CreatedAt,
 			&goal.UpdatedAt,
 		); err != nil {
@@ -351,10 +355,10 @@ func resultFromGoalPointers(teamGoals map[int64]map[int64]*domain.Goal, teamGoal
 func (r *GoalRepository) CreateGoal(ctx context.Context, input GoalInput) (int64, error) {
 	var id int64
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, sort_order)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM goals WHERE team_id=$1 AND period_id=$2))
+		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, sort_order)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM goals WHERE team_id=$1 AND period_id=$2))
 		RETURNING id`,
-		input.TeamID, input.PeriodID, input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText,
+		input.TeamID, input.PeriodID, input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.OwnerUDIDs,
 	).Scan(&id)
 	return id, err
 }
@@ -414,7 +418,7 @@ func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, teamID, peri
 	rows, err := r.db.Query(ctx, `
 		SELECT g.id, g.team_id, g.period_id, g.title, g.description, g.priority,
 		       COALESCE(gs.weight, g.weight) AS weight,
-		       g.work_type, g.focus_type, g.owner_text, g.created_at, g.updated_at,
+		       g.work_type, g.focus_type, g.owner_text, g.owner_udids, g.created_at, g.updated_at,
 		       COALESCE(gs.sort_order, g.sort_order) AS team_sort_order
 		FROM goals g
 		LEFT JOIN goal_shares gs ON gs.goal_id = g.id AND gs.team_id = $1
@@ -429,7 +433,7 @@ func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, teamID, peri
 	for rows.Next() {
 		var goal domain.Goal
 		var sortOrder int
-		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt, &sortOrder); err != nil {
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt, &sortOrder); err != nil {
 			return nil, err
 		}
 		goals = append(goals, goal)
@@ -785,9 +789,9 @@ func (r *GoalRepository) MoveGoal(ctx context.Context, goalID int64, direction i
 func (r *GoalRepository) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 	var goal domain.Goal
 	row := r.db.QueryRow(ctx, `
-		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, created_at, updated_at
+		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, created_at, updated_at
 		FROM goals WHERE id=$1`, id)
-	if err := row.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+	if err := row.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 		return domain.Goal{}, err
 	}
 	krsSlice, err := r.krs.ListKeyResultsByGoal(ctx, goal.ID)
@@ -856,9 +860,9 @@ func (r *GoalRepository) ListTeamLastGoalUpdateInPeriod(ctx context.Context, per
 func (r *GoalRepository) UpdateGoal(ctx context.Context, input GoalUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE goals
-		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, focus_type=$6, owner_text=$7, updated_at=NOW()
-		WHERE id=$8`,
-		input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.ID,
+		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, focus_type=$6, owner_text=$7, owner_udids=$8, updated_at=NOW()
+		WHERE id=$9`,
+		input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.OwnerUDIDs, input.ID,
 	)
 	return err
 }
@@ -866,9 +870,9 @@ func (r *GoalRepository) UpdateGoal(ctx context.Context, input GoalUpdateInput) 
 func (r *GoalRepository) UpdateGoalFields(ctx context.Context, input GoalFieldsUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE goals
-		SET title=$1, description=$2, priority=$3, work_type=$4, focus_type=$5, owner_text=$6, updated_at=NOW()
-		WHERE id=$7`,
-		input.Title, input.Description, input.Priority, input.WorkType, input.FocusType, input.OwnerText, input.ID,
+		SET title=$1, description=$2, priority=$3, work_type=$4, focus_type=$5, owner_text=$6, owner_udids=$7, updated_at=NOW()
+		WHERE id=$8`,
+		input.Title, input.Description, input.Priority, input.WorkType, input.FocusType, input.OwnerText, input.OwnerUDIDs, input.ID,
 	)
 	return err
 }
