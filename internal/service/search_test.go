@@ -108,11 +108,10 @@ func TestSearchUsersInScopeFiltersGrantsByAncestor(t *testing.T) {
 }
 
 func TestSearchUsersInScopeIncludesTeamLeads(t *testing.T) {
-	now := time.Now()
-	_ = now
+	aliceUDID := "udid-alice"
 	st := newSearchStore()
 	st.teams = []domain.Team{
-		{ID: 5, Name: "TeamA", Type: domain.TeamTypeTeam, Lead: "Alice"},
+		{ID: 5, Name: "TeamA", Type: domain.TeamTypeTeam, Lead: "Alice", LeadUDID: &aliceUDID},
 	}
 	// No grants at all — but Alice is a lead of scope team 5.
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
@@ -122,8 +121,8 @@ func TestSearchUsersInScopeIncludesTeamLeads(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(st.lastLeadNames) != 1 || st.lastLeadNames[0] != "Alice" {
-		t.Fatalf("expected lead 'Alice' in lead names, got %v", st.lastLeadNames)
+	if len(st.lastLeadNames) != 1 || st.lastLeadNames[0] != aliceUDID {
+		t.Fatalf("expected lead UDID %q in lead UDIDs, got %v", aliceUDID, st.lastLeadNames)
 	}
 }
 
@@ -157,10 +156,11 @@ func TestSearchUsersInScopeFiltersGrantsByDescendant(t *testing.T) {
 }
 
 func TestSearchUsersInScopeIncludesDescendantTeamLeads(t *testing.T) {
+	charlieUDID := "udid-charlie"
 	st := newSearchStore()
 	st.teams = []domain.Team{
 		{ID: 1, Name: "Parent", Type: domain.TeamTypeUnit},
-		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1), Lead: "Charlie"},
+		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1), Lead: "Charlie", LeadUDID: &charlieUDID},
 	}
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
@@ -171,13 +171,13 @@ func TestSearchUsersInScopeIncludesDescendantTeamLeads(t *testing.T) {
 	}
 
 	found := false
-	for _, name := range st.lastLeadNames {
-		if name == "Charlie" {
+	for _, udid := range st.lastLeadNames {
+		if udid == charlieUDID {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected descendant lead 'Charlie' in lead names, got %v", st.lastLeadNames)
+		t.Fatalf("expected descendant lead UDID %q in lead UDIDs, got %v", charlieUDID, st.lastLeadNames)
 	}
 }
 

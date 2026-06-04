@@ -69,12 +69,20 @@ func insertUser(t *testing.T, pool *pgxpool.Pool, name, email string) (int64, st
 	return id, udid
 }
 
-func insertTeamWithLead(t *testing.T, pool *pgxpool.Pool, name, lead string) int64 {
+func insertTeamWithLead(t *testing.T, pool *pgxpool.Pool, name, lead, leadUDID string) int64 {
 	t.Helper()
 	var id int64
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO teams (name, lead) VALUES ($1, $2) RETURNING id`, name, lead,
-	).Scan(&id); err != nil {
+	var err error
+	if leadUDID != "" {
+		err = pool.QueryRow(context.Background(),
+			`INSERT INTO teams (name, lead, lead_udid) VALUES ($1, $2, $3) RETURNING id`, name, lead, leadUDID,
+		).Scan(&id)
+	} else {
+		err = pool.QueryRow(context.Background(),
+			`INSERT INTO teams (name, lead) VALUES ($1, $2) RETURNING id`, name, lead,
+		).Scan(&id)
+	}
+	if err != nil {
 		t.Fatalf("insert team %s: %v", name, err)
 	}
 	return id
@@ -175,14 +183,14 @@ func TestUsersEndpoint_ScopedSearch_OnlyGrantedAndLeads(t *testing.T) {
 	// Alice has a grant to teamA (in scope).
 	aliceID, _ := insertUser(t, pool, "Alice", "alice@example.com")
 	// Bob is a lead of teamA (in scope).
-	insertUser(t, pool, "Bob", "bob@example.com")
+	_, bobUDID := insertUser(t, pool, "Bob", "bob@example.com")
 	// Carol has a grant to teamB (outside scope).
 	carolID, _ := insertUser(t, pool, "Carol", "carol@example.com")
 	// Dave has no grant and is not a lead.
 	insertUser(t, pool, "Dave", "dave@example.com")
 
-	teamA := insertTeamWithLead(t, pool, "TeamA", "Bob")
-	teamB := insertTeamWithLead(t, pool, "TeamB", "")
+	teamA := insertTeamWithLead(t, pool, "TeamA", "Bob", bobUDID)
+	teamB := insertTeamWithLead(t, pool, "TeamB", "", "")
 
 	grantAccess(t, pool, aliceID, teamA)
 	grantAccess(t, pool, carolID, teamB)
@@ -223,7 +231,7 @@ func TestUsersEndpoint_ScopedSearch_ParentGrantCoversChild(t *testing.T) {
 	// Alice should still be visible because her grant to parent covers child.
 	aliceID, _ := insertUser(t, pool, "Alice", "alice@example.com")
 
-	parentID := insertTeamWithLead(t, pool, "Parent", "")
+	parentID := insertTeamWithLead(t, pool, "Parent", "", "")
 	var childID int64
 	if err := pool.QueryRow(context.Background(),
 		`INSERT INTO teams (name, parent_id) VALUES ('Child', $1) RETURNING id`, parentID,
@@ -275,8 +283,8 @@ func TestUsersEndpoint_LedTeam_IncludedInResponse(t *testing.T) {
 	pool, st, cleanup := setupDB(t)
 	defer cleanup()
 
-	aliceID, _ := insertUser(t, pool, "Alice", "alice@example.com")
-	teamID := insertTeamWithLead(t, pool, "Platform", "Alice")
+	aliceID, aliceUDID := insertUser(t, pool, "Alice", "alice@example.com")
+	teamID := insertTeamWithLead(t, pool, "Platform", "Alice", aliceUDID)
 	grantAccess(t, pool, aliceID, teamID)
 
 	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
