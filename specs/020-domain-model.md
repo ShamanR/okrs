@@ -232,6 +232,7 @@
 | new_user_policy            | string   | `"empty"` или `"default_node"` — политика для новых пользователей |
 | default_hierarchy_node_id  | int64    | ID узла иерархии для политики `default_node`; null если не задан |
 | health_checkin_config      | object   | Настройки Health Check-in: `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `in_counter` (map[string]bool) |
+| documentation_url          | string   | Ссылка на внешнюю документацию; пустая строка или отсутствие ключа = пункт меню скрыт. Должна быть абсолютным http(s) URL |
 
 ---
 

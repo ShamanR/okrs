@@ -957,6 +957,46 @@ function AccessSettingsPanel({teams}) {
   </div>;
 }
 
+function GeneralSettingsPanel() {
+  const [url, setUrl] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(()=>{
+    apiGet('/api/v1/admin/settings/general').then(r=>r&&r.json()).then(data=>{
+      if (data) setUrl(data.documentation_url||'');
+    });
+  },[]);
+
+  async function save() {
+    setSaving(true); setSaved(false);
+    const res = await apiPost('/api/v1/admin/settings/general', {documentation_url: url.trim()});
+    setSaving(false);
+    if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
+    else if (res && res.status===400) alert('Укажите корректную http(s)-ссылку или оставьте поле пустым.');
+    else alert('Ошибка сохранения настроек');
+  }
+
+  return <div>
+    <DetailHeader breadcrumb="Настройки" title="Документация"
+      subtitle="Ссылка на документацию в меню пользователя"/>
+    <DetailSection title="Ссылка на документацию">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:16,lineHeight:1.6}}>
+        Если ссылка указана, в меню пользователя появляется пункт «Документация». Оставьте поле пустым, чтобы скрыть пункт.
+      </div>
+      <input type="url" value={url} onChange={e=>setUrl(e.target.value)}
+        placeholder="https://github.com/ShamanR/okrs/wiki"
+        style={{...inpStyle,fontSize:13,marginBottom:16}}/>
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <Btn variant="primary" onClick={save} disabled={saving}>
+          {saving?'Сохранение…':'Сохранить'}
+        </Btn>
+        {saved&&<span style={{fontSize:12,color:'#059669',fontWeight:600}}>✓ Сохранено</span>}
+      </div>
+    </DetailSection>
+  </div>;
+}
+
 // ── USERS SECTION ────────────────────────────────────────────────────────────
 function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
@@ -1127,7 +1167,10 @@ function App() {
     {section==='periods' &&<PeriodsSection periods={periods} reload={loadAll}/>}
     {section==='teams'   &&<TeamsSection teams={teams} reload={loadAll}/>}
     {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={loadAll}/>}
-    {section==='settings'&&<div style={{padding:'20px 24px 24px'}}><div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div></div>}
+    {section==='settings'&&<div style={{padding:'20px 24px 24px',display:'flex',flexDirection:'column',gap:20}}>
+      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
+      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><GeneralSettingsPanel/></div>
+    </div>}
     {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}
   </Shell>;
 }
