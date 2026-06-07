@@ -218,6 +218,16 @@
 .kr-num-input-suffix__unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #9ca3af; white-space: nowrap; pointer-events: none; }
 .kr-progress-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .kr-progress-row__label { font-size: 12px; color: #6b7280; }
+.kr-guide { margin-top: 12px; padding: 12px 14px; background: #eef6fa; border: 1px solid #cfe6ee; border-radius: 10px; }
+.kr-guide__title { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #2b7a99; margin-bottom: 10px; }
+.kr-guide__steps { display: flex; flex-wrap: wrap; gap: 10px; }
+.kr-guide__step { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 60px; padding: 7px 14px; border: 1.5px dashed #9ec7d6; border-radius: 9px; background: #fff; line-height: 1.2; }
+.kr-guide__step--reached { border-style: solid; border-color: #2b6f86; background: #2b6f86; }
+.kr-guide__step-val { font-size: 11px; font-weight: 700; color: #2b7a99; }
+.kr-guide__step-pct { font-size: 12px; font-weight: 600; color: #6aa3b6; margin-top: 2px; }
+.kr-guide__step--reached .kr-guide__step-val { color: #fff; }
+.kr-guide__step--reached .kr-guide__step-pct { color: #cfe6ee; }
+.kr-guide__hint { margin-top: 10px; font-size: 12px; color: #2b7a99; }
 .kr-steps-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
 .kr-steps-title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
 .kr-steps-sum { font-size: 11px; font-weight: 600; }
