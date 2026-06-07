@@ -224,6 +224,12 @@
 .kr-steps-sum--ok { color: #16a34a; }
 .kr-steps-sum--bad { color: #ef4444; }
 .kr-step-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.kr-steps-cols { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.kr-steps-cols span { font-size: 11px; font-weight: 600; color: #9ca3af; }
+.kr-steps-cols__check { width: 16px; flex-shrink: 0; text-align: center; }
+.kr-steps-cols__name { flex: 1; text-transform: uppercase; letter-spacing: 0.02em; }
+.kr-steps-cols__weight { width: 60px; flex-shrink: 0; text-align: center; }
+.kr-steps-cols__del { width: 18px; flex-shrink: 0; }
 .kr-cp-head, .kr-cp-row { display: grid; grid-template-columns: 1fr 110px 20px; gap: 8px; align-items: center; }
 .kr-cp-head { margin-bottom: 4px; }
 .kr-cp-row { margin-bottom: 8px; }
@@ -339,9 +345,12 @@
 .goal-card__footer-btn { flex: 1; padding: 8px 0; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #6b7280; display: flex; align-items: center; justify-content: center; gap: 5px; }
 .goal-card__footer-btn--has-comments { color: #374151; }
 .goal-card__footer-divider { width: 1px; background: #f3f4f6; }
+.kr-weight-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
 
 /* ── KR SECTION ──────────────────────────────────────────────────────────────── */
 .kr-section { padding: 4px 18px 14px; border-top: 1px solid #f3f4f6; }
+.kr-weight-warn { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; padding: 9px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
+.kr-weight-warn__icon { flex-shrink: 0; font-size: 13px; }
 .kr-item { position: relative; transition: opacity 0.15s; }
 .kr-item--dragging { opacity: 0.45; }
 .kr-item--reorderable { margin-left: 14px; }

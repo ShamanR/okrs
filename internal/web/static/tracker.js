@@ -676,6 +676,14 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 <div className="kr-steps-title">Шаги проекта</div>
                 <div className={`kr-steps-sum ${Math.abs(sw - 100) < 1 ? 'kr-steps-sum--ok' : 'kr-steps-sum--bad'}`}>Сумма: {sw}</div>
               </div>
+              {form.stages.length > 0 && (
+                <div className="kr-steps-cols">
+                  <span className="kr-steps-cols__check">✓</span>
+                  <span className="kr-steps-cols__name">Название шага</span>
+                  <span className="kr-steps-cols__weight">Вес, %</span>
+                  <span className="kr-steps-cols__del" />
+                </div>
+              )}
               {form.stages.map((st, i) => (
                 <div key={st.id || i} className="kr-step-row">
                   <input type="checkbox" checked={!!st.done} onChange={e => setSt(i, 'done', e.target.checked)} style={{ width: 16, height: 16, accentColor: accent, flexShrink: 0 }} />
@@ -843,6 +851,9 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const canReorderGoal = canEdit && !!dragProps;
   const { isDragging, ...rootDrag } = dragProps || {};
   const otherTeams = (goal.shareTeams || []).filter(t => t.id !== currentTeamId);
+  const krWeightSum = (goal.krs || []).reduce((s, k) => s + (k.weight || 0), 0);
+  const krWeightOff = krWeightSum !== 100;
+  const krWeightDelta = 100 - krWeightSum;
 
   const addGoalComment = async text => { await apiPost(`/api/v1/goals/${goal.id}/comments`, { text }); onReload(); };
   const handleDeleteGoal = async () => { await apiDelete(`/api/v1/goals/${goal.id}`); onReload(); };
@@ -925,6 +936,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         <button onClick={() => setShowKR(!showKR)} className="goal-card__footer-btn">
           <span style={{ fontSize: 9 }}>{showKR ? '▲' : '▼'}</span>
           {showKR ? 'Скрыть KR' : `KR (${(goal.krs || []).length})`}
+          {krWeightOff && <span className="kr-weight-badge" title="Сумма весов KR не равна 100%">⚠ {krWeightSum} %</span>}
         </button>
         <div className="goal-card__footer-divider" />
         <button onClick={() => setShowCom(!showCom)}
@@ -934,6 +946,16 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
       </div>
       {showKR && (
         <div className="kr-section">
+          {krWeightOff && (
+            <div className="kr-weight-warn">
+              <span className="kr-weight-warn__icon">⚠</span>
+              <span>
+                Сумма весов KR = {krWeightSum}%, ожидается 100%
+                {' · '}
+                {krWeightDelta > 0 ? `не распределено ${krWeightDelta}%` : `превышено на ${-krWeightDelta}%`}
+              </span>
+            </div>
+          )}
           {(goal.krs || []).map(kr => {
             const canReorderKR = canEdit && !!onReorderKR;
             const isKrDrag = krDrag === kr.id;
