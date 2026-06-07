@@ -78,18 +78,32 @@
 - sort_order
 - note (nullable, 1:1 — см. KeyResultNote)
 
-**Типы:**
+**Типы (kind):**
 
-- PROJECT
-- PERCENT
-- LINEAR
-- BOOLEAN
+- BOOLEAN — бинарный (выполнен / не выполнен)
+- PROJECT — проектный (этапы с весами)
+- NUMERICAL — числовой (измеряется числом)
+
+Типы `PERCENT` и `LINEAR` упразднены: миграция `023_kr_numerical` переводит их в `NUMERICAL` с `unit = '%'`.
+
+**Поля NUMERICAL (хранятся прямо в таблице `key_results`):**
+
+- start_value — стартовое значение
+- target_value — целевое значение
+- current_value — текущее значение
+- unit — единица измерения из закрытого справочника (`%`, `RPS`, `мс`, `сек`, `мин`, `час`, `дней`, `шт`, `₽`, `запросов`, `ошибок`, `пользователей`, `заказов`, `рублей`)
+- checkpoints — опциональные промежуточные значения, JSONB-массив `[{ value, progress_percent }]` в той же строке KR (отдельной таблицы нет)
+- zeroing_criteria — опциональный текстовый критерий обнуления (человекочитаемый, в расчётах не применяется)
+
+Поля `custom_unit` нет; `unit` — не свободный текст.
 
 **Инварианты:**
 
 - KR принадлежит ровно одной goal;
 - weight в диапазоне 0..100;
-- порядок KR управляется отдельно внутри goal.
+- порядок KR управляется отдельно внутри goal;
+- для NUMERICAL `unit` обязателен и валидируется по справочнику;
+- checkpoints валидируются при сохранении: проценты в диапазоне 0..100, значения не дублируются; checkpoints загружаются вместе с KR без дополнительных запросов.
 
 ### GoalComment
 
@@ -242,14 +256,19 @@
 - Period.progress = взвешенное среднее прогресса goals.
 - PROJECT KR.progress = сумма весов завершённых этапов, clamp 0..100.
 - BOOLEAN KR.progress = 100 или 0.
-- PERCENT KR.progress = линейно, либо по checkpoint interpolation.
-- LINEAR KR.progress = линейный clamp 0..100.
+- NUMERICAL KR.progress:
+  - без checkpoints — линейно от `start_value` к `target_value` (оба направления), clamp 0..100; при `start_value == target_value` → 100, если `current_value` достиг цели, иначе 0;
+  - с checkpoints — ступенчатый расчёт: берётся процент последнего достигнутого шага (наибольший `value` ≤ `current_value`); ниже первого шага — его процент, выше последнего — его процент; clamp 0..100.
+- Процент выполнения KR остаётся основной величиной для расчёта прогресса goal/period и rollup.
 
 ## Обязательные тест-кейсы на домен
 
 - goal без KR даёт 0%.
 - goal с KR суммарного веса 0 даёт 0%.
 - project KR с completed stages >100 clamp'ится до 100.
-- percent KR без checkpoints считает линейно.
-- percent KR с checkpoints интерполирует между соседними точками.
+- numerical KR без checkpoints считает линейно (рост и снижение).
+- numerical KR ниже старта → 0%, выше цели → 100%.
+- numerical KR при `start_value == target_value` → 100% если цель достигнута, иначе 0%.
+- numerical KR с checkpoints считает по шагам (процент последнего достигнутого шага), включая границы ниже первого и выше последнего шага.
+- миграция LINEAR → NUMERICAL и PERCENT → NUMERICAL с `unit = '%'`, сохраняя start/target/current, веса и историю; checkpoints переносятся в JSONB-поле `key_results.checkpoints`, отдельная таблица удаляется.
 - shared goal показывает разный weight для разных команд без дублирования goal identity.
