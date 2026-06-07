@@ -626,13 +626,17 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                   <span className="kr-section-head__opt">опционально</span>
                   <InfoHint>Промежуточное значение задаёт, какой процент достижения KR даёт конкретное значение метрики. Прогресс интерполируется линейно между стартом (0%), промежуточными значениями и целью (100%).</InfoHint>
                 </div>
+                {(form.checkpoints || []).length > 0 && (
+                  <div className="kr-cp-head">
+                    <span className="kr-cp-head__label">Значение ({form.unit})</span>
+                    <span className="kr-cp-head__label">Прогресс, %</span>
+                    <span />
+                  </div>
+                )}
                 {(form.checkpoints || []).map((c, i) => (
-                  <div key={i} className="kr-step-row">
-                    <div className="kr-num-input-suffix" style={{ flex: 1 }}>
-                      <input type="number" placeholder="значение" value={c.value} onChange={e => setCp(i, 'value', e.target.value)} className="form-input form-input--sm" />
-                      <span className="kr-num-input-suffix__unit">{form.unit}</span>
-                    </div>
-                    <input type="number" placeholder="%" min={0} max={100} value={c.progress_percent} onChange={e => setCp(i, 'progress_percent', e.target.value)} className="form-input form-input--sm form-input--center" style={{ width: 70 }} />
+                  <div key={i} className="kr-cp-row">
+                    <input type="number" placeholder="напр. 150" value={c.value} onChange={e => setCp(i, 'value', e.target.value)} className="form-input form-input--sm" />
+                    <input type="number" placeholder="0–100" min={0} max={100} value={c.progress_percent} onChange={e => setCp(i, 'progress_percent', e.target.value)} className="form-input form-input--sm" />
                     <button onClick={() => remCp(i)} className="kr-step-delete">×</button>
                   </div>
                 ))}

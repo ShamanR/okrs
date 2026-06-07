@@ -224,6 +224,11 @@
 .kr-steps-sum--ok { color: #16a34a; }
 .kr-steps-sum--bad { color: #ef4444; }
 .kr-step-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.kr-cp-head, .kr-cp-row { display: grid; grid-template-columns: 1fr 110px 20px; gap: 8px; align-items: center; }
+.kr-cp-head { margin-bottom: 4px; }
+.kr-cp-row { margin-bottom: 8px; }
+.kr-cp-head__label { font-size: 11px; font-weight: 600; color: #6b7280; }
+.kr-cp-row .form-input { width: 100%; }
 .kr-step-delete { background: none; border: none; cursor: pointer; color: #ef4444; font-size: 18px; flex-shrink: 0; }
 .kr-step-add { width: 100%; padding: 7px; border: 1px dashed #d1d5db; border-radius: 7px; background: transparent; color: #6b7280; font-size: 12px; cursor: pointer; }
 .kr-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
