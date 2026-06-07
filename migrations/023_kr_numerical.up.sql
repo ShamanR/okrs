@@ -37,6 +37,21 @@ FROM (
 ) c
 WHERE c.key_result_id = kr.id;
 
+-- Guard partially-created legacy KRs that have no meta row. The legacy meta
+-- tables are optional (no NOT NULL FK from key_results), and CreateKeyResultWithMeta
+-- writes the KR before its meta, so a row can exist with no meta. For those the
+-- backfill above leaves start/target/current NULL, which load as 0/0/0.
+-- NumericalProgress treats start == target with current >= target as 100%, so
+-- without sane defaults these malformed rows would jump from 0% to 100% and
+-- inflate goal progress. Default them to an empty 0..100 range so they keep
+-- reading as 0%.
+UPDATE key_results
+SET start_value = 0,
+    target_value = 100,
+    current_value = 0,
+    unit = COALESCE(unit, '%')
+WHERE kind IN ('LINEAR', 'PERCENT') AND target_value IS NULL;
+
 -- Flip legacy kinds to NUMERICAL (preserves all other KR data).
 UPDATE key_results SET kind = 'NUMERICAL' WHERE kind IN ('LINEAR', 'PERCENT');
 

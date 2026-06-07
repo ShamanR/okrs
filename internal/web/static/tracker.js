@@ -127,14 +127,24 @@ function calcKRProgress(kr) {
   return clampPct(Math.round((cur - start) / (target - start) * 100));
 }
 
-// reachedStep returns the last reached checkpoint for a numerical KR, or null.
-function reachedStep(kr) {
-  const cps = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null).map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })).sort((a, b) => a.value - b.value);
+// numericalGuide builds the checkpoint guide for a numerical KR: every checkpoint
+// with its reached state, plus the next unreached checkpoint (or the target once
+// all checkpoints are passed) and the remaining distance to it. Returns null when
+// the KR has no checkpoints.
+function numericalGuide(kr) {
+  const cps = (kr.checkpoints || [])
+    .filter(c => c.value !== '' && c.value !== null && c.value !== undefined)
+    .map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) }))
+    .sort((a, b) => a.value - b.value);
   if (!cps.length) return null;
   const cur = Number(kr.current || 0);
-  let step = null;
-  for (const c of cps) { if (cur >= c.value) step = c; else break; }
-  return step;
+  const target = Number(kr.target ?? 100);
+  const steps = cps.map(c => ({ ...c, reached: cur >= c.value }));
+  const upcoming = cps.find(c => c.value > cur);
+  let next = null;
+  if (upcoming) next = { value: upcoming.value, pct: upcoming.pct, remaining: upcoming.value - cur, isTarget: false };
+  else if (cur < target) next = { value: target, pct: 100, remaining: target - cur, isTarget: true };
+  return { steps, next };
 }
 
 // ── DESIGN CONSTANTS ──────────────────────────────────────────────────────────
@@ -449,13 +459,36 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
             <div className="kr-progress-field">
               <div className="kr-progress-field__label">Текущее значение <span className="kr-progress-field__hint">({fmtVal(form.start, form.unit)} → {fmtVal(form.target, form.unit)})</span></div>
               <input type="number" value={form.current} onChange={e => set('current', e.target.value)} className="form-input" />
+              {(() => {
+                const guide = numericalGuide(form);
+                if (!guide) return null;
+                return (
+                  <div className="kr-guide">
+                    <div className="kr-guide__title">Ориентир по шагам</div>
+                    <div className="kr-guide__steps">
+                      {guide.steps.map((s, i) => (
+                        <div key={i} className={`kr-guide__step${s.reached ? ' kr-guide__step--reached' : ''}`}>
+                          <span className="kr-guide__step-val">{fmtVal(s.value, form.unit)}</span>
+                          <span className="kr-guide__step-pct">{s.pct}%</span>
+                        </div>
+                      ))}
+                    </div>
+                    {guide.next && (
+                      <div className="kr-guide__hint">
+                        {guide.next.isTarget
+                          ? `До цели ${fmtVal(guide.next.value, form.unit)}: ${fmtVal(guide.next.remaining, form.unit)}`
+                          : `До следующего шага ${fmtVal(guide.next.value, form.unit)} (${guide.next.pct}%): ${fmtVal(guide.next.remaining, form.unit)}`}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               <div style={{ marginTop: 10 }}>
                 <div className="kr-progress-row">
                   <span className="kr-progress-row__label">Прогресс</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{progress}%</span>
                 </div>
                 <ProgressBar value={progress} h={6} color={accent} />
-                {reachedStep(form) && <div className="kr-progress-row" style={{ marginTop: 6 }}><span className="kr-progress-row__label">Достигнутый шаг: {fmtVal(reachedStep(form).value, form.unit)} = {reachedStep(form).pct}%</span></div>}
                 {form.zeroing && <div className="kr-progress-row" style={{ marginTop: 6 }}><span className="kr-progress-row__label">Критерий обнуления: {form.zeroing}</span></div>}
               </div>
             </div>
@@ -676,6 +709,14 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 <div className="kr-steps-title">Шаги проекта</div>
                 <div className={`kr-steps-sum ${Math.abs(sw - 100) < 1 ? 'kr-steps-sum--ok' : 'kr-steps-sum--bad'}`}>Сумма: {sw}</div>
               </div>
+              {form.stages.length > 0 && (
+                <div className="kr-steps-cols">
+                  <span className="kr-steps-cols__check">✓</span>
+                  <span className="kr-steps-cols__name">Название шага</span>
+                  <span className="kr-steps-cols__weight">Вес, %</span>
+                  <span className="kr-steps-cols__del" />
+                </div>
+              )}
               {form.stages.map((st, i) => (
                 <div key={st.id || i} className="kr-step-row">
                   <input type="checkbox" checked={!!st.done} onChange={e => setSt(i, 'done', e.target.checked)} style={{ width: 16, height: 16, accentColor: accent, flexShrink: 0 }} />
@@ -843,6 +884,9 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const canReorderGoal = canEdit && !!dragProps;
   const { isDragging, ...rootDrag } = dragProps || {};
   const otherTeams = (goal.shareTeams || []).filter(t => t.id !== currentTeamId);
+  const krWeightSum = (goal.krs || []).reduce((s, k) => s + (k.weight || 0), 0);
+  const krWeightOff = krWeightSum !== 100;
+  const krWeightDelta = 100 - krWeightSum;
 
   const addGoalComment = async text => { await apiPost(`/api/v1/goals/${goal.id}/comments`, { text }); onReload(); };
   const handleDeleteGoal = async () => { await apiDelete(`/api/v1/goals/${goal.id}`); onReload(); };
@@ -925,6 +969,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         <button onClick={() => setShowKR(!showKR)} className="goal-card__footer-btn">
           <span style={{ fontSize: 9 }}>{showKR ? '▲' : '▼'}</span>
           {showKR ? 'Скрыть KR' : `KR (${(goal.krs || []).length})`}
+          {krWeightOff && <span className="kr-weight-badge" title="Сумма весов KR не равна 100%">⚠ {krWeightSum} %</span>}
         </button>
         <div className="goal-card__footer-divider" />
         <button onClick={() => setShowCom(!showCom)}
@@ -934,6 +979,16 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
       </div>
       {showKR && (
         <div className="kr-section">
+          {krWeightOff && (
+            <div className="kr-weight-warn">
+              <span className="kr-weight-warn__icon">⚠</span>
+              <span>
+                Сумма весов KR = {krWeightSum}%, ожидается 100%
+                {' · '}
+                {krWeightDelta > 0 ? `не распределено ${krWeightDelta}%` : `превышено на ${-krWeightDelta}%`}
+              </span>
+            </div>
+          )}
           {(goal.krs || []).map(kr => {
             const canReorderKR = canEdit && !!onReorderKR;
             const isKrDrag = krDrag === kr.id;
