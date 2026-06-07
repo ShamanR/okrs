@@ -614,7 +614,11 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 </div>
               </div>
               <div className="kr-checkpoints" style={{ marginTop: 12 }}>
-                <div className="kr-num-field__label">Промежуточные значения (необязательно)</div>
+                <div className="kr-section-head">
+                  <span className="kr-section-head__title">Промежуточные значения</span>
+                  <span className="kr-section-head__opt">опционально</span>
+                  <InfoHint>Промежуточное значение задаёт, какой процент достижения KR даёт конкретное значение метрики. Прогресс считается ступенчато — берётся процент последнего достигнутого шага.</InfoHint>
+                </div>
                 {(form.checkpoints || []).map((c, i) => (
                   <div key={i} className="kr-step-row">
                     <div className="kr-num-input-suffix" style={{ flex: 1 }}>
@@ -625,16 +629,19 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                     <button onClick={() => remCp(i)} className="kr-step-delete">×</button>
                   </div>
                 ))}
-                <button onClick={addCp} className="kr-step-add">+ Добавить шаг</button>
+                <button type="button" onClick={addCp} className="kr-dashed-btn">+ Добавить промежуточное значение</button>
               </div>
+              <div className="kr-section-sep" />
               {showZeroing ? (
-                <div className="kr-num-field" style={{ marginTop: 12 }}>
-                  <div className="kr-num-field__label">Критерий обнуления</div>
+                <div className="kr-num-field">
+                  <div className="kr-section-head"><span className="kr-section-head__title">Критерий обнуления</span></div>
                   <textarea value={form.zeroing || ''} onChange={e => set('zeroing', e.target.value)} rows={2}
                     className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} autoFocus />
                 </div>
               ) : (
-                <button type="button" onClick={() => setShowZeroing(true)} className="kr-step-add" style={{ marginTop: 12 }}>+ Критерий обнуления</button>
+                <button type="button" onClick={() => setShowZeroing(true)} className="kr-zeroing-btn">
+                  <span className="kr-zeroing-btn__icon">⊘</span> Критерий обнуления
+                </button>
               )}
               <div className="kr-progress-row" style={{ marginTop: 10 }}>
                 <span className="kr-progress-row__label">Прогресс</span>
