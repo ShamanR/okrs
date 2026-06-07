@@ -188,6 +188,7 @@
 .form-textarea--sm { padding: 9px 11px; border-radius: 8px; border-width: 1px; font-size: 13px; min-height: 60px; }
 
 .form-select { width: 100%; padding: 10px 13px; border-radius: 9px; border: 1.5px solid #e5e7eb; font-size: 13px; outline: none; color: #111827; background: white; cursor: pointer; }
+.form-select--sm { padding: 7px 10px; border-radius: 8px; border-width: 1px; }
 
 .seg-group { display: flex; gap: 6px; }
 .seg-btn { flex: 1; padding: 9px 0; border-radius: 8px; border: 2px solid #e5e7eb; background: white; color: #6b7280; font-size: 13px; font-weight: 700; cursor: pointer; text-transform: capitalize; }

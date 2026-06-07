@@ -592,7 +592,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 </div>
                 <div className="form-col">
                   <div className="kr-num-field__label">Единица измерения</div>
-                  <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select">
+                  <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select form-select--sm">
                     {KR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
