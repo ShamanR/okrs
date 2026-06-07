@@ -64,14 +64,19 @@ function fmtDate(iso) {
 function mapKR(kr) {
   const m = kr.measure || {};
   let start = 0, target = 100, current = 0, done = false, stages = [];
-  if (m.percent) { start = m.percent.start_value; target = m.percent.target_value; current = m.percent.current_value; }
-  if (m.linear) { start = m.linear.start_value; target = m.linear.target_value; current = m.linear.current_value; }
+  let unit = '%', checkpoints = [], zeroing = '';
+  if (m.numerical) {
+    start = m.numerical.start_value; target = m.numerical.target_value; current = m.numerical.current_value;
+    unit = m.numerical.unit || '%';
+    checkpoints = (m.numerical.checkpoints || []).map(c => ({ value: c.value, progress_percent: c.progress_percent }));
+    zeroing = m.numerical.zeroing_criteria || '';
+  }
   if (m.boolean) { done = m.boolean.is_done; }
   if (m.project) { stages = (m.project.stages || []).map(s => ({ id: s.id, name: s.title, weight: s.weight, done: s.is_done })); }
   return {
     id: kr.id, goalId: kr.goal_id, name: kr.title, desc: kr.description,
     weight: kr.weight, krType: kr.kind, progress: kr.progress,
-    start, target, current, done, stages,
+    start, target, current, done, stages, unit, checkpoints, zeroing,
     note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at) } : null,
     updatedAt: kr.updated_at, updatedDaysAgo: daysAgo(kr.updated_at),
   };
@@ -96,18 +101,55 @@ function mapGoal(g) {
 }
 
 // ── KR PROGRESS CALC (client-side for modals) ─────────────────────────────────
+const clampPct = v => Math.max(0, Math.min(100, v));
+
 function calcKRProgress(kr) {
   if (kr.krType === 'BOOLEAN') return kr.done ? 100 : 0;
   if (kr.krType === 'PROJECT') return Math.min(100, (kr.stages || []).filter(s => s.done).reduce((a, s) => a + (s.weight || 0), 0));
-  const r = (kr.target || 100) - (kr.start || 0);
-  return r ? Math.min(100, Math.max(0, Math.round(((kr.current || 0) - (kr.start || 0)) / r * 100))) : 0;
+  // NUMERICAL: step function when checkpoints are set, otherwise linear (either direction).
+  const cps = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null).map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })).sort((a, b) => a.value - b.value);
+  const cur = Number(kr.current || 0);
+  if (cps.length) {
+    if (cur < cps[0].value) return clampPct(cps[0].pct);
+    let p = cps[0].pct;
+    for (const c of cps) { if (cur >= c.value) p = c.pct; else break; }
+    return clampPct(p);
+  }
+  const start = Number(kr.start || 0), target = Number(kr.target ?? 100);
+  if (start === target) return cur >= target ? 100 : 0;
+  return clampPct(Math.round((cur - start) / (target - start) * 100));
+}
+
+// reachedStep returns the last reached checkpoint for a numerical KR, or null.
+function reachedStep(kr) {
+  const cps = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null).map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })).sort((a, b) => a.value - b.value);
+  if (!cps.length) return null;
+  const cur = Number(kr.current || 0);
+  let step = null;
+  for (const c of cps) { if (cur >= c.value) step = c; else break; }
+  return step;
 }
 
 // ── DESIGN CONSTANTS ──────────────────────────────────────────────────────────
 const HEALTH_COLOR = { ahead: '#16a34a', on_track: '#2563eb', below: '#ef4444', stale: '#d97706', no_goals: '#d1d5db' };
 const HEALTH_LABEL = { ahead: 'опережает', on_track: 'в плане', below: 'отстаёт', stale: 'нет обновлений', no_goals: 'нет целей' };
 const FOCUS_COLORS = { EFFICIENCY: '#0891b2', QUALITY: '#7c3aed', RELIABILITY: '#059669', GROWTH: '#d97706', PROFITABILITY: '#dc2626', STABILITY: '#6366f1', SPEED_EFFICIENCY: '#0891b2', TECH_INDEPENDENCE: '#be185d', DEFAULT: '#6b7280' };
-const KR_TYPE_C = { PERCENT: '#2563eb', LINEAR: '#0891b2', BOOLEAN: '#7c3aed', PROJECT: '#d97706' };
+const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706' };
+const KR_UNITS = ['%', 'RPS', 'мс', 'сек', 'мин', 'час', 'дней', 'шт', '₽', 'запросов', 'ошибок', 'пользователей', 'заказов', 'рублей'];
+const KR_TYPE_LABEL = { BOOLEAN: 'Бинарный', PROJECT: 'Проектный', NUMERICAL: 'Числовой' };
+const KR_TYPE_OPTIONS = ['BOOLEAN', 'PROJECT', 'NUMERICAL'];
+const KR_TYPE_HINT = 'Бинарный — для результата, который либо выполнен, либо нет. Например: «Проведён аудит», «Запущен сервис».\n\nПроектный — для результата из нескольких этапов; прогресс считается как сумма вкладов завершённых этапов.\n\nЧисловой — для результата, измеряемого числом: проценты, деньги, RPS, штуки, дни, миллисекунды. Прогресс считается линейно от стартового значения к целевому или через промежуточные значения.';
+
+// fmtNum formats a number with space thousands separators, keeping existing fractional digits.
+function fmtNum(n) {
+  if (n === null || n === undefined || n === '') return '';
+  const num = Number(n);
+  if (!isFinite(num)) return String(n);
+  const parts = String(num).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return parts.join('.');
+}
+function fmtVal(n, unit) { return unit ? `${fmtNum(n)} ${unit}` : fmtNum(n); }
 const FOCUS_OPTIONS = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
 const STATUS_STEPS = [{ k: 'forming', l: 'Черновик' }, { k: 'ready', l: 'К валидации' }, { k: 'in_progress', l: 'В работе' }, { k: 'closed', l: 'Закрыты' }];
 const TEAM_TYPE_LABEL = { cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад' };
@@ -358,8 +400,8 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
   const save = async () => {
     setSaving(true);
     try {
-      if (form.krType === 'PERCENT' || form.krType === 'LINEAR') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/percent`, { current_value: parseFloat(form.current) || 0 });
+      if (form.krType === 'NUMERICAL') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0 });
       } else if (form.krType === 'BOOLEAN') {
         await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done });
       } else if (form.krType === 'PROJECT') {
@@ -384,9 +426,9 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
           <button onClick={onClose} className="modal-close">×</button>
         </div>
         <div className="modal-body">
-          {(form.krType === 'PERCENT' || form.krType === 'LINEAR') && (
+          {form.krType === 'NUMERICAL' && (
             <div className="kr-progress-field">
-              <div className="kr-progress-field__label">Текущее значение <span className="kr-progress-field__hint">({form.start} → {form.target})</span></div>
+              <div className="kr-progress-field__label">Текущее значение <span className="kr-progress-field__hint">({fmtVal(form.start, form.unit)} → {fmtVal(form.target, form.unit)})</span></div>
               <input type="number" value={form.current} onChange={e => set('current', e.target.value)} className="form-input" />
               <div style={{ marginTop: 10 }}>
                 <div className="kr-progress-row">
@@ -394,6 +436,8 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
                   <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{progress}%</span>
                 </div>
                 <ProgressBar value={progress} h={6} color={accent} />
+                {reachedStep(form) && <div className="kr-progress-row" style={{ marginTop: 6 }}><span className="kr-progress-row__label">Достигнутый шаг: {fmtVal(reachedStep(form).value, form.unit)} = {reachedStep(form).pct}%</span></div>}
+                {form.zeroing && <div className="kr-progress-row" style={{ marginTop: 6 }}><span className="kr-progress-row__label">Критерий обнуления: {form.zeroing}</span></div>}
               </div>
             </div>
           )}
@@ -449,13 +493,16 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
 function KREditModal({ kr, goalId, onSave, onClose, accent }) {
   const isNew = !kr;
   const [form, setForm] = useState(kr
-    ? { ...kr, stages: (kr.stages || []).map(s => ({ ...s })) }
-    : { name: '', desc: '', weight: 20, krType: 'PERCENT', start: 0, target: 100, current: 0, done: false, stages: [] });
+    ? { ...kr, stages: (kr.stages || []).map(s => ({ ...s })), checkpoints: (kr.checkpoints || []).map(c => ({ ...c })) }
+    : { name: '', desc: '', weight: 20, krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 0, done: false, stages: [], checkpoints: [], zeroing: '' });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setSt = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const addSt = () => setForm(f => ({ ...f, stages: [...f.stages, { id: `s_${Date.now()}`, name: '', weight: 0, done: false }] }));
   const remSt = i => setForm(f => ({ ...f, stages: f.stages.filter((_, j) => j !== i) }));
+  const setCp = (i, k, v) => setForm(f => { const cc = [...(f.checkpoints || [])]; cc[i] = { ...cc[i], [k]: v }; return { ...f, checkpoints: cc }; });
+  const addCp = () => setForm(f => ({ ...f, checkpoints: [...(f.checkpoints || []), { value: '', progress_percent: '' }] }));
+  const remCp = i => setForm(f => ({ ...f, checkpoints: (f.checkpoints || []).filter((_, j) => j !== i) }));
   const sw = form.stages.reduce((s, st) => s + Number(st.weight || 0), 0);
   const prev = calcKRProgress(form);
   const save = async () => {
@@ -467,8 +514,18 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
       fd.append('description', form.desc || '');
       fd.append('weight', String(Number(form.weight) || 0));
       fd.append('kind', form.krType);
-      if (form.krType === 'PERCENT') { fd.append('percent_start', String(form.start || 0)); fd.append('percent_target', String(form.target || 100)); fd.append('percent_current', String(form.current || 0)); }
-      else if (form.krType === 'LINEAR') { fd.append('linear_start', String(form.start || 0)); fd.append('linear_target', String(form.target || 100)); fd.append('linear_current', String(form.current || 0)); }
+      if (form.krType === 'NUMERICAL') {
+        fd.append('numerical_unit', form.unit || '%');
+        fd.append('numerical_start', String(form.start || 0));
+        fd.append('numerical_target', String(form.target || 0));
+        fd.append('numerical_current', String(form.current || 0));
+        fd.append('numerical_zeroing', form.zeroing || '');
+        (form.checkpoints || []).forEach(c => {
+          if (c.value === '' || c.value === null || c.value === undefined) return;
+          fd.append('checkpoint_value[]', String(c.value));
+          fd.append('checkpoint_percent[]', String(c.progress_percent || 0));
+        });
+      }
       else if (form.krType === 'BOOLEAN') { fd.append('boolean_done', form.done ? 'true' : 'false'); }
       else if (form.krType === 'PROJECT') {
         (form.stages || []).forEach(st => { fd.append('step_title[]', st.name || ''); fd.append('step_weight[]', String(st.weight || 0)); fd.append('step_done[]', st.done ? 'true' : 'false'); });
@@ -503,24 +560,46 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
               <input type="number" min={0} max={100} value={form.weight} onChange={e => set('weight', e.target.value)} className="form-input" />
             </div>
             <div className="form-col">
-              <div className="kr-num-field__label">Тип</div>
+              <FieldLabel hint={KR_TYPE_HINT}>Тип Key Result</FieldLabel>
               <select value={form.krType} onChange={e => set('krType', e.target.value)} className="form-select">
-                {['PERCENT', 'LINEAR', 'BOOLEAN', 'PROJECT'].map(t => <option key={t}>{t}</option>)}
+                {KR_TYPE_OPTIONS.map(t => <option key={t} value={t}>{KR_TYPE_LABEL[t]}</option>)}
               </select>
             </div>
           </div>
-          {(form.krType === 'PERCENT' || form.krType === 'LINEAR') && (
+          {form.krType === 'NUMERICAL' && (
             <div className="kr-num-section">
-              <div className="kr-num-section__title">{form.krType === 'PERCENT' ? 'Процент' : 'Числовой прогресс'}</div>
+              <div className="kr-num-section__title">Числовой прогресс</div>
+              <div className="kr-num-field" style={{ marginBottom: 10 }}>
+                <div className="kr-num-field__label">Единица измерения</div>
+                <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select">
+                  {KR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
               <div className="kr-num-fields">
-                {['start', 'target', 'current'].map(f2 => (
+                {[['start', 'стартовое'], ['target', 'целевое'], ['current', 'текущее']].map(([f2, lbl]) => (
                   <div key={f2} className="kr-num-field">
-                    <div className="kr-num-field__label">{f2}</div>
+                    <div className="kr-num-field__label">{lbl}</div>
                     <input type="number" value={form[f2]} onChange={e => set(f2, e.target.value)} className="form-input form-input--sm" />
                   </div>
                 ))}
               </div>
-              <div className="kr-progress-row">
+              <div className="kr-checkpoints" style={{ marginTop: 12 }}>
+                <div className="kr-num-field__label">Промежуточные значения (необязательно)</div>
+                {(form.checkpoints || []).map((c, i) => (
+                  <div key={i} className="kr-step-row">
+                    <input type="number" placeholder="значение" value={c.value} onChange={e => setCp(i, 'value', e.target.value)} className="form-input form-input--sm" style={{ flex: 1 }} />
+                    <input type="number" placeholder="%" min={0} max={100} value={c.progress_percent} onChange={e => setCp(i, 'progress_percent', e.target.value)} className="form-input form-input--sm form-input--center" style={{ width: 70 }} />
+                    <button onClick={() => remCp(i)} className="kr-step-delete">×</button>
+                  </div>
+                ))}
+                <button onClick={addCp} className="kr-step-add">+ Добавить шаг</button>
+              </div>
+              <div className="kr-num-field" style={{ marginTop: 12 }}>
+                <div className="kr-num-field__label">Критерий обнуления (необязательно)</div>
+                <textarea value={form.zeroing || ''} onChange={e => set('zeroing', e.target.value)} rows={2}
+                  className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+              </div>
+              <div className="kr-progress-row" style={{ marginTop: 10 }}>
                 <span className="kr-progress-row__label">Прогресс</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: accent }}>{prev}%</span>
               </div>
@@ -597,7 +676,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
   let detail = null;
   if (kr.krType === 'BOOLEAN') detail = <span className="kr-detail" style={{ color: kr.done ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>{kr.done ? '✓ Выполнено' : '○ Не выполнено'}</span>;
   else if (kr.krType === 'PROJECT') detail = <span className="kr-detail">{(kr.stages || []).filter(s => s.done).length}/{(kr.stages || []).length} шагов</span>;
-  else detail = <span className="kr-detail">{kr.current} → {kr.target}</span>;
+  else detail = <span className="kr-detail">{fmtVal(kr.current, kr.unit)} / {fmtVal(kr.target, kr.unit)}</span>;
   const onSaved = () => { setModal(null); onReload(); };
   return (
     <>
@@ -613,7 +692,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
               {detail}
             </div>
           </div>
-          <Badge label={kr.krType} color={KR_TYPE_C[kr.krType]} />
+          <Badge label={KR_TYPE_LABEL[kr.krType] || kr.krType} color={KR_TYPE_C[kr.krType]} />
           <span className="kr-updated" style={{ color: staleC }}>{kr.updatedDaysAgo === 0 ? 'сегодня' : `${kr.updatedDaysAgo}д назад`}</span>
           {kr.note && <button onClick={() => setShowNote(!showNote)} className="kr-notes-btn">📝</button>}
           {editMode === 'full' && <>
