@@ -65,26 +65,30 @@ func TestNumericalProgressLinear(t *testing.T) {
 	}
 }
 
-func TestNumericalProgressCheckpointsStep(t *testing.T) {
+func TestNumericalProgressCheckpointsInterpolation(t *testing.T) {
+	// start 0, target 100; checkpoints interpolate against implicit (0,0%) and (100,100%).
 	cps := []domain.KRNumericalCheckpoint{
-		{Value: 100, ProgressPercent: 0},
-		{Value: 150, ProgressPercent: 50},
-		{Value: 180, ProgressPercent: 100},
+		{Value: 80, ProgressPercent: 10},
+		{Value: 90, ProgressPercent: 50},
+		{Value: 95, ProgressPercent: 80},
 	}
 	cases := []struct {
 		name    string
 		current float64
 		expect  int
 	}{
-		{"between first two", 120, 0},
-		{"on middle step", 150, 50},
-		{"between middle and last", 170, 50},
-		{"on last step", 180, 100},
-		{"below first step", 90, 0},
-		{"above last step", 200, 100},
+		{"at start", 0, 0},
+		{"at target", 100, 100},
+		{"half to first checkpoint", 40, 5},
+		{"on first checkpoint", 80, 10},
+		{"between first and second", 85, 30},
+		{"on second checkpoint", 90, 50},
+		{"between last checkpoint and target", 97, 88},
+		{"below start clamps to 0", -10, 0},
+		{"above target clamps to 100", 200, 100},
 	}
 	for _, tc := range cases {
-		if got := NumericalProgress(100, 180, tc.current, cps); got != tc.expect {
+		if got := NumericalProgress(0, 100, tc.current, cps); got != tc.expect {
 			t.Fatalf("%s: expected %d got %d", tc.name, tc.expect, got)
 		}
 	}

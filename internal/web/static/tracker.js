@@ -106,16 +106,23 @@ const clampPct = v => Math.max(0, Math.min(100, v));
 function calcKRProgress(kr) {
   if (kr.krType === 'BOOLEAN') return kr.done ? 100 : 0;
   if (kr.krType === 'PROJECT') return Math.min(100, (kr.stages || []).filter(s => s.done).reduce((a, s) => a + (s.weight || 0), 0));
-  // NUMERICAL: step function when checkpoints are set, otherwise linear (either direction).
-  const cps = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null).map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })).sort((a, b) => a.value - b.value);
-  const cur = Number(kr.current || 0);
-  if (cps.length) {
-    if (cur < cps[0].value) return clampPct(cps[0].pct);
-    let p = cps[0].pct;
-    for (const c of cps) { if (cur >= c.value) p = c.pct; else break; }
-    return clampPct(p);
+  // NUMERICAL: linear interpolation between points when checkpoints are set, otherwise plain linear.
+  const start = Number(kr.start || 0), target = Number(kr.target ?? 100), cur = Number(kr.current || 0);
+  const raw = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null && c.value !== undefined);
+  if (raw.length) {
+    const pts = [{ value: start, pct: 0 }, ...raw.map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })), { value: target, pct: 100 }].sort((a, b) => a.value - b.value);
+    if (cur <= pts[0].value) return clampPct(pts[0].pct);
+    const last = pts[pts.length - 1];
+    if (cur >= last.value) return clampPct(last.pct);
+    for (let i = 0; i < pts.length - 1; i++) {
+      const l = pts[i], r = pts[i + 1];
+      if (cur >= l.value && cur <= r.value) {
+        if (r.value === l.value) return clampPct(l.pct);
+        return clampPct(Math.round(l.pct + (cur - l.value) / (r.value - l.value) * (r.pct - l.pct)));
+      }
+    }
+    return 0;
   }
-  const start = Number(kr.start || 0), target = Number(kr.target ?? 100);
   if (start === target) return cur >= target ? 100 : 0;
   return clampPct(Math.round((cur - start) / (target - start) * 100));
 }
@@ -617,7 +624,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 <div className="kr-section-head">
                   <span className="kr-section-head__title">Промежуточные значения</span>
                   <span className="kr-section-head__opt">опционально</span>
-                  <InfoHint>Промежуточное значение задаёт, какой процент достижения KR даёт конкретное значение метрики. Прогресс считается ступенчато — берётся процент последнего достигнутого шага.</InfoHint>
+                  <InfoHint>Промежуточное значение задаёт, какой процент достижения KR даёт конкретное значение метрики. Прогресс интерполируется линейно между стартом (0%), промежуточными значениями и целью (100%).</InfoHint>
                 </div>
                 {(form.checkpoints || []).map((c, i) => (
                   <div key={i} className="kr-step-row">

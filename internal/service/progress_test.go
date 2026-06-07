@@ -22,14 +22,13 @@ func TestCalculateKRProgressNumericalCheckpoints(t *testing.T) {
 		Numerical: &domain.KRNumerical{
 			StartValue: 100, TargetValue: 180, CurrentValue: 170,
 			Checkpoints: []domain.KRNumericalCheckpoint{
-				{Value: 100, ProgressPercent: 0},
 				{Value: 150, ProgressPercent: 50},
-				{Value: 180, ProgressPercent: 100},
 			},
 		},
 	}
-	if got := CalculateKRProgress(kr); got != 50 {
-		t.Fatalf("expected 50 (last reached step), got %d", got)
+	// Interpolates between checkpoint (150,50%) and target (180,100%): 170 → 83%.
+	if got := CalculateKRProgress(kr); got != 83 {
+		t.Fatalf("expected 83 (interpolated), got %d", got)
 	}
 }
 
