@@ -2,6 +2,7 @@ package krs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"okrs/internal/domain"
@@ -46,27 +47,53 @@ type ProjectStageInput struct {
 	IsDone      bool
 }
 
-// PercentMetaInput is used by UpsertPercentMeta.
-type PercentMetaInput struct {
-	KeyResultID  int64
-	StartValue   float64
-	TargetValue  float64
-	CurrentValue float64
+// NumericalMetaInput is used by UpsertNumericalMeta.
+type NumericalMetaInput struct {
+	KeyResultID     int64
+	StartValue      float64
+	TargetValue     float64
+	CurrentValue    float64
+	Unit            string
+	Checkpoints     []domain.KRNumericalCheckpoint
+	ZeroingCriteria string
 }
 
-// PercentCheckpointInput is used by AddPercentCheckpoint.
-type PercentCheckpointInput struct {
-	KeyResultID int64
-	MetricValue float64
-	KRPercent   int
+// ParseCheckpoints decodes the key_results.checkpoints JSONB payload.
+func ParseCheckpoints(raw []byte) ([]domain.KRNumericalCheckpoint, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	var cps []domain.KRNumericalCheckpoint
+	if err := json.Unmarshal(raw, &cps); err != nil {
+		return nil, err
+	}
+	return cps, nil
 }
 
-// LinearMetaInput is used by UpsertLinearMeta.
-type LinearMetaInput struct {
-	KeyResultID  int64
-	StartValue   float64
-	TargetValue  float64
-	CurrentValue float64
+// scanNumerical builds a *domain.KRNumerical from nullable column holders.
+func scanNumerical(start, target, current *float64, unit, zeroing *string, checkpointsRaw []byte) (*domain.KRNumerical, error) {
+	num := &domain.KRNumerical{}
+	if start != nil {
+		num.StartValue = *start
+	}
+	if target != nil {
+		num.TargetValue = *target
+	}
+	if current != nil {
+		num.CurrentValue = *current
+	}
+	if unit != nil {
+		num.Unit = *unit
+	}
+	if zeroing != nil {
+		num.ZeroingCriteria = *zeroing
+	}
+	cps, err := ParseCheckpoints(checkpointsRaw)
+	if err != nil {
+		return nil, err
+	}
+	num.Checkpoints = cps
+	return num, nil
 }
 
 func (r *KRRepository) CreateKeyResult(ctx context.Context, input KeyResultInput) (int64, error) {
@@ -82,7 +109,8 @@ func (r *KRRepository) CreateKeyResult(ctx context.Context, input KeyResultInput
 
 func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domain.KeyResult, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
 		FROM key_results WHERE goal_id=$1 ORDER BY sort_order, id`, goalID)
 	if err != nil {
 		return nil, err
@@ -91,8 +119,19 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) (
 	var krs []domain.KeyResult
 	for rows.Next() {
 		var kr domain.KeyResult
-		if err := rows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+		var startValue, targetValue, currentValue *float64
+		var unit, zeroing *string
+		var checkpointsRaw []byte
+		if err := rows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
+			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 			return nil, err
+		}
+		if kr.Kind == domain.KRKindNumerical {
+			num, err := scanNumerical(startValue, targetValue, currentValue, unit, zeroing, checkpointsRaw)
+			if err != nil {
+				return nil, err
+			}
+			kr.Numerical = num
 		}
 		krs = append(krs, kr)
 	}
@@ -109,23 +148,6 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) (
 				return nil, err
 			}
 			kr.Project = &domain.KRProject{Stages: stages}
-		case domain.KRKindPercent:
-			meta, checkpoints, err := r.GetPercentMeta(ctx, kr.ID)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return nil, err
-			}
-			if meta != nil {
-				meta.Checkpoints = checkpoints
-				kr.Percent = meta
-			}
-		case domain.KRKindLinear:
-			meta, err := r.GetLinearMeta(ctx, kr.ID)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return nil, err
-			}
-			if meta != nil {
-				kr.Linear = meta
-			}
 		case domain.KRKindBoolean:
 			meta, err := r.GetBooleanMeta(ctx, kr.ID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -297,52 +319,32 @@ func (r *KRRepository) UpdateKeyResultWeight(ctx context.Context, krID int64, we
 	return err
 }
 
-func (r *KRRepository) UpsertPercentMeta(ctx context.Context, input PercentMetaInput) error {
+func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, input NumericalMetaInput) error {
+	var checkpointsJSON []byte
+	if len(input.Checkpoints) > 0 {
+		b, err := json.Marshal(input.Checkpoints)
+		if err != nil {
+			return err
+		}
+		checkpointsJSON = b
+	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO kr_percent_meta (key_result_id, start_value, target_value, current_value)
-		VALUES ($1,$2,$3,$4)
-		ON CONFLICT (key_result_id) DO UPDATE SET
-			start_value=EXCLUDED.start_value,
-			target_value=EXCLUDED.target_value,
-			current_value=EXCLUDED.current_value`,
-		input.KeyResultID, input.StartValue, input.TargetValue, input.CurrentValue,
+		UPDATE key_results
+		SET start_value=$1, target_value=$2, current_value=$3, unit=$4,
+		    checkpoints=$5, zeroing_criteria=$6, updated_at=NOW()
+		WHERE id=$7`,
+		input.StartValue, input.TargetValue, input.CurrentValue, input.Unit,
+		checkpointsJSON, input.ZeroingCriteria, input.KeyResultID,
 	)
-	if err != nil {
-		return err
-	}
-	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+	return err
 }
 
-func (r *KRRepository) UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error {
-	_, err := r.db.Exec(ctx, `UPDATE kr_percent_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
-	if err != nil {
-		return err
-	}
-	return r.touchKeyResultProgressUpdatedAt(ctx, krID)
-}
-
-func (r *KRRepository) UpsertLinearMeta(ctx context.Context, input LinearMetaInput) error {
+func (r *KRRepository) UpdateNumericalCurrent(ctx context.Context, krID int64, current float64) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO kr_linear_meta (key_result_id, start_value, target_value, current_value)
-		VALUES ($1,$2,$3,$4)
-		ON CONFLICT (key_result_id) DO UPDATE SET
-			start_value=EXCLUDED.start_value,
-			target_value=EXCLUDED.target_value,
-			current_value=EXCLUDED.current_value`,
-		input.KeyResultID, input.StartValue, input.TargetValue, input.CurrentValue,
-	)
-	if err != nil {
-		return err
-	}
-	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
-}
-
-func (r *KRRepository) UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error {
-	_, err := r.db.Exec(ctx, `UPDATE kr_linear_meta SET current_value=$1 WHERE key_result_id=$2`, current, krID)
-	if err != nil {
-		return err
-	}
-	return r.touchKeyResultProgressUpdatedAt(ctx, krID)
+		UPDATE key_results
+		SET current_value=$1, updated_at=NOW(), progress_updated_at=NOW()
+		WHERE id=$2`, current, krID)
+	return err
 }
 
 func (r *KRRepository) UpdateBoolean(ctx context.Context, krID int64, done bool) error {
@@ -354,66 +356,25 @@ func (r *KRRepository) UpdateBoolean(ctx context.Context, krID int64, done bool)
 
 func (r *KRRepository) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
 	var kr domain.KeyResult
+	var startValue, targetValue, currentValue *float64
+	var unit, zeroing *string
+	var checkpointsRaw []byte
 	row := r.db.QueryRow(ctx, `
-		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
 		FROM key_results WHERE id=$1`, id)
-	if err := row.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+	if err := row.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
+		&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 		return domain.KeyResult{}, err
 	}
-	return kr, nil
-}
-
-func (r *KRRepository) AddPercentCheckpoint(ctx context.Context, input PercentCheckpointInput) error {
-	_, err := r.db.Exec(ctx, `
-		INSERT INTO kr_percent_checkpoints (key_result_id, metric_value, kr_percent)
-		VALUES ($1,$2,$3)`,
-		input.KeyResultID, input.MetricValue, input.KRPercent,
-	)
-	if err != nil {
-		return err
-	}
-	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
-}
-
-func (r *KRRepository) GetPercentMeta(ctx context.Context, krID int64) (*domain.KRPercent, []domain.KRPercentCheckpoint, error) {
-	var meta domain.KRPercent
-	row := r.db.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_percent_meta WHERE key_result_id=$1`, krID)
-	if err := row.Scan(&meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
-		return nil, nil, err
-	}
-	checkpoints, err := r.ListPercentCheckpoints(ctx, krID)
-	if err != nil {
-		return nil, nil, err
-	}
-	return &meta, checkpoints, nil
-}
-
-func (r *KRRepository) GetLinearMeta(ctx context.Context, krID int64) (*domain.KRLinear, error) {
-	var meta domain.KRLinear
-	row := r.db.QueryRow(ctx, `SELECT start_value, target_value, current_value FROM kr_linear_meta WHERE key_result_id=$1`, krID)
-	if err := row.Scan(&meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
-		return nil, err
-	}
-	return &meta, nil
-}
-
-func (r *KRRepository) ListPercentCheckpoints(ctx context.Context, krID int64) ([]domain.KRPercentCheckpoint, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, key_result_id, metric_value, kr_percent
-		FROM kr_percent_checkpoints WHERE key_result_id=$1 ORDER BY metric_value`, krID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var checkpoints []domain.KRPercentCheckpoint
-	for rows.Next() {
-		var cp domain.KRPercentCheckpoint
-		if err := rows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
-			return nil, err
+	if kr.Kind == domain.KRKindNumerical {
+		num, err := scanNumerical(startValue, targetValue, currentValue, unit, zeroing, checkpointsRaw)
+		if err != nil {
+			return domain.KeyResult{}, err
 		}
-		checkpoints = append(checkpoints, cp)
+		kr.Numerical = num
 	}
-	return checkpoints, rows.Err()
+	return kr, nil
 }
 
 func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error {

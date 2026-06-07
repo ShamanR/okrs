@@ -121,7 +121,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (h *Handler) HandleUpdatePercentProgress(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HandleUpdateNumericalProgress(w http.ResponseWriter, r *http.Request) {
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
@@ -139,7 +139,7 @@ func (h *Handler) HandleUpdatePercentProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	if err := h.service.UpdateKRProgressPercent(r.Context(), krID, req.CurrentValue); err != nil {
+	if err := h.service.UpdateKRProgressNumerical(r.Context(), krID, req.CurrentValue); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}

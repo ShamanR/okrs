@@ -80,15 +80,15 @@ func buildKRAccessFixture(t *testing.T, pool *pgxpool.Pool, repo *store.Store) (
 		t.Fatalf("create goal: %v", err)
 	}
 	krID, err = repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
-		GoalID: goalID, Title: "KR", Weight: 100, Kind: domain.KRKindPercent,
+		GoalID: goalID, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical,
 	})
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertPercentMeta(ctx, krs.PercentMetaInput{
-		KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0,
+	if err := repo.KRs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{
+		KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%",
 	}); err != nil {
-		t.Fatalf("upsert percent meta: %v", err)
+		t.Fatalf("upsert numerical meta: %v", err)
 	}
 	return
 }
@@ -113,7 +113,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	t.Run("denied with empty scope", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{}))
 		defer server.Close()
-		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/percent", server.URL, krID),
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -127,7 +127,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	t.Run("denied when team not in scope", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID + 999}))
 		defer server.Close()
-		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/percent", server.URL, krID),
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -141,7 +141,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	t.Run("allowed when team in scope", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
 		defer server.Close()
-		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/percent", server.URL, krID),
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -155,7 +155,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	t.Run("allowed for admin (nil scope)", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
 		defer server.Close()
-		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/percent", server.URL, krID),
+		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
 		if err != nil {
 			t.Fatalf("post: %v", err)
@@ -238,16 +238,16 @@ func TestCreateKRAccessControl(t *testing.T) {
 	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
 
 	body, ct := multipartBody(map[string]string{
-		"title": "New KR", "kind": "PERCENT", "weight": "50",
-		"percent_start": "0", "percent_target": "100",
+		"title": "New KR", "kind": "NUMERICAL", "weight": "50",
+		"numerical_unit": "%", "numerical_start": "0", "numerical_target": "100",
 	})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
 		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{}))
 		defer server.Close()
 		body, ct := multipartBody(map[string]string{
-			"title": "New KR", "kind": "PERCENT", "weight": "50",
-			"percent_start": "0", "percent_target": "100",
+			"title": "New KR", "kind": "NUMERICAL", "weight": "50",
+			"numerical_unit": "%", "numerical_start": "0", "numerical_target": "100",
 		})
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/key-results", server.URL, goalID), ct, body)
 		if err != nil {

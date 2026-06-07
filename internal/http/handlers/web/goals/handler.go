@@ -78,26 +78,13 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	meta := service.KeyResultMetaInput{}
 
 	switch kind {
-	case domain.KRKindPercent:
-		start := common.ParseFloatField(r.FormValue("percent_start"))
-		target := common.ParseFloatField(r.FormValue("percent_target"))
-		if start == target {
-			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
+	case domain.KRKindNumerical:
+		parsed, err := common.ParseNumericalMeta(r)
+		if err != nil {
+			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
-		meta.PercentStart = start
-		meta.PercentTarget = target
-		meta.PercentCurrent = common.ParseFloatField(r.FormValue("percent_current"))
-	case domain.KRKindLinear:
-		start := common.ParseFloatField(r.FormValue("linear_start"))
-		target := common.ParseFloatField(r.FormValue("linear_target"))
-		if start == target {
-			common.RenderError(w, h.deps.Logger, fmt.Errorf("Start и Target не должны быть равны"))
-			return
-		}
-		meta.LinearStart = start
-		meta.LinearTarget = target
-		meta.LinearCurrent = common.ParseFloatField(r.FormValue("linear_current"))
+		meta = parsed
 	case domain.KRKindBoolean:
 		meta.BooleanDone = r.FormValue("boolean_done") == "true"
 	case domain.KRKindProject:

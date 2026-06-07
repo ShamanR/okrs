@@ -9,22 +9,18 @@ type KRNote struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-type PercentCheckpoint struct {
-	ID          int64   `json:"id"`
-	MetricValue float64 `json:"metric_value"`
-	Percent     int     `json:"percent"`
+type NumericalCheckpoint struct {
+	Value           float64 `json:"value"`
+	ProgressPercent int     `json:"progress_percent"`
 }
 
-type PercentMeasure struct {
-	StartValue   float64 `json:"start_value"`
-	TargetValue  float64 `json:"target_value"`
-	CurrentValue float64 `json:"current_value"`
-}
-
-type LinearMeasure struct {
-	StartValue   float64 `json:"start_value"`
-	TargetValue  float64 `json:"target_value"`
-	CurrentValue float64 `json:"current_value"`
+type NumericalMeasure struct {
+	StartValue      float64               `json:"start_value"`
+	TargetValue     float64               `json:"target_value"`
+	CurrentValue    float64               `json:"current_value"`
+	Unit            string                `json:"unit"`
+	Checkpoints     []NumericalCheckpoint `json:"checkpoints,omitempty"`
+	ZeroingCriteria string                `json:"zeroing_criteria,omitempty"`
 }
 
 type BooleanMeasure struct {
@@ -43,12 +39,10 @@ type ProjectMeasure struct {
 }
 
 type Measure struct {
-	Kind        string              `json:"kind"`
-	Percent     *PercentMeasure     `json:"percent,omitempty"`
-	Linear      *LinearMeasure      `json:"linear,omitempty"`
-	Boolean     *BooleanMeasure     `json:"boolean,omitempty"`
-	Project     *ProjectMeasure     `json:"project,omitempty"`
-	Checkpoints []PercentCheckpoint `json:"checkpoints,omitempty"`
+	Kind      string            `json:"kind"`
+	Numerical *NumericalMeasure `json:"numerical,omitempty"`
+	Boolean   *BooleanMeasure   `json:"boolean,omitempty"`
+	Project   *ProjectMeasure   `json:"project,omitempty"`
 }
 
 type KeyResult struct {

@@ -208,20 +208,25 @@ func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 
 func buildMeasure(kr domain.KeyResult) dto.Measure {
 	switch kr.Kind {
-	case domain.KRKindPercent:
-		if kr.Percent == nil {
+	case domain.KRKindNumerical:
+		if kr.Numerical == nil {
 			return dto.Measure{Kind: string(kr.Kind)}
 		}
-		checkpoints := make([]dto.PercentCheckpoint, 0, len(kr.Percent.Checkpoints))
-		for _, cp := range kr.Percent.Checkpoints {
-			checkpoints = append(checkpoints, dto.PercentCheckpoint{ID: cp.ID, MetricValue: cp.MetricValue, Percent: cp.KRPercent})
+		cps := make([]dto.NumericalCheckpoint, 0, len(kr.Numerical.Checkpoints))
+		for _, cp := range kr.Numerical.Checkpoints {
+			cps = append(cps, dto.NumericalCheckpoint{Value: cp.Value, ProgressPercent: cp.ProgressPercent})
 		}
-		return dto.Measure{Kind: string(kr.Kind), Percent: &dto.PercentMeasure{StartValue: kr.Percent.StartValue, TargetValue: kr.Percent.TargetValue, CurrentValue: kr.Percent.CurrentValue}, Checkpoints: checkpoints}
-	case domain.KRKindLinear:
-		if kr.Linear == nil {
-			return dto.Measure{Kind: string(kr.Kind)}
+		return dto.Measure{
+			Kind: string(kr.Kind),
+			Numerical: &dto.NumericalMeasure{
+				StartValue:      kr.Numerical.StartValue,
+				TargetValue:     kr.Numerical.TargetValue,
+				CurrentValue:    kr.Numerical.CurrentValue,
+				Unit:            kr.Numerical.Unit,
+				Checkpoints:     cps,
+				ZeroingCriteria: kr.Numerical.ZeroingCriteria,
+			},
 		}
-		return dto.Measure{Kind: string(kr.Kind), Linear: &dto.LinearMeasure{StartValue: kr.Linear.StartValue, TargetValue: kr.Linear.TargetValue, CurrentValue: kr.Linear.CurrentValue}}
 	case domain.KRKindBoolean:
 		if kr.Boolean == nil {
 			return dto.Measure{Kind: string(kr.Kind)}
