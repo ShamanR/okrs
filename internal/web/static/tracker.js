@@ -138,7 +138,19 @@ const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706'
 const KR_UNITS = ['%', 'RPS', 'мс', 'сек', 'мин', 'час', 'дней', 'шт', '₽', 'запросов', 'ошибок', 'пользователей', 'заказов', 'рублей'];
 const KR_TYPE_LABEL = { BOOLEAN: 'Бинарный', PROJECT: 'Проектный', NUMERICAL: 'Числовой' };
 const KR_TYPE_OPTIONS = ['BOOLEAN', 'PROJECT', 'NUMERICAL'];
-const KR_TYPE_HINT = 'Бинарный — для результата, который либо выполнен, либо нет. Например: «Проведён аудит», «Запущен сервис».\n\nПроектный — для результата из нескольких этапов; прогресс считается как сумма вкладов завершённых этапов.\n\nЧисловой — для результата, измеряемого числом: проценты, деньги, RPS, штуки, дни, миллисекунды. Прогресс считается линейно от стартового значения к целевому или через промежуточные значения.';
+const KR_TYPE_HINT = (
+  <span className="kr-type-hint">
+    <span style={{ display: 'block', marginBottom: 8 }}>
+      <b style={{ color: KR_TYPE_C.BOOLEAN }}>Бинарный</b> — результат либо выполнен, либо нет. Например: «Проведён аудит», «Запущен сервис».
+    </span>
+    <span style={{ display: 'block', marginBottom: 8 }}>
+      <b style={{ color: KR_TYPE_C.PROJECT }}>Проектный</b> — результат состоит из нескольких этапов. Прогресс — сумма вкладов завершённых этапов.
+    </span>
+    <span style={{ display: 'block' }}>
+      <b style={{ color: KR_TYPE_C.NUMERICAL }}>Числовой</b> — результат измеряется числом: проценты, деньги, RPS, штуки, дни, миллисекунды. Прогресс считается линейно от старта к цели или через промежуточные значения.
+    </span>
+  </span>
+);
 
 // fmtNum formats a number with space thousands separators, keeping existing fractional digits.
 function fmtNum(n) {
