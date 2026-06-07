@@ -75,10 +75,12 @@ func TestMigration023ConvertsLegacyKindsToNumerical(t *testing.T) {
 	mustScan(t, pool, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q1','2024-01-01','2024-03-31',1) RETURNING id`, &periodID)
 	mustScanArgs(t, pool, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, &goalID, teamID, periodID)
 
-	var linearKR, percentKR, boolKR int64
-	mustScanArgs(t, pool, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'lin',40,'LINEAR',1) RETURNING id`, &linearKR, goalID)
-	mustScanArgs(t, pool, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'pct',40,'PERCENT',2) RETURNING id`, &percentKR, goalID)
+	var linearKR, percentKR, boolKR, noMetaKR int64
+	mustScanArgs(t, pool, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'lin',30,'LINEAR',1) RETURNING id`, &linearKR, goalID)
+	mustScanArgs(t, pool, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'pct',30,'PERCENT',2) RETURNING id`, &percentKR, goalID)
 	mustScanArgs(t, pool, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'bool',20,'BOOLEAN',3) RETURNING id`, &boolKR, goalID)
+	// A partially-created LINEAR KR with no meta row (KR written, meta never was).
+	mustScanArgs(t, pool, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'nometa',20,'LINEAR',4) RETURNING id`, &noMetaKR, goalID)
 
 	exec(t, pool, `INSERT INTO kr_linear_meta (key_result_id, start_value, target_value, current_value) VALUES ($1,10,5,7)`, linearKR)
 	exec(t, pool, `INSERT INTO kr_percent_meta (key_result_id, start_value, target_value, current_value) VALUES ($1,100,180,150)`, percentKR)
@@ -93,6 +95,10 @@ func TestMigration023ConvertsLegacyKindsToNumerical(t *testing.T) {
 	// Legacy LINEAR/PERCENT KRs are now NUMERICAL with unit '%' and values preserved.
 	assertKR(t, pool, linearKR, "NUMERICAL", "%", 10, 5, 7)
 	assertKR(t, pool, percentKR, "NUMERICAL", "%", 100, 180, 150)
+
+	// The meta-less KR converts to NUMERICAL with an empty 0..100 range so it reads
+	// as 0% rather than NumericalProgress(0,0,0) == 100% inflating goal progress.
+	assertKR(t, pool, noMetaKR, "NUMERICAL", "%", 0, 100, 0)
 
 	// BOOLEAN is unchanged and its weight preserved.
 	var boolKind string
