@@ -326,6 +326,22 @@ function StatusStepper({ status, hasGoals, onChange, accent, statusChangedAt }) 
   );
 }
 
+// ── MODAL OVERLAY CLOSE ───────────────────────────────────────────────────────
+// Закрывает модалку только если и нажатие, и отпускание мыши произошли на самом
+// оверлее. Иначе выделение текста, начатое внутри модалки, при выносе курсора с
+// зажатой кнопкой за её пределы (mouseup на оверлее) закрывало бы окно без сохранения.
+function useOverlayClose(onClose) {
+  const downOnOverlay = useRef(false);
+  return {
+    onMouseDown: e => { downOnOverlay.current = e.target === e.currentTarget; },
+    onMouseUp: e => {
+      const shouldClose = downOnOverlay.current && e.target === e.currentTarget;
+      downOnOverlay.current = false;
+      if (shouldClose) onClose();
+    },
+  };
+}
+
 // ── KR PROGRESS MODAL ─────────────────────────────────────────────────────────
 function KRProgressModal({ kr, onSave, onClose, accent }) {
   const [form, setForm] = useState({ ...kr, stages: (kr.stages || []).map(s => ({ ...s })) });
@@ -333,6 +349,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setStage = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const progress = calcKRProgress(form);
+  const overlay = useOverlayClose(onClose);
   const save = async () => {
     setSaving(true);
     try {
@@ -352,7 +369,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     finally { setSaving(false); }
   };
   return (
-    <div className="modal-overlay modal-overlay--z300" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--z300" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w480">
         <div className="modal-header">
           <div>
@@ -457,8 +474,9 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
     finally { setSaving(false); }
   };
   const canSave = !saving && !!form.name.trim();
+  const overlay = useOverlayClose(onClose);
   return (
-    <div className="modal-overlay modal-overlay--z300" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--z300" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w560">
         <div className="modal-header modal-header--sticky">
           <div className="modal-title modal-title--lg">{isNew ? 'Добавить KR' : 'Редактировать KR'}</div>
@@ -547,8 +565,9 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
 function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
   const [busy, setBusy] = React.useState(false);
   const run = async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } };
+  const overlay = useOverlayClose(onClose);
   return (
-    <div className="modal-overlay modal-overlay--z600" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--z600" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w380">
         <div className="confirm-body">
           <div className="confirm-title">{title}</div>
@@ -1047,8 +1066,9 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
     finally { setSaving(false); }
   };
   const canSave = valid && !saving;
+  const overlay = useOverlayClose(onClose);
   return (
-    <div className="modal-overlay modal-overlay--z400" onClick={onClose}>
+    <div className="modal-overlay modal-overlay--z400" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w600">
         <div className="modal-header modal-header--sticky modal-header--goal">
           <div>

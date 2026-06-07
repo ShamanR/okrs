@@ -135,6 +135,11 @@ function RowAction({title, onClick, disabled, danger, children}) {
   </button>;
 }
 function Modal({open, title, subtitle, onClose, children, width=640}) {
+  // Закрываем по оверлею только если и нажатие, и отпускание мыши были на нём самом —
+  // иначе выделение текста с выносом курсора за пределы окна закрывало бы модалку.
+  const downOnOverlay=useRef(false);
+  const onMouseDown=e=>{downOnOverlay.current=e.target===e.currentTarget;};
+  const onMouseUp=e=>{const close=downOnOverlay.current&&e.target===e.currentTarget;downOnOverlay.current=false;if(close)onClose();};
   useEffect(()=>{
     if (!open) return;
     const h=e=>{if(e.key==='Escape')onClose();};
@@ -143,7 +148,7 @@ function Modal({open, title, subtitle, onClose, children, width=640}) {
     return()=>{document.removeEventListener('keydown',h);document.body.style.overflow=prev;};
   },[open,onClose]);
   if (!open) return null;
-  return <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.42)',backdropFilter:'blur(2px)',zIndex:2000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'60px 24px 40px',overflow:'auto'}}>
+  return <div onMouseDown={onMouseDown} onMouseUp={onMouseUp} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.42)',backdropFilter:'blur(2px)',zIndex:2000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'60px 24px 40px',overflow:'auto'}}>
     <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:width,background:'white',borderRadius:14,boxShadow:'0 24px 60px rgba(15,23,42,0.28)',overflow:'hidden',animation:'admModalIn .16s ease-out'}}>
       <div style={{padding:'16px 22px 14px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'flex-start',gap:14}}>
         <div style={{flex:1,minWidth:0}}>
