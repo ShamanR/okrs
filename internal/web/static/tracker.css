@@ -211,7 +211,10 @@
 .kr-num-section__title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 12px; }
 .kr-num-fields { display: flex; gap: 12px; margin-bottom: 12px; }
 .kr-num-field { flex: 1; }
-.kr-num-field__label { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; text-transform: capitalize; }
+.kr-num-field__label { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.kr-num-input-suffix { position: relative; display: flex; align-items: center; }
+.kr-num-input-suffix .form-input { flex: 1; min-width: 0; }
+.kr-num-input-suffix__unit { margin-left: 8px; font-size: 12px; color: #9ca3af; white-space: nowrap; }
 .kr-progress-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .kr-progress-row__label { font-size: 12px; color: #6b7280; }
 .kr-steps-header { display: flex; justify-content: space-between; margin-bottom: 10px; }

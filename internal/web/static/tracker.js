@@ -508,6 +508,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
     ? { ...kr, stages: (kr.stages || []).map(s => ({ ...s })), checkpoints: (kr.checkpoints || []).map(c => ({ ...c })) }
     : { name: '', desc: '', weight: 20, krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 0, done: false, stages: [], checkpoints: [], zeroing: '' });
   const [saving, setSaving] = useState(false);
+  const [showZeroing, setShowZeroing] = useState(!!(kr && kr.zeroing));
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setSt = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const addSt = () => setForm(f => ({ ...f, stages: [...f.stages, { id: `s_${Date.now()}`, name: '', weight: 0, done: false }] }));
@@ -581,36 +582,60 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
           {form.krType === 'NUMERICAL' && (
             <div className="kr-num-section">
               <div className="kr-num-section__title">Числовой прогресс</div>
-              <div className="kr-num-field" style={{ marginBottom: 10 }}>
-                <div className="kr-num-field__label">Единица измерения</div>
-                <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select">
-                  {KR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                </select>
-              </div>
-              <div className="kr-num-fields">
-                {[['start', 'стартовое'], ['target', 'целевое'], ['current', 'текущее']].map(([f2, lbl]) => (
-                  <div key={f2} className="kr-num-field">
-                    <div className="kr-num-field__label">{lbl}</div>
-                    <input type="number" value={form[f2]} onChange={e => set(f2, e.target.value)} className="form-input form-input--sm" />
+              <div className="form-row" style={{ marginBottom: 10 }}>
+                <div className="form-col">
+                  <div className="kr-num-field__label">Стартовое значение</div>
+                  <div className="kr-num-input-suffix">
+                    <input type="number" value={form.start} onChange={e => set('start', e.target.value)} className="form-input form-input--sm" />
+                    <span className="kr-num-input-suffix__unit">{form.unit}</span>
                   </div>
-                ))}
+                </div>
+                <div className="form-col">
+                  <div className="kr-num-field__label">Единица измерения</div>
+                  <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select">
+                    {KR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-row" style={{ marginBottom: 10 }}>
+                <div className="form-col">
+                  <div className="kr-num-field__label">Цель</div>
+                  <div className="kr-num-input-suffix">
+                    <input type="number" value={form.target} onChange={e => set('target', e.target.value)} className="form-input form-input--sm" />
+                    <span className="kr-num-input-suffix__unit">{form.unit}</span>
+                  </div>
+                </div>
+                <div className="form-col">
+                  <div className="kr-num-field__label">Текущее значение</div>
+                  <div className="kr-num-input-suffix">
+                    <input type="number" value={form.current} onChange={e => set('current', e.target.value)} className="form-input form-input--sm" />
+                    <span className="kr-num-input-suffix__unit">{form.unit}</span>
+                  </div>
+                </div>
               </div>
               <div className="kr-checkpoints" style={{ marginTop: 12 }}>
                 <div className="kr-num-field__label">Промежуточные значения (необязательно)</div>
                 {(form.checkpoints || []).map((c, i) => (
                   <div key={i} className="kr-step-row">
-                    <input type="number" placeholder="значение" value={c.value} onChange={e => setCp(i, 'value', e.target.value)} className="form-input form-input--sm" style={{ flex: 1 }} />
+                    <div className="kr-num-input-suffix" style={{ flex: 1 }}>
+                      <input type="number" placeholder="значение" value={c.value} onChange={e => setCp(i, 'value', e.target.value)} className="form-input form-input--sm" />
+                      <span className="kr-num-input-suffix__unit">{form.unit}</span>
+                    </div>
                     <input type="number" placeholder="%" min={0} max={100} value={c.progress_percent} onChange={e => setCp(i, 'progress_percent', e.target.value)} className="form-input form-input--sm form-input--center" style={{ width: 70 }} />
                     <button onClick={() => remCp(i)} className="kr-step-delete">×</button>
                   </div>
                 ))}
                 <button onClick={addCp} className="kr-step-add">+ Добавить шаг</button>
               </div>
-              <div className="kr-num-field" style={{ marginTop: 12 }}>
-                <div className="kr-num-field__label">Критерий обнуления (необязательно)</div>
-                <textarea value={form.zeroing || ''} onChange={e => set('zeroing', e.target.value)} rows={2}
-                  className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
-              </div>
+              {showZeroing ? (
+                <div className="kr-num-field" style={{ marginTop: 12 }}>
+                  <div className="kr-num-field__label">Критерий обнуления</div>
+                  <textarea value={form.zeroing || ''} onChange={e => set('zeroing', e.target.value)} rows={2}
+                    className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} autoFocus />
+                </div>
+              ) : (
+                <button type="button" onClick={() => setShowZeroing(true)} className="kr-step-add" style={{ marginTop: 12 }}>+ Критерий обнуления</button>
+              )}
               <div className="kr-progress-row" style={{ marginTop: 10 }}>
                 <span className="kr-progress-row__label">Прогресс</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: accent }}>{prev}%</span>
