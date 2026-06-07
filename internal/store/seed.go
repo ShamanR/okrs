@@ -68,12 +68,12 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 			Title:       "MAU growth",
 			Description: "Increase monthly active usage.",
 			Weight:      100,
-			Kind:        domain.KRKindPercent,
+			Kind:        domain.KRKindNumerical,
 		})
 		if err != nil {
 			return err
 		}
-		_ = krsRepo.UpsertPercentMeta(ctx, krs.PercentMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200})
+		_ = krsRepo.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
 	}
 
 	return nil

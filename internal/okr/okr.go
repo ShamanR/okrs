@@ -62,47 +62,44 @@ func BooleanProgress(done bool) int {
 	return 0
 }
 
-func PercentProgress(start, target, current float64, checkpoints []domain.KRPercentCheckpoint) int {
-	if start == target {
-		return 0
-	}
+// NumericalProgress computes 0..100 progress for a numerical KR.
+// With no checkpoints it is linear from start to target (either direction).
+// With checkpoints it linearly interpolates between points: start (0%), each
+// checkpoint, and target (100%); outside the range it clamps to the nearest
+// endpoint's percent.
+func NumericalProgress(start, target, current float64, checkpoints []domain.KRNumericalCheckpoint) int {
 	if len(checkpoints) == 0 {
+		if start == target {
+			if current >= target {
+				return 100
+			}
+			return 0
+		}
 		return clampPercent(linearPercent(start, target, current))
 	}
 
-	points := make([]point, 0, len(checkpoints)+2)
-	points = append(points, point{Value: start, Percent: 0})
+	pts := make([]point, 0, len(checkpoints)+2)
+	pts = append(pts, point{Value: start, Percent: 0})
 	for _, cp := range checkpoints {
-		points = append(points, point{Value: cp.MetricValue, Percent: cp.KRPercent})
+		pts = append(pts, point{Value: cp.Value, Percent: cp.ProgressPercent})
 	}
-	points = append(points, point{Value: target, Percent: 100})
+	pts = append(pts, point{Value: target, Percent: 100})
+	sort.Slice(pts, func(i, j int) bool { return pts[i].Value < pts[j].Value })
 
-	sort.Slice(points, func(i, j int) bool { return points[i].Value < points[j].Value })
-
-	if current <= points[0].Value {
-		return 0
+	if current <= pts[0].Value {
+		return clampPercent(float64(pts[0].Percent))
 	}
-	last := points[len(points)-1]
+	last := pts[len(pts)-1]
 	if current >= last.Value {
-		return 100
+		return clampPercent(float64(last.Percent))
 	}
-
-	for i := 0; i < len(points)-1; i++ {
-		left := points[i]
-		right := points[i+1]
+	for i := 0; i < len(pts)-1; i++ {
+		left, right := pts[i], pts[i+1]
 		if current >= left.Value && current <= right.Value {
 			return clampPercent(interpolate(left, right, current))
 		}
 	}
-
 	return 0
-}
-
-func LinearProgress(start, target, current float64) int {
-	if start == target {
-		return 0
-	}
-	return clampPercent(linearPercent(start, target, current))
 }
 
 type point struct {
@@ -110,16 +107,16 @@ type point struct {
 	Percent int
 }
 
-func linearPercent(start, target, current float64) float64 {
-	return ((current - start) / (target - start)) * 100
-}
-
 func interpolate(left, right point, current float64) float64 {
 	if right.Value == left.Value {
 		return float64(left.Percent)
 	}
-	position := (current - left.Value) / (right.Value - left.Value)
-	return float64(left.Percent) + position*float64(right.Percent-left.Percent)
+	pos := (current - left.Value) / (right.Value - left.Value)
+	return float64(left.Percent) + pos*float64(right.Percent-left.Percent)
+}
+
+func linearPercent(start, target, current float64) float64 {
+	return ((current - start) / (target - start)) * 100
 }
 
 func clampPercent(value float64) int {

@@ -8,45 +8,35 @@ import (
 	"okrs/internal/service"
 )
 
-func TestBuildMeasurePercent(t *testing.T) {
+func TestBuildMeasureNumerical(t *testing.T) {
 	kr := domain.KeyResult{
-		Kind: domain.KRKindPercent,
-		Percent: &domain.KRPercent{
-			StartValue:   0,
-			TargetValue:  100,
-			CurrentValue: 50,
-			Checkpoints: []domain.KRPercentCheckpoint{
-				{ID: 1, MetricValue: 25, KRPercent: 25},
+		Kind: domain.KRKindNumerical,
+		Numerical: &domain.KRNumerical{
+			StartValue:      0,
+			TargetValue:     100,
+			CurrentValue:    50,
+			Unit:            "RPS",
+			ZeroingCriteria: "падение сервиса = 0%",
+			Checkpoints: []domain.KRNumericalCheckpoint{
+				{Value: 25, ProgressPercent: 25},
 			},
 		},
 	}
 	measure := buildMeasure(kr)
-	if measure.Kind != string(domain.KRKindPercent) {
-		t.Fatalf("expected kind %s, got %s", domain.KRKindPercent, measure.Kind)
+	if measure.Kind != string(domain.KRKindNumerical) {
+		t.Fatalf("expected kind %s, got %s", domain.KRKindNumerical, measure.Kind)
 	}
-	if measure.Percent == nil {
-		t.Fatalf("expected percent measure")
+	if measure.Numerical == nil {
+		t.Fatalf("expected numerical measure")
 	}
-	if len(measure.Checkpoints) != 1 {
+	if measure.Numerical.Unit != "RPS" {
+		t.Fatalf("expected unit RPS, got %s", measure.Numerical.Unit)
+	}
+	if measure.Numerical.ZeroingCriteria == "" {
+		t.Fatalf("expected zeroing criteria")
+	}
+	if len(measure.Numerical.Checkpoints) != 1 {
 		t.Fatalf("expected checkpoints")
-	}
-}
-
-func TestBuildMeasureLinear(t *testing.T) {
-	kr := domain.KeyResult{
-		Kind: domain.KRKindLinear,
-		Linear: &domain.KRLinear{
-			StartValue:   10,
-			TargetValue:  20,
-			CurrentValue: 12,
-		},
-	}
-	measure := buildMeasure(kr)
-	if measure.Kind != string(domain.KRKindLinear) {
-		t.Fatalf("expected kind %s, got %s", domain.KRKindLinear, measure.Kind)
-	}
-	if measure.Linear == nil {
-		t.Fatalf("expected linear measure")
 	}
 }
 

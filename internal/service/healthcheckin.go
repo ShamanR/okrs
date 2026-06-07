@@ -298,12 +298,8 @@ func checkGoalFormationErrors(g domain.Goal, weightTolerance int) []HealthCheckI
 			errs = append(errs, item("kr_no_title", "kr"))
 		}
 		switch kr.Kind {
-		case domain.KRKindPercent:
-			if kr.Percent != nil && kr.Percent.TargetValue == kr.Percent.StartValue {
-				errs = append(errs, item("kr_zero_range", "kr"))
-			}
-		case domain.KRKindLinear:
-			if kr.Linear != nil && kr.Linear.TargetValue == kr.Linear.StartValue {
+		case domain.KRKindNumerical:
+			if kr.Numerical != nil && len(kr.Numerical.Checkpoints) == 0 && kr.Numerical.TargetValue == kr.Numerical.StartValue {
 				errs = append(errs, item("kr_zero_range", "kr"))
 			}
 		case domain.KRKindProject:

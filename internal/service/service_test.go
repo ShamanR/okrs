@@ -20,8 +20,7 @@ type fakeStore struct {
 	goalsByTeam    map[int64]map[int64][]domain.Goal
 	statuses       map[[2]int64]domain.TeamPeriodStatus
 	keyResults     map[int64]domain.KeyResult
-	percentUpdates map[int64]float64
-	linearUpdates  map[int64]float64
+	numericalUpdates map[int64]float64
 	booleanUpdates map[int64]bool
 	projectStages  map[int64][]domain.KRProjectStage
 	stageUpdates   map[int64]bool
@@ -37,8 +36,7 @@ func newFakeStore() *fakeStore {
 		goalsByTeam:    make(map[int64]map[int64][]domain.Goal),
 		statuses:       make(map[[2]int64]domain.TeamPeriodStatus),
 		keyResults:     make(map[int64]domain.KeyResult),
-		percentUpdates: make(map[int64]float64),
-		linearUpdates:  make(map[int64]float64),
+		numericalUpdates: make(map[int64]float64),
 		booleanUpdates: make(map[int64]bool),
 		projectStages:  make(map[int64][]domain.KRProjectStage),
 		stageUpdates:   make(map[int64]bool),
@@ -209,12 +207,8 @@ func (f *fakeStore) HardDeleteTeam(_ context.Context, id int64) error {
 	f.hardDeleted = append(f.hardDeleted, id)
 	return nil
 }
-func (f *fakeStore) UpdatePercentCurrent(_ context.Context, krID int64, current float64) error {
-	f.percentUpdates[krID] = current
-	return nil
-}
-func (f *fakeStore) UpdateLinearCurrent(_ context.Context, krID int64, current float64) error {
-	f.linearUpdates[krID] = current
+func (f *fakeStore) UpdateNumericalCurrent(_ context.Context, krID int64, current float64) error {
+	f.numericalUpdates[krID] = current
 	return nil
 }
 func (f *fakeStore) UpdateBoolean(_ context.Context, krID int64, done bool) error {
@@ -257,9 +251,8 @@ func (f *fakeStore) MoveKeyResult(_ context.Context, krID int64, direction int) 
 	f.movedKRs[krID] = direction
 	return nil
 }
-func (f *fakeStore) UpsertPercentMeta(context.Context, krs.PercentMetaInput) error { return nil }
-func (f *fakeStore) UpsertLinearMeta(context.Context, krs.LinearMetaInput) error   { return nil }
-func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error          { return nil }
+func (f *fakeStore) UpsertNumericalMeta(context.Context, krs.NumericalMetaInput) error { return nil }
+func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error              { return nil }
 func (f *fakeStore) ReplaceProjectStages(context.Context, int64, []krs.ProjectStageInput) error {
 	return nil
 }
@@ -313,23 +306,16 @@ func newTestService(st *fakeStore, grants GrantsProvider) *Service {
 	return New(Deps{Teams: st, Goals: st, Shares: st, Periods: st, KRs: st, Statuses: st, Users: st, Grants: grants})
 }
 
-func TestUpdateKRProgressPercent(t *testing.T) {
+func TestUpdateKRProgressNumerical(t *testing.T) {
 	store := newFakeStore()
-	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindPercent}
-	store.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindLinear}
+	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindNumerical}
 	service := newTestService(store, nil)
 
-	if err := service.UpdateKRProgressPercent(context.Background(), 1, 42); err != nil {
-		t.Fatalf("update percent: %v", err)
+	if err := service.UpdateKRProgressNumerical(context.Background(), 1, 42); err != nil {
+		t.Fatalf("update numerical: %v", err)
 	}
-	if err := service.UpdateKRProgressPercent(context.Background(), 2, 55); err != nil {
-		t.Fatalf("update linear: %v", err)
-	}
-	if store.percentUpdates[1] != 42 {
-		t.Fatalf("expected percent update")
-	}
-	if store.linearUpdates[2] != 55 {
-		t.Fatalf("expected linear update")
+	if store.numericalUpdates[1] != 42 {
+		t.Fatalf("expected numerical update")
 	}
 }
 

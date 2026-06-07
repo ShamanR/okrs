@@ -159,7 +159,8 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 	}
 
 	krRows, err := r.db.Query(ctx, `
-		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at, progress_updated_at
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at, progress_updated_at,
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
 		FROM key_results
 		WHERE goal_id = ANY($1)
 		ORDER BY goal_id, sort_order, id`, goalIDs)
@@ -173,8 +174,28 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 	krIDSeen := map[int64]struct{}{}
 	for krRows.Next() {
 		var kr domain.KeyResult
-		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt, &kr.ProgressUpdatedAt); err != nil {
+		var startValue, targetValue, currentValue *float64
+		var unit, zeroing *string
+		var checkpointsRaw []byte
+		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt, &kr.ProgressUpdatedAt,
+			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 			return nil, err
+		}
+		if kr.Kind == domain.KRKindNumerical {
+			num, err := krs.ParseCheckpoints(checkpointsRaw)
+			if err != nil {
+				return nil, err
+			}
+			kr.Numerical = &domain.KRNumerical{Unit: derefString(unit), ZeroingCriteria: derefString(zeroing), Checkpoints: num}
+			if startValue != nil {
+				kr.Numerical.StartValue = *startValue
+			}
+			if targetValue != nil {
+				kr.Numerical.TargetValue = *targetValue
+			}
+			if currentValue != nil {
+				kr.Numerical.CurrentValue = *currentValue
+			}
 		}
 		goals, ok := goalsByID[kr.GoalID]
 		if !ok {
@@ -230,83 +251,6 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, periodID in
 		}
 	}
 	if err := projectRows.Err(); err != nil {
-		return nil, err
-	}
-
-	percentRows, err := r.db.Query(ctx, `
-		SELECT key_result_id, start_value, target_value, current_value
-		FROM kr_percent_meta
-		WHERE key_result_id = ANY($1)`, krIDs)
-	if err != nil {
-		return nil, err
-	}
-	defer percentRows.Close()
-	for percentRows.Next() {
-		var keyResultID int64
-		var meta domain.KRPercent
-		if err := percentRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
-			return nil, err
-		}
-		if krsSlice, ok := krByID[keyResultID]; ok {
-			for _, kr := range krsSlice {
-				value := meta
-				kr.Percent = &value
-			}
-		}
-	}
-	if err := percentRows.Err(); err != nil {
-		return nil, err
-	}
-
-	checkpointRows, err := r.db.Query(ctx, `
-		SELECT id, key_result_id, metric_value, kr_percent
-		FROM kr_percent_checkpoints
-		WHERE key_result_id = ANY($1)
-		ORDER BY key_result_id, metric_value`, krIDs)
-	if err != nil {
-		return nil, err
-	}
-	defer checkpointRows.Close()
-	for checkpointRows.Next() {
-		var cp domain.KRPercentCheckpoint
-		if err := checkpointRows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
-			return nil, err
-		}
-		if krsSlice, ok := krByID[cp.KeyResultID]; ok {
-			for _, kr := range krsSlice {
-				if kr.Percent == nil {
-					kr.Percent = &domain.KRPercent{}
-				}
-				kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
-			}
-		}
-	}
-	if err := checkpointRows.Err(); err != nil {
-		return nil, err
-	}
-
-	linearRows, err := r.db.Query(ctx, `
-		SELECT key_result_id, start_value, target_value, current_value
-		FROM kr_linear_meta
-		WHERE key_result_id = ANY($1)`, krIDs)
-	if err != nil {
-		return nil, err
-	}
-	defer linearRows.Close()
-	for linearRows.Next() {
-		var keyResultID int64
-		var meta domain.KRLinear
-		if err := linearRows.Scan(&keyResultID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
-			return nil, err
-		}
-		if krsSlice, ok := krByID[keyResultID]; ok {
-			for _, kr := range krsSlice {
-				value := meta
-				kr.Linear = &value
-			}
-		}
-	}
-	if err := linearRows.Err(); err != nil {
 		return nil, err
 	}
 
@@ -482,7 +426,8 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, goals []domain.Goa
 	}
 
 	krRows, err := r.db.Query(ctx, `
-		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at
+		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
 		FROM key_results
 		WHERE goal_id = ANY($1)
 		ORDER BY goal_id, sort_order, id`, goalIDs)
@@ -494,8 +439,28 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, goals []domain.Goa
 	krsByID := make(map[int64]*domain.KeyResult)
 	for krRows.Next() {
 		var kr domain.KeyResult
-		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt); err != nil {
+		var startValue, targetValue, currentValue *float64
+		var unit, zeroing *string
+		var checkpointsRaw []byte
+		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
+			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 			return err
+		}
+		if kr.Kind == domain.KRKindNumerical {
+			cps, err := krs.ParseCheckpoints(checkpointsRaw)
+			if err != nil {
+				return err
+			}
+			kr.Numerical = &domain.KRNumerical{Unit: derefString(unit), ZeroingCriteria: derefString(zeroing), Checkpoints: cps}
+			if startValue != nil {
+				kr.Numerical.StartValue = *startValue
+			}
+			if targetValue != nil {
+				kr.Numerical.TargetValue = *targetValue
+			}
+			if currentValue != nil {
+				kr.Numerical.CurrentValue = *currentValue
+			}
 		}
 		g, ok := goalByID[kr.GoalID]
 		if !ok {
@@ -523,19 +488,18 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, goals []domain.Goa
 	if err := r.loadProjectStages(ctx, krIDs, krsByID); err != nil {
 		return err
 	}
-	if err := r.loadPercentMeta(ctx, krIDs, krsByID); err != nil {
-		return err
-	}
-	if err := r.loadPercentCheckpoints(ctx, krIDs, krsByID); err != nil {
-		return err
-	}
-	if err := r.loadLinearMeta(ctx, krIDs, krsByID); err != nil {
-		return err
-	}
 	if err := r.loadBooleanMeta(ctx, krIDs, krsByID); err != nil {
 		return err
 	}
 	return r.loadKRNotes(ctx, krIDs, krsByID)
+}
+
+// derefString returns the pointed-to string or "" when nil.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func (r *GoalRepository) loadProjectStages(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
@@ -558,77 +522,6 @@ func (r *GoalRepository) loadProjectStages(ctx context.Context, krIDs []int64, k
 				kr.Project = &domain.KRProject{}
 			}
 			kr.Project.Stages = append(kr.Project.Stages, stage)
-		}
-	}
-	return rows.Err()
-}
-
-func (r *GoalRepository) loadPercentMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
-	rows, err := r.db.Query(ctx, `
-		SELECT key_result_id, start_value, target_value, current_value
-		FROM kr_percent_meta
-		WHERE key_result_id = ANY($1)`, krIDs)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var krID int64
-		var meta domain.KRPercent
-		if err := rows.Scan(&krID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
-			return err
-		}
-		if kr, ok := krsByID[krID]; ok {
-			value := meta
-			kr.Percent = &value
-		}
-	}
-	return rows.Err()
-}
-
-func (r *GoalRepository) loadPercentCheckpoints(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, key_result_id, metric_value, kr_percent
-		FROM kr_percent_checkpoints
-		WHERE key_result_id = ANY($1)
-		ORDER BY key_result_id, metric_value`, krIDs)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var cp domain.KRPercentCheckpoint
-		if err := rows.Scan(&cp.ID, &cp.KeyResultID, &cp.MetricValue, &cp.KRPercent); err != nil {
-			return err
-		}
-		if kr, ok := krsByID[cp.KeyResultID]; ok {
-			if kr.Percent == nil {
-				kr.Percent = &domain.KRPercent{}
-			}
-			kr.Percent.Checkpoints = append(kr.Percent.Checkpoints, cp)
-		}
-	}
-	return rows.Err()
-}
-
-func (r *GoalRepository) loadLinearMeta(ctx context.Context, krIDs []int64, krsByID map[int64]*domain.KeyResult) error {
-	rows, err := r.db.Query(ctx, `
-		SELECT key_result_id, start_value, target_value, current_value
-		FROM kr_linear_meta
-		WHERE key_result_id = ANY($1)`, krIDs)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var krID int64
-		var meta domain.KRLinear
-		if err := rows.Scan(&krID, &meta.StartValue, &meta.TargetValue, &meta.CurrentValue); err != nil {
-			return err
-		}
-		if kr, ok := krsByID[krID]; ok {
-			value := meta
-			kr.Linear = &value
 		}
 	}
 	return rows.Err()

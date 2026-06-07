@@ -203,11 +203,77 @@ func TeamPeriodStatusLabel(status domain.TeamPeriodStatus) string {
 
 func ValidKRKind(k domain.KRKind) bool {
 	switch k {
-	case domain.KRKindProject, domain.KRKindPercent, domain.KRKindLinear, domain.KRKindBoolean:
+	case domain.KRKindProject, domain.KRKindNumerical, domain.KRKindBoolean:
 		return true
 	default:
 		return false
 	}
+}
+
+// KRKindLabel returns the Russian UI alias for a KR kind.
+func KRKindLabel(k domain.KRKind) string {
+	switch k {
+	case domain.KRKindBoolean:
+		return "Бинарный"
+	case domain.KRKindProject:
+		return "Проектный"
+	case domain.KRKindNumerical:
+		return "Числовой"
+	default:
+		return string(k)
+	}
+}
+
+// ParseNumericalMeta parses NUMERICAL meta fields (unit, values, optional checkpoints,
+// optional zeroing criteria) from a form. Shared by the API and web KR handlers.
+func ParseNumericalMeta(r *http.Request) (service.KeyResultMetaInput, error) {
+	unit := strings.TrimSpace(r.FormValue("numerical_unit"))
+	if !domain.IsValidKRUnit(unit) {
+		return service.KeyResultMetaInput{}, fmt.Errorf("Недопустимая единица измерения")
+	}
+	checkpoints, err := parseNumericalCheckpoints(r)
+	if err != nil {
+		return service.KeyResultMetaInput{}, err
+	}
+	return service.KeyResultMetaInput{
+		NumericalStart:       ParseFloatField(r.FormValue("numerical_start")),
+		NumericalTarget:      ParseFloatField(r.FormValue("numerical_target")),
+		NumericalCurrent:     ParseFloatField(r.FormValue("numerical_current")),
+		NumericalUnit:        unit,
+		NumericalCheckpoints: checkpoints,
+		ZeroingCriteria:      strings.TrimSpace(r.FormValue("numerical_zeroing")),
+	}, nil
+}
+
+// parseNumericalCheckpoints parses optional NUMERICAL checkpoints from parallel form arrays.
+func parseNumericalCheckpoints(r *http.Request) ([]domain.KRNumericalCheckpoint, error) {
+	values := r.Form["checkpoint_value[]"]
+	percents := r.Form["checkpoint_percent[]"]
+	if len(values) == 0 {
+		return nil, nil
+	}
+	out := make([]domain.KRNumericalCheckpoint, 0, len(values))
+	seen := make(map[float64]struct{}, len(values))
+	for i, raw := range values {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		value := ParseFloatField(raw)
+		percentStr := ""
+		if i < len(percents) {
+			percentStr = percents[i]
+		}
+		percent := ParseIntField(percentStr)
+		if percent < 0 || percent > 100 {
+			return nil, fmt.Errorf("Процент промежуточного значения должен быть 0..100")
+		}
+		if _, dup := seen[value]; dup {
+			return nil, fmt.Errorf("Промежуточные значения не должны дублироваться")
+		}
+		seen[value] = struct{}{}
+		out = append(out, domain.KRNumericalCheckpoint{Value: value, ProgressPercent: percent})
+	}
+	return out, nil
 }
 
 func ParseID(raw string) (int64, error) {

@@ -85,14 +85,12 @@ type KRRepo interface {
 	UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error
 	FindGoalIDByKR(ctx context.Context, krID int64) (int64, error)
 	FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error)
-	UpdatePercentCurrent(ctx context.Context, krID int64, current float64) error
-	UpdateLinearCurrent(ctx context.Context, krID int64, current float64) error
+	UpdateNumericalCurrent(ctx context.Context, krID int64, current float64) error
 	UpdateBoolean(ctx context.Context, krID int64, done bool) error
 	ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error)
 	UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error
 	BatchUpdateProjectStagesDone(ctx context.Context, krID int64, updates map[int64]bool) error
-	UpsertPercentMeta(ctx context.Context, input krs.PercentMetaInput) error
-	UpsertLinearMeta(ctx context.Context, input krs.LinearMetaInput) error
+	UpsertNumericalMeta(ctx context.Context, input krs.NumericalMetaInput) error
 	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
 	ReplaceProjectStages(ctx context.Context, krID int64, stages []krs.ProjectStageInput) error
 }
@@ -673,19 +671,15 @@ func collectDescendantIDs(targetID int64, nodes []TeamNode) []int64 {
 	return descendants
 }
 
-func (s *Service) UpdateKRProgressPercent(ctx context.Context, krID int64, current float64) error {
+func (s *Service) UpdateKRProgressNumerical(ctx context.Context, krID int64, current float64) error {
 	kr, err := s.krs.GetKeyResult(ctx, krID)
 	if err != nil {
 		return err
 	}
-	switch kr.Kind {
-	case domain.KRKindPercent:
-		return s.krs.UpdatePercentCurrent(ctx, krID, current)
-	case domain.KRKindLinear:
-		return s.krs.UpdateLinearCurrent(ctx, krID, current)
-	default:
-		return fmt.Errorf("unsupported kr kind for percent update: %s", kr.Kind)
+	if kr.Kind != domain.KRKindNumerical {
+		return fmt.Errorf("unsupported kr kind for numerical update: %s", kr.Kind)
 	}
+	return s.krs.UpdateNumericalCurrent(ctx, krID, current)
 }
 
 func (s *Service) UpdateKRProgressBoolean(ctx context.Context, krID int64, done bool) error {
@@ -768,14 +762,14 @@ func (s *Service) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
 }
 
 type KeyResultMetaInput struct {
-	PercentStart   float64
-	PercentTarget  float64
-	PercentCurrent float64
-	LinearStart    float64
-	LinearTarget   float64
-	LinearCurrent  float64
-	BooleanDone    bool
-	ProjectStages  []krs.ProjectStageInput
+	NumericalStart       float64
+	NumericalTarget      float64
+	NumericalCurrent     float64
+	NumericalUnit        string
+	NumericalCheckpoints []domain.KRNumericalCheckpoint
+	ZeroingCriteria      string
+	BooleanDone          bool
+	ProjectStages        []krs.ProjectStageInput
 }
 
 func (s *Service) UpdateGoal(ctx context.Context, input goals.GoalUpdateInput) error {
@@ -810,19 +804,15 @@ func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, input krs.KeyResu
 
 func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
 	switch kind {
-	case domain.KRKindPercent:
-		return s.krs.UpsertPercentMeta(ctx, krs.PercentMetaInput{
-			KeyResultID:  krID,
-			StartValue:   meta.PercentStart,
-			TargetValue:  meta.PercentTarget,
-			CurrentValue: meta.PercentCurrent,
-		})
-	case domain.KRKindLinear:
-		return s.krs.UpsertLinearMeta(ctx, krs.LinearMetaInput{
-			KeyResultID:  krID,
-			StartValue:   meta.LinearStart,
-			TargetValue:  meta.LinearTarget,
-			CurrentValue: meta.LinearCurrent,
+	case domain.KRKindNumerical:
+		return s.krs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{
+			KeyResultID:     krID,
+			StartValue:      meta.NumericalStart,
+			TargetValue:     meta.NumericalTarget,
+			CurrentValue:    meta.NumericalCurrent,
+			Unit:            meta.NumericalUnit,
+			Checkpoints:     meta.NumericalCheckpoints,
+			ZeroingCriteria: meta.ZeroingCriteria,
 		})
 	case domain.KRKindBoolean:
 		return s.krs.UpsertBooleanMeta(ctx, krID, meta.BooleanDone)

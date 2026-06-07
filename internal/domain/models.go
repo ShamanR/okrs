@@ -30,11 +30,23 @@ const (
 type KRKind string
 
 const (
-	KRKindProject KRKind = "PROJECT"
-	KRKindPercent KRKind = "PERCENT"
-	KRKindLinear  KRKind = "LINEAR"
-	KRKindBoolean KRKind = "BOOLEAN"
+	KRKindProject   KRKind = "PROJECT"
+	KRKindNumerical KRKind = "NUMERICAL"
+	KRKindBoolean   KRKind = "BOOLEAN"
 )
+
+// KRUnits is the closed set of measurement units a NUMERICAL KR may use.
+var KRUnits = []string{"%", "RPS", "мс", "сек", "мин", "час", "дней", "шт", "₽", "запросов", "ошибок", "пользователей", "заказов", "рублей"}
+
+// IsValidKRUnit reports whether u is an allowed NUMERICAL unit.
+func IsValidKRUnit(u string) bool {
+	for _, allowed := range KRUnits {
+		if allowed == u {
+			return true
+		}
+	}
+	return false
+}
 
 type TeamType string
 
@@ -113,8 +125,7 @@ type KeyResult struct {
 	Progress          int
 	SortOrder         int
 	Project           *KRProject
-	Percent           *KRPercent
-	Linear            *KRLinear
+	Numerical         *KRNumerical
 	Boolean           *KRBoolean
 	Note              *KeyResultNote
 	CreatedAt         time.Time
@@ -135,24 +146,18 @@ type KRProjectStage struct {
 	SortOrder   int
 }
 
-type KRPercent struct {
-	StartValue   float64
-	TargetValue  float64
-	CurrentValue float64
-	Checkpoints  []KRPercentCheckpoint
+type KRNumerical struct {
+	StartValue      float64
+	TargetValue     float64
+	CurrentValue    float64
+	Unit            string
+	Checkpoints     []KRNumericalCheckpoint
+	ZeroingCriteria string
 }
 
-type KRLinear struct {
-	StartValue   float64
-	TargetValue  float64
-	CurrentValue float64
-}
-
-type KRPercentCheckpoint struct {
-	ID          int64
-	KeyResultID int64
-	MetricValue float64
-	KRPercent   int
+type KRNumericalCheckpoint struct {
+	Value           float64 `json:"value"`
+	ProgressPercent int     `json:"progress_percent"`
 }
 
 type KRBoolean struct {

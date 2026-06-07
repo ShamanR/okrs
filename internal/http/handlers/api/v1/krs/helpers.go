@@ -13,28 +13,8 @@ import (
 // parseKeyResultMeta parses meta fields for a key result based on kind.
 func parseKeyResultMeta(r *http.Request, kind domain.KRKind) (service.KeyResultMetaInput, error) {
 	switch kind {
-	case domain.KRKindPercent:
-		start := common.ParseFloatField(r.FormValue("percent_start"))
-		target := common.ParseFloatField(r.FormValue("percent_target"))
-		if start == target {
-			return service.KeyResultMetaInput{}, fmt.Errorf("Start и Target не должны быть равны")
-		}
-		return service.KeyResultMetaInput{
-			PercentStart:   start,
-			PercentTarget:  target,
-			PercentCurrent: common.ParseFloatField(r.FormValue("percent_current")),
-		}, nil
-	case domain.KRKindLinear:
-		start := common.ParseFloatField(r.FormValue("linear_start"))
-		target := common.ParseFloatField(r.FormValue("linear_target"))
-		if start == target {
-			return service.KeyResultMetaInput{}, fmt.Errorf("Start и Target не должны быть равны")
-		}
-		return service.KeyResultMetaInput{
-			LinearStart:   start,
-			LinearTarget:  target,
-			LinearCurrent: common.ParseFloatField(r.FormValue("linear_current")),
-		}, nil
+	case domain.KRKindNumerical:
+		return common.ParseNumericalMeta(r)
 	case domain.KRKindBoolean:
 		done := r.FormValue("boolean_done") == "true"
 		return service.KeyResultMetaInput{BooleanDone: done}, nil

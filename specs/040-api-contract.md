@@ -266,7 +266,7 @@ CSRF token должен быть ротационным (не постоянны
 - update goal
 - create KR — `POST /api/v1/goals/{goalID}/key-results`
 - move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`
-- update KR progress — `POST /api/v1/krs/{krID}/progress/percent|boolean|project`
+- update KR progress — `POST /api/v1/krs/{krID}/progress/numerical|boolean|project`
 - upsert KR note — `POST /api/v1/krs/{krID}/note`
 - update KR — `POST /api/v1/krs/{krID}`
 - move KR up / down — `POST /api/v1/krs/{krID}/move-up`, `POST /api/v1/krs/{krID}/move-down`
@@ -386,6 +386,22 @@ Hierarchy node shape расширен полем:
   { "id": 1, "text": "...", "author_name": "Ivan", "author_udid": "550e8400-...", "created_at": "..." }
 ]
 ```
+
+#### Key Result measure
+
+`key_results[].kind` ∈ `BOOLEAN | PROJECT | NUMERICAL`. Поле `key_results[].measure` несёт данные по типу:
+
+- `measure.boolean`: `{ is_done }`
+- `measure.project`: `{ stages: [{ id, title, weight, is_done }] }`
+- `measure.numerical`: `{ start_value, target_value, current_value, unit, checkpoints: [{ value, progress_percent }], zeroing_criteria }`
+
+`unit` — значение из закрытого справочника: `%`, `RPS`, `мс`, `сек`, `мин`, `час`, `дней`, `шт`, `₽`, `запросов`, `ошибок`, `пользователей`, `заказов`, `рублей`. Варианта «другое» и поля `custom_unit` нет.
+
+`checkpoints` хранятся в JSONB-колонке `key_results.checkpoints` и загружаются вместе с KR — без отдельной таблицы и без дополнительных запросов на каждый KR.
+
+**Create / update KR** (`multipart/form-data`): `title`, `description`, `weight`, `kind`. Для `kind=NUMERICAL`: `numerical_unit` (из справочника), `numerical_start`, `numerical_target`, `numerical_current`, опциональные `numerical_zeroing` и повторяющиеся пары `checkpoint_value[]` / `checkpoint_percent[]` (проценты 0..100, значения не дублируются). Для `kind=BOOLEAN`: `boolean_done`. Для `kind=PROJECT`: `step_title[]`, `step_weight[]`, `step_done[]`.
+
+**Update KR progress** `POST /api/v1/krs/{krID}/progress/numerical` принимает `{ "current_value": <number> }`.
 
 `key_results[].note` содержит `{ text, author_name, author_udid, updated_at }` или `null`.
 

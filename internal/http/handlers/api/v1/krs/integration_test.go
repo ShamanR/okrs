@@ -86,12 +86,12 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		Title:       "KR",
 		Description: "",
 		Weight:      100,
-		Kind:        domain.KRKindPercent,
+		Kind:        domain.KRKindNumerical,
 	})
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertPercentMeta(ctx, krs.PercentMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0}); err != nil {
+	if err := repo.KRs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
 		t.Fatalf("meta: %v", err)
 	}
 
@@ -100,7 +100,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	defer server.Close()
 
 	payload, _ := json.Marshal(map[string]float64{"current_value": 50})
-	resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/percent", server.URL, krID), "application/json", bytes.NewBuffer(payload))
+	resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID), "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		t.Fatalf("post progress: %v", err)
 	}

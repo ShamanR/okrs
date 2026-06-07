@@ -6,23 +6,29 @@ import (
 	"okrs/internal/domain"
 )
 
-func TestCalculateKRProgressPercent(t *testing.T) {
+func TestCalculateKRProgressNumericalLinear(t *testing.T) {
 	kr := domain.KeyResult{
-		Kind:    domain.KRKindPercent,
-		Percent: &domain.KRPercent{StartValue: 0, TargetValue: 100, CurrentValue: 60},
-	}
-	if got := CalculateKRProgress(kr); got != 60 {
-		t.Fatalf("expected 60, got %d", got)
-	}
-}
-
-func TestCalculateKRProgressLinear(t *testing.T) {
-	kr := domain.KeyResult{
-		Kind:   domain.KRKindLinear,
-		Linear: &domain.KRLinear{StartValue: 0, TargetValue: 200, CurrentValue: 100},
+		Kind:      domain.KRKindNumerical,
+		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 200, CurrentValue: 100},
 	}
 	if got := CalculateKRProgress(kr); got != 50 {
 		t.Fatalf("expected 50, got %d", got)
+	}
+}
+
+func TestCalculateKRProgressNumericalCheckpoints(t *testing.T) {
+	kr := domain.KeyResult{
+		Kind: domain.KRKindNumerical,
+		Numerical: &domain.KRNumerical{
+			StartValue: 100, TargetValue: 180, CurrentValue: 170,
+			Checkpoints: []domain.KRNumericalCheckpoint{
+				{Value: 150, ProgressPercent: 50},
+			},
+		},
+	}
+	// Interpolates between checkpoint (150,50%) and target (180,100%): 170 → 83%.
+	if got := CalculateKRProgress(kr); got != 83 {
+		t.Fatalf("expected 83 (interpolated), got %d", got)
 	}
 }
 
@@ -54,8 +60,7 @@ func TestCalculateKRProgressProject(t *testing.T) {
 
 func TestCalculateKRProgressNilMetaReturnsZero(t *testing.T) {
 	cases := []domain.KeyResult{
-		{Kind: domain.KRKindPercent, Percent: nil},
-		{Kind: domain.KRKindLinear, Linear: nil},
+		{Kind: domain.KRKindNumerical, Numerical: nil},
 		{Kind: domain.KRKindBoolean, Boolean: nil},
 		{Kind: domain.KRKindProject, Project: nil},
 	}

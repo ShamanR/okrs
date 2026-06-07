@@ -19,16 +19,11 @@ func CalculateKRProgress(kr domain.KeyResult) int {
 			return 0
 		}
 		return okr.ProjectProgress(kr.Project.Stages)
-	case domain.KRKindPercent:
-		if kr.Percent == nil {
+	case domain.KRKindNumerical:
+		if kr.Numerical == nil {
 			return 0
 		}
-		return okr.PercentProgress(kr.Percent.StartValue, kr.Percent.TargetValue, kr.Percent.CurrentValue, kr.Percent.Checkpoints)
-	case domain.KRKindLinear:
-		if kr.Linear == nil {
-			return 0
-		}
-		return okr.LinearProgress(kr.Linear.StartValue, kr.Linear.TargetValue, kr.Linear.CurrentValue)
+		return okr.NumericalProgress(kr.Numerical.StartValue, kr.Numerical.TargetValue, kr.Numerical.CurrentValue, kr.Numerical.Checkpoints)
 	case domain.KRKindBoolean:
 		if kr.Boolean == nil {
 			return 0

@@ -292,7 +292,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 
 	krsHandler := apikrs.New(s.service)
 	r.Post("/api/v1/goals/{goalID}/key-results", krsHandler.HandleCreateKeyResult)
-	r.Post("/api/v1/krs/{krID}/progress/percent", krsHandler.HandleUpdatePercentProgress)
+	r.Post("/api/v1/krs/{krID}/progress/numerical", krsHandler.HandleUpdateNumericalProgress)
 	r.Post("/api/v1/krs/{krID}/progress/boolean", krsHandler.HandleUpdateBooleanProgress)
 	r.Post("/api/v1/krs/{krID}/progress/project", krsHandler.HandleUpdateProjectProgress)
 	r.Post("/api/v1/krs/{krID}/note", krsHandler.HandleUpsertKRNote)

@@ -12,11 +12,8 @@ BEGIN;
 -- Clear all tables in FK-safe order
 -- ----------------------------------------------------------------
 TRUNCATE TABLE
-  kr_percent_checkpoints,
   kr_project_stages,
   kr_boolean_meta,
-  kr_linear_meta,
-  kr_percent_meta,
   key_result_comments,
   goal_comments,
   key_results,
@@ -123,14 +120,14 @@ INSERT INTO key_results (id, goal_id, title, description, weight, kind, sort_ord
       33, 'BOOLEAN', 2, NOW(), NOW()),
   (9,  8, 'Каллендарь дежурств внедрен в 5 команд',
       'Составлен и опубликован календарь дежурств команды SRE и до 5 тестовых (early-adopter) команд.',
-      33, 'PERCENT', 3, NOW(), NOW()),
+      33, 'NUMERICAL', 3, NOW(), NOW()),
   -- Goal 9 (SRE: система мониторинга)
   (10, 9, 'Инцидент менеджмент для P0\P1 автоматизирован',
       'Реализован автоматический сценарий, который при поступлении алерта P0/P1 автоматизирует обработку инцидента.',
       25, 'PROJECT', 1, NOW(), NOW()),
   (11, 9, 'Система мониторинга покрывает 75% критических алертов',
       'Система мониторинга покрывает 75% критических алертов и включает в себя ранбуки для работы с ними.',
-      35, 'PERCENT', 2, NOW(), NOW()),
+      35, 'NUMERICAL', 2, NOW(), NOW()),
   (14, 9, 'Автоматизация протестирована на тестовых инцидентах',
       'Автоматизированный процесс протестирован на учебных инцидентах и подтверждена его стабильная работа.',
       35, 'BOOLEAN', 3, NOW(), NOW()),
@@ -150,33 +147,33 @@ INSERT INTO key_results (id, goal_id, title, description, weight, kind, sort_ord
   -- Goal 26 (PaaS: цель 1)
   (43, 26, 'цель2', '', 100, 'BOOLEAN', 1, NOW(), NOW()),
   -- Goal 27 (PaaS: цель 2)
-  (42, 27, 'bool', '', 100, 'LINEAR', 1, NOW(), NOW()),
+  (42, 27, 'bool', '', 100, 'NUMERICAL', 1, NOW(), NOW()),
   -- Goal 29 (Media: цель2)
-  (45, 29, 'перцент',  '', 51, 'PERCENT', 1, NOW(), NOW()),
-  (46, 29, 'перцент2', '', 50, 'PERCENT', 2, NOW(), NOW()),
+  (45, 29, 'перцент',  '', 51, 'NUMERICAL', 1, NOW(), NOW()),
+  (46, 29, 'перцент2', '', 50, 'NUMERICAL', 2, NOW(), NOW()),
   -- Goal 30 (Media: funsun)
   (47, 30, '100% рекламы на сайте крутится через сетку',
        'Как проверим: ссылка на метрику.',
-       50, 'PERCENT', 1, NOW(), NOW()),
+       50, 'NUMERICAL', 1, NOW(), NOW()),
   (48, 30, 'Есть техническая возможность видеть баннер',
        '',
        50, 'PROJECT', 2, NOW(), NOW()),
   -- Goal 32 (Платформа: P95 latency)
-  (50, 32, 'P95 latency API gateway',    'Текущее: 450ms → Цель: 200ms', 40, 'LINEAR',  1, NOW(), NOW()),
-  (51, 32, 'P95 latency auth service',   'Текущее: 380ms → Цель: 200ms', 30, 'LINEAR',  2, NOW(), NOW()),
+  (50, 32, 'P95 latency API gateway',    'Текущее: 450ms → Цель: 200ms', 40, 'NUMERICAL', 1, NOW(), NOW()),
+  (51, 32, 'P95 latency auth service',   'Текущее: 380ms → Цель: 200ms', 30, 'NUMERICAL', 2, NOW(), NOW()),
   (52, 32, 'Миграция на HTTP/2',         'Переключить все внутренние вызовы', 20, 'BOOLEAN', 3, NOW(), NOW()),
   -- Goal 33 (Платформа: 80% покрытие)
-  (53, 33, 'Покрытие unit-тестами',         '% покрытия core пакетов',    50, 'PERCENT', 1, NOW(), NOW()),
-  (54, 33, 'Покрытие integration-тестами',  '% покрытия API endpoints',   50, 'PERCENT', 2, NOW(), NOW()),
+  (53, 33, 'Покрытие unit-тестами',         '% покрытия core пакетов',    50, 'NUMERICAL', 1, NOW(), NOW()),
+  (54, 33, 'Покрытие integration-тестами',  '% покрытия API endpoints',   50, 'NUMERICAL', 2, NOW(), NOW()),
   -- Goal 34 (Платформа: портал документации)
   (55, 34, 'Развернуть Confluence/Notion',  'Setup и настройка инструмента',     30, 'BOOLEAN', 1, NOW(), NOW()),
   (56, 34, 'Перенести ADR документы',       'Architecture Decision Records',     40, 'PROJECT', 2, NOW(), NOW()),
   -- Goal 37 (SRE: IaC)
-  (57, 37, 'Перевести prod окружение на Terraform', 'Все сервисы prod', 60, 'PERCENT', 1, NOW(), NOW()),
+  (57, 37, 'Перевести prod окружение на Terraform', 'Все сервисы prod', 60, 'NUMERICAL', 1, NOW(), NOW()),
   (58, 37, 'Написать модули для баз данных',        'RDS, Redis модули', 25, 'PROJECT', 2, NOW(), NOW()),
   -- Goal 38 (SRE: MTTR)
   (59, 38, 'Настроить runbooks для топ-5 инцидентов', 'По каждому типу инцидента',       50, 'PROJECT', 1, NOW(), NOW()),
-  (60, 38, 'Среднее время реакции on-call',           'Текущее: 45 мин → Цель: 30 мин', 50, 'LINEAR',  2, NOW(), NOW());
+  (60, 38, 'Среднее время реакции on-call',           'Текущее: 45 мин → Цель: 30 мин', 50, 'NUMERICAL', 2, NOW(), NOW());
 
 -- ----------------------------------------------------------------
 -- KR meta — BOOLEAN
@@ -194,26 +191,24 @@ INSERT INTO kr_boolean_meta (key_result_id, is_done) VALUES
   (55, false);
 
 -- ----------------------------------------------------------------
--- KR meta — PERCENT
+-- KR meta — NUMERICAL (start/target/current/unit stored on key_results)
 -- ----------------------------------------------------------------
-INSERT INTO kr_percent_meta (key_result_id, start_value, target_value, current_value) VALUES
-  (9,  0,  5,   2),
-  (11, 10, 75,  50),
-  (45, 0,  100, 51),
-  (46, 0,  100, 10),
-  (47, 0,  100, 0),
-  (53, 0,  100, 0),
-  (54, 0,  100, 0),
-  (57, 0,  100, 0);
-
--- ----------------------------------------------------------------
--- KR meta — LINEAR
--- ----------------------------------------------------------------
-INSERT INTO kr_linear_meta (key_result_id, start_value, target_value, current_value) VALUES
-  (42, 0,   100, 50),
-  (50, 450, 200, 450),
-  (51, 380, 200, 380),
-  (60, 45,  30,  45);
+UPDATE key_results SET start_value = v.start, target_value = v.target, current_value = v.current, unit = v.unit
+FROM (VALUES
+  (9,  0,   5,   2,   'шт'),
+  (11, 10,  75,  50,  '%'),
+  (45, 0,   100, 51,  '%'),
+  (46, 0,   100, 10,  '%'),
+  (47, 0,   100, 0,   '%'),
+  (53, 0,   100, 0,   '%'),
+  (54, 0,   100, 0,   '%'),
+  (57, 0,   100, 0,   '%'),
+  (42, 0,   100, 50,  '%'),
+  (50, 450, 200, 450, 'мс'),
+  (51, 380, 200, 380, 'мс'),
+  (60, 45,  30,  45,  'мин')
+) AS v(kr_id, start, target, current, unit)
+WHERE key_results.id = v.kr_id;
 
 -- ----------------------------------------------------------------
 -- KR meta — PROJECT stages
@@ -245,6 +240,5 @@ SELECT setval('key_results_id_seq',            (SELECT MAX(id) FROM key_results)
 SELECT setval('kr_project_stages_id_seq',      (SELECT MAX(id) FROM kr_project_stages));
 SELECT setval('goal_comments_id_seq',          (SELECT MAX(id) FROM goal_comments));
 SELECT setval('key_result_comments_id_seq',    1);
-SELECT setval('kr_percent_checkpoints_id_seq', 1);
 
 COMMIT;

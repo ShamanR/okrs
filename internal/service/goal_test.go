@@ -30,8 +30,7 @@ type goalFakeStore struct {
 	deleteShareCalls   []deleteShareArg
 	updateOwnerCalls   []updateOwnerArg
 	replaceSharesCalls []replaceSharesArg
-	upsertPercentCalls []krs.PercentMetaInput
-	upsertLinearCalls  []krs.LinearMetaInput
+	upsertNumericalCalls []krs.NumericalMetaInput
 	upsertBoolCalls    []upsertBoolArg
 	replaceStageCalls  []replaceStagesArg
 }
@@ -103,12 +102,8 @@ func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, goalID int64, share
 	f.replaceSharesCalls = append(f.replaceSharesCalls, replaceSharesArg{goalID, shares})
 	return nil
 }
-func (f *goalFakeStore) UpsertPercentMeta(_ context.Context, input krs.PercentMetaInput) error {
-	f.upsertPercentCalls = append(f.upsertPercentCalls, input)
-	return nil
-}
-func (f *goalFakeStore) UpsertLinearMeta(_ context.Context, input krs.LinearMetaInput) error {
-	f.upsertLinearCalls = append(f.upsertLinearCalls, input)
+func (f *goalFakeStore) UpsertNumericalMeta(_ context.Context, input krs.NumericalMetaInput) error {
+	f.upsertNumericalCalls = append(f.upsertNumericalCalls, input)
 	return nil
 }
 func (f *goalFakeStore) UpsertBooleanMeta(_ context.Context, krID int64, done bool) error {
@@ -229,10 +224,9 @@ func (f *goalFakeStore) UpsertKeyResultNote(_ context.Context, _ int64, _ string
 }
 func (f *goalFakeStore) FindGoalIDByKR(_ context.Context, _ int64) (int64, error)    { return 0, nil }
 func (f *goalFakeStore) FindGoalIDByStage(_ context.Context, _ int64) (int64, error) { return 0, nil }
-func (f *goalFakeStore) UpdatePercentCurrent(_ context.Context, _ int64, _ float64) error {
+func (f *goalFakeStore) UpdateNumericalCurrent(_ context.Context, _ int64, _ float64) error {
 	return nil
 }
-func (f *goalFakeStore) UpdateLinearCurrent(_ context.Context, _ int64, _ float64) error { return nil }
 func (f *goalFakeStore) UpdateBoolean(_ context.Context, _ int64, _ bool) error          { return nil }
 func (f *goalFakeStore) ListProjectStages(_ context.Context, _ int64) ([]domain.KRProjectStage, error) {
 	return nil, nil
@@ -456,75 +450,55 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 
 // ── Unsupported KR kind errors ────────────────────────────────────────────────
 
-func TestUpdateKRProgressPercentRejectsUnsupportedKind(t *testing.T) {
+func TestUpdateKRProgressNumericalRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
 	st.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateKRProgressPercent(context.Background(), 1, 50); err == nil {
-		t.Fatal("expected error for boolean KR with percent update")
+	if err := svc.UpdateKRProgressNumerical(context.Background(), 1, 50); err == nil {
+		t.Fatal("expected error for boolean KR with numerical update")
 	}
 }
 
 func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
-	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindPercent}
+	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressBoolean(context.Background(), 2, true); err == nil {
-		t.Fatal("expected error for percent KR with boolean update")
+		t.Fatal("expected error for numerical KR with boolean update")
 	}
 }
 
 func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
-	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindPercent}
+	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressProject(context.Background(), 3, nil); err == nil {
-		t.Fatal("expected error for percent KR with project update")
+		t.Fatal("expected error for numerical KR with project update")
 	}
 }
 
 // ── CreateKeyResultWithMeta tests ─────────────────────────────────────────────
 
-func TestCreateKeyResultWithMetaAppliesPercentMeta(t *testing.T) {
+func TestCreateKeyResultWithMetaAppliesNumericalMeta(t *testing.T) {
 	st := newGoalFakeStore()
 	svc := newGoalTestService(st)
 
 	_, err := svc.CreateKeyResultWithMeta(context.Background(),
-		krs.KeyResultInput{Kind: domain.KRKindPercent},
-		KeyResultMetaInput{PercentStart: 0, PercentTarget: 100, PercentCurrent: 30},
+		krs.KeyResultInput{Kind: domain.KRKindNumerical},
+		KeyResultMetaInput{NumericalStart: 0, NumericalTarget: 100, NumericalCurrent: 30, NumericalUnit: "%"},
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(st.upsertPercentCalls) != 1 {
-		t.Fatalf("expected UpsertPercentMeta called once, got %d", len(st.upsertPercentCalls))
+	if len(st.upsertNumericalCalls) != 1 {
+		t.Fatalf("expected UpsertNumericalMeta called once, got %d", len(st.upsertNumericalCalls))
 	}
-	meta := st.upsertPercentCalls[0]
-	if meta.StartValue != 0 || meta.TargetValue != 100 || meta.CurrentValue != 30 {
-		t.Fatalf("unexpected percent meta values: %+v", meta)
-	}
-}
-
-func TestCreateKeyResultWithMetaAppliesLinearMeta(t *testing.T) {
-	st := newGoalFakeStore()
-	svc := newGoalTestService(st)
-
-	_, err := svc.CreateKeyResultWithMeta(context.Background(),
-		krs.KeyResultInput{Kind: domain.KRKindLinear},
-		KeyResultMetaInput{LinearStart: 10, LinearTarget: 200, LinearCurrent: 50},
-	)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(st.upsertLinearCalls) != 1 {
-		t.Fatalf("expected UpsertLinearMeta called once, got %d", len(st.upsertLinearCalls))
-	}
-	meta := st.upsertLinearCalls[0]
-	if meta.StartValue != 10 || meta.TargetValue != 200 || meta.CurrentValue != 50 {
-		t.Fatalf("unexpected linear meta values: %+v", meta)
+	meta := st.upsertNumericalCalls[0]
+	if meta.StartValue != 0 || meta.TargetValue != 100 || meta.CurrentValue != 30 || meta.Unit != "%" {
+		t.Fatalf("unexpected numerical meta values: %+v", meta)
 	}
 }
 

@@ -24,7 +24,7 @@
 - team hierarchy;
 - periods;
 - goals;
-- key results типов PROJECT, PERCENT, LINEAR, BOOLEAN;
+- key results типов PROJECT, NUMERICAL, BOOLEAN;
 - comments с фиксацией author_user_id;
 - team period statuses no_goals, forming, in_progress, validated, closed;
 - shared goals через goal_shares;

@@ -43,28 +43,54 @@ func TestProjectProgress(t *testing.T) {
 	}
 }
 
-func TestPercentProgressLinear(t *testing.T) {
-	if got := PercentProgress(0, 100, 50, nil); got != 50 {
-		t.Fatalf("expected 50 got %d", got)
+func TestNumericalProgressLinear(t *testing.T) {
+	cases := []struct {
+		name                   string
+		start, target, current float64
+		expect                 int
+	}{
+		{"growth midpoint", 100, 500, 300, 50},
+		{"decline midpoint", 10, 5, 7.5, 50},
+		{"below start", 100, 500, 80, 0},
+		{"above target", 100, 500, 600, 100},
+		{"at start", 0, 100, 0, 0},
+		{"at target", 0, 100, 100, 100},
+		{"equal reached target", 100, 100, 100, 100},
+		{"equal not reached", 100, 100, 90, 0},
 	}
-	if got := PercentProgress(100, 0, 50, nil); got != 50 {
-		t.Fatalf("reverse expected 50 got %d", got)
+	for _, tc := range cases {
+		if got := NumericalProgress(tc.start, tc.target, tc.current, nil); got != tc.expect {
+			t.Fatalf("%s: expected %d got %d", tc.name, tc.expect, got)
+		}
 	}
 }
 
-func TestPercentProgressCheckpoints(t *testing.T) {
-	checkpoints := []domain.KRPercentCheckpoint{
-		{MetricValue: 50, KRPercent: 40},
-		{MetricValue: 80, KRPercent: 70},
+func TestNumericalProgressCheckpointsInterpolation(t *testing.T) {
+	// start 0, target 100; checkpoints interpolate against implicit (0,0%) and (100,100%).
+	cps := []domain.KRNumericalCheckpoint{
+		{Value: 80, ProgressPercent: 10},
+		{Value: 90, ProgressPercent: 50},
+		{Value: 95, ProgressPercent: 80},
 	}
-	if got := PercentProgress(0, 100, 60, checkpoints); got != 50 {
-		t.Fatalf("expected 50 got %d", got)
+	cases := []struct {
+		name    string
+		current float64
+		expect  int
+	}{
+		{"at start", 0, 0},
+		{"at target", 100, 100},
+		{"half to first checkpoint", 40, 5},
+		{"on first checkpoint", 80, 10},
+		{"between first and second", 85, 30},
+		{"on second checkpoint", 90, 50},
+		{"between last checkpoint and target", 97, 88},
+		{"below start clamps to 0", -10, 0},
+		{"above target clamps to 100", 200, 100},
 	}
-	if got := PercentProgress(0, 100, -10, checkpoints); got != 0 {
-		t.Fatalf("expected 0 got %d", got)
-	}
-	if got := PercentProgress(0, 100, 110, checkpoints); got != 100 {
-		t.Fatalf("expected 100 got %d", got)
+	for _, tc := range cases {
+		if got := NumericalProgress(0, 100, tc.current, cps); got != tc.expect {
+			t.Fatalf("%s: expected %d got %d", tc.name, tc.expect, got)
+		}
 	}
 }
 
@@ -74,27 +100,6 @@ func TestBooleanProgress(t *testing.T) {
 	}
 	if got := BooleanProgress(false); got != 0 {
 		t.Fatalf("done=false: expected 0, got %d", got)
-	}
-}
-
-func TestLinearProgress(t *testing.T) {
-	cases := []struct {
-		name                   string
-		start, target, current float64
-		expect                 int
-	}{
-		{"midpoint", 0, 100, 50, 50},
-		{"at start", 0, 100, 0, 0},
-		{"at target", 0, 100, 100, 100},
-		{"above target clamped", 0, 100, 150, 100},
-		{"below start clamped", 0, 100, -50, 0},
-		{"offset range", 100, 200, 150, 50},
-		{"equal start and target", 100, 100, 100, 0},
-	}
-	for _, tc := range cases {
-		if got := LinearProgress(tc.start, tc.target, tc.current); got != tc.expect {
-			t.Fatalf("%s: expected %d got %d", tc.name, tc.expect, got)
-		}
 	}
 }
 
@@ -119,8 +124,3 @@ func TestProjectProgressNoneDone(t *testing.T) {
 	}
 }
 
-func TestPercentProgressEqualStartTarget(t *testing.T) {
-	if got := PercentProgress(50, 50, 50, nil); got != 0 {
-		t.Fatalf("equal start/target: expected 0, got %d", got)
-	}
-}
