@@ -103,7 +103,7 @@ Response:
 
 ### Пользователи
 
-- `GET /api/v1/admin/users` — список всех пользователей (id, display_name, avatar_url, provider, last_login_at, is_admin)
+- `GET /api/v1/admin/users` — список всех пользователей (id, display_name, avatar_url, provider, last_login_at, is_admin, а также `GrantedNodeCount` — число выданных пользователю узлов иерархии). `GrantedNodeCount` считается на сервере bulk-запросом по всем пользователям (`GrantsCache.AllGrants`), чтобы UI мог фильтровать «без доступов» и показывать счётчик узлов без per-user обращений (список может содержать тысячи пользователей).
 - `GET /api/v1/admin/users/{userID}` — карточка пользователя с grants
 - `POST /api/v1/admin/users/{userID}/admin` — выдать права администратора
 - `DELETE /api/v1/admin/users/{userID}/admin` — снять права администратора

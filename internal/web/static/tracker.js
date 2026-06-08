@@ -49,6 +49,23 @@ function updateURL(teamId, periodId, replace = false) {
   else history.pushState(null, '', url);
 }
 
+// ── SIDEBAR TREE EXPANSION PERSISTENCE ────────────────────────────────────────
+// Map of nodeId -> false (collapsed). Absence means expanded (default).
+// Stored by id, so adding/removing teams never breaks: unknown ids are ignored,
+// new ids fall back to the expanded default.
+const TREE_EXPANDED_KEY = 'okr_tree_expanded';
+function readTreeExpanded() {
+  try {
+    const raw = localStorage.getItem(TREE_EXPANDED_KEY);
+    if (!raw) return {};
+    const v = JSON.parse(raw);
+    return v && typeof v === 'object' ? v : {};
+  } catch { return {}; }
+}
+function writeTreeExpanded(expanded) {
+  try { localStorage.setItem(TREE_EXPANDED_KEY, JSON.stringify(expanded)); } catch {}
+}
+
 // ── DATE HELPERS ──────────────────────────────────────────────────────────────
 function daysAgo(iso) {
   if (!iso) return 0;
@@ -613,7 +630,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
               <input type="number" min={0} max={100} value={form.weight} onChange={e => set('weight', e.target.value)} className="form-input" />
             </div>
             <div className="form-col">
-              <FieldLabel hint={KR_TYPE_HINT}>Тип Key Result</FieldLabel>
+              <div className="kr-num-field__label">Тип Key Result<InfoHint>{KR_TYPE_HINT}</InfoHint></div>
               <select value={form.krType} onChange={e => set('krType', e.target.value)} className="form-select">
                 {KR_TYPE_OPTIONS.map(t => <option key={t} value={t}>{KR_TYPE_LABEL[t]}</option>)}
               </select>
@@ -790,7 +807,9 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
           </div>
           <Badge label={KR_TYPE_LABEL[kr.krType] || kr.krType} color={KR_TYPE_C[kr.krType]} />
           <span className="kr-updated" style={{ color: staleC }}>{kr.updatedDaysAgo === 0 ? 'сегодня' : `${kr.updatedDaysAgo}д назад`}</span>
-          {kr.note && <button onClick={() => setShowNote(!showNote)} className="kr-notes-btn">📝</button>}
+          <span className="kr-notes-slot">
+            {kr.note && <button onClick={() => setShowNote(!showNote)} className="kr-notes-btn">📝</button>}
+          </span>
           {editMode === 'full' && <>
             <button onClick={() => setModal('edit')} className="kr-edit-btn">Редактировать</button>
             <button onClick={() => setConfirmDelete(true)} title="Удалить KR" className="kr-delete-btn">×</button>
@@ -1625,7 +1644,7 @@ function App() {
   const [selId, setSelId] = useState(null);
   const [teamOKR, setTeamOKR] = useState(null);
   const [overview, setOverview] = useState(null);
-  const [expanded, setExpanded] = useState({});
+  const [expanded, setExpanded] = useState(readTreeExpanded);
   const [goalModal, setGoalModal] = useState(null);
   const [accent] = useState(ACCENT);
   const [hciData, setHciData] = useState(null);
@@ -1736,6 +1755,7 @@ function App() {
   }
 
   const toggle = useCallback(id => setExpanded(m => ({ ...m, [id]: m[id] === false ? true : !m[id] })), []);
+  useEffect(() => { writeTreeExpanded(expanded); }, [expanded]);
   const selectTeam = useCallback(id => setSelId(id), []);
   const handlePeriodChange = id => { setPeriodId(Number(id)); setSelId(null); };
 

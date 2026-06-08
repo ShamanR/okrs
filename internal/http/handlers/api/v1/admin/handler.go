@@ -35,6 +35,7 @@ type settingsStore interface {
 // grantsStore covers the user_hierarchy_grants operations. *store.GrantsCache satisfies it.
 type grantsStore interface {
 	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
+	AllGrants(ctx context.Context) (map[int64][]grants.HierarchyGrant, error)
 	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
 	RemoveUserGrant(ctx context.Context, userID, teamID int64) error
 }
@@ -57,7 +58,23 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, users)
+	allGrants, err := h.grants.AllGrants(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// Augment each user with the number of hierarchy nodes granted to them, so
+	// the admin UI can filter "no access" users and show a node count without
+	// issuing a per-user grants request (the user list may hold thousands).
+	type userListItem struct {
+		*domain.User
+		GrantedNodeCount int
+	}
+	items := make([]userListItem, 0, len(users))
+	for _, u := range users {
+		items = append(items, userListItem{User: u, GrantedNodeCount: len(allGrants[u.ID])})
+	}
+	writeJSON(w, items)
 }
 
 // GET /api/v1/admin/users/{userID}
