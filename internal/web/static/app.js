@@ -2269,7 +2269,7 @@
           const nameCell = document.createElement('td');
           const nameLink = document.createElement('a');
           nameLink.className = 'link-primary';
-          nameLink.href = `/teamOkrs?period_id=${childData.period?.id || ''}&team=${childData.team.id}`;
+          nameLink.href = `/?period_id=${childData.period?.id || ''}&team=${childData.team.id}`;
           nameLink.textContent = `${childData.team.type_label} ${childData.team.name}`;
           nameCell.appendChild(nameLink);
 
@@ -2402,7 +2402,7 @@
       const rootCrumb = document.createElement('li');
       rootCrumb.className = 'breadcrumb-item';
       const rootLink = document.createElement('a');
-      rootLink.href = '/teamOkrs';
+      rootLink.href = '/';
       rootLink.textContent = 'teamOkrs';
       rootCrumb.appendChild(rootLink);
       fragment.appendChild(rootCrumb);
@@ -2412,7 +2412,7 @@
         const isLast = index === chain.length - 1;
         item.className = `breadcrumb-item${isLast ? ' active' : ''}`;
         const link = document.createElement('a');
-        link.href = `/teamOkrs?period_id=${periodID}&team=${node.id}`;
+        link.href = `/?period_id=${periodID}&team=${node.id}`;
         link.textContent = isLast ? `${node.name}${periodName ? ` · ${periodName}` : ''}` : node.name;
         item.appendChild(link);
         fragment.appendChild(item);

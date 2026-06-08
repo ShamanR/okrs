@@ -44,7 +44,7 @@ function updateURL(teamId, periodId, replace = false) {
   if (teamId) p.set('team', teamId);
   if (periodId) p.set('period', periodId);
   const qs = p.toString();
-  const url = '/teamOkrs' + (qs ? '?' + qs : '');
+  const url = '/' + (qs ? '?' + qs : '');
   if (replace) history.replaceState(null, '', url);
   else history.pushState(null, '', url);
 }

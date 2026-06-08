@@ -155,7 +155,7 @@ func (s *Server) Routes() http.Handler {
 		authH := authhandler.New(s.auth, s.tmpl, s.logger)
 		r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 			if s.auth.Disabled() {
-				http.Redirect(w, r, "/teamOkrs", http.StatusFound)
+				http.Redirect(w, r, "/", http.StatusFound)
 				return
 			}
 			authH.HandleLogin(w, r)
@@ -197,8 +197,17 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = s.tmpl.ExecuteTemplate(w, "tracker-shell", nil)
 	}
-	r.Get("/teamOkrs", trackerShell)
+	r.Get("/", trackerShell)
 	r.Get("/teams/{teamID}/okr", trackerShell)
+
+	// Legacy redirect for bookmarks — the tracker now lives at the root.
+	r.Get("/teamOkrs", func(w http.ResponseWriter, r *http.Request) {
+		target := "/"
+		if qs := r.URL.RawQuery; qs != "" {
+			target += "?" + qs
+		}
+		http.Redirect(w, r, target, http.StatusFound)
+	})
 
 	// Goal delete is still used by tracker.js via the legacy form endpoint.
 	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
