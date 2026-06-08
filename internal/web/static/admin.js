@@ -148,8 +148,9 @@ function Modal({open, title, subtitle, onClose, children, width=640}) {
     return()=>{document.removeEventListener('keydown',h);document.body.style.overflow=prev;};
   },[open,onClose]);
   if (!open) return null;
-  return <div onMouseDown={onMouseDown} onMouseUp={onMouseUp} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.42)',backdropFilter:'blur(2px)',zIndex:2000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'60px 24px 40px',overflow:'auto'}}>
-    <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:width,background:'white',borderRadius:14,boxShadow:'0 24px 60px rgba(15,23,42,0.28)',overflow:'hidden',animation:'admModalIn .16s ease-out'}}>
+  return <div onMouseDown={onMouseDown} onMouseUp={onMouseUp} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.42)',backdropFilter:'blur(2px)',zIndex:2000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'28px 24px 48px',overflow:'auto'}}>
+    {/* overflow:visible — чтобы выпадающие списки (напр. выбор родителя) не обрезались рамкой окна */}
+    <div onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:width,background:'white',borderRadius:14,boxShadow:'0 24px 60px rgba(15,23,42,0.28)',overflow:'visible',animation:'admModalIn .16s ease-out'}}>
       <div style={{padding:'16px 22px 14px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'flex-start',gap:14}}>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:16,fontWeight:800,color:T.headingFg,letterSpacing:'-.2px'}}>{title}</div>
@@ -202,7 +203,9 @@ function MasterDetail({toolbar, listHeader, list, detail, listWidth=440}) {
 }
 
 // ── TEAM COMBOBOX (for user grants) ─────────────────────────────────────────
-function TeamCombobox({selectedIds, onChange, teams, placeholder}) {
+// single — single-select mode (selectedIds holds 0 or 1 id, picking replaces and closes).
+// excludeIds — Set of ids that cannot be picked (e.g. the team itself and its descendants).
+function TeamCombobox({selectedIds, onChange, teams, placeholder, single, excludeIds}) {
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [hi, setHi] = useState(0);
@@ -210,8 +213,9 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder}) {
   const selected = selectedIds.map(id=>teams.find(t=>t.id===id)).filter(Boolean);
   const ql = q.trim().toLowerCase();
   const ordered = useMemo(()=>flatHierOrder(teams).map(t=>({...t, depth:teamDepth(teams,t.id)})),[teams]);
+  const pool = excludeIds ? ordered.filter(t=>!excludeIds.has(t.id)) : ordered;
   const selectable = new Set(), visible = new Set();
-  ordered.forEach(t=>{
+  pool.forEach(t=>{
     const matches = !ql||t.name.toLowerCase().includes(ql)||(TEAM_TYPE_LABEL[t.type]||'').toLowerCase().includes(ql);
     if (matches) {
       selectable.add(t.id);
@@ -219,10 +223,10 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder}) {
       visible.add(t.id);
     }
   });
-  if (!ql) ordered.forEach(t=>{selectable.add(t.id);visible.add(t.id);});
-  const list = ordered.filter(t=>visible.has(t.id)).map(t=>{
+  if (!ql) pool.forEach(t=>{selectable.add(t.id);visible.add(t.id);});
+  const list = pool.filter(t=>visible.has(t.id)).map(t=>{
     const isSelected = selectedIds.includes(t.id);
-    const coveredByParent = !isSelected && selectedIds.some(sid=>sid!==t.id&&descendantIds(teams,sid).has(t.id));
+    const coveredByParent = !single && !isSelected && selectedIds.some(sid=>sid!==t.id&&descendantIds(teams,sid).has(t.id));
     return {...t, isSelected, coveredByParent, isSelectable:selectable.has(t.id)&&!isSelected&&!coveredByParent};
   });
   const interactable = list.filter(x=>x.isSelectable);
@@ -233,6 +237,7 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder}) {
     return()=>document.removeEventListener('mousedown',h);
   },[]);
   const add = t=>{
+    if (single) { onChange([t.id]); setQ(''); setOpen(false); return; }
     const desc = descendantIds(teams,t.id);
     onChange([...selectedIds.filter(id=>!desc.has(id)),t.id]);
     setQ(''); inputRef.current?.focus();
@@ -258,7 +263,7 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder}) {
         </div>;
       })}
       <input ref={inputRef} value={q} onChange={e=>{setQ(e.target.value);setOpen(true);}} onFocus={()=>setOpen(true)} onKeyDown={onKey}
-        placeholder={selected.length?'Ещё команду…':(placeholder||'Начните вводить название')}
+        placeholder={selected.length?(single?'Заменить…':'Ещё команду…'):(placeholder||'Начните вводить название')}
         style={{flex:1,minWidth:180,border:'none',outline:'none',fontSize:13,padding:'6px 4px',background:'transparent',fontFamily:'inherit',color:T.bodyFg}}/>
     </div>
     {open&&<div style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,background:'white',borderRadius:9,boxShadow:'0 10px 30px rgba(0,0,0,0.15)',border:'1px solid '+T.cardBorder,maxHeight:300,overflow:'auto',zIndex:50}}>
@@ -482,113 +487,150 @@ function PeriodEditor({value, onSave, onCancel, onDelete, saving}) {
 }
 
 // ── TEAMS SECTION ────────────────────────────────────────────────────────────
+// Полноширинное дерево с drill-down: по умолчанию раскрыты только корневые узлы.
+// Раскрытие хранится во множестве id (expanded). При поиске сворачивание
+// игнорируется — показываются все совпадения с их путём в иерархии.
 function TeamsSection({teams, reload}) {
   const [q, setQ] = useState('');
-  const [selId, setSelId] = useState(null);
-  const [creating, setCreating] = useState(false);
+  const [expanded, setExpanded] = useState(()=>new Set());
+  const [modal, setModal] = useState(null); // {mode:'new', parentId} | {mode:'edit', team}
   const [saving, setSaving] = useState(false);
 
   const activeTeams = teams.filter(t=>!t.deleted_at);
-  const ordered = useMemo(()=>flatHierOrder(activeTeams),[activeTeams]);
-  const filteredIds = useMemo(()=>{
-    if (!q) return new Set(ordered.map(t=>t.id));
-    const ql=q.toLowerCase(), out=new Set();
-    for (const t of ordered) {
-      if (t.name.toLowerCase().includes(ql)) teamPath(activeTeams,t.id).forEach(n=>out.add(n.id));
-    }
-    return out;
-  },[q, ordered, activeTeams]);
-  const shown = ordered.filter(t=>filteredIds.has(t.id));
-  const selected = creating ? null : teams.find(t=>t.id===selId);
+  const deletedTeams = teams.filter(t=>!!t.deleted_at);
 
+  // Direct children grouped by parent, each group ordered by type then name.
+  const childrenMap = useMemo(()=>{
+    const m = {};
+    for (const t of activeTeams) { const k = t.parent_id!=null ? t.parent_id : '__root__'; (m[k]=m[k]||[]).push(t); }
+    for (const k in m) m[k].sort((a,b)=>(TEAM_TYPE_ORDER[a.type]-TEAM_TYPE_ORDER[b.type])||a.name.localeCompare(b.name));
+    return m;
+  },[activeTeams]);
+  const parentIds = useMemo(()=>activeTeams.filter(t=>(childrenMap[t.id]||[]).length>0).map(t=>t.id),[activeTeams,childrenMap]);
+  const allExpanded = parentIds.length>0 && parentIds.every(id=>expanded.has(id));
+
+  const ql = q.trim().toLowerCase();
+  const searchActive = !!ql;
+  const filteredIds = useMemo(()=>{
+    if (!ql) return null;
+    const out = new Set();
+    for (const t of activeTeams) { if (t.name.toLowerCase().includes(ql)) teamPath(activeTeams,t.id).forEach(n=>out.add(n.id)); }
+    return out;
+  },[ql, activeTeams]);
+
+  // Flatten the visible tree into rows (depth + whether the node is open).
+  const rows = [];
+  (function walk(nodes, depth) {
+    for (const t of nodes) {
+      if (searchActive && !filteredIds.has(t.id)) continue;
+      const kids = childrenMap[t.id] || [];
+      const open = searchActive ? true : expanded.has(t.id);
+      rows.push({t, depth, kidsCount:kids.length, open});
+      if (kids.length && open) walk(kids, depth+1);
+    }
+  })(childrenMap['__root__'] || [], 0);
+
+  const toggle = id => setExpanded(s=>{ const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const toggleAll = () => setExpanded(allExpanded ? new Set() : new Set(parentIds));
+  const leadHash = s => { let h=0; for (let i=0;i<(s||'').length;i++) h=(h*31+s.charCodeAt(i))|0; return h; };
+
+  async function save(fv) {
+    setSaving(true);
+    try {
+      const body = {name:fv.name.trim(), type:fv.type, parent_id:fv.parent_id||null, lead:fv.lead||'', lead_udid:fv.lead_udid||null, description:fv.description||''};
+      const res = fv.id ? await apiPatch(`/api/v1/admin/teams/${fv.id}`, body) : await apiPost('/api/v1/admin/teams', body);
+      if (!res || !res.ok) { alert('Ошибка сохранения'); return; }
+      setModal(null); reload();
+    } finally { setSaving(false); }
+  }
   async function remove(id, name) {
     if (!confirm(`Деактивировать команду «${name}»?`)) return;
     const res = await apiDel(`/api/v1/admin/teams/${id}`);
-    if (res && res.ok) { if(selId===id)setSelId(null); reload(); }
-    else alert('Ошибка удаления');
+    if (res && res.ok) { setModal(null); reload(); } else alert('Ошибка удаления');
   }
   async function restore(id) {
     const res = await apiPost(`/api/v1/admin/teams/${id}/restore`, {});
-    if (res && res.ok) reload();
-    else alert('Ошибка восстановления');
+    if (res && res.ok) reload(); else alert('Ошибка восстановления');
   }
   async function hardDelete(id, name) {
     if (!confirm(`Удалить «${name}» безвозвратно вместе со всеми данными?`)) return;
     const res = await apiDel(`/api/v1/admin/teams/${id}/hard`);
-    if (res && res.ok) { if(selId===id)setSelId(null); reload(); }
-    else alert('Ошибка удаления');
-  }
-  async function save(f) {
-    setSaving(true);
-    try {
-      const body = {name:f.name.trim(), type:f.type, parent_id:f.parent_id||null, lead:f.lead||'', lead_udid:f.lead_udid||null, description:f.description||''};
-      let res;
-      if (f.id) res = await apiPatch(`/api/v1/admin/teams/${f.id}`, body);
-      else        res = await apiPost('/api/v1/admin/teams', body);
-      if (!res || !res.ok) { alert('Ошибка сохранения'); return; }
-      if (!f.id) { const data = await res.json(); setSelId(data.id); }
-      else setSelId(f.id);
-      setCreating(false);
-      reload();
-    } finally { setSaving(false); }
+    if (res && res.ok) reload(); else alert('Ошибка удаления');
   }
 
-  const deletedTeams = teams.filter(t=>!!t.deleted_at);
+  const modalValue = modal ? (modal.mode==='edit' ? modal.team : {name:'',type:'team',parent_id:modal.parentId??null,lead:'',lead_udid:null,description:''}) : null;
+  const modalTitle = modal ? (modal.mode==='edit' ? `Редактирование · ${modal.team.name}` : 'Новая команда') : '';
+  const modalSubtitle = (()=>{
+    if (!modal) return null;
+    if (modal.mode==='edit') return teamPath(activeTeams,modal.team.id).slice(0,-1).map(t=>t.name).join(' › ') || 'Корневой узел';
+    if (modal.parentId!=null) return 'Внутри: '+teamPath(activeTeams,modal.parentId).map(t=>t.name).join(' › ');
+    return 'Новый корневой кластер';
+  })();
 
-  return <div style={{height:'100%',overflow:'auto'}}>
-    <MasterDetail
-      toolbar={<div style={{display:'flex',gap:8,alignItems:'center'}}>
-        <ListSearch value={q} onChange={setQ} placeholder="Поиск команды…"/>
-        <Btn variant="primary" size="sm" onClick={()=>{setCreating(true);setSelId(null);}}>+ Новая</Btn>
-      </div>}
-      listHeader={<>
-        <span>Активные · {ordered.length}</span>
-        {deletedTeams.length>0&&<span style={{marginLeft:8,color:T.danger}}>· удалённых: {deletedTeams.length}</span>}
-      </>}
-      listWidth={480}
-      list={<>
-        {shown.map(t=>{
-          const sel=t.id===selId&&!creating;
-          const depth=teamDepth(activeTeams,t.id);
-          return <ListRow key={t.id} selected={sel} indent={depth*16} onClick={()=>{setSelId(t.id);setCreating(false);}}>
-            <span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:TEAM_TYPE_COLOR[t.type]||T.mutedFg,flexShrink:0}}/>
+  return <div style={{padding:'20px 24px 24px'}}>
+    <div style={{background:'white',borderRadius:14,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}>
+      <div style={{padding:'14px 16px',borderBottom:'1px solid '+T.hairline,display:'flex',gap:10,alignItems:'center'}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Поиск команды…" style={{...inpStyle,flex:1,padding:'9px 14px'}}/>
+        <Btn onClick={toggleAll} disabled={parentIds.length===0}>{allExpanded?'Свернуть всё':'Раскрыть всё'}</Btn>
+        <Btn variant="primary" onClick={()=>setModal({mode:'new',parentId:null})}>+ Новая команда</Btn>
+      </div>
+      <div style={{padding:'10px 16px',borderBottom:'1px solid '+T.hairline,fontSize:11,color:T.mutedFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fafbfc'}}>
+        Иерархия · {activeTeams.length}
+      </div>
+      <div>
+        {rows.length===0 && <div style={{padding:'40px 16px',textAlign:'center',color:T.dimFg,fontSize:13}}>{searchActive?`Не найдено: «${q}»`:'Команд пока нет'}</div>}
+        {rows.map(({t,depth,kidsCount,open})=>{
+          const color = TEAM_TYPE_COLOR[t.type]||T.mutedFg;
+          return <div key={t.id} onClick={()=>setModal({mode:'edit',team:t})}
+            style={{display:'flex',alignItems:'center',gap:10,padding:'9px 16px 9px '+(12+depth*24)+'px',borderBottom:'1px solid '+T.hairline,cursor:'pointer',background:'white'}}
+            onMouseEnter={e=>e.currentTarget.style.background='#fafbfc'}
+            onMouseLeave={e=>e.currentTarget.style.background='white'}>
+            {kidsCount>0
+              ? <button onClick={e=>{e.stopPropagation();if(!searchActive)toggle(t.id);}} title={open?'Свернуть':'Раскрыть'}
+                  style={{width:18,height:18,flexShrink:0,border:'none',background:'none',cursor:searchActive?'default':'pointer',color:T.mutedFg,fontSize:10,padding:0,lineHeight:1,display:'inline-flex',alignItems:'center',justifyContent:'center'}}>{open?'▼':'▶'}</button>
+              : <span style={{width:18,flexShrink:0}}/>}
+            <span style={{width:10,height:10,borderRadius:3,background:color,flexShrink:0}}/>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+              <div style={{display:'flex',alignItems:'center',gap:7}}>
                 <TypeBadge type={t.type}/>
-                <span style={{fontSize:13.5,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.name}</span>
+                <span style={{fontSize:14,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.name}</span>
+                {kidsCount>0&&<span style={{fontSize:11,fontWeight:700,color:T.mutedFg,background:'#eef1f5',borderRadius:10,padding:'1px 8px',flexShrink:0}}>{kidsCount}</span>}
               </div>
-              {t.lead&&<div style={{fontSize:11,color:T.mutedFg}}>{t.lead}</div>}
+              {t.lead&&<div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                <span style={{width:18,height:18,borderRadius:'50%',background:avatarColor(leadHash(t.lead)),color:'white',fontSize:8.5,fontWeight:700,display:'inline-flex',alignItems:'center',justifyContent:'center',flexShrink:0,letterSpacing:'-.2px'}}>{avatarInitials(t.lead)}</span>
+                <span style={{fontSize:12,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.lead}</span>
+              </div>}
             </div>
-          </ListRow>;
+            <div onClick={e=>e.stopPropagation()} style={{display:'flex',gap:6,flexShrink:0}}>
+              <RowAction title="Добавить дочернюю команду" onClick={()=>setModal({mode:'new',parentId:t.id})}>+</RowAction>
+              <RowAction title="Редактировать" onClick={()=>setModal({mode:'edit',team:t})}>✎</RowAction>
+              <RowAction title="Удалить" danger onClick={()=>remove(t.id,t.name)}>×</RowAction>
+            </div>
+          </div>;
         })}
-        {deletedTeams.length>0&&<>
-          <div style={{padding:'8px 14px',fontSize:10,color:T.danger,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fff5f5',borderBottom:'1px solid '+T.hairline}}>Деактивированные</div>
-          {deletedTeams.map(t=>{
-            const sel=t.id===selId&&!creating;
-            return <ListRow key={t.id} selected={sel} onClick={()=>{setSelId(t.id);setCreating(false);}}>
-              <span style={{display:'inline-block',width:8,height:8,borderRadius:2,background:'#e5e7eb',flexShrink:0}}/>
-              <div style={{flex:1,minWidth:0,opacity:.6}}>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  <TypeBadge type={t.type}/>
-                  <span style={{fontSize:13.5,fontWeight:600,color:T.headingFg,textDecoration:'line-through'}}>{t.name}</span>
-                </div>
-              </div>
-              <div style={{display:'flex',gap:4,flexShrink:0}}>
-                <RowAction title="Восстановить" onClick={()=>restore(t.id)}>↩</RowAction>
-                <RowAction title="Удалить безвозвратно" danger onClick={()=>hardDelete(t.id,t.name)}>✕</RowAction>
-              </div>
-            </ListRow>;
-          })}
-        </>}
+      </div>
+      {deletedTeams.length>0&&<>
+        <div style={{padding:'8px 16px',fontSize:10,color:T.danger,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fff5f5',borderTop:'1px solid '+T.hairline,borderBottom:'1px solid '+T.hairline}}>Деактивированные · {deletedTeams.length}</div>
+        {deletedTeams.map(t=>(
+          <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 16px',borderBottom:'1px solid '+T.hairline,background:'white'}}>
+            <span style={{width:18,flexShrink:0}}/>
+            <span style={{width:10,height:10,borderRadius:3,background:'#e5e7eb',flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0,opacity:.6,display:'flex',alignItems:'center',gap:7}}>
+              <TypeBadge type={t.type}/>
+              <span style={{fontSize:14,fontWeight:600,color:T.headingFg,textDecoration:'line-through'}}>{t.name}</span>
+            </div>
+            <div style={{display:'flex',gap:6,flexShrink:0}}>
+              <RowAction title="Восстановить" onClick={()=>restore(t.id)}>↩</RowAction>
+              <RowAction title="Удалить безвозвратно" danger onClick={()=>hardDelete(t.id,t.name)}>✕</RowAction>
+            </div>
+          </div>
+        ))}
       </>}
-      detail={
-        creating
-          ? <TeamEditor value={{name:'',type:'team',parent_id:null,lead:'',lead_udid:null,description:''}} teams={activeTeams} onSave={save} onCancel={()=>setCreating(false)} saving={saving}/>
-          : selected
-            ? <TeamEditor value={selected} teams={activeTeams} onSave={save} onDelete={()=>remove(selected.id,selected.name)} onRestore={selected.deleted_at?()=>restore(selected.id):null} onHardDelete={selected.deleted_at?()=>hardDelete(selected.id,selected.name):null} saving={saving}/>
-            : <EmptyDetail icon="👥" title="Выберите команду" hint="Кликните по узлу в списке слева или создайте новую команду."/>
-      }
-    />
+    </div>
+    <Modal open={!!modal} title={modalTitle} subtitle={modalSubtitle} onClose={()=>setModal(null)} width={680}>
+      {modal&&<TeamEditor value={modalValue} teams={activeTeams} onSave={save} onClose={()=>setModal(null)}
+        onDelete={modal.mode==='edit'?()=>remove(modal.team.id,modal.team.name):null} saving={saving}/>}
+    </Modal>
   </div>;
 }
 
@@ -696,62 +738,48 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
   );
 }
 
-function TeamEditor({value, teams, onSave, onCancel, onDelete, onRestore, onHardDelete, saving}) {
+// Modal body for creating/editing a team. The surrounding <Modal> supplies the
+// header (title + breadcrumb + close); this renders the form fields and footer.
+function TeamEditor({value, teams, onSave, onClose, onDelete, saving}) {
   const [f, setF] = useState({...value});
   useEffect(()=>{setF({...value});},[value.id]);
   const canSave = f.name.trim() && f.type;
   const isNew = !value.id;
-  const isDeleted = !!value.deleted_at;
-  const excluded = value.id ? descendantIds(teams,value.id) : new Set();
-  const parentOptions = teams.filter(t=>!excluded.has(t.id)).sort((a,b)=>(TEAM_TYPE_ORDER[a.type]-TEAM_TYPE_ORDER[b.type])||a.name.localeCompare(b.name));
   const children = value.id ? teams.filter(t=>t.parent_id===value.id) : [];
-  const pathStr = value.id ? teamPath(teams,value.id).slice(0,-1).map(t=>t.name).join(' › ') : null;
+  const sep = <div style={{height:1,background:T.hairline,margin:'2px 0 16px'}}/>;
 
   return <div>
-    <DetailHeader
-      breadcrumb={isNew?'Команды / новая':`Команды${pathStr?' · '+pathStr:''}`}
-      title={<span style={{display:'inline-flex',alignItems:'center',gap:10}}>
-        <span style={{display:'inline-block',width:14,height:14,borderRadius:4,background:TEAM_TYPE_COLOR[f.type]||'#e5e7eb',flexShrink:0}}/>
-        {f.name||(isNew?'Новая команда':'—')}
-        {isDeleted&&<Chip color={T.danger} bg="#fef2f2">Деактивирована</Chip>}
-      </span>}
-      subtitle={<span style={{display:'inline-flex',alignItems:'center',gap:8}}>
-        <TypeBadge type={f.type}/>
-        {!isNew&&<span style={{fontSize:12,color:T.mutedFg}}>· id <code style={{fontSize:11}}>{value.id}</code></span>}
-        {children.length>0&&<span style={{fontSize:12,color:T.mutedFg}}>· {children.length} вложенных</span>}
-      </span>}
-      actions={<>
-        {isDeleted&&onRestore&&<Btn variant="accent" onClick={onRestore} disabled={saving}>Восстановить</Btn>}
-        {isDeleted&&onHardDelete&&<Btn danger onClick={onHardDelete} disabled={saving}>Удалить навсегда</Btn>}
-        {!isDeleted&&!isNew&&onDelete&&<Btn danger onClick={onDelete} disabled={saving}>Деактивировать</Btn>}
-        {isNew&&<Btn onClick={onCancel} disabled={saving}>Отмена</Btn>}
-        {!isDeleted&&<Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving?'Сохранение…':isNew?'Создать':'Сохранить'}</Btn>}
-      </>}
-    />
-    <DetailSection title="Основное">
+    <div style={{padding:'18px 24px'}}>
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-        <Field label="Название" required><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} style={inpStyle}/></Field>
+        <Field label="Название" required><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} style={inpStyle} autoFocus/></Field>
         <Field label="Тип">
           <select value={f.type} onChange={e=>setF({...f,type:e.target.value})} style={{...inpStyle,cursor:'pointer'}}>
             {['cluster','unit','group','team','squad'].map(k=><option key={k} value={k}>{TEAM_TYPE_LABEL[k]}</option>)}
           </select>
         </Field>
       </div>
+      <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.description||''} onChange={e=>setF({...f,description:e.target.value})} style={{...inpStyle,resize:'vertical',lineHeight:1.5,minHeight:64}}/></Field>
+      {sep}
       <Field label="Руководитель"><UserSelector value={f.lead||''} onChange={(name, udid)=>setF({...f,lead:name,lead_udid:udid||null})} placeholder="Поиск пользователя…"/></Field>
-      <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.description||''} onChange={e=>setF({...f,description:e.target.value})} style={{...inpStyle,resize:'vertical',lineHeight:1.5}}/></Field>
-    </DetailSection>
-    <DetailSection title="Расположение в иерархии">
-      <Field label="Родительская команда">
-        <select value={f.parent_id!=null?String(f.parent_id):''} onChange={e=>setF({...f,parent_id:e.target.value?Number(e.target.value):null})} style={{...inpStyle,cursor:'pointer'}}>
-          <option value="">Без родителя (корневой кластер)</option>
-          {parentOptions.map(t=>{
-            const d=teamDepth(teams,t.id);
-            return <option key={t.id} value={t.id}>{'\u00A0'.repeat(d*2)}{TEAM_TYPE_LABEL[t.type]} · {t.name}</option>;
-          })}
-        </select>
+      {sep}
+      <Field label="Расположение в иерархии">
+        <TeamCombobox
+          single
+          teams={teams}
+          selectedIds={f.parent_id!=null?[f.parent_id]:[]}
+          excludeIds={value.id?descendantIds(teams,value.id):undefined}
+          placeholder="Без родителя (корневой кластер)"
+          onChange={ids=>setF({...f,parent_id:ids.length?ids[0]:null})}
+        />
       </Field>
-      {!isNew&&children.length>0&&<div style={{fontSize:12,color:T.mutedFg,marginTop:4}}>Внутри: {children.map(c=>c.name).join(', ')}</div>}
-    </DetailSection>
+      {!isNew&&children.length>0&&<div style={{fontSize:12,color:T.mutedFg,marginTop:-6}}>Внутри: {children.map(c=>c.name).join(', ')}</div>}
+    </div>
+    <div style={{padding:'14px 24px',borderTop:'1px solid '+T.hairline,background:'#fafbfc',borderRadius:'0 0 14px 14px',display:'flex',alignItems:'center',gap:10}}>
+      {!isNew&&onDelete&&<Btn danger onClick={onDelete} disabled={saving}>Удалить</Btn>}
+      <div style={{flex:1}}/>
+      <Btn onClick={onClose} disabled={saving}>Отмена</Btn>
+      <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving?'Сохранение…':isNew?'Создать':'Сохранить'}</Btn>
+    </div>
   </div>;
 }
 
@@ -1005,96 +1033,138 @@ function GeneralSettingsPanel() {
 // ── USERS SECTION ────────────────────────────────────────────────────────────
 function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
-  const [selId, setSelId] = useState(null);
-  const filtered = users.filter(u=>!q||u.DisplayName.toLowerCase().includes(q.toLowerCase())||u.Email.toLowerCase().includes(q.toLowerCase()));
-  const selected = users.find(u=>u.ID===selId);
+  const [filter, setFilter] = useState('all'); // all | admins | noaccess
+  const [modalId, setModalId] = useState(null);
+
+  const activeTeams = useMemo(()=>teams.filter(t=>!t.deleted_at),[teams]);
+  // Teams each user leads, keyed by lead UDID — used both for search and display.
+  const ledByUdid = useMemo(()=>{
+    const m = {};
+    for (const t of activeTeams) { if (t.lead_udid) (m[t.lead_udid]=m[t.lead_udid]||[]).push(t); }
+    return m;
+  },[activeTeams]);
+  const ledTeams = u => (u && u.UDID && ledByUdid[u.UDID]) || [];
+
   const adminCount = users.filter(u=>u.IsAdmin).length;
+  const noAccessCount = users.filter(u=>!u.IsAdmin && (u.GrantedNodeCount||0)===0).length;
 
-  async function toggleAdmin(u) {
-    if (u.IsAdmin && adminCount<=1) { alert('Нельзя снять admin-права с последнего администратора.'); return; }
-    if (u.IsAdmin && u.ID===currentUser?.id && !confirm('Снять admin-права с себя? Вы потеряете доступ к этому разделу.')) return;
-    let res;
-    if (u.IsAdmin) res = await apiDel(`/api/v1/admin/users/${u.ID}/admin`);
-    else           res = await apiPost(`/api/v1/admin/users/${u.ID}/admin`, {});
-    if (res && res.ok) reload();
-    else alert('Ошибка изменения прав');
-  }
+  const ql = q.trim().toLowerCase();
+  const filtered = users.filter(u=>{
+    if (filter==='admins' && !u.IsAdmin) return false;
+    if (filter==='noaccess' && !(!u.IsAdmin && (u.GrantedNodeCount||0)===0)) return false;
+    if (!ql) return true;
+    const led = ledTeams(u).map(t=>t.name).join(' ');
+    return [u.DisplayName, u.Email, u.Provider, led].some(s=>(s||'').toLowerCase().includes(ql));
+  });
 
-  return <MasterDetail
-    toolbar={<ListSearch value={q} onChange={setQ} placeholder="Поиск по имени, email…"/>}
-    listHeader={`Все пользователи · ${users.length} · админов ${adminCount}`}
-    list={filtered.map(u=>{
-      const sel=u.ID===selId;
-      return <ListRow key={u.ID} selected={sel} onClick={()=>setSelId(u.ID)}>
-        <Avatar user={u} size={32}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <span style={{fontSize:13.5,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.DisplayName}</span>
-            {u.ID===currentUser?.id&&<span style={{fontSize:9.5,color:T.mutedFg,background:'#f1f5f9',padding:'1px 6px',borderRadius:4,fontWeight:700}}>ВЫ</span>}
-          </div>
-          <div style={{fontSize:11,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>{u.Email}</div>
+  const chips = [
+    {id:'all', label:'Все пользователи', count:users.length},
+    {id:'admins', label:'Админы', count:adminCount},
+    {id:'noaccess', label:'Без доступов', count:noAccessCount},
+  ];
+  const activeChip = chips.find(c=>c.id===filter);
+  const modalUser = users.find(u=>u.ID===modalId) || null;
+
+  return <div style={{padding:'20px 24px 24px'}}>
+    <div style={{background:'white',borderRadius:14,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}>
+      <div style={{padding:'14px 16px',borderBottom:'1px solid '+T.hairline,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Поиск по имени, роли, email, команде…" style={{...inpStyle,flex:1,minWidth:240,padding:'9px 14px'}}/>
+        <div style={{display:'flex',gap:8,flexShrink:0}}>
+          {chips.map(c=>{
+            const on = c.id===filter;
+            return <button key={c.id} onClick={()=>setFilter(c.id)}
+              style={{display:'inline-flex',alignItems:'center',gap:7,padding:'8px 14px',borderRadius:20,border:'1.5px solid '+(on?T.accent:T.cardBorder),background:on?'#f5f3ff':'white',color:on?T.accent:T.bodyFg,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>
+              {c.label}
+              <span style={{fontSize:11,fontWeight:700,color:on?'white':T.mutedFg,background:on?T.accent:'#eef1f5',borderRadius:10,padding:'1px 8px',minWidth:18,textAlign:'center'}}>{c.count}</span>
+            </button>;
+          })}
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:3,alignItems:'flex-end',flexShrink:0}}>
-          {u.IsAdmin&&<Chip color="#92400e" bg="#fef3c7">Admin</Chip>}
-          <ProviderChip p={u.Provider}/>
-        </div>
-      </ListRow>;
-    })}
-    detail={
-      selected
-        ? <UserDetail user={selected} teams={teams} currentUser={currentUser} onToggleAdmin={()=>toggleAdmin(selected)} onGrantsChange={reload}/>
-        : <EmptyDetail icon="🔑" title="Выберите пользователя" hint="Все пользователи OKR Tracker. Здесь можно выдавать admin-права и управлять доступом к иерархии."/>
-    }
-  />;
+      </div>
+      <div style={{padding:'10px 16px',borderBottom:'1px solid '+T.hairline,fontSize:11,color:T.mutedFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fafbfc'}}>
+        {activeChip.label} · {filtered.length}
+      </div>
+      <div>
+        {filtered.length===0 && <div style={{padding:'40px 16px',textAlign:'center',color:T.dimFg,fontSize:13}}>{ql?`Не найдено: «${q}»`:'Пользователей нет'}</div>}
+        {filtered.map(u=>{
+          const led = ledTeams(u);
+          const nodes = u.GrantedNodeCount||0;
+          return <div key={u.ID} onClick={()=>setModalId(u.ID)}
+            style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',borderBottom:'1px solid '+T.hairline,cursor:'pointer',background:'white'}}
+            onMouseEnter={e=>e.currentTarget.style.background='#fafbfc'}
+            onMouseLeave={e=>e.currentTarget.style.background='white'}>
+            <Avatar user={u} size={36}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontSize:14,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.DisplayName}</span>
+                {u.ID===currentUser?.id&&<span style={{fontSize:9.5,color:T.mutedFg,background:'#f1f5f9',padding:'1px 6px',borderRadius:4,fontWeight:700,flexShrink:0}}>ВЫ</span>}
+              </div>
+              <div style={{fontSize:11.5,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>
+                {u.Email}{led.length>0&&` · лид: ${led.map(t=>t.name).join(', ')}`}
+              </div>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
+              {u.IsAdmin
+                ? <><Chip color="#92400e" bg="#fef3c7">Admin</Chip><span style={{fontSize:11,color:'#059669',fontWeight:600}}>полный доступ</span></>
+                : nodes>0
+                  ? <span style={{fontSize:12.5,color:'#0891b2',fontWeight:600}}>{nodes} узл</span>
+                  : <span style={{fontSize:12,color:'#dc2626',fontWeight:600}}>нет доступа</span>}
+            </div>
+            <div onClick={e=>e.stopPropagation()} style={{flexShrink:0}}>
+              <RowAction title="Редактировать" onClick={()=>setModalId(u.ID)}>✎</RowAction>
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
+    <Modal open={!!modalUser}
+      title={modalUser&&<span style={{display:'inline-flex',alignItems:'center',gap:12}}><Avatar user={modalUser} size={36}/>{modalUser.DisplayName}{modalUser.ID===currentUser?.id&&<span style={{fontSize:10.5,color:T.mutedFg,background:'#f1f5f9',padding:'2px 7px',borderRadius:5,fontWeight:700}}>ВЫ</span>}</span>}
+      subtitle={modalUser&&`${modalUser.Provider} · ${modalUser.Email}`}
+      onClose={()=>setModalId(null)} width={760}>
+      {modalUser&&<UserModal user={modalUser} teams={teams} currentUser={currentUser} allUsers={users} ledTeams={ledTeams(modalUser)} onClose={()=>setModalId(null)} onSaved={()=>{setModalId(null);reload();}}/>}
+    </Modal>
+  </div>;
 }
 
-function UserDetail({user, teams, currentUser, onToggleAdmin, onGrantsChange}) {
-  const [grants, setGrants] = useState(null);
+// Modal body for a user. The surrounding <Modal> supplies the header (avatar +
+// name + close). Admin toggle and hierarchy grants are batched and applied on
+// «Сохранить»; «Отмена» discards them.
+function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSaved}) {
+  const [grants, setGrants] = useState(null);          // original grants loaded from API
   const [loading, setLoading] = useState(true);
+  const [pendingGrantIds, setPendingGrantIds] = useState([]);
+  const [pendingAdmin, setPendingAdmin] = useState(user.IsAdmin);
+  const [saving, setSaving] = useState(false);
 
   useEffect(()=>{
-    setLoading(true);
+    setLoading(true); setPendingAdmin(user.IsAdmin);
     apiGet(`/api/v1/admin/users/${user.ID}/grants`).then(r=>r&&r.json()).then(data=>{
-      setGrants(Array.isArray(data)?data:[]);
-      setLoading(false);
+      const arr = Array.isArray(data)?data:[];
+      setGrants(arr); setPendingGrantIds(arr.map(g=>g.TeamID)); setLoading(false);
     }).catch(()=>setLoading(false));
   },[user.ID]);
 
-  const grantedTeamIds = useMemo(()=>(grants||[]).map(g=>g.TeamID),[grants]);
-
-  async function addGrant(teamId) {
-    const res = await apiPost(`/api/v1/admin/users/${user.ID}/grants`, {team_id: teamId});
-    if (res && res.ok) {
-      const r2 = await apiGet(`/api/v1/admin/users/${user.ID}/grants`);
-      const data = r2 && await r2.json();
-      setGrants(Array.isArray(data)?data:[]);
-      onGrantsChange();
-    }
-  }
-  async function removeGrant(teamId) {
-    const res = await apiDel(`/api/v1/admin/users/${user.ID}/grants/${teamId}`);
-    if (res && res.ok) { setGrants(g=>g.filter(x=>x.TeamID!==teamId)); onGrantsChange(); }
-  }
-
   const isSelf = user.ID===currentUser?.id;
+  const adminCount = allUsers.filter(u=>u.IsAdmin).length;
   const activeTeams = teams.filter(t=>!t.deleted_at);
 
+  async function save() {
+    setSaving(true);
+    try {
+      if (pendingAdmin !== user.IsAdmin) {
+        if (!pendingAdmin && adminCount<=1) { alert('Нельзя снять admin-права с последнего администратора.'); return; }
+        if (!pendingAdmin && isSelf && !confirm('Снять admin-права с себя? Вы потеряете доступ к этому разделу.')) return;
+        const res = pendingAdmin ? await apiPost(`/api/v1/admin/users/${user.ID}/admin`, {}) : await apiDel(`/api/v1/admin/users/${user.ID}/admin`);
+        if (!res || !res.ok) { alert('Ошибка изменения прав'); return; }
+      }
+      const orig = new Set((grants||[]).map(g=>g.TeamID));
+      const next = new Set(pendingGrantIds);
+      for (const id of next) if (!orig.has(id)) { const r = await apiPost(`/api/v1/admin/users/${user.ID}/grants`, {team_id:id}); if (!r||!r.ok) { alert('Ошибка выдачи доступа'); return; } }
+      for (const id of orig) if (!next.has(id)) { const r = await apiDel(`/api/v1/admin/users/${user.ID}/grants/${id}`); if (!r||!r.ok) { alert('Ошибка отзыва доступа'); return; } }
+      onSaved();
+    } finally { setSaving(false); }
+  }
+
   return <div>
-    <DetailHeader
-      breadcrumb="Пользователи · карточка"
-      title={<span style={{display:'inline-flex',alignItems:'center',gap:12}}>
-        <Avatar user={user} size={36}/>
-        {user.DisplayName}
-        {isSelf&&<span style={{fontSize:10.5,color:T.mutedFg,background:'#f1f5f9',padding:'2px 7px',borderRadius:5,fontWeight:700}}>ВЫ</span>}
-        {user.IsAdmin&&<Chip color="#92400e" bg="#fef3c7">Admin</Chip>}
-      </span>}
-      subtitle={<span style={{display:'inline-flex',alignItems:'center',gap:8}}>
-        <ProviderChip p={user.Provider}/> · {user.Email}
-      </span>}
-      actions={<Btn variant={user.IsAdmin?'secondary':'accent'} danger={user.IsAdmin} onClick={onToggleAdmin}>
-        {user.IsAdmin?'Снять admin':'Назначить admin'}
-      </Btn>}
-    />
     <DetailSection title="Учётная запись">
       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
         <Field label="Email"><input value={user.Email} readOnly style={{...inpStyle,background:'#f8fafc',color:T.mutedFg}}/></Field>
@@ -1103,38 +1173,74 @@ function UserDetail({user, teams, currentUser, onToggleAdmin, onGrantsChange}) {
         <Field label="ID пользователя"><input value={user.ID} readOnly style={{...inpStyle,background:'#f8fafc',color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace',fontSize:13}}/></Field>
       </div>
     </DetailSection>
+    <DetailSection title="Права администратора">
+      <div onClick={()=>setPendingAdmin(v=>!v)} style={{display:'inline-flex',alignItems:'center',gap:13,cursor:'pointer'}}>
+        <div style={{width:44,height:24,borderRadius:12,background:pendingAdmin?T.accent:'#cbd5e1',position:'relative',transition:'background .15s',flexShrink:0}}>
+          <div style={{position:'absolute',top:2,left:pendingAdmin?22:2,width:20,height:20,borderRadius:'50%',background:'white',transition:'left .15s',boxShadow:'0 1px 3px rgba(0,0,0,0.25)'}}/>
+        </div>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:T.headingFg}}>{pendingAdmin?'Администратор':'Обычный пользователь'}</div>
+          <div style={{fontSize:12,color:T.mutedFg,marginTop:1}}>{pendingAdmin?'Полный доступ к админ-разделу':'Нет доступа к админ-разделу'}</div>
+        </div>
+      </div>
+    </DetailSection>
+    <DetailSection title={`Является руководителем · ${ledTeams.length}`}>
+      {ledTeams.length===0
+        ? <div style={{fontSize:13,color:T.dimFg}}>Не является руководителем ни одной команды.</div>
+        : ledTeams.map(t=>(
+          <div key={t.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',border:'1px solid '+T.cardBorder,borderRadius:10,marginBottom:8}}>
+            <span style={{width:10,height:10,borderRadius:3,background:TEAM_TYPE_COLOR[t.type]||T.mutedFg,flexShrink:0}}/>
+            <TypeBadge type={t.type}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:14,fontWeight:700,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.name}</div>
+              <div style={{fontSize:12,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{teamPath(teams,t.id).map(x=>x.name).join(' › ')}</div>
+            </div>
+            <a href={'/?team='+t.id} style={{fontSize:13,fontWeight:600,color:T.accent,textDecoration:'none',flexShrink:0}}>Открыть →</a>
+          </div>
+        ))}
+    </DetailSection>
     <DetailSection title="Доступ к иерархии">
       <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:12,lineHeight:1.5}}>
-        Команды и узлы иерархии, доступные пользователю. При выборе узла — видны он и все дочерние. Пустой список — нет доступа ни к одной команде.
+        Команды, к которым у пользователя есть доступ. При выборе узла он видит его и все дочерние. Если список пуст — у пользователя нет доступа ни к одной команде.
       </div>
-      {!loading&&grantedTeamIds.length===0&&(
-        <div style={{padding:'12px 14px',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:9,color:'#991b1b',fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-          <span style={{width:8,height:8,background:'#ef4444',borderRadius:'50%'}}/>
-          Нет доступа — иерархия не видна
-        </div>
-      )}
       {loading
         ? <div style={{fontSize:13,color:T.dimFg}}>Загрузка…</div>
-        : <TeamCombobox
-            selectedIds={grantedTeamIds}
-            teams={activeTeams}
-            placeholder="Выберите команды из иерархии…"
-            onChange={newIds=>{
-              const added = newIds.filter(id=>!grantedTeamIds.includes(id));
-              const removed = grantedTeamIds.filter(id=>!newIds.includes(id));
-              added.forEach(id=>addGrant(id));
-              removed.forEach(id=>removeGrant(id));
-            }}
-          />
-      }
-      {!loading&&grantedTeamIds.length>0&&<div style={{marginTop:8,fontSize:11.5,color:T.mutedFg,lineHeight:1.5}}>При выборе родительской команды — доступ к дочерним выдаётся автоматически.</div>}
+        : <>
+          {pendingGrantIds.length===0&&(
+            <div style={{padding:'12px 14px',background:'#fef2f2',border:'1px solid #fecaca',borderRadius:9,color:'#991b1b',fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+              <span style={{width:8,height:8,background:'#ef4444',borderRadius:'50%'}}/>
+              Нет доступа — иерархия не видна
+            </div>
+          )}
+          <Field label="Команды, к которым есть доступ" hint="выбор с поиском и иерархией">
+            <TeamCombobox
+              selectedIds={pendingGrantIds}
+              teams={activeTeams}
+              placeholder="Выберите команды из иерархии…"
+              onChange={setPendingGrantIds}
+            />
+          </Field>
+        </>}
     </DetailSection>
+    <div style={{padding:'14px 24px',borderTop:'1px solid '+T.hairline,background:'#fafbfc',borderRadius:'0 0 14px 14px',display:'flex',alignItems:'center',justifyContent:'flex-end',gap:10}}>
+      <Btn onClick={onClose} disabled={saving}>Отмена</Btn>
+      <Btn variant="primary" onClick={save} disabled={saving||loading}>{saving?'Сохранение…':'Сохранить'}</Btn>
+    </div>
   </div>;
 }
 
 // ── APP ───────────────────────────────────────────────────────────────────────
+const ADMIN_SECTION_IDS = ['periods','teams','users','settings','health-checkin'];
+// Legacy server path routes (/admin/teams, …) fall back to their section.
+const ADMIN_PATH_SECTION = {'/admin/teams':'teams','/admin/periods':'periods','/admin/access':'settings'};
+function readSectionFromURL() {
+  const q = new URLSearchParams(window.location.search).get('section');
+  if (ADMIN_SECTION_IDS.includes(q)) return q;
+  return ADMIN_PATH_SECTION[window.location.pathname] || null;
+}
+
 function App() {
-  const [section, setSection] = useState(()=>localStorage.getItem('okr_admin_section')||'periods');
+  const [section, setSection] = useState(()=>readSectionFromURL()||localStorage.getItem('okr_admin_section')||'periods');
   const [me, setMe] = useState(null);
   const [periods, setPeriods] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -1143,6 +1249,25 @@ function App() {
   const [err, setErr] = useState(null);
 
   useEffect(()=>{localStorage.setItem('okr_admin_section',section);},[section]);
+
+  // Reflect the current section in the URL (?section=) and support browser back/forward.
+  useEffect(()=>{
+    if (readSectionFromURL() !== section) {
+      window.history.replaceState({section}, '', '/admin?section='+section);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  const navigate = useCallback((id)=>{
+    setSection(id);
+    window.history.pushState({section:id}, '', '/admin?section='+id);
+  },[]);
+
+  useEffect(()=>{
+    const onPop = ()=> setSection(readSectionFromURL()||'periods');
+    window.addEventListener('popstate', onPop);
+    return ()=> window.removeEventListener('popstate', onPop);
+  },[]);
 
   async function loadAll() {
     setLoading(true); setErr(null);
@@ -1168,7 +1293,7 @@ function App() {
   if (loading) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:T.mutedFg,fontSize:14}}>Загрузка…</div>;
   if (err) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:T.danger,fontSize:14}}>Ошибка: {err}</div>;
 
-  return <Shell section={section} setSection={setSection} currentUser={me}>
+  return <Shell section={section} setSection={navigate} currentUser={me}>
     {section==='periods' &&<PeriodsSection periods={periods} reload={loadAll}/>}
     {section==='teams'   &&<TeamsSection teams={teams} reload={loadAll}/>}
     {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={loadAll}/>}

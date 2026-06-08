@@ -133,10 +133,10 @@
 .modal-overlay--z400 { z-index: 400; }
 .modal-overlay--z600 { z-index: 600; background: rgba(0,0,0,0.45); }
 .modal-box { background: white; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden; }
-.modal-box--w380 { width: 380px; }
-.modal-box--w480 { width: 480px; }
-.modal-box--w560 { width: 560px; max-height: 90vh; overflow: auto; }
-.modal-box--w600 { width: 600px; max-height: 92vh; overflow: auto; border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); }
+.modal-box--w380 { width: min(440px, 94vw); }
+.modal-box--w480 { width: min(620px, 94vw); }
+.modal-box--w560 { width: min(820px, 94vw); max-height: 92vh; overflow: auto; }
+.modal-box--w600 { width: min(960px, 95vw); max-height: 92vh; overflow: auto; border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); }
 .modal-header { padding: 18px 22px 14px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
 .modal-header--sticky { position: sticky; top: 0; background: white; z-index: 1; padding: 20px 24px 14px; }
 .modal-header--goal { padding: 22px 28px 16px; }
@@ -184,8 +184,8 @@
 .form-weight-pct { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #9ca3af; pointer-events: none; }
 .form-error-msg { font-size: 11px; color: #ef4444; margin-top: 3px; }
 
-.form-textarea { width: 100%; padding: 10px 13px; border-radius: 9px; border: 1.5px solid #e5e7eb; font-size: 14px; outline: none; color: #111827; line-height: 1.5; }
-.form-textarea--sm { padding: 9px 11px; border-radius: 8px; border-width: 1px; font-size: 13px; min-height: 60px; }
+.form-textarea { width: 100%; padding: 12px 14px; border-radius: 9px; border: 1.5px solid #e5e7eb; font-size: 14px; outline: none; color: #111827; line-height: 1.55; min-height: 160px; resize: vertical; }
+.form-textarea--sm { padding: 10px 12px; border-radius: 8px; border-width: 1px; font-size: 13px; min-height: 110px; resize: vertical; }
 
 .form-select { width: 100%; padding: 10px 13px; border-radius: 9px; border: 1.5px solid #e5e7eb; font-size: 13px; outline: none; color: #111827; background: white; cursor: pointer; }
 .form-select--sm { padding: 7px 10px; border-radius: 8px; border-width: 1px; }
@@ -212,7 +212,7 @@
 .kr-num-section__title { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 12px; }
 .kr-num-fields { display: flex; gap: 12px; margin-bottom: 12px; }
 .kr-num-field { flex: 1; }
-.kr-num-field__label { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; }
+.kr-num-field__label { font-size: 11px; font-weight: 600; color: #374151; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
 .kr-num-input-suffix { position: relative; display: block; }
 .kr-num-input-suffix .form-input { width: 100%; padding-right: 40px; }
 .kr-num-input-suffix__unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; color: #9ca3af; white-space: nowrap; pointer-events: none; }
@@ -282,7 +282,8 @@
 .kr-pct { font-size: 11px; font-weight: 700; flex-shrink: 0; }
 .kr-detail { font-size: 12px; color: #6b7280; font-variant-numeric: tabular-nums; }
 .kr-updated { font-size: 11px; flex-shrink: 0; min-width: 72px; text-align: right; }
-.kr-notes-btn { font-size: 11px; color: #6b7280; background: none; border: none; cursor: pointer; flex-shrink: 0; }
+.kr-notes-slot { width: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.kr-notes-btn { font-size: 11px; color: #6b7280; background: none; border: none; cursor: pointer; padding: 0; line-height: 1; }
 .kr-edit-btn { padding: 5px 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: white; color: #374151; font-size: 12px; font-weight: 500; cursor: pointer; flex-shrink: 0; }
 .kr-delete-btn { padding: 4px 7px; border: 1px solid #fca5a5; border-radius: 6px; background: #fff1f1; color: #dc2626; font-size: 14px; font-weight: 700; cursor: pointer; flex-shrink: 0; line-height: 1; }
 
@@ -290,7 +291,7 @@
 .kr-notes { margin-top: 10px; margin-left: 36px; border-left: 2px solid #f0f1f3; padding-left: 12px; }
 .kr-note { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
 .kr-note__content { flex: 1; }
-.kr-note__header { display: flex; gap: 6px; align-items: baseline; margin-bottom: 2px; }
+.kr-note__header { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; }
 .kr-note__author { font-size: 11px; font-weight: 600; color: #374151; }
 .kr-note__date { font-size: 10px; color: #9ca3af; }
 .kr-note__text { font-size: 12px; color: #374151; background: #f9fafb; padding: 6px 9px; border-radius: 6px; }
@@ -425,8 +426,10 @@
 .uinfo__popup { position: fixed; background: white; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.16); border: 1px solid #e5e7eb; padding: 12px 14px; display: inline-flex; align-items: center; gap: 12px; z-index: 2000; min-width: 160px; pointer-events: auto; }
 .uinfo__popup-avatar { border-radius: 50%; object-fit: cover; flex-shrink: 0; }
 .uinfo__popup-initials { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0; }
-.uinfo__popup-body { display: inline-flex; flex-direction: column; gap: 2px; }
+.uinfo__popup { max-width: 300px; }
+.uinfo__popup-body { display: inline-flex; flex-direction: column; gap: 2px; min-width: 0; }
 .uinfo__popup-name { font-size: 14px; font-weight: 700; color: #111827; }
+.uinfo__popup-email { font-size: 11.5px; color: #6b7280; word-break: break-all; }
 .uinfo__popup-team { font-size: 12px; color: #6b7280; }
 
 /* ── Health Check-in ────────────────────────────────────────────────────── */
