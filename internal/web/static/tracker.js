@@ -542,7 +542,9 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
             <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Контекст, блокеры…"
               className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
             {kr.note && (
-              <div className="kr-note-meta">{kr.note.author} · {kr.note.date}</div>
+              <div className="kr-note-meta" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
+                <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={18} /> · {kr.note.date}
+              </div>
             )}
           </div>
         </div>
@@ -824,10 +826,9 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
         {showNote && kr.note && (
           <div className="kr-notes">
             <div className="kr-note">
-              <Avatar name={kr.note.author} size={22} />
               <div className="kr-note__content">
                 <div className="kr-note__header">
-                  <span className="kr-note__author">{kr.note.author}</span>
+                  <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={22} />
                   <span className="kr-note__date">{kr.note.date}</span>
                 </div>
                 <div className="kr-note__text" style={{ whiteSpace: 'pre-wrap' }}>{kr.note.text}</div>
@@ -1047,8 +1048,35 @@ const _userByName = new Map();
 
 function _cacheUserRef(ref) {
   if (!ref) return;
-  if (ref.udid) _userByUdid.set(ref.udid, ref);
-  if (ref.display_name) _userByName.set(ref.display_name, ref);
+  // Merge so richer fields (email, led_team from /api/v1/users) survive a later
+  // minimal ref (udid/display_name/avatar_url from OKR/hierarchy payloads).
+  if (ref.udid) {
+    const prev = _userByUdid.get(ref.udid);
+    _userByUdid.set(ref.udid, prev ? { ...prev, ...ref } : ref);
+  }
+  if (ref.display_name) {
+    const prev = _userByName.get(ref.display_name);
+    _userByName.set(ref.display_name, prev ? { ...prev, ...ref } : ref);
+  }
+}
+
+// Lazily load a user's full details (email, led_team) by UDID and merge them
+// into the cache. Deduped per UDID — at most one request, even on repeated hover.
+const _userDetailFetched = new Map();
+function _fetchUserDetail(udid) {
+  if (!udid) return Promise.resolve(null);
+  const cached = _userByUdid.get(udid);
+  if (cached && cached.email !== undefined) return Promise.resolve(cached);
+  if (_userDetailFetched.has(udid)) return _userDetailFetched.get(udid);
+  const p = apiGet(`/api/v1/users?ids[]=${encodeURIComponent(udid)}`)
+    .then(arr => {
+      const item = Array.isArray(arr) ? (arr.find(u => u.udid === udid) || arr[0]) : null;
+      if (item) _cacheUserRef(item);
+      return item || null;
+    })
+    .catch(() => null);
+  _userDetailFetched.set(udid, p);
+  return p;
 }
 
 function _cacheUserRefsFromHierarchyNodes(nodes) {
@@ -1181,8 +1209,9 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
 
 // ── USER INFO (avatar + name + hover popup) ───────────────────────────────────
 // Accepts a `userRef` object {udid,display_name,avatar_url} (from API responses),
-// or separate `name`/`udid` props for comment authors and legacy call sites.
-// All user data comes from the local cache — no network calls.
+// or separate `name`/`udid` props for comment/note authors and legacy call sites.
+// Renders from the local cache; on hover the popup lazily loads full details
+// (email, led_team) by UDID via _fetchUserDetail (deduped, at most one request).
 function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
   const initName = userRef?.display_name ?? nameProp ?? '';
   const initUdid = userRef?.udid || udidProp || '';
@@ -1190,17 +1219,20 @@ function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
 
   if (userRef) _cacheUserRef(userRef);
 
-  const cached = initUdid ? _userByUdid.get(initUdid) : _userByName.get(initName);
   const [popup, setPopup] = useState(null);
+  const [, force] = useState(0);
   const ref = useRef();
   const timer = useRef();
 
+  const cached = initUdid ? _userByUdid.get(initUdid) : _userByName.get(initName);
   const name = cached?.display_name || initName || '?';
   const show = () => {
     clearTimeout(timer.current);
+    // Fetch email/led_team lazily so the popup can show full details.
+    if (initUdid) _fetchUserDetail(initUdid).then(d => { if (d) force(n => n + 1); });
     if (!ref.current) return;
     const r = ref.current.getBoundingClientRect();
-    const left = Math.max(8, Math.min(r.left, window.innerWidth - 208));
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 248));
     setPopup({ top: r.bottom + 6, left });
   };
   const hide = () => { timer.current = setTimeout(() => setPopup(null), 150); };
@@ -1219,7 +1251,8 @@ function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
       }
       <span className="uinfo__popup-body">
         <span className="uinfo__popup-name">{name}</span>
-        {cached?.led_team && <span className="uinfo__popup-team">{cached.led_team}</span>}
+        {cached?.email && <span className="uinfo__popup-email">{cached.email}</span>}
+        {cached?.led_team && <span className="uinfo__popup-team">Руководит: {cached.led_team}</span>}
       </span>
     </span>,
     document.body
