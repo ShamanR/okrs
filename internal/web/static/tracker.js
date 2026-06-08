@@ -471,6 +471,12 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
           </div>
           <button onClick={onClose} className="modal-close">×</button>
         </div>
+        {kr.desc && (
+          <div className="kr-progress-desc">
+            <div className="kr-progress-desc__label">Описание</div>
+            <div className="kr-progress-desc__text">{kr.desc}</div>
+          </div>
+        )}
         <div className="modal-body">
           {form.krType === 'NUMERICAL' && (
             <div className="kr-progress-field">
