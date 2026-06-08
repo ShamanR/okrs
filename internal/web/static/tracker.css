@@ -260,6 +260,9 @@
 .kr-note-optional { color: #9ca3af; font-weight: 400; }
 
 /* ── KR PROGRESS MODAL ───────────────────────────────────────────────────────── */
+.kr-progress-desc { padding: 14px 22px; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }
+.kr-progress-desc__label { font-size: 11px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #9ca3af; margin-bottom: 5px; }
+.kr-progress-desc__text { font-size: 13.5px; color: #374151; line-height: 1.5; white-space: pre-wrap; }
 .kr-progress-field { margin-bottom: 14px; }
 .kr-progress-field__label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 5px; }
 .kr-progress-field__hint { color: #9ca3af; font-weight: 400; }
