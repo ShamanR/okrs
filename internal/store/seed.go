@@ -2,19 +2,30 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"okrs/internal/domain"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/krs"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs.KRRepository, periodID int64) error {
 	teamNames := []string{"Platform", "Payments", "Growth"}
 	teamIDs := make([]int64, 0, len(teamNames))
 	for _, name := range teamNames {
+		// Team names are not unique (no constraint to use as an ON CONFLICT
+		// arbiter), so make seeding idempotent by reusing an existing active
+		// team with this name and inserting only when none exists.
 		var id int64
-		err := goalsRepo.DB().QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ($1,$2) ON CONFLICT (name) DO UPDATE SET name=EXCLUDED.name RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
+		err := goalsRepo.DB().QueryRow(ctx,
+			`SELECT id FROM teams WHERE name=$1 AND deleted_at IS NULL ORDER BY id LIMIT 1`, name).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			err = goalsRepo.DB().QueryRow(ctx,
+				`INSERT INTO teams (name, team_type) VALUES ($1,$2) RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
+		}
 		if err != nil {
 			return err
 		}
