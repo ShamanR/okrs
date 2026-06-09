@@ -10,6 +10,7 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/store/grants"
 )
 
 // fakeSettings is an in-memory settingsStore for handler tests.
@@ -171,5 +172,77 @@ func TestHandleUpdateGeneralSettingsRejectsNonHTTPURL(t *testing.T) {
 		if _, ok := fs.data["documentation_url"]; ok {
 			t.Errorf("body %s: value must not be stored on validation error", bad)
 		}
+	}
+}
+
+// fakeUsers is an in-memory userAdminStore for handler tests.
+type fakeUsers struct{ users []*domain.User }
+
+func (f *fakeUsers) ListUsers(context.Context) ([]*domain.User, error)    { return f.users, nil }
+func (f *fakeUsers) GetUser(context.Context, int64) (*domain.User, error) { return nil, nil }
+func (f *fakeUsers) SetUserAdmin(context.Context, int64, bool) error      { return nil }
+
+// fakeGrants is an in-memory grantsStore. activeTeamIDs models which granted
+// teams are still active; ListDescendantTeamIDs returns only the active roots
+// (descendant expansion is irrelevant for the membership test the handler does).
+type fakeGrants struct {
+	all           map[int64][]grants.HierarchyGrant
+	activeTeamIDs map[int64]bool
+}
+
+func (f *fakeGrants) ListUserGrants(context.Context, int64) ([]grants.HierarchyGrant, error) {
+	return nil, nil
+}
+func (f *fakeGrants) AllGrants(context.Context) (map[int64][]grants.HierarchyGrant, error) {
+	return f.all, nil
+}
+func (f *fakeGrants) ListDescendantTeamIDs(_ context.Context, roots []int64) ([]int64, error) {
+	var out []int64
+	for _, id := range roots {
+		if f.activeTeamIDs[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+func (f *fakeGrants) AddUserGrant(context.Context, int64, int64, int64) error { return nil }
+func (f *fakeGrants) RemoveUserGrant(context.Context, int64, int64) error     { return nil }
+
+// GrantedNodeCount must count only grants pointing at active teams: a grant to a
+// soft-deleted team expands to no visible access and must not be counted.
+func TestHandleListUsersExcludesDeletedTeamGrantsFromCount(t *testing.T) {
+	users := &fakeUsers{users: []*domain.User{{ID: 10, DisplayName: "Active"}, {ID: 20, DisplayName: "OnlyDead"}}}
+	g := &fakeGrants{
+		all: map[int64][]grants.HierarchyGrant{
+			10: {{UserID: 10, TeamID: 1}, {UserID: 10, TeamID: 2}}, // team 1 active, team 2 deleted
+			20: {{UserID: 20, TeamID: 2}},                          // only a deleted team
+		},
+		activeTeamIDs: map[int64]bool{1: true}, // team 2 is soft-deleted
+	}
+	h := New(users, nil, nil, g)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+	w := httptest.NewRecorder()
+	h.HandleListUsers(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var got []struct {
+		ID               int64
+		GrantedNodeCount int
+	}
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	counts := map[int64]int{}
+	for _, u := range got {
+		counts[u.ID] = u.GrantedNodeCount
+	}
+	if counts[10] != 1 {
+		t.Errorf("user 10: want GrantedNodeCount=1 (active team only), got %d", counts[10])
+	}
+	if counts[20] != 0 {
+		t.Errorf("user 20: want GrantedNodeCount=0 (only a deleted team), got %d", counts[20])
 	}
 }
