@@ -36,6 +36,7 @@ type settingsStore interface {
 type grantsStore interface {
 	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
 	AllGrants(ctx context.Context) (map[int64][]grants.HierarchyGrant, error)
+	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
 	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
 	RemoveUserGrant(ctx context.Context, userID, teamID int64) error
 }
@@ -63,6 +64,31 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	// Grants to soft-deleted teams stay in the table but expand to no visible
+	// access (descendant expansion filters deleted teams, and on soft delete a
+	// team's children are reparented away). Resolve the still-active granted
+	// teams in one query so they don't count toward a user's access — otherwise
+	// the "no access" filter/badge would miss a user whose only grants are dead.
+	distinct := make(map[int64]struct{})
+	for _, gs := range allGrants {
+		for _, g := range gs {
+			distinct[g.TeamID] = struct{}{}
+		}
+	}
+	roots := make([]int64, 0, len(distinct))
+	for id := range distinct {
+		roots = append(roots, id)
+	}
+	activeIDs, err := h.grants.ListDescendantTeamIDs(r.Context(), roots)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	activeSet := make(map[int64]struct{}, len(activeIDs))
+	for _, id := range activeIDs {
+		activeSet[id] = struct{}{}
+	}
+
 	// Augment each user with the number of hierarchy nodes granted to them, so
 	// the admin UI can filter "no access" users and show a node count without
 	// issuing a per-user grants request (the user list may hold thousands).
@@ -72,7 +98,13 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	items := make([]userListItem, 0, len(users))
 	for _, u := range users {
-		items = append(items, userListItem{User: u, GrantedNodeCount: len(allGrants[u.ID])})
+		count := 0
+		for _, g := range allGrants[u.ID] {
+			if _, ok := activeSet[g.TeamID]; ok {
+				count++
+			}
+		}
+		items = append(items, userListItem{User: u, GrantedNodeCount: count})
 	}
 	writeJSON(w, items)
 }

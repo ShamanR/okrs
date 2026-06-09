@@ -54,6 +54,26 @@ func TestTeamsCRUD(t *testing.T) {
 	}
 }
 
+// Team names are not unique: the same name may recur across the hierarchy.
+func TestCreateTeamAllowsDuplicateNames(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := teams.NewTeamRepository(pool)
+
+	id1, err := r.CreateTeam(ctx, teams.TeamInput{Name: "SRE", Type: domain.TeamTypeTeam})
+	if err != nil {
+		t.Fatalf("CreateTeam first: %v", err)
+	}
+	id2, err := r.CreateTeam(ctx, teams.TeamInput{Name: "SRE", Type: domain.TeamTypeTeam})
+	if err != nil {
+		t.Fatalf("CreateTeam duplicate name must succeed, got: %v", err)
+	}
+	if id1 == id2 {
+		t.Fatalf("expected distinct ids for same-named teams, got %d twice", id1)
+	}
+}
+
 func TestSoftDeleteReparentsChildren(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
