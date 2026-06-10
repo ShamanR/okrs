@@ -474,7 +474,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
         {kr.desc && (
           <div className="kr-progress-desc">
             <div className="kr-progress-desc__label">Описание</div>
-            <div className="kr-progress-desc__text">{kr.desc}</div>
+            <Markdown text={kr.desc} className="kr-progress-desc__text" />
           </div>
         )}
         <div className="modal-body">
@@ -806,7 +806,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
           <div className="kr-weight-chip">{kr.weight}</div>
           <div className="kr-info">
             <div className="kr-name">{kr.name}</div>
-            {kr.desc && <div className="kr-desc">{kr.desc}</div>}
+            {kr.desc && <Markdown text={kr.desc} className="kr-desc" />}
             <div className="kr-detail-row">
               <div className="kr-bar-wrap"><ProgressBar value={progress} h={4} color={accent} /></div>
               <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
@@ -837,7 +837,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
                   <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={22} />
                   <span className="kr-note__date">{kr.note.date}</span>
                 </div>
-                <div className="kr-note__text" style={{ whiteSpace: 'pre-wrap' }}>{kr.note.text}</div>
+                <Markdown text={kr.note.text} className="kr-note__text" />
               </div>
             </div>
           </div>
@@ -956,7 +956,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
           </div>
           {canEdit && <button onClick={() => setConfirmDeleteGoal(true)} title="Удалить цель" className="goal-card__delete-btn">×</button>}
         </div>
-        {goal.desc && <div className="goal-card__desc">{goal.desc}</div>}
+        {goal.desc && <Markdown text={goal.desc} className="goal-card__desc" />}
         {otherTeams.length > 0 && (
           <div className="shared-banner">
             <span className="shared-banner__label">⇄ Общая с:</span>
@@ -1902,7 +1902,7 @@ function App() {
             )}
             {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
           </div>
-          {teamOKR?.team?.description && <div className="topbar__desc">{teamOKR.team.description}</div>}
+          {teamOKR?.team?.description && <Markdown text={teamOKR.team.description} className="topbar__desc" />}
         </div>
 
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />
