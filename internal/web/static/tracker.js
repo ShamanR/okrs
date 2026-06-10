@@ -1881,25 +1881,28 @@ function App() {
 
       <div className="main">
         <div className="topbar">
-          <span className="topbar__title">{teamOKR?.team?.name || 'Выберите команду'}</span>
-          {teamOKR?.team?.type && <Badge label={TEAM_TYPE_LABEL[teamOKR.team.type] || teamOKR.team.type} color={TEAM_TYPE_COLOR[teamOKR.team.type] || '#6b7280'} />}
-          {teamOKR?.team?.lead && (
-            <div className="topbar__lead">
-              <UserInfo userRef={teamOKR.team.lead} size={22} />
-              <span className="topbar__lead-role">лид</span>
-            </div>
-          )}
-          <div className="topbar__spacer" />
-          {hasGoals && teamOKR?.progress_meta && (
-            <div className="topbar__progress">
-              <div style={{ width: 140 }}>
-                <ProgressBar value={teamOKR.period_progress || 0} forecast={teamOKR.progress_meta.forecast} h={6}
-                  color={HEALTH_COLOR[teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
+          <div className="topbar__main">
+            <span className="topbar__title">{teamOKR?.team?.name || 'Выберите команду'}</span>
+            {teamOKR?.team?.type && <Badge label={TEAM_TYPE_LABEL[teamOKR.team.type] || teamOKR.team.type} color={TEAM_TYPE_COLOR[teamOKR.team.type] || '#6b7280'} />}
+            {teamOKR?.team?.lead && (
+              <div className="topbar__lead">
+                <UserInfo userRef={teamOKR.team.lead} size={22} />
+                <span className="topbar__lead-role">лид</span>
               </div>
-              <span className="topbar__progress-pct">{teamOKR.period_progress || 0}%</span>
-            </div>
-          )}
-          {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
+            )}
+            <div className="topbar__spacer" />
+            {hasGoals && teamOKR?.progress_meta && (
+              <div className="topbar__progress">
+                <div style={{ width: 140 }}>
+                  <ProgressBar value={teamOKR.period_progress || 0} forecast={teamOKR.progress_meta.forecast} h={6}
+                    color={HEALTH_COLOR[teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
+                </div>
+                <span className="topbar__progress-pct">{teamOKR.period_progress || 0}%</span>
+              </div>
+            )}
+            {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
+          </div>
+          {teamOKR?.team?.description && <div className="topbar__desc">{teamOKR.team.description}</div>}
         </div>
 
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />

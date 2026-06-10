@@ -410,6 +410,8 @@ Hierarchy node shape расширен полем:
 
 Комментарии загружаются батчевым запросом (`ANY($1)`) вместе с goals — без N+1.
 
+Объект `team` содержит `id`, `name`, `type`, `type_label`, `description` (описание команды; пустая строка опускается), `lead`, `parent_id`.
+
 Response расширен полем:
 
 - `progress_meta`:
@@ -450,7 +452,7 @@ Success response (`200`):
 - `children_summary`:
   - `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `sort_order`);
   - `items[]`:
-    - `team` (`id`, `name`, `type`, `type_label`, `parent_id`);
+    - `team` (`id`, `name`, `type`, `type_label`, `description`, `parent_id`);
     - `status`, `status_label`;
     - `has_goals` (bool);
     - `progress_meta` (optional; возвращается при `has_goals=true`);

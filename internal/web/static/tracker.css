@@ -38,7 +38,9 @@
 
 /* ── TOPBAR ─────────────────────────────────────────────────────────────────── */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #edf0f4; }
-.topbar { padding: 0 24px; background: white; border-bottom: 1px solid #e5e7eb; display: flex; align-items: center; height: 54px; gap: 14px; flex-shrink: 0; }
+.topbar { padding: 10px 24px; background: white; border-bottom: 1px solid #e5e7eb; display: flex; flex-direction: column; justify-content: center; gap: 4px; flex-shrink: 0; min-height: 54px; }
+.topbar__main { display: flex; align-items: center; gap: 14px; }
+.topbar__desc { font-size: 13px; color: #6b7280; line-height: 1.4; }
 .topbar__title { font-size: 17px; font-weight: 800; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .topbar__lead { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; background: #f3f4f6; border-radius: 20px; flex-shrink: 0; }
 .topbar__lead-name { font-size: 12px; color: #374151; font-weight: 500; }
@@ -134,7 +136,8 @@
 .modal-overlay--z600 { z-index: 600; background: rgba(0,0,0,0.45); }
 .modal-box { background: white; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden; }
 .modal-box--w380 { width: min(440px, 94vw); }
-.modal-box--w480 { width: min(620px, 94vw); }
+.modal-box--w480 { width: min(780px, 94vw); max-height: 92vh; display: flex; flex-direction: column; }
+.modal-box--w480 .modal-body { overflow: auto; }
 .modal-box--w560 { width: min(820px, 94vw); max-height: 92vh; overflow: auto; }
 .modal-box--w600 { width: min(960px, 95vw); max-height: 92vh; overflow: auto; border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); }
 .modal-header { padding: 18px 22px 14px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }

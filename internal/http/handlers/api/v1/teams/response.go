@@ -17,8 +17,9 @@ func newTeamOKRResponse(data service.TeamOKR, userRefs map[string]*dto.UserRef) 
 		Team: dto.TeamInfo{
 			ID: data.Team.ID, Name: data.Team.Name,
 			Type: string(data.Team.Type), TypeLabel: common.TeamTypeLabel(data.Team.Type),
-			Lead:     v1.ResolveLeadByUDID(data.Team.LeadUDID, userRefs),
-			ParentID: data.Team.ParentID,
+			Description: data.Team.Description,
+			Lead:        v1.ResolveLeadByUDID(data.Team.LeadUDID, userRefs),
+			ParentID:    data.Team.ParentID,
 		},
 		Period:          v1.MapPeriodInfo(data.Period),
 		PeriodStatus:    string(data.PeriodStatus),
@@ -53,8 +54,9 @@ func mapTeamChildrenSummaryResponse(period domain.Period, items []service.TeamCh
 			Team: dto.TeamInfo{
 				ID: item.Team.ID, Name: item.Team.Name,
 				Type: string(item.Team.Type), TypeLabel: common.TeamTypeLabel(item.Team.Type),
-				Lead:     v1.ResolveLeadByUDID(item.Team.LeadUDID, userRefs),
-				ParentID: item.Team.ParentID,
+				Description: item.Team.Description,
+				Lead:        v1.ResolveLeadByUDID(item.Team.LeadUDID, userRefs),
+				ParentID:    item.Team.ParentID,
 			},
 			Status:            string(item.Status),
 			StatusLabel:       common.TeamPeriodStatusLabel(item.Status),
