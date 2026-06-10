@@ -545,8 +545,8 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
           )}
           <div>
             <div className="kr-note-label">Заметка <span className="kr-note-optional">(опционально)</span></div>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Контекст, блокеры…"
-              className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+            <MarkdownEditor value={note} onChange={setNote} rows={3} placeholder="Контекст, блокеры…"
+              textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ resize: 'vertical' }} />
             {kr.note && (
               <div className="kr-note-meta" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
                 <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={18} /> · {kr.note.date}
@@ -629,8 +629,8 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
           </div>
           <div className="form-group--sm">
             <div className="kr-num-field__label">Описание</div>
-            <textarea value={form.desc || ''} onChange={e => set('desc', e.target.value)} rows={2}
-              className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+            <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={2}
+              textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ resize: 'vertical' }} />
           </div>
           <div className="form-row" style={{ marginBottom: 14 }}>
             <div className="form-col">
@@ -1336,7 +1336,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           </div>
           <div className="form-group">
             <FieldLabel hint="Контекст, почему эта цель важна. Не дублируйте название.">Описание</FieldLabel>
-            <textarea value={form.desc || ''} onChange={e => set('desc', e.target.value)} rows={3} placeholder="Дополнительный контекст…" className="form-textarea" />
+            <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={3} placeholder="Дополнительный контекст…" textareaClassName="form-textarea" />
           </div>
           <div className="form-row">
             <div className="form-col">
