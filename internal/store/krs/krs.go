@@ -319,6 +319,16 @@ func (r *KRRepository) UpdateKeyResultWeight(ctx context.Context, krID int64, we
 	return err
 }
 
+func (r *KRRepository) UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE key_results
+		SET description=$1, updated_at=NOW()
+		WHERE id=$2`,
+		description, krID,
+	)
+	return err
+}
+
 func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, input NumericalMetaInput) error {
 	var checkpointsJSON []byte
 	if len(input.Checkpoints) > 0 {

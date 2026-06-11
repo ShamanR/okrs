@@ -241,6 +241,35 @@ func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// HandleUpdateKRDescription updates only the description of a KR. Allowed in the
+// same situations as notes (access check only), so a description can be added
+// from the progress-update modal when full editing is otherwise locked.
+func (h *Handler) HandleUpdateKRDescription(w http.ResponseWriter, r *http.Request) {
+	krID, err := common.ParseID(chi.URLParam(r, "krID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), krID)
+	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
+		return
+	}
+	var req struct {
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	req.Description = strings.ReplaceAll(req.Description, "\r\n", "\n")
+	if err := h.service.UpdateKeyResultDescription(r.Context(), krID, req.Description); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update description", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) HandleMoveKeyResultUp(w http.ResponseWriter, r *http.Request) {
 	h.handleMoveKeyResult(w, r, -1)
 }

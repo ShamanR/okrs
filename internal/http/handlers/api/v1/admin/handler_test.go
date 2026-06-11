@@ -45,6 +45,7 @@ func TestHandleMeReturns401WhenNoUser(t *testing.T) {
 func TestHandleMeReturnsUserJSON(t *testing.T) {
 	u := &domain.User{
 		ID:          99,
+		UDID:        "550e8400-e29b-41d4-a716-446655440000",
 		DisplayName: "Alice",
 		Email:       "alice@example.com",
 		AvatarURL:   "https://example.com/avatar.png",
@@ -65,6 +66,9 @@ func TestHandleMeReturnsUserJSON(t *testing.T) {
 	}
 	if got.ID != 99 {
 		t.Errorf("id: want 99, got %d", got.ID)
+	}
+	if got.UDID != "550e8400-e29b-41d4-a716-446655440000" {
+		t.Errorf("udid: want 550e8400-e29b-41d4-a716-446655440000, got %s", got.UDID)
 	}
 	if got.DisplayName != "Alice" {
 		t.Errorf("display_name: want Alice, got %s", got.DisplayName)

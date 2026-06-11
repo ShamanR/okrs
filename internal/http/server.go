@@ -200,6 +200,13 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	r.Get("/", trackerShell)
 	r.Get("/teams/{teamID}/okr", trackerShell)
 
+	// Personal settings SPA — team descriptions (for leads) and sidebar node picker.
+	// Available to any authenticated user (not admin-only); not part of the admin panel.
+	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", nil)
+	})
+
 	// Legacy redirect for bookmarks — the tracker now lives at the root.
 	r.Get("/teamOkrs", func(w http.ResponseWriter, r *http.Request) {
 		target := "/"

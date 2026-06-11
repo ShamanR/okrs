@@ -14,34 +14,34 @@ import (
 )
 
 type fakeStore struct {
-	teams          []domain.Team
-	periods        []domain.Period
-	currentPeriod  domain.Period
-	goalsByTeam    map[int64]map[int64][]domain.Goal
-	statuses       map[[2]int64]domain.TeamPeriodStatus
-	keyResults     map[int64]domain.KeyResult
+	teams            []domain.Team
+	periods          []domain.Period
+	currentPeriod    domain.Period
+	goalsByTeam      map[int64]map[int64][]domain.Goal
+	statuses         map[[2]int64]domain.TeamPeriodStatus
+	keyResults       map[int64]domain.KeyResult
 	numericalUpdates map[int64]float64
-	booleanUpdates map[int64]bool
-	projectStages  map[int64][]domain.KRProjectStage
-	stageUpdates   map[int64]bool
-	movedGoals     map[int64]int
-	movedKRs       map[int64]int
-	softDeleted    []int64
-	restored       []int64
-	hardDeleted    []int64
+	booleanUpdates   map[int64]bool
+	projectStages    map[int64][]domain.KRProjectStage
+	stageUpdates     map[int64]bool
+	movedGoals       map[int64]int
+	movedKRs         map[int64]int
+	softDeleted      []int64
+	restored         []int64
+	hardDeleted      []int64
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{
-		goalsByTeam:    make(map[int64]map[int64][]domain.Goal),
-		statuses:       make(map[[2]int64]domain.TeamPeriodStatus),
-		keyResults:     make(map[int64]domain.KeyResult),
+		goalsByTeam:      make(map[int64]map[int64][]domain.Goal),
+		statuses:         make(map[[2]int64]domain.TeamPeriodStatus),
+		keyResults:       make(map[int64]domain.KeyResult),
 		numericalUpdates: make(map[int64]float64),
-		booleanUpdates: make(map[int64]bool),
-		projectStages:  make(map[int64][]domain.KRProjectStage),
-		stageUpdates:   make(map[int64]bool),
-		movedGoals:     make(map[int64]int),
-		movedKRs:       make(map[int64]int),
+		booleanUpdates:   make(map[int64]bool),
+		projectStages:    make(map[int64][]domain.KRProjectStage),
+		stageUpdates:     make(map[int64]bool),
+		movedGoals:       make(map[int64]int),
+		movedKRs:         make(map[int64]int),
 	}
 }
 
@@ -237,6 +237,7 @@ func (f *fakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult,
 }
 func (f *fakeStore) AddGoalComment(context.Context, int64, string, int64) error      { return nil }
 func (f *fakeStore) UpsertKeyResultNote(context.Context, int64, string, int64) error { return nil }
+func (f *fakeStore) UpdateKeyResultDescription(context.Context, int64, string) error { return nil }
 func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
 func (f *fakeStore) UpdateGoal(context.Context, goals.GoalUpdateInput) error         { return nil }
 func (f *fakeStore) CreateKeyResult(context.Context, krs.KeyResultInput) (int64, error) {

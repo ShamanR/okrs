@@ -25,14 +25,14 @@ type goalFakeStore struct {
 	nextGoalID       int64
 
 	// call tracking
-	setStatusCalls     []setStatusArg
-	deleteGoalCalls    []int64
-	deleteShareCalls   []deleteShareArg
-	updateOwnerCalls   []updateOwnerArg
-	replaceSharesCalls []replaceSharesArg
+	setStatusCalls       []setStatusArg
+	deleteGoalCalls      []int64
+	deleteShareCalls     []deleteShareArg
+	updateOwnerCalls     []updateOwnerArg
+	replaceSharesCalls   []replaceSharesArg
 	upsertNumericalCalls []krs.NumericalMetaInput
-	upsertBoolCalls    []upsertBoolArg
-	replaceStageCalls  []replaceStagesArg
+	upsertBoolCalls      []upsertBoolArg
+	replaceStageCalls    []replaceStagesArg
 }
 
 type setStatusArg struct {
@@ -222,12 +222,15 @@ func (f *goalFakeStore) MoveKeyResult(_ context.Context, _ int64, _ int) error {
 func (f *goalFakeStore) UpsertKeyResultNote(_ context.Context, _ int64, _ string, _ int64) error {
 	return nil
 }
+func (f *goalFakeStore) UpdateKeyResultDescription(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 func (f *goalFakeStore) FindGoalIDByKR(_ context.Context, _ int64) (int64, error)    { return 0, nil }
 func (f *goalFakeStore) FindGoalIDByStage(_ context.Context, _ int64) (int64, error) { return 0, nil }
 func (f *goalFakeStore) UpdateNumericalCurrent(_ context.Context, _ int64, _ float64) error {
 	return nil
 }
-func (f *goalFakeStore) UpdateBoolean(_ context.Context, _ int64, _ bool) error          { return nil }
+func (f *goalFakeStore) UpdateBoolean(_ context.Context, _ int64, _ bool) error { return nil }
 func (f *goalFakeStore) ListProjectStages(_ context.Context, _ int64) ([]domain.KRProjectStage, error) {
 	return nil, nil
 }

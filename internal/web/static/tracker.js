@@ -66,6 +66,33 @@ function writeTreeExpanded(expanded) {
   try { localStorage.setItem(TREE_EXPANDED_KEY, JSON.stringify(expanded)); } catch {}
 }
 
+// Personal settings persisted by the /settings page (per-user localStorage).
+// Keys must stay in sync with settings.js.
+const SETTINGS_DESC_KEY = uid => `okr_team_desc_overrides:${uid}`;
+const SETTINGS_SIDEBAR_KEY = uid => `okr_sidebar_nodes:${uid}`;
+function readDescOverrides(uid) {
+  try { const v = localStorage.getItem(SETTINGS_DESC_KEY(uid)); const m = v ? JSON.parse(v) : null; return m && typeof m === 'object' ? m : {}; }
+  catch { return {}; }
+}
+// Returns a Set of selected node ids, or null when the user never configured the
+// sidebar (→ show everything). An empty configured selection returns an empty Set.
+function readSidebarSelection(uid) {
+  try { const v = localStorage.getItem(SETTINGS_SIDEBAR_KEY(uid)); if (v == null) return null; const a = JSON.parse(v); return Array.isArray(a) ? new Set(a) : null; }
+  catch { return null; }
+}
+// Keeps a node when its subtree intersects (selected ∪ current team) — so picked
+// nodes, their ancestors (for navigation) and the current team always render.
+function filterTreeForSidebar(nodes, sel, currentId) {
+  if (!sel) return nodes;
+  const keep = node => {
+    const kids = (node.children || []).map(keep).filter(Boolean);
+    const selfVisible = sel.has(node.id) || node.id === currentId;
+    if (selfVisible || kids.length) return { ...node, children: kids };
+    return null;
+  };
+  return nodes.map(keep).filter(Boolean);
+}
+
 // ── DATE HELPERS ──────────────────────────────────────────────────────────────
 function daysAgo(iso) {
   if (!iso) return 0;
@@ -279,49 +306,7 @@ function AvatarWithUDID({ name, udid, size = 28 }) {
   return <Avatar name={name} avatarUrl={cached?.avatar_url || null} size={size} />;
 }
 
-// ── HEADER USER MENU ──────────────────────────────────────────────────────────
-function HeaderUserMenu({ user, docUrl }) {
-  const [open, setOpen] = useState(false);
-  const timer = useRef();
-  const show = () => { clearTimeout(timer.current); setOpen(true); };
-  const hide = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 150); };
-  const logout = () => { fetch('/logout', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': readCSRF() } }).then(() => location.href = '/login'); };
-  const name = user?.display_name || 'Пользователь';
-  return (
-    <div className="user-menu" onMouseEnter={show} onMouseLeave={hide}>
-      <button onClick={() => setOpen(o => !o)} className={`user-menu__trigger${open ? ' user-menu__trigger--open' : ''}`}>
-        <Avatar name={name} avatarUrl={user?.avatar_url} size={28} />
-        <span className={`user-menu__chevron${open ? ' user-menu__chevron--open' : ''}`}>▾</span>
-      </button>
-      {open && (
-        <div onMouseEnter={show} onMouseLeave={hide} className="user-menu__dropdown">
-          <div className="user-menu__profile">
-            <Avatar name={name} avatarUrl={user?.avatar_url} size={36} />
-            <div>
-              <div className="user-menu__name">{name}</div>
-              <div className="user-menu__email">{user?.email || user?.provider || ''}</div>
-            </div>
-          </div>
-          {docUrl && (
-            <a href={docUrl} target="_blank" rel="noopener noreferrer" className="user-menu__item">
-              <span className="user-menu__item-icon">📖</span>Документация
-            </a>
-          )}
-          {user?.is_admin && (
-            <a href="/admin" className="user-menu__item">
-              <span className="user-menu__item-icon">⚙</span>Управление
-            </a>
-          )}
-          <div className="user-menu__divider">
-            <button onClick={logout} className="user-menu__item user-menu__item--danger">
-              <span className="user-menu__item-icon">↩</span><span>Выйти</span>
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// HeaderUserMenu lives in the shared header.js module (loaded before this script).
 
 // ── TEAM COMBOBOX ─────────────────────────────────────────────────────────────
 function flattenTree(nodes, depth = 0) {
@@ -439,6 +424,7 @@ function useOverlayClose(onClose) {
 function KRProgressModal({ kr, onSave, onClose, accent }) {
   const [form, setForm] = useState({ ...kr, stages: (kr.stages || []).map(s => ({ ...s })) });
   const [note, setNote] = useState(kr.note?.text ?? ''); const [saving, setSaving] = useState(false);
+  const [descDraft, setDescDraft] = useState(''); const [descEditing, setDescEditing] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setStage = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const progress = calcKRProgress(form);
@@ -457,6 +443,10 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
       if (trimmed && trimmed !== (kr.note?.text ?? '')) {
         await apiPost(`/api/v1/krs/${kr.id}/note`, { text: trimmed });
       }
+      const trimmedDesc = descDraft.trim();
+      if (descEditing && trimmedDesc) {
+        await apiPost(`/api/v1/krs/${kr.id}/description`, { description: trimmedDesc });
+      }
       onSave();
     } catch (e) { alert('Ошибка сохранения: ' + e.message); }
     finally { setSaving(false); }
@@ -471,10 +461,23 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
           </div>
           <button onClick={onClose} className="modal-close">×</button>
         </div>
-        {kr.desc && (
+        {kr.desc ? (
           <div className="kr-progress-desc">
             <div className="kr-progress-desc__label">Описание</div>
             <Markdown text={kr.desc} className="kr-progress-desc__text" />
+          </div>
+        ) : descEditing ? (
+          <div className="kr-progress-desc">
+            <div className="kr-progress-desc__label">Описание</div>
+            <textarea value={descDraft} onChange={e => setDescDraft(e.target.value)} rows={3} autoFocus
+              placeholder="Добавьте описание для контекста…"
+              className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+          </div>
+        ) : (
+          <div className="kr-progress-desc">
+            <button type="button" onClick={() => setDescEditing(true)} className="kr-zeroing-btn">
+              <span className="kr-zeroing-btn__icon">＋</span> Добавить описание
+            </button>
           </div>
         )}
         <div className="modal-body">
@@ -1854,7 +1857,7 @@ function App() {
       <div className="sidebar">
         <div className="sidebar__header">
           <div className="sidebar__logo">OKR Tracker</div>
-          {me && <HeaderUserMenu user={me} docUrl={docUrl} accent={accent} />}
+          {me && <HeaderUserMenu user={me} docUrl={docUrl} />}
         </div>
         <div className="sidebar__period">
           <div className="sidebar__period-label">Период</div>
@@ -1871,7 +1874,7 @@ function App() {
                 <div className="no-access__hint">За доступом обратитесь к администратору</div>
               </div>
             )
-            : hierarchy.map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} />)
+            : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} />)
           }
         </div>
         <div style={{padding: '8px 8px 0'}}>
@@ -1902,7 +1905,11 @@ function App() {
             )}
             {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
           </div>
-          {teamOKR?.team?.description && <Markdown text={teamOKR.team.description} className="topbar__desc" />}
+          {(() => {
+            const ov = readDescOverrides(me?.id);
+            const desc = teamOKR?.team && ov[teamOKR.team.id] !== undefined ? ov[teamOKR.team.id] : teamOKR?.team?.description;
+            return desc ? <Markdown text={desc} className="topbar__desc" /> : null;
+          })()}
         </div>
 
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />

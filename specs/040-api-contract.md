@@ -72,6 +72,7 @@ Response:
 ```json
 {
   "id": 42,
+  "udid": "550e8400-e29b-41d4-a716-446655440000",
   "display_name": "Ivan Ivanov",
   "email": "ivan@example.com",
   "avatar_url": "https://...",
@@ -79,6 +80,8 @@ Response:
   "is_admin": false
 }
 ```
+
+- `udid` — UUID текущего пользователя (тот же идентификатор, что и в публичном API users/hierarchy). Используется клиентом, чтобы сопоставить пользователя с `lead.udid` узлов иерархии (имена не уникальны), напр. на странице настроек для определения команд, где пользователь является лидом.
 
 При `AUTH_MODE=disabled` возвращает системного пользователя `anonymous-local`.
 
@@ -269,6 +272,7 @@ CSRF token должен быть ротационным (не постоянны
 - move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`
 - update KR progress — `POST /api/v1/krs/{krID}/progress/numerical|boolean|project`
 - upsert KR note — `POST /api/v1/krs/{krID}/note`
+- update KR description — `POST /api/v1/krs/{krID}/description` body `{ "description": <string> }`; обновляет только описание KR. Доступен при тех же условиях, что и заметка (проверка доступа к команде-владельцу), поэтому описание можно добавить из модалки обновления прогресса, когда полное редактирование KR заблокировано статусом.
 - update KR — `POST /api/v1/krs/{krID}`
 - move KR up / down — `POST /api/v1/krs/{krID}/move-up`, `POST /api/v1/krs/{krID}/move-down`
 - update team status — `POST /api/v1/teams/{teamID}/status`
@@ -373,6 +377,7 @@ Validation:
 Hierarchy node shape расширен полем:
 
 - `lead` — строка с руководителем команды.
+- `description` — описание команды (omitempty; пустая строка опускается). Используется страницей настроек для предпросмотра/редактирования описаний.
 - `has_goals` — есть ли у команды goals в выбранном периоде.
 - `progress` — прогресс команды (0..100), возвращается только если `has_goals=true`.
 

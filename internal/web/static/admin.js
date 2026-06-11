@@ -291,44 +291,7 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder, single, exclud
   </div>;
 }
 
-// ── HEADER USER MENU ─────────────────────────────────────────────────────────
-function HeaderUserMenu({user}) {
-  const [open, setOpen] = useState(false);
-  const timer = useRef();
-  const show = ()=>{clearTimeout(timer.current);setOpen(true);};
-  const hide = ()=>{timer.current=setTimeout(()=>setOpen(false),160);};
-  return <div style={{position:'relative'}} onMouseEnter={show} onMouseLeave={hide}>
-    <button onClick={()=>setOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:7,background:open?'rgba(255,255,255,0.08)':'transparent',border:'none',borderRadius:8,padding:'4px 7px 4px 4px',cursor:'pointer'}}>
-      <UserAvatar user={user} size={28}/>
-      <span style={{color:'rgba(255,255,255,0.55)',fontSize:10,transform:open?'rotate(180deg)':'none'}}>▾</span>
-    </button>
-    {open&&<div onMouseEnter={show} onMouseLeave={hide}
-      style={{position:'absolute',top:'calc(100% + 6px)',right:0,background:'white',borderRadius:10,boxShadow:'0 12px 32px rgba(15,23,42,0.18)',border:'1px solid '+T.cardBorder,minWidth:240,zIndex:1000,overflow:'hidden'}}>
-      <div style={{padding:'12px 14px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'center',gap:10}}>
-        <UserAvatar user={user} size={40}/>
-        <div>
-          <div style={{fontSize:13,fontWeight:700,color:T.bodyFg}}>{user?.display_name}</div>
-          <div style={{fontSize:11,color:T.mutedFg}}>{user?.email}</div>
-        </div>
-      </div>
-      <div style={{padding:'4px 0'}}>
-        <a href="/teamOkrs" style={{display:'flex',alignItems:'center',gap:10,padding:'8px 14px',background:'none',textDecoration:'none',color:'inherit'}}
-          onMouseEnter={e=>e.currentTarget.style.background='#f9fafb'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
-          <span style={{width:20,textAlign:'center',color:T.mutedFg}}>←</span>
-          <div><div style={{fontSize:13,fontWeight:500,color:T.bodyFg}}>OKR Tracker</div><div style={{fontSize:11,color:T.dimFg}}>Вернуться к целям</div></div>
-        </a>
-      </div>
-      <div style={{borderTop:'1px solid '+T.hairline,padding:'4px 0'}}>
-        <button onClick={()=>apiPost('/logout',{}).then(()=>window.location.href='/login')}
-          style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'8px 14px',background:'none',border:'none',cursor:'pointer',textAlign:'left',fontFamily:'inherit'}}
-          onMouseEnter={e=>e.currentTarget.style.background='#fef2f2'} onMouseLeave={e=>e.currentTarget.style.background='none'}>
-          <span style={{width:20,textAlign:'center',color:T.danger}}>↩</span>
-          <div style={{fontSize:13,fontWeight:500,color:T.danger}}>Выйти</div>
-        </button>
-      </div>
-    </div>}
-  </div>;
-}
+// HeaderUserMenu lives in the shared header.js module (loaded before this script).
 
 // ── SHELL ────────────────────────────────────────────────────────────────────
 function Shell({section, setSection, currentUser, children}) {
