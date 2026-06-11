@@ -758,7 +758,7 @@ function TeamEditor({value, teams, onSave, onClose, onDelete, saving}) {
           </select>
         </Field>
       </div>
-      <Field label="Описание" hint="необязательно"><textarea rows={2} value={f.description||''} onChange={e=>setF({...f,description:e.target.value})} style={{...inpStyle,resize:'vertical',lineHeight:1.5,minHeight:64}}/></Field>
+      <Field label="Описание" hint="необязательно"><MarkdownEditor value={f.description} onChange={v=>setF({...f,description:v})} rows={2} textareaStyle={{...inpStyle,resize:'vertical',lineHeight:1.5,minHeight:64}}/></Field>
       {sep}
       <Field label="Руководитель"><UserSelector value={f.lead||''} onChange={(name, udid)=>setF({...f,lead:name,lead_udid:udid||null})} placeholder="Поиск пользователя…"/></Field>
       {sep}

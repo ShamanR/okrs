@@ -3,12 +3,13 @@ package dto
 import "time"
 
 type TeamInfo struct {
-	ID        int64    `json:"id"`
-	Name      string   `json:"name"`
-	Type      string   `json:"type"`
-	TypeLabel string   `json:"type_label"`
-	Lead      *UserRef `json:"lead,omitempty"`
-	ParentID  *int64   `json:"parent_id,omitempty"`
+	ID          int64    `json:"id"`
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	TypeLabel   string   `json:"type_label"`
+	Description string   `json:"description,omitempty"`
+	Lead        *UserRef `json:"lead,omitempty"`
+	ParentID    *int64   `json:"parent_id,omitempty"`
 }
 
 type ProgressBarInfo struct {

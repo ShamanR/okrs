@@ -474,7 +474,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
         {kr.desc && (
           <div className="kr-progress-desc">
             <div className="kr-progress-desc__label">Описание</div>
-            <div className="kr-progress-desc__text">{kr.desc}</div>
+            <Markdown text={kr.desc} className="kr-progress-desc__text" />
           </div>
         )}
         <div className="modal-body">
@@ -545,8 +545,8 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
           )}
           <div>
             <div className="kr-note-label">Заметка <span className="kr-note-optional">(опционально)</span></div>
-            <textarea value={note} onChange={e => setNote(e.target.value)} rows={3} placeholder="Контекст, блокеры…"
-              className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+            <MarkdownEditor value={note} onChange={setNote} rows={3} placeholder="Контекст, блокеры…"
+              textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ resize: 'vertical' }} />
             {kr.note && (
               <div className="kr-note-meta" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, fontSize: 11, color: '#9ca3af' }}>
                 <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={18} /> · {kr.note.date}
@@ -629,8 +629,8 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
           </div>
           <div className="form-group--sm">
             <div className="kr-num-field__label">Описание</div>
-            <textarea value={form.desc || ''} onChange={e => set('desc', e.target.value)} rows={2}
-              className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
+            <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={2}
+              textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ resize: 'vertical' }} />
           </div>
           <div className="form-row" style={{ marginBottom: 14 }}>
             <div className="form-col">
@@ -806,7 +806,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
           <div className="kr-weight-chip">{kr.weight}</div>
           <div className="kr-info">
             <div className="kr-name">{kr.name}</div>
-            {kr.desc && <div className="kr-desc">{kr.desc}</div>}
+            {kr.desc && <Markdown text={kr.desc} className="kr-desc" />}
             <div className="kr-detail-row">
               <div className="kr-bar-wrap"><ProgressBar value={progress} h={4} color={accent} /></div>
               <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
@@ -837,7 +837,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent }) {
                   <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={22} />
                   <span className="kr-note__date">{kr.note.date}</span>
                 </div>
-                <div className="kr-note__text" style={{ whiteSpace: 'pre-wrap' }}>{kr.note.text}</div>
+                <Markdown text={kr.note.text} className="kr-note__text" />
               </div>
             </div>
           </div>
@@ -956,7 +956,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
           </div>
           {canEdit && <button onClick={() => setConfirmDeleteGoal(true)} title="Удалить цель" className="goal-card__delete-btn">×</button>}
         </div>
-        {goal.desc && <div className="goal-card__desc">{goal.desc}</div>}
+        {goal.desc && <Markdown text={goal.desc} className="goal-card__desc" />}
         {otherTeams.length > 0 && (
           <div className="shared-banner">
             <span className="shared-banner__label">⇄ Общая с:</span>
@@ -1336,7 +1336,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           </div>
           <div className="form-group">
             <FieldLabel hint="Контекст, почему эта цель важна. Не дублируйте название.">Описание</FieldLabel>
-            <textarea value={form.desc || ''} onChange={e => set('desc', e.target.value)} rows={3} placeholder="Дополнительный контекст…" className="form-textarea" />
+            <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={3} placeholder="Дополнительный контекст…" textareaClassName="form-textarea" />
           </div>
           <div className="form-row">
             <div className="form-col">
@@ -1881,25 +1881,28 @@ function App() {
 
       <div className="main">
         <div className="topbar">
-          <span className="topbar__title">{teamOKR?.team?.name || 'Выберите команду'}</span>
-          {teamOKR?.team?.type && <Badge label={TEAM_TYPE_LABEL[teamOKR.team.type] || teamOKR.team.type} color={TEAM_TYPE_COLOR[teamOKR.team.type] || '#6b7280'} />}
-          {teamOKR?.team?.lead && (
-            <div className="topbar__lead">
-              <UserInfo userRef={teamOKR.team.lead} size={22} />
-              <span className="topbar__lead-role">лид</span>
-            </div>
-          )}
-          <div className="topbar__spacer" />
-          {hasGoals && teamOKR?.progress_meta && (
-            <div className="topbar__progress">
-              <div style={{ width: 140 }}>
-                <ProgressBar value={teamOKR.period_progress || 0} forecast={teamOKR.progress_meta.forecast} h={6}
-                  color={HEALTH_COLOR[teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
+          <div className="topbar__main">
+            <span className="topbar__title">{teamOKR?.team?.name || 'Выберите команду'}</span>
+            {teamOKR?.team?.type && <Badge label={TEAM_TYPE_LABEL[teamOKR.team.type] || teamOKR.team.type} color={TEAM_TYPE_COLOR[teamOKR.team.type] || '#6b7280'} />}
+            {teamOKR?.team?.lead && (
+              <div className="topbar__lead">
+                <UserInfo userRef={teamOKR.team.lead} size={22} />
+                <span className="topbar__lead-role">лид</span>
               </div>
-              <span className="topbar__progress-pct">{teamOKR.period_progress || 0}%</span>
-            </div>
-          )}
-          {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
+            )}
+            <div className="topbar__spacer" />
+            {hasGoals && teamOKR?.progress_meta && (
+              <div className="topbar__progress">
+                <div style={{ width: 140 }}>
+                  <ProgressBar value={teamOKR.period_progress || 0} forecast={teamOKR.progress_meta.forecast} h={6}
+                    color={HEALTH_COLOR[teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
+                </div>
+                <span className="topbar__progress-pct">{teamOKR.period_progress || 0}%</span>
+              </div>
+            )}
+            {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
+          </div>
+          {teamOKR?.team?.description && <Markdown text={teamOKR.team.description} className="topbar__desc" />}
         </div>
 
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />
