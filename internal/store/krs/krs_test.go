@@ -93,6 +93,32 @@ func TestUpsertKeyResultNote(t *testing.T) {
 	}
 }
 
+func TestUpdateKeyResultDescription(t *testing.T) {
+	ctx := context.Background()
+	pool, repo, cleanup := setupKRTestDB(t)
+	defer cleanup()
+
+	var teamID int64
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
+	var periodID int64
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q1', '2024-01-01', '2024-03-31', 1) RETURNING id`).Scan(&periodID)
+	var goalID int64
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	var krID int64
+	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'KR1',100,'NUMERICAL',1) RETURNING id`, goalID).Scan(&krID)
+
+	if err := repo.UpdateKeyResultDescription(ctx, krID, "added context"); err != nil {
+		t.Fatalf("update description: %v", err)
+	}
+	kr, err := repo.GetKeyResult(ctx, krID)
+	if err != nil {
+		t.Fatalf("get kr: %v", err)
+	}
+	if kr.Description != "added context" {
+		t.Fatalf("expected description 'added context', got %q", kr.Description)
+	}
+}
+
 func TestBatchLoadNotes_AbsentKR(t *testing.T) {
 	ctx := context.Background()
 	_, repo, cleanup := setupKRTestDB(t)

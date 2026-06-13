@@ -83,6 +83,7 @@ type KRRepo interface {
 	DeleteKeyResult(ctx context.Context, id int64) error
 	MoveKeyResult(ctx context.Context, krID int64, direction int) error
 	UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error
+	UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error
 	FindGoalIDByKR(ctx context.Context, krID int64) (int64, error)
 	FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error)
 	UpdateNumericalCurrent(ctx context.Context, krID int64, current float64) error
@@ -746,6 +747,10 @@ func (s *Service) AddGoalComment(ctx context.Context, goalID int64, text string,
 
 func (s *Service) UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error {
 	return s.krs.UpsertKeyResultNote(ctx, krID, text, authorUserID)
+}
+
+func (s *Service) UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error {
+	return s.krs.UpdateKeyResultDescription(ctx, krID, description)
 }
 
 func (s *Service) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {

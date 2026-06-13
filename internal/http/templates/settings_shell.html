@@ -1,18 +1,19 @@
-{{define "tracker-shell"}}
+{{define "settings-shell"}}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>OKR Tracker</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>OKR Tracker · Настройки</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/tracker.css">
 <link rel="stylesheet" href="/static/markdown.css">
 <link rel="stylesheet" href="/static/header.css">
+<link rel="stylesheet" href="/static/settings.css">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',sans-serif;background:#edf0f4;color:#111827;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:2px}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px}::-webkit-scrollbar-thumb:hover{background:#94a3b8}
 input,textarea,select,button{font-family:inherit}textarea{resize:vertical}
 </style>
 </head>
@@ -25,7 +26,7 @@ input,textarea,select,button{font-family:inherit}textarea{resize:vertical}
 <script src="https://unpkg.com/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
 <script type="text/babel" src="/static/markdown.js" data-presets="react"></script>
 <script type="text/babel" src="/static/header.js" data-presets="react"></script>
-<script type="text/babel" src="/static/tracker.js" data-presets="react"></script>
+<script type="text/babel" src="/static/settings.js" data-presets="react"></script>
 </body>
 </html>
 {{end}}

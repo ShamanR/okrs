@@ -96,21 +96,7 @@
 .field-label__required { color: #ef4444; margin-left: 4px; }
 
 /* ── USER MENU ───────────────────────────────────────────────────────────────── */
-.user-menu { position: relative; }
-.user-menu__trigger { display: flex; align-items: center; gap: 7px; background: transparent; border: none; border-radius: 8px; padding: 4px 7px 4px 4px; cursor: pointer; }
-.user-menu__trigger:hover, .user-menu__trigger--open { background: rgba(255,255,255,0.1); }
-.user-menu__chevron { color: #94a3b8; font-size: 10px; display: inline-block; transition: transform 0.15s; }
-.user-menu__chevron--open { transform: rotate(180deg); }
-.user-menu__dropdown { position: absolute; top: calc(100% + 6px); right: 0; background: white; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,0.25); border: 1px solid #e5e7eb; min-width: 220px; z-index: 1000; overflow: hidden; }
-.user-menu__profile { padding: 12px 14px; border-bottom: 1px solid #f3f4f6; display: flex; align-items: center; gap: 10px; }
-.user-menu__name { font-size: 13px; font-weight: 700; color: #111827; }
-.user-menu__email { font-size: 11px; color: #6b7280; }
-.user-menu__item { display: flex; align-items: center; gap: 10px; padding: 9px 14px; text-decoration: none; color: #374151; font-size: 13px; cursor: pointer; background: none; border: none; width: 100%; }
-.user-menu__item:hover { background: #f9fafb; }
-.user-menu__item--danger, .user-menu__item--danger span { color: #dc2626; }
-.user-menu__item--danger:hover { background: #fef2f2; }
-.user-menu__item-icon { width: 20px; text-align: center; color: #6b7280; }
-.user-menu__divider { border-top: 1px solid #f3f4f6; }
+/* Moved to header.css — shared by tracker, admin and settings shells. */
 
 /* ── TEAM COMBOBOX ───────────────────────────────────────────────────────────── */
 .team-combobox { position: relative; }

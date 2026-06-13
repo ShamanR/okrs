@@ -294,6 +294,7 @@ func isValidHTTPURL(s string) bool {
 
 type meResponse struct {
 	ID          int64  `json:"id"`
+	UDID        string `json:"udid"`
 	DisplayName string `json:"display_name"`
 	Email       string `json:"email"`
 	AvatarURL   string `json:"avatar_url"`
@@ -310,6 +311,7 @@ func HandleMe(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, meResponse{
 		ID:          user.ID,
+		UDID:        user.UDID,
 		DisplayName: user.DisplayName,
 		Email:       user.Email,
 		AvatarURL:   user.AvatarURL,
