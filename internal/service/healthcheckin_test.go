@@ -155,6 +155,23 @@ func TestCategories_AwaitingValidation(t *testing.T) {
 	}
 }
 
+func TestCategories_AwaitingValidation_ExcludesDrafts(t *testing.T) {
+	kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean,
+		Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(time.Now())}
+	g := makeGoal(1, 1, "", []domain.KeyResult{kr})
+	g.Weight = 100
+
+	teams := []domain.Team{makeTeam(1, "T1", "", nil)}
+	goals := map[int64][]domain.Goal{1: {g}}
+	statuses := map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusForming}
+	data := makePeriodData(teams, goals, statuses)
+	result := computeCategories(data, []int64{1}, makeCfg(), time.Now())
+
+	if result.Categories["awaiting_validation"].Count != 0 {
+		t.Errorf("draft (forming) teams must not be awaiting_validation, got %d", result.Categories["awaiting_validation"].Count)
+	}
+}
+
 func TestCategories_FormationError_WeightSum(t *testing.T) {
 	kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean,
 		Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(time.Now())}
@@ -177,6 +194,38 @@ func TestCategories_FormationError_WeightSum(t *testing.T) {
 	}
 	if !hasTeamError {
 		t.Error("expected team-level weight_sum_not_100 error")
+	}
+}
+
+func TestCategories_FormationError_OnlyForValidationAndInProgress(t *testing.T) {
+	kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean,
+		Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(time.Now())}
+	g1 := makeGoal(1, 1, "", []domain.KeyResult{kr})
+	g1.Weight = 60
+	g2 := makeGoal(2, 1, "", []domain.KeyResult{kr})
+	g2.Weight = 60
+
+	teams := []domain.Team{makeTeam(1, "T1", "", nil)}
+	goals := map[int64][]domain.Goal{1: {g1, g2}}
+
+	check := func(status domain.TeamPeriodStatus) int {
+		statuses := map[int64]domain.TeamPeriodStatus{1: status}
+		data := makePeriodData(teams, goals, statuses)
+		result := computeCategories(data, []int64{1}, makeCfg(), time.Now())
+		return result.Categories["formation_errors"].Count
+	}
+
+	if c := check(domain.TeamPeriodStatusForming); c != 0 {
+		t.Errorf("forming (draft) must not report formation errors, got %d", c)
+	}
+	if c := check(domain.TeamPeriodStatusClosed); c != 0 {
+		t.Errorf("closed must not report formation errors, got %d", c)
+	}
+	if c := check(domain.TeamPeriodStatusReady); c == 0 {
+		t.Error("ready (К валидации) must report formation errors")
+	}
+	if c := check(domain.TeamPeriodStatusInProgress); c == 0 {
+		t.Error("in_progress (В работе) must report formation errors")
 	}
 }
 
