@@ -188,14 +188,18 @@ func computeCategories(data *PeriodData, scopeIDs []int64, cfg HealthCheckInConf
 			})
 		}
 
-		if len(goals) > 0 && (status == domain.TeamPeriodStatusForming || status == domain.TeamPeriodStatusReady) {
+		if len(goals) > 0 && status == domain.TeamPeriodStatusReady {
 			cats["awaiting_validation"].Items = append(cats["awaiting_validation"].Items, HealthCheckInItem{
 				TeamID: teamID, TeamName: team.Name, TeamPath: path,
 				Status: string(status),
 			})
 		}
 
-		if len(goals) > 0 {
+		// Formation errors are only relevant for teams that are being validated or
+		// already in progress; drafts and closed periods are excluded.
+		checkFormation := status == domain.TeamPeriodStatusReady || status == domain.TeamPeriodStatusInProgress
+
+		if checkFormation && len(goals) > 0 {
 			weightSum := 0
 			for _, g := range goals {
 				weightSum += g.Weight
@@ -237,12 +241,14 @@ func computeCategories(data *PeriodData, scopeIDs []int64, cfg HealthCheckInConf
 				})
 			}
 
-			goalErrors := checkGoalFormationErrors(g, cfg.WeightTolerance)
-			for i := range goalErrors {
-				goalErrors[i].TeamName = team.Name
-				goalErrors[i].TeamPath = path
+			if checkFormation {
+				goalErrors := checkGoalFormationErrors(g, cfg.WeightTolerance)
+				for i := range goalErrors {
+					goalErrors[i].TeamName = team.Name
+					goalErrors[i].TeamPath = path
+				}
+				cats["formation_errors"].Items = append(cats["formation_errors"].Items, goalErrors...)
 			}
-			cats["formation_errors"].Items = append(cats["formation_errors"].Items, goalErrors...)
 		}
 	}
 

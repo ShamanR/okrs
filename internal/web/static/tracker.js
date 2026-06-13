@@ -1581,7 +1581,8 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
   })();
 
   const nonEmptyCats = HCI_CAT_ORDER.filter(k => (data.categories?.[k]?.count ?? 0) > 0);
-  const visibleCats = filter ? [filter] : HCI_CAT_ORDER;
+  const counterCats = HCI_CAT_ORDER.filter(k => data.categories?.[k]?.in_counter);
+  const visibleCats = filter ? [filter] : counterCats;
 
   return (
     <>
@@ -1600,7 +1601,7 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
             <button
               className={`hci-chip${!filter ? ' hci-chip--active' : ''}`}
               onClick={() => setFilter(null)}>
-              Все · {data.total_problems + (data.categories?.lagging?.count ?? 0)}
+              Все · {data.total_problems}
             </button>
             {nonEmptyCats.map(k => {
               const cat = data.categories[k];
@@ -1857,7 +1858,7 @@ function App() {
       <div className="sidebar">
         <div className="sidebar__header">
           <div className="sidebar__logo">OKR Tracker</div>
-          {me && <HeaderUserMenu user={me} docUrl={docUrl} />}
+          {me && <HeaderUserMenu user={me} docUrl={docUrl} showTrackerLink={false} />}
         </div>
         <div className="sidebar__period">
           <div className="sidebar__period-label">Период</div>

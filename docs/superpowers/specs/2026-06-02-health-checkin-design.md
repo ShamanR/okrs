@@ -38,8 +38,8 @@ Union обоих множеств. Если scope пуст — `has_scope: false
 |---|-----------|--------|------------------------|---------|
 | 1 | Нет обновлений | 🕐 | ✓ | `days_since_update > STALE_DAYS` (default 7). `days_since_update` = дней с момента max(`kr.progress_updated_at`) по KR цели. Если все KR никогда не обновлялись — считается stale. Применяется только к целям с хотя бы одним KR; цели без KR попадают в `formation_errors` (no_krs). |
 | 2 | Не заведены цели | ○ | ✓ | Команда в scope, `has_goals = false` в периоде. |
-| 3 | Ожидают перевода в работу | ○ | ✓ | Команда с целями, статус `forming` или `ready`. |
-| 4 | Ошибки формирования | ⚠ | ✓ | На уровне команды: Σ весов целей ≠ 100 (±`weight_tolerance`). На уровне цели: нет KR; Σ весов KR ≠ 100; PROJECT KR без стадий или Σ весов стадий ≠ 100; LINEAR/PERCENT KR с `target == start` (нулевой диапазон); KR без title. |
+| 3 | Ожидают перевода в работу | ○ | ✓ | Команда с целями, статус `ready` (К валидации). Черновики (`forming`) сюда не попадают. |
+| 4 | Ошибки формирования | ⚠ | ✓ | Только для команд в статусе `ready` (К валидации) или `in_progress` (В работе). На уровне команды: Σ весов целей ≠ 100 (±`weight_tolerance`). На уровне цели: нет KR; Σ весов KR ≠ 100; PROJECT KR без стадий или Σ весов стадий ≠ 100; LINEAR/PERCENT KR с `target == start` (нулевой диапазон); KR без title. |
 | 5 | Отстающие | ▼ | ✗ (информационная) | `days_since_update ≤ STALE_DAYS` И `goal.progress < expectedPace − BEHIND_MARGIN` (default 10 п.п.). `expectedPace = clamp(0, elapsed_fraction * 100, 100)` — тот же расчёт что `progress_meta.forecast`. |
 
 **`total_problems`** = Σ count по категориям с `in_counter: true`.

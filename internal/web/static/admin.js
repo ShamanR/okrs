@@ -782,7 +782,7 @@ function HealthCheckInSettingsPanel() {
     },
     {
       key: 'awaiting_validation', icon: '○', label: 'Ожидают перевода в работу',
-      hint: 'Команды со статусом «Черновик» или «К валидации». Нужно перевести в «В работе».',
+      hint: 'Команды со статусом «К валидации». Нужно перевести в «В работе».',
     },
     {
       key: 'formation_errors', icon: '⚠', label: 'Ошибки формирования',

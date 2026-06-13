@@ -29,7 +29,7 @@ function HeaderAvatar({ user, size }) {
   );
 }
 
-function HeaderUserMenu({ user, docUrl }) {
+function HeaderUserMenu({ user, docUrl, showTrackerLink = true }) {
   const [open, setOpen] = React.useState(false);
   const timer = React.useRef();
   const show = () => { clearTimeout(timer.current); setOpen(true); };
@@ -51,7 +51,9 @@ function HeaderUserMenu({ user, docUrl }) {
               <div className="user-menu__email">{user?.email || user?.provider || ''}</div>
             </div>
           </div>
-          <a href="/" className="user-menu__item"><span className="user-menu__item-icon">←</span>OKR Tracker</a>
+          {showTrackerLink && (
+            <a href="/" className="user-menu__item"><span className="user-menu__item-icon">←</span>OKR Tracker</a>
+          )}
           {docUrl && (
             <a href={docUrl} target="_blank" rel="noopener noreferrer" className="user-menu__item">
               <span className="user-menu__item-icon">📖</span>Документация
