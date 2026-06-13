@@ -312,6 +312,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/krs/{krID}/progress/boolean", krsHandler.HandleUpdateBooleanProgress)
 	r.Post("/api/v1/krs/{krID}/progress/project", krsHandler.HandleUpdateProjectProgress)
 	r.Post("/api/v1/krs/{krID}/note", krsHandler.HandleUpsertKRNote)
+	r.Post("/api/v1/krs/{krID}/description", krsHandler.HandleUpdateKRDescription)
 	r.Post("/api/v1/krs/{krID}", krsHandler.HandleUpdateKeyResult)
 	r.Post("/api/v1/krs/{krID}/move-up", krsHandler.HandleMoveKeyResultUp)
 	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
