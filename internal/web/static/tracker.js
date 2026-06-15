@@ -225,8 +225,8 @@ function fmtNum(n) {
 function fmtVal(n, unit) { return unit ? `${fmtNum(n)} ${unit}` : fmtNum(n); }
 const FOCUS_OPTIONS = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
 const STATUS_STEPS = [{ k: 'forming', l: 'Черновик' }, { k: 'ready', l: 'К валидации' }, { k: 'in_progress', l: 'В работе' }, { k: 'closed', l: 'Закрыты' }];
-const TEAM_TYPE_LABEL = { cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад' };
-const TEAM_TYPE_COLOR = { cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706' };
+const TEAM_TYPE_LABEL = { department: 'Департамент', cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад', employee: 'Сотрудник' };
+const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
 
 function healthOf(p, stale, forecast) {
   if (p === null || p === undefined) return 'no_goals';
@@ -1797,7 +1797,9 @@ function App() {
     return null;
   }
 
-  const toggle = useCallback(id => setExpanded(m => ({ ...m, [id]: m[id] === false ? true : !m[id] })), []);
+  // Nodes are expanded by default (absence ≡ expanded), so the effective state is
+  // `m[id] !== false`. Toggling stores the negation: collapse → false, expand → true.
+  const toggle = useCallback(id => setExpanded(m => ({ ...m, [id]: m[id] === false })), []);
   useEffect(() => { writeTreeExpanded(expanded); }, [expanded]);
   const selectTeam = useCallback(id => setSelId(id), []);
   const handlePeriodChange = id => { setPeriodId(Number(id)); setSelId(null); };

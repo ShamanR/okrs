@@ -19,9 +19,9 @@ const apiPatch= (url, body) => apiFetch(url, {method:'PATCH',  headers:csrfHeade
 const apiDel  = url       => apiFetch(url, {method:'DELETE', headers:{'X-CSRF-Token':readCSRF()}});
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
-const TEAM_TYPE_LABEL = {cluster:'Кластер', unit:'Юнит', group:'Группа', team:'Команда', squad:'Сквад'};
-const TEAM_TYPE_ORDER = {cluster:0, unit:1, group:2, team:3, squad:4};
-const TEAM_TYPE_COLOR = {cluster:'#7c3aed', unit:'#2563eb', group:'#0891b2', team:'#059669', squad:'#d97706'};
+const TEAM_TYPE_LABEL = {department:'Департамент', cluster:'Кластер', unit:'Юнит', group:'Группа', team:'Команда', squad:'Сквад', employee:'Сотрудник'};
+const TEAM_TYPE_ORDER = {department:0, cluster:1, unit:2, group:3, team:4, squad:5, employee:6};
+const TEAM_TYPE_COLOR = {department:'#4338ca', cluster:'#7c3aed', unit:'#2563eb', group:'#0891b2', team:'#059669', squad:'#d97706', employee:'#64748b'};
 
 const T = {
   sidebarBg:'#0c1220', sidebarText:'#f1f5f9', sidebarDim:'#94a3b8', sidebarMuted:'#64748b',
@@ -717,7 +717,7 @@ function TeamEditor({value, teams, onSave, onClose, onDelete, saving}) {
         <Field label="Название" required><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} style={inpStyle} autoFocus/></Field>
         <Field label="Тип">
           <select value={f.type} onChange={e=>setF({...f,type:e.target.value})} style={{...inpStyle,cursor:'pointer'}}>
-            {['cluster','unit','group','team','squad'].map(k=><option key={k} value={k}>{TEAM_TYPE_LABEL[k]}</option>)}
+            {['department','cluster','unit','group','team','squad','employee'].map(k=><option key={k} value={k}>{TEAM_TYPE_LABEL[k]}</option>)}
           </select>
         </Field>
       </div>

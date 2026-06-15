@@ -8,7 +8,7 @@
 
 - id
 - name
-- type: cluster | unit | team
+- type: department | cluster | unit | group | team | squad | employee — уровни оргструктуры от широкого к узкому (`department` → `cluster` → `unit` → `group` → `team` → `squad` → `employee`); тип — только ярлык уровня, дерево вкладывается по `parent_id` и типом не ограничивается
 - parent_id
 - lead
 - lead_udid (nullable, FK → users.udid, ON DELETE SET NULL) — UDID пользователя-руководителя; NULL в режиме без авторизации

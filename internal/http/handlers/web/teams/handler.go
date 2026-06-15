@@ -900,9 +900,13 @@ func teamHierarchyPrefix(level int) string {
 
 func buildTeamTypeOptions(selected domain.TeamType) []teamTypeOption {
 	return []teamTypeOption{
+		{Value: string(domain.TeamTypeDepartment), Label: common.TeamTypeLabel(domain.TeamTypeDepartment), Selected: selected == domain.TeamTypeDepartment},
 		{Value: string(domain.TeamTypeCluster), Label: common.TeamTypeLabel(domain.TeamTypeCluster), Selected: selected == domain.TeamTypeCluster},
 		{Value: string(domain.TeamTypeUnit), Label: common.TeamTypeLabel(domain.TeamTypeUnit), Selected: selected == domain.TeamTypeUnit},
+		{Value: string(domain.TeamTypeGroup), Label: common.TeamTypeLabel(domain.TeamTypeGroup), Selected: selected == domain.TeamTypeGroup},
 		{Value: string(domain.TeamTypeTeam), Label: common.TeamTypeLabel(domain.TeamTypeTeam), Selected: selected == domain.TeamTypeTeam},
+		{Value: string(domain.TeamTypeSquad), Label: common.TeamTypeLabel(domain.TeamTypeSquad), Selected: selected == domain.TeamTypeSquad},
+		{Value: string(domain.TeamTypeEmployee), Label: common.TeamTypeLabel(domain.TeamTypeEmployee), Selected: selected == domain.TeamTypeEmployee},
 	}
 }
 
