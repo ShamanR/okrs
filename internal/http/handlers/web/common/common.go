@@ -155,7 +155,7 @@ func ValidFocusType(t domain.FocusType) bool {
 
 func ValidTeamType(t domain.TeamType) bool {
 	switch t {
-	case domain.TeamTypeCluster, domain.TeamTypeUnit, domain.TeamTypeTeam:
+	case domain.TeamTypeDepartment, domain.TeamTypeCluster, domain.TeamTypeUnit, domain.TeamTypeGroup, domain.TeamTypeTeam, domain.TeamTypeSquad, domain.TeamTypeEmployee:
 		return true
 	default:
 		return false
@@ -164,12 +164,20 @@ func ValidTeamType(t domain.TeamType) bool {
 
 func TeamTypeLabel(t domain.TeamType) string {
 	switch t {
+	case domain.TeamTypeDepartment:
+		return "Департамент"
 	case domain.TeamTypeCluster:
 		return "Кластер"
 	case domain.TeamTypeUnit:
 		return "Юнит"
+	case domain.TeamTypeGroup:
+		return "Группа"
 	case domain.TeamTypeTeam:
 		return "Команда"
+	case domain.TeamTypeSquad:
+		return "Сквад"
+	case domain.TeamTypeEmployee:
+		return "Сотрудник"
 	default:
 		return "Команда"
 	}

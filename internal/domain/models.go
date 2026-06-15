@@ -50,10 +50,18 @@ func IsValidKRUnit(u string) bool {
 
 type TeamType string
 
+// Team types form the org hierarchy levels, from broadest to narrowest:
+// department → cluster → unit → group → team → squad → employee. The tree itself
+// nests by parent_id and is not constrained by type; the type is a display label
+// for the level.
 const (
-	TeamTypeCluster TeamType = "cluster"
-	TeamTypeUnit    TeamType = "unit"
-	TeamTypeTeam    TeamType = "team"
+	TeamTypeDepartment TeamType = "department"
+	TeamTypeCluster    TeamType = "cluster"
+	TeamTypeUnit       TeamType = "unit"
+	TeamTypeGroup      TeamType = "group"
+	TeamTypeTeam       TeamType = "team"
+	TeamTypeSquad      TeamType = "squad"
+	TeamTypeEmployee   TeamType = "employee"
 )
 
 type TeamPeriodStatus string
