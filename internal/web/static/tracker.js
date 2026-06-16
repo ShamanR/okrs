@@ -1309,12 +1309,15 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           await apiPost(`/api/v1/goals/${goal.id}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
         }
       } else {
-        await apiPost(`/api/v1/teams/${teamId}/goals`, {
+        const created = await apiPost(`/api/v1/teams/${teamId}/goals`, {
           period_id: periodId, title: form.title.trim(), description: form.desc || '',
           priority: form.priority, weight: form.weight,
           work_type: form.type === 'delivery' ? 'Delivery' : 'Discovery',
           focus_type: form.focus, owner_udids: form.ownerUDIDs || [],
         });
+        if (created && created.id && form.shared && (form.shareTeamIds || []).length > 0) {
+          await apiPost(`/api/v1/goals/${created.id}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
+        }
       }
       onSave();
     } catch (e) { alert('Ошибка: ' + e.message); }

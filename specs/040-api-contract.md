@@ -288,6 +288,8 @@ Body: JSON объект с полями `title`, `description`, `priority`, `wei
 
 - `owner_udids`: массив UDID владельцев цели (заменяет старый `owner_text`).
 - Validation: все UDID должны существовать в таблице users → `400 VALIDATION_ERROR` иначе.
+- Ответ: `{ "id": <goalID> }`.
+- Если в GoalModal при создании включён toggle «Общая цель» с выбранными командами, клиент после успешного создания вызывает `POST /api/v1/goals/{goalID}/share` с выбранными командами (по аналогии с режимом редактирования).
 
 ### `POST /api/v1/goals/{goalID}`
 
