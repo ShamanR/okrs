@@ -31,6 +31,9 @@ type configResponse struct {
 	// StaleDays drives the "N дней без обновлений" warning on goal pages; it
 	// mirrors the Health Check-in threshold so both stay in sync.
 	StaleDays int `json:"stale_days"`
+	// BehindMargin is the lag tolerance (п.п.) from the Health Check-in "Отстающие"
+	// category; the sidebar colors team progress red when progress < forecast - behind_margin.
+	BehindMargin int `json:"behind_margin"`
 }
 
 // GET /api/v1/config
@@ -39,6 +42,7 @@ func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	resp := configResponse{
 		DocumentationURL: h.documentationURL(r.Context()),
 		StaleDays:        cfg.StaleDays,
+		BehindMargin:     cfg.BehindMargin,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

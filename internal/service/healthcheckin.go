@@ -225,7 +225,11 @@ func computeCategories(data *PeriodData, scopeIDs []int64, cfg HealthCheckInConf
 			}
 			isStale := len(g.KeyResults) > 0 && (lastProgress == nil || daysSince > cfg.StaleDays)
 
-			if isStale {
+			// Drafts and goals awaiting validation are not yet being executed, so the
+			// "N дней без обновления" warning is not meaningful for them.
+			trackStale := status != domain.TeamPeriodStatusForming && status != domain.TeamPeriodStatusReady
+
+			if isStale && trackStale {
 				cats["stale"].Items = append(cats["stale"].Items, HealthCheckInItem{
 					TeamID: teamID, TeamName: team.Name, TeamPath: path,
 					GoalID: g.ID, GoalTitle: g.Title,

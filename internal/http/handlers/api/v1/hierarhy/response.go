@@ -7,30 +7,35 @@ import (
 	"okrs/internal/service"
 )
 
-func newHierarchyResponse(nodes []service.TeamNode, metrics map[int64]service.TeamSummary, userRefs map[string]*dto.UserRef) dto.HierarchyResponse {
-	return dto.HierarchyResponse{Items: mapHierarchyWithMetrics(nodes, metrics, userRefs)}
+func newHierarchyResponse(nodes []service.TeamNode, metrics map[int64]service.TeamSummary, userRefs map[string]*dto.UserRef, forecast int) dto.HierarchyResponse {
+	return dto.HierarchyResponse{Items: mapHierarchyWithMetrics(nodes, metrics, userRefs, forecast)}
 }
 
-func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary, userRefs map[string]*dto.UserRef) []dto.TeamNode {
+func mapHierarchyWithMetrics(nodes []service.TeamNode, metrics map[int64]service.TeamSummary, userRefs map[string]*dto.UserRef, forecast int) []dto.TeamNode {
 	result := make([]dto.TeamNode, 0, len(nodes))
 	for _, node := range nodes {
-		result = append(result, mapTeamNode(node, metrics, userRefs))
+		result = append(result, mapTeamNode(node, metrics, userRefs, forecast))
 	}
 	return result
 }
 
-func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary, userRefs map[string]*dto.UserRef) dto.TeamNode {
+func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary, userRefs map[string]*dto.UserRef, forecast int) dto.TeamNode {
 	children := make([]dto.TeamNode, 0, len(node.Children))
 	for _, child := range node.Children {
-		children = append(children, mapTeamNode(child, metrics, userRefs))
+		children = append(children, mapTeamNode(child, metrics, userRefs, forecast))
 	}
 	var progress *int
+	var forecastPtr *int
+	status := ""
 	hasGoals := false
 	if summary, ok := metrics[node.Team.ID]; ok {
+		status = string(summary.Status)
 		hasGoals = summary.GoalsCount > 0
 		if hasGoals {
 			value := summary.PeriodProgress
 			progress = &value
+			f := forecast
+			forecastPtr = &f
 		}
 	}
 	return dto.TeamNode{
@@ -42,6 +47,8 @@ func mapTeamNode(node service.TeamNode, metrics map[int64]service.TeamSummary, u
 		Lead:        v1.ResolveLeadByUDID(node.Team.LeadUDID, userRefs),
 		HasGoals:    hasGoals,
 		Progress:    progress,
+		Forecast:    forecastPtr,
+		Status:      status,
 		Children:    children,
 	}
 }

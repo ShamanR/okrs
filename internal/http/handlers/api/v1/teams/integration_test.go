@@ -211,6 +211,12 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	if deletedWithGoalNode.Progress == nil {
 		t.Fatalf("expected deleted team with current goals to have progress")
 	}
+	if deletedWithGoalNode.Forecast == nil {
+		t.Fatalf("expected deleted team with current goals to have forecast")
+	}
+	if deletedWithGoalNode.Status == "" {
+		t.Fatalf("expected deleted team with current goals to have status")
+	}
 
 	currentDeletedVisibleResp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/okrs?period_id=%d", server.URL, deletedTeamID, currentPeriodID))
 	if err != nil {
@@ -355,6 +361,8 @@ type teamNode struct {
 	ID       int64      `json:"id"`
 	HasGoals bool       `json:"has_goals"`
 	Progress *int       `json:"progress,omitempty"`
+	Forecast *int       `json:"forecast,omitempty"`
+	Status   string     `json:"status,omitempty"`
 	Children []teamNode `json:"children"`
 }
 

@@ -238,6 +238,17 @@ function healthOf(p, stale, forecast) {
   return 'on_track';
 }
 
+// sidebarProgressColor colors the team progress percent in the sidebar: green when the team
+// is up to date (or, for closed periods, has reached ≥80%), red when it lags behind the period
+// pace. The lag tolerance mirrors the Health Check-in "Отстающие" category (behind_margin):
+// red when progress < forecast - behindMargin.
+function sidebarProgressColor(prog, forecast, status, behindMargin = 10) {
+  if (prog == null) return HEALTH_COLOR.no_goals;
+  if (status === 'closed') return prog >= 80 ? HEALTH_COLOR.ahead : HEALTH_COLOR.below;
+  if (forecast != null && forecast - prog > behindMargin) return HEALTH_COLOR.below;
+  return HEALTH_COLOR.ahead;
+}
+
 // ── MICRO COMPONENTS ──────────────────────────────────────────────────────────
 function ProgressBar({ value, forecast, h = 8, color }) {
   return (
@@ -897,7 +908,7 @@ function CommentsPanel({ comments, onAdd, me }) {
 }
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7 }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus }) {
   const [showKR, setShowKR] = useState(false);
   const [showCom, setShowCom] = useState(false);
   const [newKR, setNewKR] = useState(false);
@@ -905,7 +916,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
-  const isStale = goal.updatedDaysAgo > staleDays;
+  // Drafts and goals awaiting validation are not yet being executed, so the
+  // "N дней без обновления" warning is not meaningful for them.
+  const staleTracked = periodStatus !== 'forming' && periodStatus !== 'ready';
+  const isStale = staleTracked && goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;
   const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast)];
   const health = healthOf(prog, isStale, forecast);
@@ -978,7 +992,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
                 {health === 'ahead' ? '▲ опережает' : health === 'on_track' ? '✓ в плане' : health === 'stale' ? '⚠ нет обновлений' : '▼ отстаёт'}
               </span>
             </div>
-            <span className="goal-card__updated" style={{ color: goal.updatedDaysAgo > staleDays ? '#dc2626' : '#16a34a' }}>
+            <span className="goal-card__updated" style={{ color: isStale ? '#dc2626' : '#16a34a' }}>
               {'Обновлено: '}{goal.updatedDaysAgo === 0 ? 'сегодня' : `${goal.updatedDaysAgo}д назад`}
             </span>
           </div>
@@ -1452,12 +1466,13 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
 }
 
 // ── SIDEBAR NODE ──────────────────────────────────────────────────────────────
-function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, accent }) {
+function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, accent, behindMargin }) {
   const ch = node.children || [];
   const isExp = expanded[node.id] !== false;
   const isSel = selectedId === node.id;
   const prog = node.progress;
-  const hC = HEALTH_COLOR[healthOf(prog, false)];
+  const dotC = TEAM_TYPE_COLOR[node.type] || HEALTH_COLOR.no_goals;
+  const pctC = sidebarProgressColor(prog, node.forecast, node.status, behindMargin);
   const pad = 14 + depth * 13;
   const nameClass = ['sidebar-node__name',
     depth === 0 ? 'sidebar-node__name--d0' : depth === 1 ? 'sidebar-node__name--d1' : 'sidebar-node__name--dx',
@@ -1471,11 +1486,11 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
         {ch.length > 0
           ? <span onClick={e => { e.stopPropagation(); toggle(node.id); }} className="sidebar-node__toggle">{isExp ? '▾' : '▸'}</span>
           : <span className="sidebar-node__spacer" />}
-        <span className="sidebar-node__dot" style={{ background: hC }} />
+        <span className="sidebar-node__dot" style={{ background: dotC }} />
         <span className={nameClass}>{node.name}</span>
-        {prog != null && <span className="sidebar-node__progress" style={{ color: isSel ? '#c4b5fd' : hC }}>{prog}%</span>}
+        {prog != null && <span className="sidebar-node__progress" style={{ color: isSel ? '#c4b5fd' : pctC }}>{prog}%</span>}
       </div>
-      {isExp && ch.map(c => <SidebarNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} accent={accent} />)}
+      {isExp && ch.map(c => <SidebarNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} />)}
     </div>
   );
 }
@@ -1719,6 +1734,7 @@ function App() {
   const [hciOpen, setHciOpen] = useState(false);
   const [docUrl, setDocUrl] = useState('');
   const [staleDays, setStaleDays] = useState(7);
+  const [behindMargin, setBehindMargin] = useState(10);
 
   const loadHCI = useCallback((pid) => {
     if (!pid) return;
@@ -1741,7 +1757,7 @@ function App() {
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
-      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); }
+      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); }
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -1903,7 +1919,7 @@ function App() {
                 <div className="no-access__hint">За доступом обратитесь к администратору</div>
               </div>
             )
-            : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} />)
+            : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} />)
           }
         </div>
         <div style={{padding: '8px 8px 0'}}>
@@ -1961,7 +1977,7 @@ function App() {
             </div>
           )}
           {overview && (overview.children_summary?.items?.length > 0) && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },

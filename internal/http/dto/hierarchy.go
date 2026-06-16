@@ -13,5 +13,7 @@ type TeamNode struct {
 	Lead        *UserRef   `json:"lead,omitempty"`
 	HasGoals    bool       `json:"has_goals"`
 	Progress    *int       `json:"progress,omitempty"`
+	Forecast    *int       `json:"forecast,omitempty"`
+	Status      string     `json:"status,omitempty"`
 	Children    []TeamNode `json:"children"`
 }

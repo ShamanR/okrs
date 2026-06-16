@@ -84,3 +84,36 @@ func TestHandleConfigStaleDaysFromSettings(t *testing.T) {
 		t.Errorf("stale_days: want 14, got %d", got.StaleDays)
 	}
 }
+
+func TestHandleConfigBehindMarginDefault(t *testing.T) {
+	h := New(&fakeSettings{data: map[string]json.RawMessage{}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.BehindMargin != 10 {
+		t.Errorf("behind_margin: want default 10, got %d", got.BehindMargin)
+	}
+}
+
+func TestHandleConfigBehindMarginFromSettings(t *testing.T) {
+	cfg, _ := json.Marshal(map[string]int{"behind_margin": 5})
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"health_checkin_config": cfg}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.BehindMargin != 5 {
+		t.Errorf("behind_margin: want 5, got %d", got.BehindMargin)
+	}
+}
