@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+
+	"okrs/internal/service"
 )
 
 const settingKeyDocumentationURL = "documentation_url"
@@ -26,11 +28,18 @@ func New(settings settingsReader) *Handler {
 
 type configResponse struct {
 	DocumentationURL string `json:"documentation_url"`
+	// StaleDays drives the "N дней без обновлений" warning on goal pages; it
+	// mirrors the Health Check-in threshold so both stay in sync.
+	StaleDays int `json:"stale_days"`
 }
 
 // GET /api/v1/config
 func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
-	resp := configResponse{DocumentationURL: h.documentationURL(r.Context())}
+	cfg, _ := service.LoadHealthCheckInConfig(r.Context(), h.settings)
+	resp := configResponse{
+		DocumentationURL: h.documentationURL(r.Context()),
+		StaleDays:        cfg.StaleDays,
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }

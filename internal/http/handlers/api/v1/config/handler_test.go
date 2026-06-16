@@ -51,3 +51,36 @@ func TestHandleConfigEmptyWhenUnset(t *testing.T) {
 		t.Errorf("documentation_url: want empty, got %q", got.DocumentationURL)
 	}
 }
+
+func TestHandleConfigStaleDaysDefault(t *testing.T) {
+	h := New(&fakeSettings{data: map[string]json.RawMessage{}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.StaleDays != 7 {
+		t.Errorf("stale_days: want default 7, got %d", got.StaleDays)
+	}
+}
+
+func TestHandleConfigStaleDaysFromSettings(t *testing.T) {
+	cfg, _ := json.Marshal(map[string]int{"stale_days": 14})
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"health_checkin_config": cfg}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.StaleDays != 14 {
+		t.Errorf("stale_days: want 14, got %d", got.StaleDays)
+	}
+}

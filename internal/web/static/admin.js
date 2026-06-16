@@ -451,11 +451,21 @@ function PeriodEditor({value, onSave, onCancel, onDelete, saving}) {
 
 // ── TEAMS SECTION ────────────────────────────────────────────────────────────
 // Полноширинное дерево с drill-down: по умолчанию раскрыты только корневые узлы.
-// Раскрытие хранится во множестве id (expanded). При поиске сворачивание
+// Раскрытие хранится во множестве id (expanded) и в localStorage, чтобы
+// сохраняться между перезагрузками данных и страницы. При поиске сворачивание
 // игнорируется — показываются все совпадения с их путём в иерархии.
+const TEAMS_EXPANDED_KEY = 'okr_admin_teams_expanded';
+function readTeamsExpanded() {
+  try { const a = JSON.parse(localStorage.getItem(TEAMS_EXPANDED_KEY)); return new Set(Array.isArray(a)?a:[]); }
+  catch { return new Set(); }
+}
+function writeTeamsExpanded(set) {
+  try { localStorage.setItem(TEAMS_EXPANDED_KEY, JSON.stringify([...set])); } catch {}
+}
 function TeamsSection({teams, reload}) {
   const [q, setQ] = useState('');
-  const [expanded, setExpanded] = useState(()=>new Set());
+  const [expanded, setExpanded] = useState(readTeamsExpanded);
+  useEffect(()=>{ writeTeamsExpanded(expanded); },[expanded]);
   const [modal, setModal] = useState(null); // {mode:'new', parentId} | {mode:'edit', team}
   const [saving, setSaving] = useState(false);
 
@@ -1232,8 +1242,11 @@ function App() {
     return ()=> window.removeEventListener('popstate', onPop);
   },[]);
 
-  async function loadAll() {
-    setLoading(true); setErr(null);
+  // silent=true refreshes data in place without showing the full-screen loader,
+  // so mounted sections (and their UI state, e.g. the expanded team tree) survive.
+  async function loadAll(silent) {
+    if (!silent) setLoading(true);
+    setErr(null);
     try {
       const [meR, periodsR, teamsR, usersR] = await Promise.all([
         apiGet('/api/v1/me'),
@@ -1248,18 +1261,19 @@ function App() {
       setTeams(teamsD.items||[]);
       setUsers(Array.isArray(usersD)?usersD:[]);
     } catch(e) { setErr(e.message); }
-    finally { setLoading(false); }
+    finally { if (!silent) setLoading(false); }
   }
 
   useEffect(()=>{ loadAll(); },[]);
+  const reload = useCallback(()=>loadAll(true),[]);
 
   if (loading) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:T.mutedFg,fontSize:14}}>Загрузка…</div>;
   if (err) return <div style={{height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:T.danger,fontSize:14}}>Ошибка: {err}</div>;
 
   return <Shell section={section} setSection={navigate} currentUser={me}>
-    {section==='periods' &&<PeriodsSection periods={periods} reload={loadAll}/>}
-    {section==='teams'   &&<TeamsSection teams={teams} reload={loadAll}/>}
-    {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={loadAll}/>}
+    {section==='periods' &&<PeriodsSection periods={periods} reload={reload}/>}
+    {section==='teams'   &&<TeamsSection teams={teams} reload={reload}/>}
+    {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={reload}/>}
     {section==='settings'&&<div style={{padding:'20px 24px 24px',display:'flex',flexDirection:'column',gap:20}}>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><GeneralSettingsPanel/></div>
