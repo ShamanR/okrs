@@ -1279,6 +1279,21 @@ function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
   );
 }
 
+// Builds the multipart payload for goal create/update from the modal form.
+// Shared by the edit path and the create-retry path so both persist the same fields.
+function goalFormData(form, teamId) {
+  const fd = new FormData();
+  fd.append('title', form.title.trim());
+  fd.append('description', form.desc || '');
+  fd.append('priority', form.priority);
+  fd.append('weight', String(form.weight));
+  fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
+  fd.append('focus_type', form.focus);
+  (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
+  fd.append('team_id', String(teamId));
+  return fd;
+}
+
 function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals, me, onSave, onClose, accent, allTeams }) {
   const isEdit = !!goal;
   const usedWeight = (existingGoals || []).filter(g => !isEdit || g.id !== goal?.id).reduce((s, g) => s + g.weight, 0);
@@ -1301,14 +1316,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
     try {
       if (isEdit) {
         if (wasShared && !form.shared) { await apiDelete(`/api/v1/goals/${goal.id}/share/${teamId}`); onSave(); return; }
-        const fd = new FormData();
-        fd.append('title', form.title.trim()); fd.append('description', form.desc || '');
-        fd.append('priority', form.priority); fd.append('weight', String(form.weight));
-        fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
-        fd.append('focus_type', form.focus);
-        (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
-        fd.append('team_id', String(teamId));
-        await apiForm(`/api/v1/goals/${goal.id}`, fd);
+        await apiForm(`/api/v1/goals/${goal.id}`, goalFormData(form, teamId));
         if (form.shared && (form.shareTeamIds || []).length > 0) {
           await apiPost(`/api/v1/goals/${goal.id}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
         }
@@ -1324,6 +1332,10 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           if (!created || !created.id) throw new Error('не удалось создать цель');
           newGoalId = created.id;
           createdGoalIdRef.current = newGoalId;
+        } else {
+          // Goal was created on a previous attempt but a later step failed; persist
+          // any edits made since before retrying the share, so they aren't dropped.
+          await apiForm(`/api/v1/goals/${newGoalId}`, goalFormData(form, teamId));
         }
         if (form.shared && (form.shareTeamIds || []).length > 0) {
           await apiPost(`/api/v1/goals/${newGoalId}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
