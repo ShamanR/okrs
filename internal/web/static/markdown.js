@@ -111,7 +111,7 @@ const MD_TOOLBAR = [
 const MD_HINT = ': **жирный**, *курсив*, # заголовок, - список, [ссылка](url), `код`';
 
 // Write component: toolbar + textarea/preview + markdown hint.
-function MarkdownEditor({ value, onChange, rows, placeholder, textareaClassName, textareaStyle }) {
+function MarkdownEditor({ value, onChange, rows, placeholder, textareaClassName, textareaStyle, onKeyDown }) {
   const [preview, setPreview] = React.useState(false);
   const ref = React.useRef(null);
   const val = value || '';
@@ -148,6 +148,7 @@ function MarkdownEditor({ value, onChange, rows, placeholder, textareaClassName,
           ref,
           value: val,
           onChange: e => onChange(e.target.value),
+          onKeyDown,
           rows: rows || 3,
           placeholder: placeholder || '',
           className: textareaClassName || 'form-textarea',

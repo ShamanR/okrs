@@ -885,16 +885,16 @@ function CommentsPanel({ comments, onAdd, me }) {
               <span className="comment__author">{c.author}</span>
               <span className="comment__date">{c.date}</span>
             </div>
-            <div className="comment__text">{c.text}</div>
+            <Markdown text={c.text} className="comment__text" />
           </div>
         </div>
       ))}
       <div className="comment-compose">
         <Avatar name={me?.display_name} avatarUrl={me?.avatar_url} size={28} />
         <div className="comment-compose__right">
-          <textarea value={text} onChange={e => setText(e.target.value)} placeholder="Контекст, блокер, заметка… (Cmd+Enter)"
+          <MarkdownEditor value={text} onChange={setText} rows={3} placeholder="Контекст, блокер, заметка… (Cmd+Enter)"
             onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
-            className="form-textarea form-textarea--sm" style={{ width: '100%' }} />
+            textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ width: '100%', resize: 'vertical' }} />
           <div className="comment-submit-row">
             <button onClick={submit} disabled={!hasText || saving}
               className={`comment-submit ${hasText ? 'comment-submit--active' : 'comment-submit--disabled'}`}>

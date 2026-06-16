@@ -85,7 +85,7 @@ function DescriptionRow({ entry, value, onSave }) {
           <TypeBadge type={node.type} />
           <span className="desc-row__name">{node.name}</span>
         </div>
-        {!editing && <button className="desc-row__btn" onClick={open}>{hasDesc ? 'Изменить' : 'Изменить описание'}</button>}
+        {!editing && <button className="desc-row__btn" onClick={open}>Изменить</button>}
       </div>
       {node.lead && <div className="desc-row__lead"><Avatar name={node.lead.display_name} avatarUrl={node.lead.avatar_url} size={18} /><span>{node.lead.display_name} · лид</span></div>}
       {editing ? (
