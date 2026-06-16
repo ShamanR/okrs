@@ -34,20 +34,8 @@ import (
 //go:embed templates/*.html
 var templatesFS embed.FS
 
-type Server struct {
-	store       *store.Store
-	logger      *slog.Logger
-	tmpl        *template.Template
-	zone        *time.Location
-	service     *service.Service
-	auth        *auth.Manager
-	policy      *auth.PolicyEvaluator
-	grantsCache *grants.GrantsCache
-	hcCache     *service.HealthCheckInCache
-}
-
-func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
-	tmpl, err := template.New("").Funcs(template.FuncMap{
+func parseTemplates() (*template.Template, error) {
+	return template.New("").Funcs(template.FuncMap{
 		"sumKRWeights": func(keyResults []domain.KeyResult) int {
 			total := 0
 			for _, kr := range keyResults {
@@ -75,6 +63,22 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 			}
 		},
 	}).ParseFS(templatesFS, "templates/*.html")
+}
+
+type Server struct {
+	store       *store.Store
+	logger      *slog.Logger
+	tmpl        *template.Template
+	zone        *time.Location
+	service     *service.Service
+	auth        *auth.Manager
+	policy      *auth.PolicyEvaluator
+	grantsCache *grants.GrantsCache
+	hcCache     *service.HealthCheckInCache
+}
+
+func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
+	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, err
 	}
@@ -206,6 +210,15 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", nil)
 	})
+
+	// Страницы-заглушки разделов навигации (гамбургер-меню). Доступны любому
+	// авторизованному пользователю, как /settings.
+	stubShell := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "stub-shell", nil)
+	}
+	r.Get("/activity-log", stubShell)
+	r.Get("/goal-tree", stubShell)
 
 	// Legacy redirect for bookmarks — the tracker now lives at the root.
 	r.Get("/teamOkrs", func(w http.ResponseWriter, r *http.Request) {

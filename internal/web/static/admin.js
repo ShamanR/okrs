@@ -291,7 +291,7 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder, single, exclud
   </div>;
 }
 
-// HeaderUserMenu lives in the shared header.js module (loaded before this script).
+// HeaderNavMenu lives in the shared header.js module (loaded before this script).
 
 // ── SHELL ────────────────────────────────────────────────────────────────────
 function Shell({section, setSection, currentUser, children}) {
@@ -306,11 +306,11 @@ function Shell({section, setSection, currentUser, children}) {
   return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
     <div style={{width:252,background:T.sidebarBg,display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden'}}>
       <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:10}}>
+        {currentUser && <HeaderNavMenu user={currentUser} active={null}/>}
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:14,fontWeight:800,color:'white',letterSpacing:'-.3px'}}>OKR Tracker</div>
           <div style={{fontSize:10,color:T.sidebarMuted,fontWeight:600,textTransform:'uppercase',letterSpacing:.5,marginTop:1}}>Управление</div>
         </div>
-        <HeaderUserMenu user={currentUser}/>
       </div>
       <div style={{padding:'12px 8px',flex:1,overflowY:'auto'}}>
         <div style={{fontSize:10,color:T.sidebarMuted,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',padding:'8px 14px 6px'}}>Разделы</div>

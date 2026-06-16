@@ -1,10 +1,11 @@
-// Shared header account menu. Loaded as text/babel BEFORE the app JS
-// (tracker.js, admin.js, settings.js), so the global HeaderUserMenu is available
-// to all three React apps — a single source of truth for the avatar menu.
+// Shared header navigation. Loaded as text/babel BEFORE the app JS
+// (tracker.js, admin.js, settings.js, stub.js), so the global HeaderNavMenu is
+// available to every React app — a single source of truth for the hamburger menu.
 //
 // Self-contained on purpose: renders its own avatar (inline styles, no .avatar
-// class dependency), reads CSRF from the cookie, and logs out via fetch. Styles
-// come from header.css (.user-menu*). Depends only on the React global.
+// class dependency), reads CSRF from the cookie, logs out via fetch, and fetches
+// /api/v1/config for the documentation link. Styles come from header.css
+// (.nav-menu*). Depends only on the React global.
 //
 // Uses React.useState/useRef (not a top-level `const { useState } = React`) to
 // avoid clashing with the same destructure already declared in the app scripts
@@ -29,47 +30,76 @@ function HeaderAvatar({ user, size }) {
   );
 }
 
-function HeaderUserMenu({ user, docUrl, showTrackerLink = true }) {
+// HeaderNavMenu — глобальное гамбургер-меню. Единый источник правды для
+// навигации/аккаунта в шапке всех страниц (трекер, настройки, админка, заглушки).
+// Рендерит только кнопку ☰ и выезжающий слева drawer. Сам тянет /api/v1/config
+// для documentation_url, чтобы пункт «Документация» вёл себя одинаково везде.
+// active: 'tracker' | 'activity-log' | 'goal-tree' | null.
+function HeaderNavMenu({ user, active }) {
   const [open, setOpen] = React.useState(false);
-  const timer = React.useRef();
-  const show = () => { clearTimeout(timer.current); setOpen(true); };
-  const hide = () => { clearTimeout(timer.current); timer.current = setTimeout(() => setOpen(false), 150); };
+  const [docUrl, setDocUrl] = React.useState('');
+  React.useEffect(() => {
+    fetch('/api/v1/config', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(cfg => { if (cfg && cfg.documentation_url) setDocUrl(cfg.documentation_url); })
+      .catch(() => {});
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open]);
   const logout = () => fetch('/logout', { method: 'POST', credentials: 'include', headers: { 'X-CSRF-Token': _hdrCSRF() } }).then(() => location.href = '/login');
   const name = user?.display_name || 'Пользователь';
+  const sections = [
+    { id: 'tracker',      label: 'Цели команд',     href: '/',            icon: '🎯' },
+    { id: 'activity-log', label: 'Лог активностей', href: '/activity-log', icon: '🕑' },
+    { id: 'goal-tree',    label: 'Дерево целей',    href: '/goal-tree',    icon: '🕸' },
+  ];
   return (
-    <div className="user-menu" onMouseEnter={show} onMouseLeave={hide}>
-      <button onClick={() => setOpen(o => !o)} className={`user-menu__trigger${open ? ' user-menu__trigger--open' : ''}`}>
-        <HeaderAvatar user={user} size={28} />
-        <span className={`user-menu__chevron${open ? ' user-menu__chevron--open' : ''}`}>▾</span>
-      </button>
+    <React.Fragment>
+      <button onClick={() => setOpen(true)} className="nav-menu__burger" aria-label="Меню">☰</button>
       {open && (
-        <div onMouseEnter={show} onMouseLeave={hide} className="user-menu__dropdown">
-          <div className="user-menu__profile">
-            <HeaderAvatar user={user} size={36} />
-            <div>
-              <div className="user-menu__name">{name}</div>
-              <div className="user-menu__email">{user?.email || user?.provider || ''}</div>
+        <div className="nav-menu__overlay" onClick={() => setOpen(false)}>
+          <div className="nav-menu__panel" onClick={e => e.stopPropagation()}>
+            <div className="nav-menu__head">
+              <span className="nav-menu__head-logo">🎯 OKR Tracker</span>
+              <button onClick={() => setOpen(false)} className="nav-menu__close" aria-label="Закрыть">✕</button>
             </div>
-          </div>
-          {showTrackerLink && (
-            <a href="/" className="user-menu__item"><span className="user-menu__item-icon">←</span>OKR Tracker</a>
-          )}
-          {docUrl && (
-            <a href={docUrl} target="_blank" rel="noopener noreferrer" className="user-menu__item">
-              <span className="user-menu__item-icon">📖</span>Документация
-            </a>
-          )}
-          <a href="/settings" className="user-menu__item"><span className="user-menu__item-icon">⚙</span>Настройки</a>
-          {user?.is_admin && (
-            <a href="/admin" className="user-menu__item"><span className="user-menu__item-icon">🛠</span>Администрирование</a>
-          )}
-          <div className="user-menu__divider">
-            <button onClick={logout} className="user-menu__item user-menu__item--danger">
-              <span className="user-menu__item-icon">↩</span><span>Выйти</span>
-            </button>
+            <div className="nav-menu__sections">
+              <div className="nav-menu__label">Разделы</div>
+              {sections.map(s => (
+                <a key={s.id} href={s.href} className={`nav-menu__item${s.id === active ? ' nav-menu__item--active' : ''}`}>
+                  <span className="nav-menu__item-icon">{s.icon}</span>{s.label}
+                </a>
+              ))}
+            </div>
+            <div className="nav-menu__foot">
+              <div className="nav-menu__profile">
+                <HeaderAvatar user={user} size={40} />
+                <div className="nav-menu__profile-info">
+                  <div className="nav-menu__profile-name">{name}</div>
+                  <div className="nav-menu__profile-sub">{user?.email || user?.provider || ''}</div>
+                </div>
+                <a href="/settings" className="nav-menu__gear" aria-label="Настройки">⚙</a>
+              </div>
+              <div className="nav-menu__label">Аккаунт</div>
+              {docUrl && (
+                <a href={docUrl} target="_blank" rel="noopener noreferrer" className="nav-menu__item">
+                  <span className="nav-menu__item-icon">📖</span>Документация
+                </a>
+              )}
+              {user?.is_admin && (
+                <a href="/admin" className="nav-menu__item"><span className="nav-menu__item-icon">🛠</span>Администрирование</a>
+              )}
+              <button onClick={logout} className="nav-menu__item nav-menu__item--danger">
+                <span className="nav-menu__item-icon">↩</span>Выйти
+              </button>
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </React.Fragment>
   );
 }

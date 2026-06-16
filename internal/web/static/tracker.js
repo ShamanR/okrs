@@ -306,7 +306,7 @@ function AvatarWithUDID({ name, udid, size = 28 }) {
   return <Avatar name={name} avatarUrl={cached?.avatar_url || null} size={size} />;
 }
 
-// HeaderUserMenu lives in the shared header.js module (loaded before this script).
+// HeaderNavMenu lives in the shared header.js module (loaded before this script).
 
 // ── TEAM COMBOBOX ─────────────────────────────────────────────────────────────
 function flattenTree(nodes, depth = 0) {
@@ -1279,6 +1279,21 @@ function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
   );
 }
 
+// Builds the multipart payload for goal create/update from the modal form.
+// Shared by the edit path and the create-retry path so both persist the same fields.
+function goalFormData(form, teamId) {
+  const fd = new FormData();
+  fd.append('title', form.title.trim());
+  fd.append('description', form.desc || '');
+  fd.append('priority', form.priority);
+  fd.append('weight', String(form.weight));
+  fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
+  fd.append('focus_type', form.focus);
+  (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
+  fd.append('team_id', String(teamId));
+  return fd;
+}
+
 function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals, me, onSave, onClose, accent, allTeams }) {
   const isEdit = !!goal;
   const usedWeight = (existingGoals || []).filter(g => !isEdit || g.id !== goal?.id).reduce((s, g) => s + g.weight, 0);
@@ -1287,6 +1302,10 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
     ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean) }
     : { title: '', desc: '', priority: 'P1', weight: Math.min(20, 100 - usedWeight), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [] });
   const [saving, setSaving] = useState(false);
+  // Remembers the goal created in this modal session so that, if the optional
+  // share step fails after the goal was already created, a retry only re-runs
+  // the share instead of creating a duplicate goal.
+  const createdGoalIdRef = useRef(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const totalAfter = usedWeight + (isEdit ? form.weight - (goal?.weight || 0) : form.weight);
   const overWeight = totalAfter > 100;
@@ -1297,26 +1316,29 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
     try {
       if (isEdit) {
         if (wasShared && !form.shared) { await apiDelete(`/api/v1/goals/${goal.id}/share/${teamId}`); onSave(); return; }
-        const fd = new FormData();
-        fd.append('title', form.title.trim()); fd.append('description', form.desc || '');
-        fd.append('priority', form.priority); fd.append('weight', String(form.weight));
-        fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
-        fd.append('focus_type', form.focus);
-        (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
-        fd.append('team_id', String(teamId));
-        await apiForm(`/api/v1/goals/${goal.id}`, fd);
+        await apiForm(`/api/v1/goals/${goal.id}`, goalFormData(form, teamId));
         if (form.shared && (form.shareTeamIds || []).length > 0) {
           await apiPost(`/api/v1/goals/${goal.id}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
         }
       } else {
-        const created = await apiPost(`/api/v1/teams/${teamId}/goals`, {
-          period_id: periodId, title: form.title.trim(), description: form.desc || '',
-          priority: form.priority, weight: form.weight,
-          work_type: form.type === 'delivery' ? 'Delivery' : 'Discovery',
-          focus_type: form.focus, owner_udids: form.ownerUDIDs || [],
-        });
-        if (created && created.id && form.shared && (form.shareTeamIds || []).length > 0) {
-          await apiPost(`/api/v1/goals/${created.id}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
+        let newGoalId = createdGoalIdRef.current;
+        if (!newGoalId) {
+          const created = await apiPost(`/api/v1/teams/${teamId}/goals`, {
+            period_id: periodId, title: form.title.trim(), description: form.desc || '',
+            priority: form.priority, weight: form.weight,
+            work_type: form.type === 'delivery' ? 'Delivery' : 'Discovery',
+            focus_type: form.focus, owner_udids: form.ownerUDIDs || [],
+          });
+          if (!created || !created.id) throw new Error('не удалось создать цель');
+          newGoalId = created.id;
+          createdGoalIdRef.current = newGoalId;
+        } else {
+          // Goal was created on a previous attempt but a later step failed; persist
+          // any edits made since before retrying the share, so they aren't dropped.
+          await apiForm(`/api/v1/goals/${newGoalId}`, goalFormData(form, teamId));
+        }
+        if (form.shared && (form.shareTeamIds || []).length > 0) {
+          await apiPost(`/api/v1/goals/${newGoalId}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
         }
       }
       onSave();
@@ -1863,8 +1885,8 @@ function App() {
     <div className="app">
       <div className="sidebar">
         <div className="sidebar__header">
+          {me && <HeaderNavMenu user={me} active="tracker" />}
           <div className="sidebar__logo">OKR Tracker</div>
-          {me && <HeaderUserMenu user={me} docUrl={docUrl} showTrackerLink={false} />}
         </div>
         <div className="sidebar__period">
           <div className="sidebar__period-label">Период</div>
