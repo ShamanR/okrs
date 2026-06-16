@@ -117,3 +117,59 @@ func TestHandleConfigBehindMarginFromSettings(t *testing.T) {
 		t.Errorf("behind_margin: want 5, got %d", got.BehindMargin)
 	}
 }
+
+func TestHandleConfigFeedbackDefaults(t *testing.T) {
+	h := New(&fakeSettings{data: map[string]json.RawMessage{}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.FeedbackURL != "" {
+		t.Errorf("feedback_url: want empty, got %q", got.FeedbackURL)
+	}
+	if got.FeedbackPopupEnabled {
+		t.Errorf("feedback_popup_enabled: want false")
+	}
+	if got.FeedbackMenuLinkEnabled {
+		t.Errorf("feedback_menu_link_enabled: want false")
+	}
+	if got.FeedbackFrequencyDays != 30 {
+		t.Errorf("feedback_frequency_days: want default 30, got %d", got.FeedbackFrequencyDays)
+	}
+}
+
+func TestHandleConfigFeedbackFromSettings(t *testing.T) {
+	url, _ := json.Marshal("https://forms.example.com/survey")
+	popup, _ := json.Marshal(true)
+	menu, _ := json.Marshal(true)
+	freq, _ := json.Marshal(7)
+	h := New(&fakeSettings{data: map[string]json.RawMessage{
+		"feedback_url":               url,
+		"feedback_popup_enabled":     popup,
+		"feedback_menu_link_enabled": menu,
+		"feedback_frequency_days":    freq,
+	}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.FeedbackURL != "https://forms.example.com/survey" {
+		t.Errorf("feedback_url: got %q", got.FeedbackURL)
+	}
+	if !got.FeedbackPopupEnabled || !got.FeedbackMenuLinkEnabled {
+		t.Errorf("expected enabled flags true, got popup=%v menu=%v", got.FeedbackPopupEnabled, got.FeedbackMenuLinkEnabled)
+	}
+	if got.FeedbackFrequencyDays != 7 {
+		t.Errorf("feedback_frequency_days: want 7, got %d", got.FeedbackFrequencyDays)
+	}
+}

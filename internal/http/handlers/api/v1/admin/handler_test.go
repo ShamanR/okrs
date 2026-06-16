@@ -179,6 +179,77 @@ func TestHandleUpdateGeneralSettingsRejectsNonHTTPURL(t *testing.T) {
 	}
 }
 
+func TestHandleGetFeedbackSettingsDefaults(t *testing.T) {
+	h := New(nil, newFakeSettings(), nil, nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/feedback", nil)
+	w := httptest.NewRecorder()
+	h.HandleGetFeedbackSettings(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+	var got struct {
+		FeedbackURL             string `json:"feedback_url"`
+		FeedbackPopupEnabled    bool   `json:"feedback_popup_enabled"`
+		FeedbackMenuLinkEnabled bool   `json:"feedback_menu_link_enabled"`
+		FeedbackFrequencyDays   int    `json:"feedback_frequency_days"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.FeedbackURL != "" || got.FeedbackPopupEnabled || got.FeedbackMenuLinkEnabled {
+		t.Errorf("want empty defaults, got %+v", got)
+	}
+	if got.FeedbackFrequencyDays != 30 {
+		t.Errorf("feedback_frequency_days: want default 30, got %d", got.FeedbackFrequencyDays)
+	}
+}
+
+func TestHandleUpdateFeedbackSettingsStoresValues(t *testing.T) {
+	fs := newFakeSettings()
+	h := New(nil, fs, nil, nil)
+	body := strings.NewReader(`{"feedback_url":"  https://forms.example.com/s  ","feedback_popup_enabled":true,"feedback_menu_link_enabled":true,"feedback_frequency_days":14}`)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body)
+	w := httptest.NewRecorder()
+	h.HandleUpdateFeedbackSettings(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	var url string
+	_ = json.Unmarshal(fs.data["feedback_url"], &url)
+	if url != "https://forms.example.com/s" {
+		t.Errorf("feedback_url: want trimmed value, got %q", url)
+	}
+	var freq int
+	_ = json.Unmarshal(fs.data["feedback_frequency_days"], &freq)
+	if freq != 14 {
+		t.Errorf("feedback_frequency_days: want 14, got %d", freq)
+	}
+}
+
+func TestHandleUpdateFeedbackSettingsRejectsBadURL(t *testing.T) {
+	h := New(nil, newFakeSettings(), nil, nil)
+	body := strings.NewReader(`{"feedback_url":"javascript:alert(1)","feedback_frequency_days":14}`)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body)
+	w := httptest.NewRecorder()
+	h.HandleUpdateFeedbackSettings(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
+func TestHandleUpdateFeedbackSettingsRejectsBadFrequency(t *testing.T) {
+	h := New(nil, newFakeSettings(), nil, nil)
+	body := strings.NewReader(`{"feedback_url":"","feedback_frequency_days":0}`)
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body)
+	w := httptest.NewRecorder()
+	h.HandleUpdateFeedbackSettings(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+}
+
 // fakeUsers is an in-memory userAdminStore for handler tests.
 type fakeUsers struct{ users []*domain.User }
 

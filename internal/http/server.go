@@ -270,6 +270,8 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Post("/api/v1/admin/settings/access", adminAPI.HandleUpdateAccessSettings)
 		r.Get("/api/v1/admin/settings/general", adminAPI.HandleGetGeneralSettings)
 		r.Post("/api/v1/admin/settings/general", adminAPI.HandleUpdateGeneralSettings)
+		r.Get("/api/v1/admin/settings/feedback", adminAPI.HandleGetFeedbackSettings)
+		r.Post("/api/v1/admin/settings/feedback", adminAPI.HandleUpdateFeedbackSettings)
 
 		// Admin periods API.
 		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)

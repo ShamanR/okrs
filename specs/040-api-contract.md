@@ -97,13 +97,21 @@ Response:
 {
   "documentation_url": "https://github.com/ShamanR/okrs/wiki",
   "stale_days": 7,
-  "behind_margin": 10
+  "behind_margin": 10,
+  "feedback_url": "https://forms.gle/xxxx",
+  "feedback_popup_enabled": true,
+  "feedback_menu_link_enabled": true,
+  "feedback_frequency_days": 30
 }
 ```
 
 - `documentation_url` — ссылка на внешнюю документацию из `system_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
 - `stale_days` — порог «дней без обновления» из настроек Health Check-in (`system_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
 - `behind_margin` — допустимое отставание (п.п.) от ожидаемого темпа периода из категории «Отстающие» Health Check-in (`health_checkin_config.behind_margin`), по умолчанию `10`. SPA использует его для раскраски процента прогресса команды в sidebar, чтобы она совпадала с этой категорией.
+- `feedback_url` — ссылка на внешний опрос обратной связи из `system_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
+- `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`system_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
+- `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`system_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
+- `feedback_frequency_days` — минимальный интервал между показами всплывающего окна (дней) из `system_settings`, по умолчанию `30`. Логика показа на стороне SPA через cookies — см. `030-user-flows.md`.
 
 ## Admin API endpoints
 
@@ -163,6 +171,30 @@ Validation:
 - `documentation_url` — пустая строка (очищает ссылку, скрывает пункт меню) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
 
 Значение хранится в `system_settings` (ключ `documentation_url`) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его всем авторизованным пользователям.
+
+### Настройки обратной связи
+
+- `GET /api/v1/admin/settings/feedback` — текущие настройки сбора обратной связи
+
+Response:
+
+```json
+{
+  "feedback_url": "https://forms.gle/xxxx",
+  "feedback_popup_enabled": true,
+  "feedback_menu_link_enabled": true,
+  "feedback_frequency_days": 30
+}
+```
+
+- `POST /api/v1/admin/settings/feedback` — обновить настройки; body совпадает по форме с response выше.
+
+Validation:
+
+- `feedback_url` — пустая строка (скрывает пункт меню и окно) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
+- `feedback_frequency_days` — целое число `>= 1`; иначе `400 VALIDATION_ERROR`.
+
+Значения хранятся в `system_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их всем авторизованным пользователям. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
 
 Все admin API endpoints требуют CSRF token при вызове из браузера.
 
