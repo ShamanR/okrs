@@ -3,6 +3,7 @@ package hierarhy
 import (
 	"net/http"
 	"slices"
+	"time"
 
 	"okrs/internal/auth"
 	v1 "okrs/internal/http/handlers/api/v1"
@@ -35,6 +36,7 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metrics := map[int64]service.TeamSummary{}
+	forecast := 0
 	if periodRef != nil {
 		summaries, err := h.service.GetTeamsWithPeriodSummary(r.Context(), periodID, nil)
 		if err != nil {
@@ -45,13 +47,19 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 		for _, summary := range summaries {
 			metrics[summary.ID] = summary
 		}
+		period, err := h.service.GetPeriod(r.Context(), periodID)
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy period", nil)
+			return
+		}
+		forecast = v1.CalculatePeriodForecast(period, time.Now())
 	}
 	if allowedIDs, ok := auth.AllowedTeamIDsFromCtx(r.Context()); ok && allowedIDs != nil {
 		nodes = filterNodesByScope(nodes, allowedIDs)
 	}
 	leadUDIDs := collectLeadUDIDs(nodes)
 	users, _ := h.service.GetUsersByUDIDs(r.Context(), leadUDIDs)
-	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics, v1.BuildUserRefMap(users)))
+	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics, v1.BuildUserRefMap(users), forecast))
 }
 
 func collectLeadUDIDs(nodes []service.TeamNode) []string {

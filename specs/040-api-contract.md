@@ -96,12 +96,14 @@ Response:
 ```json
 {
   "documentation_url": "https://github.com/ShamanR/okrs/wiki",
-  "stale_days": 7
+  "stale_days": 7,
+  "behind_margin": 10
 }
 ```
 
 - `documentation_url` — ссылка на внешнюю документацию из `system_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
 - `stale_days` — порог «дней без обновления» из настроек Health Check-in (`system_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
+- `behind_margin` — допустимое отставание (п.п.) от ожидаемого темпа периода из категории «Отстающие» Health Check-in (`health_checkin_config.behind_margin`), по умолчанию `10`. SPA использует его для раскраски процента прогресса команды в sidebar, чтобы она совпадала с этой категорией.
 
 ## Admin API endpoints
 
@@ -384,8 +386,10 @@ Hierarchy node shape расширен полем:
 - `description` — описание команды (omitempty; пустая строка опускается). Используется страницей настроек для предпросмотра/редактирования описаний.
 - `has_goals` — есть ли у команды goals в выбранном периоде.
 - `progress` — прогресс команды (0..100), возвращается только если `has_goals=true`.
+- `forecast` — прогнозный прогресс периода (0..100, та же формула, что и `progress_meta.forecast`), возвращается только если `has_goals=true`. Одинаков для всех узлов в рамках периода.
+- `status` — `team_period_status` команды (`no_goals` | `forming` | `ready` | `in_progress` | `closed`); присутствует при запросе с `period_id`.
 
-Это поле используется sidebar/navigation UI и таблицей дочерних команд.
+Эти поля используются sidebar/navigation UI и таблицей дочерних команд. Sidebar раскрашивает кружок узла по типу команды (`type`), а процент прогресса — зелёным, когда команда идёт по плану (`forecast - progress ≤ behind_margin`) либо при `status=closed` достигла ≥80%, и красным, когда отстаёт. `behind_margin` берётся из `GET /api/v1/config` (категория «Отстающие» Health Check-in), что синхронизирует раскраску sidebar с этой категорией.
 
 ### `GET /api/v1/teams/{teamID}/okrs?period_id={id}`
 
