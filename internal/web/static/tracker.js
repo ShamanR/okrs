@@ -908,7 +908,7 @@ function CommentsPanel({ comments, onAdd, me }) {
 }
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7 }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus }) {
   const [showKR, setShowKR] = useState(false);
   const [showCom, setShowCom] = useState(false);
   const [newKR, setNewKR] = useState(false);
@@ -916,7 +916,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
-  const isStale = goal.updatedDaysAgo > staleDays;
+  // Drafts and goals awaiting validation are not yet being executed, so the
+  // "N дней без обновления" warning is not meaningful for them.
+  const staleTracked = periodStatus !== 'forming' && periodStatus !== 'ready';
+  const isStale = staleTracked && goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;
   const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast)];
   const health = healthOf(prog, isStale, forecast);
@@ -989,7 +992,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
                 {health === 'ahead' ? '▲ опережает' : health === 'on_track' ? '✓ в плане' : health === 'stale' ? '⚠ нет обновлений' : '▼ отстаёт'}
               </span>
             </div>
-            <span className="goal-card__updated" style={{ color: goal.updatedDaysAgo > staleDays ? '#dc2626' : '#16a34a' }}>
+            <span className="goal-card__updated" style={{ color: isStale ? '#dc2626' : '#16a34a' }}>
               {'Обновлено: '}{goal.updatedDaysAgo === 0 ? 'сегодня' : `${goal.updatedDaysAgo}д назад`}
             </span>
           </div>
@@ -1754,7 +1757,7 @@ function App() {
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
-      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (cfg.behind_margin > 0) setBehindMargin(cfg.behind_margin); }
+      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); }
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -1974,7 +1977,7 @@ function App() {
             </div>
           )}
           {overview && (overview.children_summary?.items?.length > 0) && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },

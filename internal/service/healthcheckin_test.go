@@ -138,6 +138,26 @@ func TestCategories_StaleGoal(t *testing.T) {
 	}
 }
 
+func TestCategories_StaleGoal_ExcludesDraftsAndAwaitingValidation(t *testing.T) {
+	old := time.Now().AddDate(0, 0, -10)
+	for _, status := range []domain.TeamPeriodStatus{domain.TeamPeriodStatusForming, domain.TeamPeriodStatusReady} {
+		kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR1", Weight: 100, Kind: domain.KRKindBoolean,
+			Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(old)}
+		g := makeGoal(1, 1, "", []domain.KeyResult{kr})
+		g.Weight = 100
+
+		teams := []domain.Team{makeTeam(1, "T1", "", nil)}
+		goals := map[int64][]domain.Goal{1: {g}}
+		statuses := map[int64]domain.TeamPeriodStatus{1: status}
+		data := makePeriodData(teams, goals, statuses)
+		result := computeCategories(data, []int64{1}, makeCfg(), time.Now())
+
+		if result.Categories["stale"].Count != 0 {
+			t.Errorf("status %s: stale warning must be suppressed, got %d", status, result.Categories["stale"].Count)
+		}
+	}
+}
+
 func TestCategories_AwaitingValidation(t *testing.T) {
 	kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean,
 		Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(time.Now())}
