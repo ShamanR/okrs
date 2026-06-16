@@ -791,12 +791,12 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
 }
 
 // ── KR ROW ────────────────────────────────────────────────────────────────────
-function KRRow({ kr, goalId, editMode, onReload, accent }) {
+function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7 }) {
   const [modal, setModal] = useState(null);
   const [showNote, setShowNote] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const progress = kr.progress;
-  const staleC = kr.updatedDaysAgo > 7 ? '#dc2626' : kr.updatedDaysAgo > 4 ? '#d97706' : '#10b981';
+  const staleC = kr.updatedDaysAgo > staleDays ? '#dc2626' : kr.updatedDaysAgo > staleDays * 0.6 ? '#d97706' : '#10b981';
   let detail = null;
   if (kr.krType === 'BOOLEAN') detail = <span className="kr-detail" style={{ color: kr.done ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>{kr.done ? '✓ Выполнено' : '○ Не выполнено'}</span>;
   else if (kr.krType === 'PROJECT') detail = <span className="kr-detail">{(kr.stages || []).filter(s => s.done).length}/{(kr.stages || []).length} шагов</span>;
@@ -897,7 +897,7 @@ function CommentsPanel({ comments, onAdd, me }) {
 }
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7 }) {
   const [showKR, setShowKR] = useState(false);
   const [showCom, setShowCom] = useState(false);
   const [newKR, setNewKR] = useState(false);
@@ -905,7 +905,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
-  const isStale = goal.updatedDaysAgo > 7;
+  const isStale = goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;
   const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast)];
   const health = healthOf(prog, isStale, forecast);
@@ -978,7 +978,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
                 {health === 'ahead' ? '▲ опережает' : health === 'on_track' ? '✓ в плане' : health === 'stale' ? '⚠ нет обновлений' : '▼ отстаёт'}
               </span>
             </div>
-            <span className="goal-card__updated" style={{ color: goal.updatedDaysAgo < 14 ? '#16a34a' : '#dc2626' }}>
+            <span className="goal-card__updated" style={{ color: goal.updatedDaysAgo > staleDays ? '#dc2626' : '#16a34a' }}>
               {'Обновлено: '}{goal.updatedDaysAgo === 0 ? 'сегодня' : `${goal.updatedDaysAgo}д назад`}
             </span>
           </div>
@@ -1030,7 +1030,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
                 onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
                 className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
                 {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
-                <KRRow kr={kr} goalId={goal.id} editMode={editMode} onReload={onReload} accent={accent} />
+                <KRRow kr={kr} goalId={goal.id} editMode={editMode} onReload={onReload} accent={accent} staleDays={staleDays} />
               </div>
             );
           })}
@@ -1693,6 +1693,7 @@ function App() {
   const [hciData, setHciData] = useState(null);
   const [hciOpen, setHciOpen] = useState(false);
   const [docUrl, setDocUrl] = useState('');
+  const [staleDays, setStaleDays] = useState(7);
 
   const loadHCI = useCallback((pid) => {
     if (!pid) return;
@@ -1715,7 +1716,7 @@ function App() {
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
-      if (cfg) setDocUrl(cfg.documentation_url || '');
+      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); }
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -1935,7 +1936,7 @@ function App() {
             </div>
           )}
           {overview && (overview.children_summary?.items?.length > 0) && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },

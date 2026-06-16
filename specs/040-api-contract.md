@@ -95,11 +95,13 @@ Response:
 
 ```json
 {
-  "documentation_url": "https://github.com/ShamanR/okrs/wiki"
+  "documentation_url": "https://github.com/ShamanR/okrs/wiki",
+  "stale_days": 7
 }
 ```
 
 - `documentation_url` — ссылка на внешнюю документацию из `system_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
+- `stale_days` — порог «дней без обновления» из настроек Health Check-in (`system_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
 
 ## Admin API endpoints
 
