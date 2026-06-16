@@ -66,7 +66,7 @@ function TypeBadge({ type }) {
   return <span className="set-type-badge" style={{ color, background: `${color}15` }}>{(TEAM_TYPE_LABEL[type] || type).toUpperCase()}</span>;
 }
 
-// AccountMenu replaced by the shared HeaderUserMenu from header.js.
+// AccountMenu replaced by the shared HeaderNavMenu from header.js.
 
 // ── SECTION: TEAM DESCRIPTIONS ────────────────────────────────────────────────
 // A row in the editable, indented hierarchy of teams the user may edit.
@@ -355,11 +355,11 @@ function App() {
     <div className="set-app">
       <aside className="set-sidebar">
         <div className="set-sidebar__header">
+          {me && <HeaderNavMenu user={me} active={null} />}
           <div>
             <div className="set-sidebar__logo">OKR Tracker</div>
             <div className="set-sidebar__sub">Настройки</div>
           </div>
-          {me && <HeaderUserMenu user={me} />}
         </div>
         <nav className="set-nav">
           <div className="set-nav__label">Разделы</div>
