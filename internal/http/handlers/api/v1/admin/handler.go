@@ -308,8 +308,11 @@ func (h *Handler) HandleUpdateFeedbackSettings(w http.ResponseWriter, r *http.Re
 		return
 	}
 	link := strings.TrimSpace(body.FeedbackURL)
-	if link != "" && !isValidHTTPURL(link) {
-		writeError(w, http.StatusBadRequest, "feedback_url must be a valid http(s) URL")
+	// No strict http(s) requirement here (unlike documentation_url) — any link is
+	// accepted. The value is rendered into an href, so only block schemes that
+	// could execute script (XSS), per the no-raw-HTML architecture rule.
+	if link != "" && hasUnsafeURLScheme(link) {
+		writeError(w, http.StatusBadRequest, "feedback_url must not use a javascript:, data:, or vbscript: scheme")
 		return
 	}
 	if body.FeedbackFrequencyDays < 1 {
@@ -365,6 +368,19 @@ func (h *Handler) settingInt(ctx context.Context, key string, def int) int {
 		return def
 	}
 	return n
+}
+
+// hasUnsafeURLScheme reports whether s uses a scheme that can execute script
+// when placed in an href (javascript:, data:, vbscript:). Used where any link
+// shape is allowed but rendered-href XSS must still be prevented.
+func hasUnsafeURLScheme(s string) bool {
+	lower := strings.ToLower(strings.TrimSpace(s))
+	for _, scheme := range []string{"javascript:", "data:", "vbscript:"} {
+		if strings.HasPrefix(lower, scheme) {
+			return true
+		}
+	}
+	return false
 }
 
 // isValidHTTPURL reports whether s is an absolute http(s) URL. Restricting the

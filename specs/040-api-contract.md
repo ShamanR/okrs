@@ -191,7 +191,7 @@ Response:
 
 Validation:
 
-- `feedback_url` — пустая строка (скрывает пункт меню и окно) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
+- `feedback_url` — любая ссылка (строгого требования http(s), в отличие от `documentation_url`, нет; допускаются ссылки без схемы). Пустая строка скрывает пункт меню и окно. Запрещены только потенциально опасные схемы (`javascript:`, `data:`, `vbscript:`), так как значение подставляется в `href` — иначе `400 VALIDATION_ERROR`.
 - `feedback_frequency_days` — целое число `>= 1`; иначе `400 VALIDATION_ERROR`.
 
 Значения хранятся в `system_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их всем авторизованным пользователям. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
