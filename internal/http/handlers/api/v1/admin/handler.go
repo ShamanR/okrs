@@ -19,6 +19,13 @@ import (
 // documentation link shown in the user menu. Empty value means "no link".
 const settingKeyDocumentationURL = "documentation_url"
 
+const (
+	settingKeyFeedbackURL             = "feedback_url"
+	settingKeyFeedbackPopupEnabled    = "feedback_popup_enabled"
+	settingKeyFeedbackMenuLinkEnabled = "feedback_menu_link_enabled"
+	settingKeyFeedbackFrequencyDays   = "feedback_frequency_days"
+)
+
 // userAdminStore covers user operations. *store.UserRepository satisfies it.
 type userAdminStore interface {
 	ListUsers(ctx context.Context) ([]*domain.User, error)
@@ -273,13 +280,107 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 
 // documentationURL reads the stored documentation link; empty string if unset.
 func (h *Handler) documentationURL(ctx context.Context) string {
-	raw, err := h.settings.GetSetting(ctx, settingKeyDocumentationURL)
+	return h.settingString(ctx, settingKeyDocumentationURL)
+}
+
+// GET /api/v1/admin/settings/feedback
+func (h *Handler) HandleGetFeedbackSettings(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	writeJSON(w, map[string]any{
+		"feedback_url":               h.settingString(ctx, settingKeyFeedbackURL),
+		"feedback_popup_enabled":     h.settingBool(ctx, settingKeyFeedbackPopupEnabled),
+		"feedback_menu_link_enabled": h.settingBool(ctx, settingKeyFeedbackMenuLinkEnabled),
+		"feedback_frequency_days":    h.settingInt(ctx, settingKeyFeedbackFrequencyDays, 30),
+	})
+}
+
+// POST /api/v1/admin/settings/feedback
+// body: {"feedback_url":"https://...","feedback_popup_enabled":true,"feedback_menu_link_enabled":true,"feedback_frequency_days":30}
+func (h *Handler) HandleUpdateFeedbackSettings(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		FeedbackURL             string `json:"feedback_url"`
+		FeedbackPopupEnabled    bool   `json:"feedback_popup_enabled"`
+		FeedbackMenuLinkEnabled bool   `json:"feedback_menu_link_enabled"`
+		FeedbackFrequencyDays   int    `json:"feedback_frequency_days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	link := strings.TrimSpace(body.FeedbackURL)
+	// No strict http(s) requirement here (unlike documentation_url) — any link is
+	// accepted. The value is rendered into an href, so only block schemes that
+	// could execute script (XSS), per the no-raw-HTML architecture rule.
+	if link != "" && hasUnsafeURLScheme(link) {
+		writeError(w, http.StatusBadRequest, "feedback_url must not use a javascript:, data:, or vbscript: scheme")
+		return
+	}
+	if body.FeedbackFrequencyDays < 1 {
+		writeError(w, http.StatusBadRequest, "feedback_frequency_days must be >= 1")
+		return
+	}
+	set := func(key string, val any) bool {
+		if err := h.settings.SetSetting(r.Context(), key, val); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return false
+		}
+		return true
+	}
+	if !set(settingKeyFeedbackURL, link) ||
+		!set(settingKeyFeedbackPopupEnabled, body.FeedbackPopupEnabled) ||
+		!set(settingKeyFeedbackMenuLinkEnabled, body.FeedbackMenuLinkEnabled) ||
+		!set(settingKeyFeedbackFrequencyDays, body.FeedbackFrequencyDays) {
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// settingString reads a string setting; empty when unset or malformed.
+func (h *Handler) settingString(ctx context.Context, key string) string {
+	raw, err := h.settings.GetSetting(ctx, key)
 	if err != nil || raw == nil {
 		return ""
 	}
-	var link string
-	_ = json.Unmarshal(raw, &link)
-	return link
+	var s string
+	_ = json.Unmarshal(raw, &s)
+	return s
+}
+
+// settingBool reads a bool setting; false when unset or malformed.
+func (h *Handler) settingBool(ctx context.Context, key string) bool {
+	raw, err := h.settings.GetSetting(ctx, key)
+	if err != nil || raw == nil {
+		return false
+	}
+	var b bool
+	_ = json.Unmarshal(raw, &b)
+	return b
+}
+
+// settingInt reads an int setting; returns def when unset, malformed, or < 1.
+func (h *Handler) settingInt(ctx context.Context, key string, def int) int {
+	raw, err := h.settings.GetSetting(ctx, key)
+	if err != nil || raw == nil {
+		return def
+	}
+	var n int
+	if json.Unmarshal(raw, &n) != nil || n < 1 {
+		return def
+	}
+	return n
+}
+
+// hasUnsafeURLScheme reports whether s uses a scheme that can execute script
+// when placed in an href (javascript:, data:, vbscript:). Used where any link
+// shape is allowed but rendered-href XSS must still be prevented.
+func hasUnsafeURLScheme(s string) bool {
+	lower := strings.ToLower(strings.TrimSpace(s))
+	for _, scheme := range []string{"javascript:", "data:", "vbscript:"} {
+		if strings.HasPrefix(lower, scheme) {
+			return true
+		}
+	}
+	return false
 }
 
 // isValidHTTPURL reports whether s is an absolute http(s) URL. Restricting the

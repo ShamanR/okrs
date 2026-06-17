@@ -86,7 +86,19 @@ Lifecycle ещё не является полноценной policy enforcement
 
 - управление командами (`/admin/teams`);
 - управление периодами (`/admin/periods`);
-- управление пользователями и их grants (`/admin/access`, `/api/v1/admin/*`).
+- управление пользователями и их grants (`/admin/access`, `/api/v1/admin/*`);
+- управление системными настройками (`/api/v1/admin/settings/*`), включая сбор обратной связи.
+
+#### Системные настройки сбора обратной связи
+
+Хранятся в `system_settings` (generic key/value, миграция не требуется), читаются админом через `GET/POST /api/v1/admin/settings/feedback` и любым авторизованным пользователем через `GET /api/v1/config`:
+
+- `feedback_url` (string, по умолчанию `""`) — ссылка на внешний опрос;
+- `feedback_popup_enabled` (bool, по умолчанию `false`) — показывать всплывающее окно;
+- `feedback_menu_link_enabled` (bool, по умолчанию `false`) — показывать пункт меню;
+- `feedback_frequency_days` (int `>= 1`, по умолчанию `30`) — интервал охлаждения показа окна.
+
+Логику показа окна и cookie-трекинг см. в `030-user-flows.md` (`3д`).
 
 ### Права user
 

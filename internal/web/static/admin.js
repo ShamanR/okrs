@@ -1003,6 +1003,81 @@ function GeneralSettingsPanel() {
   </div>;
 }
 
+function FeedbackSettingsPanel() {
+  const [url, setUrl] = useState('');
+  const [popup, setPopup] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [freq, setFreq] = useState(30);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(()=>{
+    apiGet('/api/v1/admin/settings/feedback').then(r=>r&&r.json()).then(data=>{
+      if (!data) return;
+      setUrl(data.feedback_url||'');
+      setPopup(!!data.feedback_popup_enabled);
+      setMenu(!!data.feedback_menu_link_enabled);
+      setFreq(data.feedback_frequency_days||30);
+    });
+  },[]);
+
+  async function save() {
+    const n = parseInt(freq,10);
+    if (!Number.isFinite(n) || n < 1) { alert('Частота должна быть целым числом ≥ 1.'); return; }
+    setSaving(true); setSaved(false);
+    const res = await apiPost('/api/v1/admin/settings/feedback', {
+      feedback_url: url.trim(),
+      feedback_popup_enabled: popup,
+      feedback_menu_link_enabled: menu,
+      feedback_frequency_days: n,
+    });
+    setSaving(false);
+    if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
+    else if (res && res.status===400) alert('Проверьте ссылку (http/https) и частоту (≥ 1).');
+    else alert('Ошибка сохранения настроек');
+  }
+
+  const toggleRow = (checked, onChange, label, hint) => (
+    <label style={{display:'flex',alignItems:'flex-start',gap:10,cursor:'pointer',marginBottom:14}}>
+      <input type="checkbox" checked={checked} onChange={e=>onChange(e.target.checked)} style={{marginTop:3}}/>
+      <span>
+        <span style={{fontSize:13.5,fontWeight:600,color:T.bodyFg}}>{label}</span>
+        <span style={{display:'block',fontSize:12,color:T.mutedFg,marginTop:2}}>{hint}</span>
+      </span>
+    </label>
+  );
+
+  return <div>
+    <DetailHeader breadcrumb="Настройки" title="Обратная связь"
+      subtitle="Сбор обратной связи по инструменту через внешний опрос"/>
+    <DetailSection title="Ссылка на опрос">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:12,lineHeight:1.6}}>
+        Ссылка на форму обратной связи. Пока поле пустое, пункт меню и всплывающее окно не показываются.
+      </div>
+      <input type="url" value={url} onChange={e=>setUrl(e.target.value)}
+        placeholder="https://forms.gle/..."
+        style={{...inpStyle,fontSize:13,marginBottom:4}}/>
+    </DetailSection>
+    <DetailSection title="Где показывать">
+      {toggleRow(menu, setMenu, 'Пункт «Обратная связь» в меню', 'Постоянная ссылка в гамбургер-меню под «Документация».')}
+      {toggleRow(popup, setPopup, 'Всплывающее окно с просьбой', 'Модальное окно появляется не ранее чем через 2 суток работы с инструментом.')}
+    </DetailSection>
+    <DetailSection title="Частота показа окна">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:10,lineHeight:1.6}}>
+        Минимальный интервал между показами окна, в днях. Перерыв в работе дольше этого срока заново даёт пользователю 2 дня перед показом.
+      </div>
+      <input type="number" min="1" value={freq} onChange={e=>setFreq(e.target.value)}
+        style={{...inpStyle,fontSize:13,width:140,marginBottom:16}}/>
+      <div style={{display:'flex',alignItems:'center',gap:10}}>
+        <Btn variant="primary" onClick={save} disabled={saving}>
+          {saving?'Сохранение…':'Сохранить'}
+        </Btn>
+        {saved&&<span style={{fontSize:12,color:'#059669',fontWeight:600}}>✓ Сохранено</span>}
+      </div>
+    </DetailSection>
+  </div>;
+}
+
 // ── USERS SECTION ────────────────────────────────────────────────────────────
 function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
@@ -1277,6 +1352,7 @@ function App() {
     {section==='settings'&&<div style={{padding:'20px 24px 24px',display:'flex',flexDirection:'column',gap:20}}>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><GeneralSettingsPanel/></div>
+      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><FeedbackSettingsPanel/></div>
     </div>}
     {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}
   </Shell>;

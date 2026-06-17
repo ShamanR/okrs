@@ -16,6 +16,15 @@ function _hdrCSRF() {
   return m ? decodeURIComponent(m[1]) : '';
 }
 
+// Feedback nudge tracking cookies. ~2-year lifetime, site-wide path.
+function _fbGet(name) {
+  const m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+function _fbSet(name, val) {
+  document.cookie = name + '=' + encodeURIComponent(val) + ';path=/;max-age=' + (2 * 365 * 24 * 60 * 60) + ';SameSite=Lax';
+}
+
 function HeaderAvatar({ user, size }) {
   const name = user?.display_name || 'Пользователь';
   const base = { width: size, height: size, borderRadius: '50%', flexShrink: 0, display: 'block' };
@@ -37,13 +46,14 @@ function HeaderAvatar({ user, size }) {
 // active: 'tracker' | 'activity-log' | 'goal-tree' | null.
 function HeaderNavMenu({ user, active }) {
   const [open, setOpen] = React.useState(false);
-  const [docUrl, setDocUrl] = React.useState('');
+  const [cfg, setCfg] = React.useState(null);
   React.useEffect(() => {
     fetch('/api/v1/config', { credentials: 'include' })
       .then(r => (r.ok ? r.json() : null))
-      .then(cfg => { if (cfg && cfg.documentation_url) setDocUrl(cfg.documentation_url); })
+      .then(c => { if (c) setCfg(c); })
       .catch(() => {});
   }, []);
+  const docUrl = (cfg && cfg.documentation_url) || '';
   React.useEffect(() => {
     if (!open) return;
     const onKey = e => { if (e.key === 'Escape') setOpen(false); };
@@ -60,6 +70,7 @@ function HeaderNavMenu({ user, active }) {
   return (
     <React.Fragment>
       <button onClick={() => setOpen(true)} className="nav-menu__burger" aria-label="Меню">☰</button>
+      <FeedbackNudge cfg={cfg} />
       {open && (
         <div className="nav-menu__overlay" onClick={() => setOpen(false)}>
           <div className="nav-menu__panel" onClick={e => e.stopPropagation()}>
@@ -90,6 +101,11 @@ function HeaderNavMenu({ user, active }) {
                   <span className="nav-menu__item-icon">📖</span>Документация
                 </a>
               )}
+              {cfg && cfg.feedback_menu_link_enabled && cfg.feedback_url && (
+                <a href={cfg.feedback_url} target="_blank" rel="noopener noreferrer" className="nav-menu__item">
+                  <span className="nav-menu__item-icon">💬</span>Обратная связь
+                </a>
+              )}
               {user?.is_admin && (
                 <a href="/admin" className="nav-menu__item"><span className="nav-menu__item-icon">🛠</span>Администрирование</a>
               )}
@@ -101,5 +117,62 @@ function HeaderNavMenu({ user, active }) {
         </div>
       )}
     </React.Fragment>
+  );
+}
+
+// FeedbackNudge — модальное окно-просьба оставить обратную связь. Логика показа
+// на cookies: первый показ не раньше чем через 2 суток с начала вовлечения,
+// повторный — не раньше чем через feedback_frequency_days после закрытия.
+// Долгий перерыв (визитов не было дольше частоты) сбрасывает 2-дневный grace.
+function FeedbackNudge({ cfg }) {
+  const [show, setShow] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!cfg) return;
+    const DAY = 86400000;
+    const freqMs = (cfg.feedback_frequency_days || 30) * DAY;
+    const now = Date.now();
+
+    // Engagement tracking — runs on every page load, even when the popup is off.
+    let start = parseInt(_fbGet('okr_fb_start'), 10);
+    const seen = parseInt(_fbGet('okr_fb_seen'), 10);
+    if (!start || !seen || now - seen > freqMs) {
+      start = now;               // first visit, or return after a long break
+      _fbSet('okr_fb_start', String(now));
+    }
+    _fbSet('okr_fb_seen', String(now));
+
+    if (!cfg.feedback_popup_enabled || !cfg.feedback_url) return;
+    const graceOK = now - start >= 2 * DAY;
+    const dismissed = parseInt(_fbGet('okr_fb_dismissed'), 10);
+    const cooldownOK = !dismissed || (now - dismissed >= freqMs);
+    if (graceOK && cooldownOK) setShow(true);
+  }, [cfg]);
+
+  function dismiss() {
+    _fbSet('okr_fb_dismissed', String(Date.now()));
+    setShow(false);
+  }
+
+  React.useEffect(() => {
+    if (!show) return;
+    const onKey = e => { if (e.key === 'Escape') dismiss(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [show]);
+
+  if (!show || !cfg) return null;
+  return (
+    <div className="fb-nudge__overlay" onClick={dismiss}>
+      <div className="fb-nudge__card" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Обратная связь">
+        <button onClick={dismiss} className="fb-nudge__close" aria-label="Закрыть">✕</button>
+        <div className="fb-nudge__icon">💬</div>
+        <div className="fb-nudge__title">Поделитесь обратной связью</div>
+        <div className="fb-nudge__text">Помогите сделать инструмент лучше — это займёт пару минут.</div>
+        <a href={cfg.feedback_url} target="_blank" rel="noopener noreferrer" className="fb-nudge__btn" onClick={dismiss}>
+          Поделиться обратной связью
+        </a>
+      </div>
+    </div>
   );
 }
