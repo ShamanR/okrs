@@ -927,17 +927,23 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const canReorderGoal = canEdit && !!dragProps;
   const { isDragging, ...rootDrag } = dragProps || {};
   const otherTeams = (goal.shareTeams || []).filter(t => t.id !== currentTeamId);
+  const isShared = otherTeams.length > 0;
   const krWeightSum = (goal.krs || []).reduce((s, k) => s + (k.weight || 0), 0);
   const krWeightOff = krWeightSum !== 100;
   const krWeightDelta = 100 - krWeightSum;
 
   const addGoalComment = async text => { await apiPost(`/api/v1/goals/${goal.id}/comments`, { text }); onReload(); };
-  const handleDeleteGoal = async () => { await apiDelete(`/api/v1/goals/${goal.id}`); onReload(); };
+  // For a shared goal, deleting only detaches the current team (leaves the share); the goal stays
+  // for the other participating teams. A goal that is not shared is deleted outright.
+  const handleDeleteGoal = async () => {
+    await apiDelete(isShared ? `/api/v1/goals/${goal.id}/share/${currentTeamId}` : `/api/v1/goals/${goal.id}`);
+    onReload();
+  };
 
   const cardClass = ['goal-card',
     isDragging ? 'goal-card--dragging' : '',
     canReorderGoal ? 'goal-card--reorderable' : '',
-    otherTeams.length > 0 ? 'goal-card--shared' : '',
+    isShared ? 'goal-card--shared' : '',
     isStale ? 'goal-card--stale' : '',
   ].filter(Boolean).join(' ');
 
@@ -1052,7 +1058,12 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         </div>
       )}
       {newKR && <KREditModal kr={null} goalId={goal.id} onSave={() => { setNewKR(false); onReload(); }} onClose={() => setNewKR(false)} accent={accent} />}
-      {confirmDeleteGoal && <ConfirmModal title="Удалить цель?" message={`«${goal.title}» и все её Key Results будут удалены без возможности восстановления.`}
+      {confirmDeleteGoal && <ConfirmModal
+        title={isShared ? 'Открепить цель от команды?' : 'Удалить цель?'}
+        message={isShared
+          ? `Цель «${goal.title}» будет удалена из целей этой команды. У других команд-участников она сохранится.`
+          : `«${goal.title}» и все её Key Results будут удалены без возможности восстановления.`}
+        confirmLabel={isShared ? 'Открепить' : 'Удалить'}
         onConfirm={handleDeleteGoal} onClose={() => setConfirmDeleteGoal(false)} />}
       {showCom && (
         <div className="comments-section">
@@ -1308,6 +1319,36 @@ function goalFormData(form, teamId) {
   return fd;
 }
 
+// Builds the goal_shares targets for the edit path. The /share endpoint replaces the COMPLETE
+// set of non-owner participants, so the editing team must stay in the set (unless it is the
+// owner, which is tracked on the goal itself and never stored as a share). Existing per-team
+// weights are preserved so editing one team's weight never alters another team's weight; only
+// newly added teams fall back to a default. form.shareTeamIds excludes the editing team, so for
+// a non-owner editor it would otherwise include the owner and drop the editor itself.
+function goalShareTargets(form, goal, teamId) {
+  const ownerId = goal.teamId;
+  const existingWeight = {};
+  (goal.shareTeams || []).forEach(t => { existingWeight[t.id] = t.weight; });
+  const teamIds = new Set(form.shareTeamIds || []);
+  if (teamId !== ownerId) teamIds.add(teamId);
+  teamIds.delete(ownerId);
+  return [...teamIds].map(id => ({
+    team_id: id,
+    weight: id === teamId ? form.weight : (existingWeight[id] != null ? existingWeight[id] : 100),
+  }));
+}
+
+// Reports whether the set of non-owner participating teams differs from what is currently
+// persisted on the goal. Lets the edit path skip the /share call (a full goal_shares replace)
+// when only the weight or other goal fields changed.
+function shareTeamsChanged(form, goal, teamId) {
+  const desired = new Set(goalShareTargets(form, goal, teamId).map(t => t.team_id));
+  const current = new Set((goal.shareTeams || []).map(t => t.id).filter(id => id !== goal.teamId));
+  if (desired.size !== current.size) return true;
+  for (const id of desired) if (!current.has(id)) return true;
+  return false;
+}
+
 function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals, me, onSave, onClose, accent, allTeams }) {
   const isEdit = !!goal;
   const usedWeight = (existingGoals || []).filter(g => !isEdit || g.id !== goal?.id).reduce((s, g) => s + g.weight, 0);
@@ -1316,6 +1357,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
     ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean) }
     : { title: '', desc: '', priority: 'P1', weight: Math.min(20, 100 - usedWeight), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [] });
   const [saving, setSaving] = useState(false);
+  const [confirmUnshare, setConfirmUnshare] = useState(false);
   // Remembers the goal created in this modal session so that, if the optional
   // share step fails after the goal was already created, a retry only re-runs
   // the share instead of creating a duplicate goal.
@@ -1324,15 +1366,21 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   const totalAfter = usedWeight + (isEdit ? form.weight - (goal?.weight || 0) : form.weight);
   const overWeight = totalAfter > 100;
   const valid = form.title.trim() && !overWeight && form.weight > 0 && (!form.shared || (form.shareTeamIds || []).length > 0);
-  const save = async () => {
+  // Turning the "Общая цель" toggle off on an already-shared goal removes the goal from THIS
+  // team's list (leaves the share), so it needs explicit confirmation before saving.
+  const leavingShare = isEdit && wasShared && !form.shared;
+  const performSave = async () => {
     if (!valid || saving) return;
     setSaving(true);
     try {
       if (isEdit) {
-        if (wasShared && !form.shared) { await apiDelete(`/api/v1/goals/${goal.id}/share/${teamId}`); onSave(); return; }
+        if (leavingShare) { await apiDelete(`/api/v1/goals/${goal.id}/share/${teamId}`); onSave(); return; }
         await apiForm(`/api/v1/goals/${goal.id}`, goalFormData(form, teamId));
-        if (form.shared && (form.shareTeamIds || []).length > 0) {
-          await apiPost(`/api/v1/goals/${goal.id}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
+        // The per-team weight is already persisted by the goal update above. /share is only
+        // needed when the set of participating teams actually changed — re-sending it on a plain
+        // weight edit would be a redundant full replace of all goal_shares.
+        if (form.shared && (form.shareTeamIds || []).length > 0 && shareTeamsChanged(form, goal, teamId)) {
+          await apiPost(`/api/v1/goals/${goal.id}/share`, { targets: goalShareTargets(form, goal, teamId) });
         }
       } else {
         let newGoalId = createdGoalIdRef.current;
@@ -1358,6 +1406,11 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
       onSave();
     } catch (e) { alert('Ошибка: ' + e.message); }
     finally { setSaving(false); }
+  };
+  const save = async () => {
+    if (!valid || saving) return;
+    if (leavingShare) { setConfirmUnshare(true); return; }
+    await performSave();
   };
   const canSave = valid && !saving;
   const overlay = useOverlayClose(onClose);
@@ -1461,6 +1514,14 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           </button>
         </div>
       </div>
+      {confirmUnshare && (
+        <ConfirmModal
+          title="Сделать цель не общей?"
+          message={`Цель «${form.title}» будет удалена из целей команды «${teamName}». У других команд-участников она сохранится.`}
+          confirmLabel="Убрать из команды"
+          onConfirm={performSave}
+          onClose={() => setConfirmUnshare(false)} />
+      )}
     </div>
   );
 }

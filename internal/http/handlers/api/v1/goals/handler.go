@@ -262,6 +262,20 @@ func (h *Handler) HandleLeaveGoalShare(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "access denied", nil)
 		return
 	}
+	// The goal must actually be attached to teamID (as owner or as a shared team), otherwise there
+	// is nothing to detach. Returning NOT_FOUND avoids reporting a successful no-op and prevents
+	// probing arbitrary goal IDs as an existence oracle (see access rules in specs/040).
+	goal, err := h.service.GetGoal(r.Context(), goalID)
+	if err != nil {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	if goal.TeamID != teamID {
+		if _, err := h.service.GetGoalShare(r.Context(), goalID, teamID); err != nil {
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+			return
+		}
+	}
 	if _, _, err := h.service.DeleteGoal(r.Context(), goalID, teamID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
 		return

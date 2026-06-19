@@ -30,7 +30,7 @@ type GoalShareInput struct {
 }
 
 func (r *GoalShareRepository) ListGoalShares(ctx context.Context, goalID int64) ([]GoalShare, error) {
-	rows, err := r.db.Query(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1`, goalID)
+	rows, err := r.db.Query(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1 ORDER BY sort_order, team_id`, goalID)
 	if err != nil {
 		return nil, err
 	}
