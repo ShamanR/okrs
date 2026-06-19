@@ -1837,7 +1837,9 @@ function App() {
       const nodes = data.items || [];
       _cacheUserRefsFromHierarchyNodes(nodes);
       setHierarchy(nodes);
-      if (!selId) {
+      // Keep the current selection when it still exists in the new period's tree;
+      // otherwise fall back to the URL/cookie team or the first node.
+      if (!selId || !findNodeById(nodes, selId)) {
         let target = null;
         if (!initialNavRef.current.used && initialNavRef.current.team) {
           target = findNodeById(nodes, initialNavRef.current.team) || null;
@@ -1852,7 +1854,7 @@ function App() {
   useEffect(() => {
     if (!periodId || !selId) return;
     setTeamOKR(null); setOverview(null);
-    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } });
+    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } }).catch(() => setTeamOKR(null));
     const node = findNodeById(hierarchy, selId);
     if (node && (node.children || []).length > 0) {
       apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(data => { if (data) setOverview(data); }).catch(() => {});
@@ -1909,7 +1911,7 @@ function App() {
 
   const reload = useCallback(() => {
     if (!periodId || !selId) return;
-    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } });
+    apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } }).catch(() => setTeamOKR(null));
     apiGet(`/api/v1/hierarchy?period_id=${periodId}`).then(data => {
       if (!data) return;
       _cacheUserRefsFromHierarchyNodes(data.items || []);
