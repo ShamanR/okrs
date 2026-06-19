@@ -319,6 +319,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/goals/{goalID}", goalsHandler.HandleUpdateGoal)
 	r.Post("/api/v1/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
 	r.Post("/api/v1/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
+	r.Delete("/api/v1/goals/{goalID}/share/{teamID}", goalsHandler.HandleLeaveGoalShare)
 	r.Delete("/api/v1/goals/{goalID}", goalsHandler.HandleDeleteGoal)
 
 	krsHandler := apikrs.New(s.service)
