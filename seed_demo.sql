@@ -14,7 +14,7 @@ BEGIN;
 TRUNCATE TABLE
   kr_project_stages,
   kr_boolean_meta,
-  key_result_comments,
+  key_result_notes,
   goal_comments,
   key_results,
   goal_shares,
@@ -226,9 +226,207 @@ INSERT INTO kr_project_stages (id, key_result_id, title, weight, is_done, sort_o
 -- ----------------------------------------------------------------
 -- Goal comments
 -- ----------------------------------------------------------------
-INSERT INTO goal_comments (id, goal_id, text, created_at) VALUES
-  (5, 32, 'Обновление по задаче выполнено.', NOW()),
-  (7, 37, 'Обновление по задаче выполнено.', NOW());
+-- author_user_id = 1 (system:anonymous-local), required NOT NULL since migration 017.
+INSERT INTO goal_comments (id, goal_id, text, author_user_id, created_at) VALUES
+  (5, 32, 'Обновление по задаче выполнено.', 1, NOW()),
+  (7, 37, 'Обновление по задаче выполнено.', 1, NOW());
+
+-- ================================================================
+-- OKR Catalog — департамент «Реклама» (Y26-Q1)
+-- Отдельный корневой узел (id 100), полностью отделимый от данных
+-- выше: teams 100-112, goals 100-116, key_results 100-132.
+-- ================================================================
+
+-- Teams: Реклама → Разработка → {Платформа, Продвижение}
+INSERT INTO teams (id, name, team_type, parent_id, lead, description, created_at, updated_at) VALUES
+  (100, 'Реклама',           'department', NULL, '',                'Рекламный департамент: каталог целей Y26 Q1.', NOW(), NOW()),
+  (101, 'Разработка',        'cluster',    100,  '',                'Кластер инженерных команд рекламного департамента.', NOW(), NOW()),
+  (102, 'Платформа',         'unit',       101,  '',                'Ядро платформы: backend, инфраструктура и данные.', NOW(), NOW()),
+  (103, 'Backend & Quality', 'group',      102,  'Дмитрий Петров',  'Стандарты кода и процессов для Backend и QA команд.', NOW(), NOW()),
+  (104, 'CoreDEV',           'team',       103,  'Сергей Лебедев',  '', NOW(), NOW()),
+  (105, 'API Platform',      'squad',      104,  'Сергей Лебедев',  '', NOW(), NOW()),
+  (106, 'CoreQA',            'team',       103,  'Елена Смирнова',  '', NOW(), NOW()),
+  (107, 'Infrastructure',    'group',      102,  '',                '', NOW(), NOW()),
+  (108, 'PaaS \ Infra',      'team',       107,  'Андрей Николаев', '', NOW(), NOW()),
+  (109, 'SRE',               'team',       107,  'Кирилл Воронов',  '', NOW(), NOW()),
+  (110, 'DWH',               'team',       102,  'Михаил Козлов',   '', NOW(), NOW()),
+  (111, 'Продвижение',       'unit',       101,  '',                '', NOW(), NOW()),
+  (112, 'Перформанс',        'team',       111,  'Роман Белов',     '', NOW(), NOW());
+
+-- Goals (period 1 = Y26-Q1)
+INSERT INTO goals (id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, sort_order, created_at, updated_at) VALUES
+  -- Платформа (102)
+  (100, 102, 1, 'Снизить P95 latency до 200ms',          'Оптимизировать критические пути запросов',                'P1', 35, 'Delivery',  'EFFICIENCY',    'Алексей Иванов',   1, NOW(), NOW()),
+  (101, 102, 1, 'Покрыть 80% кода тестами',              'Повысить надёжность через автоматизацию',                 'P1', 30, 'Delivery',  'QUALITY',       'Елена Смирнова',   2, NOW(), NOW()),
+  (102, 102, 1, 'Запустить портал документации',         'Единое место для архитектурных решений',                  'P2', 20, 'Discovery', 'RELIABILITY',   'Михаил Козлов',    3, NOW(), NOW()),
+  (103, 102, 1, 'Снизить Time-to-Deploy до 15 мин',      'Ускорить CI/CD пайплайн',                                 'P2', 15, 'Delivery',  'EFFICIENCY',    'Андрей Николаев',  4, NOW(), NOW()),
+  -- Backend & Quality (103)
+  (104, 103, 1, 'Единая культура инженерного качества',  'Стандарты кода и процессов для Backend и QA команд',      'P1', 100,'Discovery', 'QUALITY',       'Дмитрий Петров',   1, NOW(), NOW()),
+  -- CoreDEV (104)
+  (105, 104, 1, 'Migrate to Go 1.22',                    'Обновить все сервисы, использовать новые возможности языка','P1',50, 'Delivery',  'RELIABILITY',   'Сергей Лебедев',   1, NOW(), NOW()),
+  (106, 104, 1, 'Рефакторинг auth модуля',               'Выделить в отдельный сервис',                             'P2', 50, 'Delivery',  'QUALITY',       'Ольга Фёдорова',   2, NOW(), NOW()),
+  -- API Platform (105)
+  (107, 105, 1, 'Запустить новую версию API Gateway v2', 'Рефакторинг маршрутизации, поддержка gRPC',               'P1', 70, 'Delivery',  'RELIABILITY',   'Сергей Лебедев',   1, NOW(), NOW()),
+  (108, 105, 1, 'Документация API для партнёров',        '',                                                        'P2', 30, 'Discovery', 'GROWTH',        'Михаил Козлов',    2, NOW(), NOW()),
+  -- CoreQA (106)
+  (109, 106, 1, 'Автоматизировать регрессионное тестирование','Покрыть 200 ключевых user flows',                    'P1', 100,'Delivery',  'QUALITY',       'Елена Смирнова',   1, NOW(), NOW()),
+  -- PaaS \ Infra (108)
+  (110, 108, 1, 'Перевести 80% сервисов на k8s',         '',                                                        'P1', 70, 'Delivery',  'EFFICIENCY',    'Андрей Николаев',  1, NOW(), NOW()),
+  (111, 108, 1, 'SLA платформ 99.5%',                    '',                                                        'P2', 30, 'Delivery',  'RELIABILITY',   'Андрей Николаев',  2, NOW(), NOW()),
+  -- SRE (109)
+  (112, 109, 1, '99.9% uptime всех production сервисов',  'Обеспечить надёжность инфраструктуры',                    'P0', 60, 'Delivery',  'RELIABILITY',   'Кирилл Воронов',   1, NOW(), NOW()),
+  (113, 109, 1, 'MTTR < 10 мин для P0 инцидентов',        'Ускорить реакцию на критические сбои',                    'P1', 40, 'Delivery',  'RELIABILITY',   'Кирилл Воронов',   2, NOW(), NOW()),
+  -- DWH (110)
+  (114, 110, 1, 'DWH для рекламных метрик',               'Централизованное хранилище',                             'P1', 100,'Discovery', 'GROWTH',        'Михаил Козлов',    1, NOW(), NOW()),
+  -- Перформанс (112)
+  (115, 112, 1, 'Снизить CPA на 15%',                     'ML-биддинг',                                             'P0', 60, 'Delivery',  'PROFITABILITY', 'Роман Белов',      1, NOW(), NOW()),
+  (116, 112, 1, 'ML-биддинг для топ-10 клиентов',         '',                                                        'P1', 30, 'Discovery', 'GROWTH',        'Роман Белов',      2, NOW(), NOW());
+
+-- Team-period statuses for the Реклама catalog (period 1)
+INSERT INTO team_period_statuses (team_id, period_id, status) VALUES
+  (102, 1, 'in_progress'),
+  (103, 1, 'in_progress'),
+  (104, 1, 'in_progress'),
+  (105, 1, 'forming'),
+  (106, 1, 'in_progress'),
+  (108, 1, 'in_progress'),
+  (109, 1, 'in_progress'),
+  (110, 1, 'forming'),
+  (112, 1, 'in_progress');
+
+-- Key Results
+INSERT INTO key_results (id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at) VALUES
+  -- Goal 100 (P95 latency)
+  (100, 100, 'P95 latency API gateway',  'Замеряем по Prometheus, окно 5 минут. Считаем latency на edge-роутах /api/v1/*.', 40, 'NUMERICAL', 1, NOW(), NOW()),
+  (101, 100, 'P95 latency auth service', 'Внутренние gRPC-вызовы auth.Verify и auth.Refresh, без учёта таймаутов клиента.', 40, 'NUMERICAL', 2, NOW(), NOW()),
+  (102, 100, 'Миграция на HTTP/2',       'Все внешние эндпоинты переведены на HTTP/2 с поддержкой fallback на HTTP/1.1.',   20, 'PROJECT',   3, NOW(), NOW()),
+  -- Goal 101 (покрытие тестами)
+  (103, 101, 'Unit test coverage CoreDEV', 'Покрытие по go test -cover для пакетов core/*, без учёта моков и сгенерированного кода. Цель в 80% относится только к бизнес-логике.', 50, 'NUMERICAL', 1, NOW(), NOW()),
+  (104, 101, 'Integration test suite',     '',                                                                              20, 'BOOLEAN',   2, NOW(), NOW()),
+  (105, 101, 'QA automation pipeline',     '',                                                                              20, 'PROJECT',   3, NOW(), NOW()),
+  -- Goal 102 (портал документации)
+  (106, 102, 'Architecture decisions documented', 'ADR в репозитории docs/adr/, минимум 15 ключевых решений за квартал.', 60, 'NUMERICAL', 1, NOW(), NOW()),
+  (107, 102, 'API docs migrated',                 '',                                                                      40, 'NUMERICAL', 2, NOW(), NOW()),
+  -- Goal 103 (Time-to-Deploy)
+  (108, 103, 'Pipeline время P50 < 15 мин', '',                                                                           70, 'NUMERICAL', 1, NOW(), NOW()),
+  (109, 103, 'Параллелизация тестов',        '',                                                                          30, 'BOOLEAN',   2, NOW(), NOW()),
+  -- Goal 104 (инженерное качество)
+  (110, 104, 'Engineering handbook опубликован', '',                                                                      50, 'BOOLEAN',   1, NOW(), NOW()),
+  (111, 104, 'Code review время < 2ч',           '',                                                                      50, 'NUMERICAL', 2, NOW(), NOW()),
+  -- Goal 105 (Go 1.22)
+  (112, 105, 'Все сервисы обновлены',     'go.mod указывает Go 1.22, CI зелёный, прод-сборка прошла smoke-тесты.',        60, 'NUMERICAL', 1, NOW(), NOW()),
+  (113, 105, 'Тесты проходят на Go 1.22', '',                                                                            40, 'NUMERICAL', 2, NOW(), NOW()),
+  -- Goal 106 (рефакторинг auth)
+  (114, 106, 'Auth service выделен',         '',                                                                          70, 'PROJECT',   1, NOW(), NOW()),
+  (115, 106, 'Циклические зависимости устранены', '',                                                                    30, 'BOOLEAN',   2, NOW(), NOW()),
+  -- Goal 107 (API Gateway v2)
+  (116, 107, 'gRPC транскодинг работает',    '',                                                                          40, 'BOOLEAN',   1, NOW(), NOW()),
+  (117, 107, 'Выдерживаемая нагрузка gateway','Нагрузочный тест k6, рост RPS. Прогресс по промежуточным значениям.',      60, 'NUMERICAL', 2, NOW(), NOW()),
+  -- Goal 108 (документация партнёрам)
+  (118, 108, 'API Reference опубликован',    '',                                                                         100, 'BOOLEAN',   1, NOW(), NOW()),
+  -- Goal 109 (регрессионное тестирование)
+  (119, 109, 'User flows покрыты авто-тестами','',                                                                        70, 'NUMERICAL', 1, NOW(), NOW()),
+  (120, 109, 'CI интеграция настроена',        '',                                                                        30, 'BOOLEAN',   2, NOW(), NOW()),
+  -- Goal 110 (k8s)
+  (121, 110, 'Сервисов на k8s',              '',                                                                         100, 'NUMERICAL', 1, NOW(), NOW()),
+  -- Goal 111 (SLA)
+  (122, 111, 'Uptime platform',              '',                                                                         100, 'NUMERICAL', 1, NOW(), NOW()),
+  -- Goal 112 (99.9% uptime)
+  (123, 112, 'Uptime API gateway',           '',                                                                          50, 'NUMERICAL', 1, NOW(), NOW()),
+  (124, 112, 'Uptime core services',         '',                                                                          50, 'NUMERICAL', 2, NOW(), NOW()),
+  -- Goal 113 (MTTR)
+  (125, 113, 'Runbook покрытие 90%',         '',                                                                          40, 'NUMERICAL', 1, NOW(), NOW()),
+  (126, 113, 'On-call rotation настроен',     '',                                                                         30, 'BOOLEAN',   2, NOW(), NOW()),
+  (127, 113, 'P50 MTTR < 10 мин',            '',                                                                          30, 'NUMERICAL', 3, NOW(), NOW()),
+  -- Goal 114 (DWH)
+  (128, 114, 'Схема данных согласована',     '',                                                                          40, 'BOOLEAN',   1, NOW(), NOW()),
+  (129, 114, 'Pipeline ежедневных данных',   '',                                                                          60, 'PROJECT',   2, NOW(), NOW()),
+  -- Goal 115 (CPA)
+  (130, 115, 'CPA (целевой -15%)',           '',                                                                         100, 'NUMERICAL', 1, NOW(), NOW()),
+  -- Goal 116 (ML-биддинг)
+  (131, 116, 'ML-модель в проде',            '',                                                                          60, 'PROJECT',   1, NOW(), NOW()),
+  (132, 116, 'Клиентов подключено',          '',                                                                          40, 'NUMERICAL', 2, NOW(), NOW());
+
+-- KR meta — BOOLEAN
+INSERT INTO kr_boolean_meta (key_result_id, is_done) VALUES
+  (104, false),
+  (109, false),
+  (110, false),
+  (115, false),
+  (116, false),
+  (118, false),
+  (120, true),
+  (126, true),
+  (128, true);
+
+-- KR meta — NUMERICAL
+UPDATE key_results SET start_value = v.start, target_value = v.target, current_value = v.current, unit = v.unit
+FROM (VALUES
+  (100, 320.0, 200.0, 278.0, 'мс'),
+  (101, 450.0, 200.0, 408.0, 'мс'),
+  (103, 0.0,   80.0,  14.0,  '%'),
+  (106, 0.0,   100.0, 60.0,  '%'),
+  (107, 0.0,   100.0, 10.0,  '%'),
+  (108, 48.0,  15.0,  48.0,  'мин'),
+  (111, 8.0,   2.0,   5.0,   'час'),
+  (112, 0.0,   100.0, 65.0,  '%'),
+  (113, 0.0,   100.0, 80.0,  '%'),
+  (117, 100.0, 180.0, 170.0, 'RPS'),
+  (119, 0.0,   200.0, 76.0,  'шт'),
+  (121, 0.0,   80.0,  44.0,  '%'),
+  (122, 97.0,  99.5,  98.6,  '%'),
+  (123, 98.0,  99.9,  99.2,  '%'),
+  (124, 98.0,  99.9,  99.4,  '%'),
+  (125, 0.0,   90.0,  41.0,  '%'),
+  (127, 35.0,  10.0,  20.0,  'мин'),
+  (130, 100.0, 85.0,  97.0,  '%'),
+  (132, 0.0,   10.0,  2.0,   '%')
+) AS v(kr_id, start, target, current, unit)
+WHERE key_results.id = v.kr_id;
+
+-- KR meta — NUMERICAL checkpoints (JSONB [{value, progress_percent}])
+UPDATE key_results SET checkpoints = '[{"value":100,"progress_percent":0},{"value":150,"progress_percent":50},{"value":180,"progress_percent":100}]'::jsonb WHERE id = 117;
+UPDATE key_results SET checkpoints = '[{"value":50,"progress_percent":25},{"value":100,"progress_percent":50},{"value":150,"progress_percent":75},{"value":200,"progress_percent":100}]'::jsonb WHERE id = 119;
+
+-- KR meta — zeroing criteria
+UPDATE key_results SET zeroing_criteria = 'Если латентность достигнута только за счёт отключения проверок безопасности на edge — результат не засчитывается.' WHERE id = 100;
+
+-- KR meta — PROJECT stages
+INSERT INTO kr_project_stages (id, key_result_id, title, weight, is_done, sort_order) VALUES
+  -- KR 102 (Миграция на HTTP/2)
+  (100, 102, 'Конфигурация nginx обновлена', 40, true,  1),
+  (101, 102, 'Тестирование с HTTP/2',        35, false, 2),
+  (102, 102, 'Мониторинг метрик',            25, false, 3),
+  -- KR 105 (QA automation pipeline)
+  (103, 105, 'Тест-раннер настроен',         30, true,  1),
+  (104, 105, 'CI интеграция',                40, false, 2),
+  (105, 105, 'Репортинг',                    30, false, 3),
+  -- KR 114 (Auth service выделен)
+  (106, 114, 'Интерфейс auth service',       25, true,  1),
+  (107, 114, 'Деплой в dev',                 35, false, 2),
+  (108, 114, 'Production миграция',          40, false, 3),
+  -- KR 129 (Pipeline ежедневных данных)
+  (109, 129, 'Источники подключены',         40, true,  1),
+  (110, 129, 'Трансформации настроены',      35, false, 2),
+  (111, 129, 'Дашборды готовы',              25, false, 3),
+  -- KR 131 (ML-модель в проде)
+  (112, 131, 'Модель обучена',               35, true,  1),
+  (113, 131, 'A/B тест',                     35, true,  2),
+  (114, 131, 'Production',                   30, false, 3);
+
+-- Goal comments (author_user_id = 1, system:anonymous-local)
+INSERT INTO goal_comments (id, goal_id, text, author_user_id, created_at) VALUES
+  (100, 100, 'Начали профилирование. Нашли узкое место в middleware auth.', 1, NOW()),
+  (101, 100, 'Нужно учесть зависимость от PaaS/Infra по HTTP/2-конфигурации nginx.', 1, NOW()),
+  (102, 102, 'ADR по 12 ключевым решениям готовы. Миграция API docs с Confluence в процессе.', 1, NOW()),
+  (103, 105, 'Осталось 3 сервиса. Основные проблемы с устаревшими зависимостями решены.', 1, NOW()),
+  (104, 112, 'Апрельский инцидент устранён. Добавили circuit breaker на 3 критичных точках.', 1, NOW());
+
+-- KR notes (1:1, author_user_id = 1)
+INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at) VALUES
+  (101, 'Нашли узкое место в JWT verify — пул соединений был слишком мал.', 1, NOW()),
+  (104, 'Ожидаем инфраструктуру от PaaS — блокер на неделю.', 1, NOW()),
+  (112, 'Осталось 3 сервиса. Проблемы с устаревшими зависимостями решены.', 1, NOW());
 
 -- ----------------------------------------------------------------
 -- Reset sequences
@@ -239,6 +437,5 @@ SELECT setval('goals_id_seq',                  (SELECT MAX(id) FROM goals));
 SELECT setval('key_results_id_seq',            (SELECT MAX(id) FROM key_results));
 SELECT setval('kr_project_stages_id_seq',      (SELECT MAX(id) FROM kr_project_stages));
 SELECT setval('goal_comments_id_seq',          (SELECT MAX(id) FROM goal_comments));
-SELECT setval('key_result_comments_id_seq',    1);
 
 COMMIT;
