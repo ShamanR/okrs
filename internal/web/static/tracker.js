@@ -1905,7 +1905,7 @@ function App() {
   const toggle = useCallback(id => setExpanded(m => ({ ...m, [id]: m[id] === false })), []);
   useEffect(() => { writeTreeExpanded(expanded); }, [expanded]);
   const selectTeam = useCallback(id => setSelId(id), []);
-  const handlePeriodChange = id => { setPeriodId(Number(id)); setSelId(null); };
+  const handlePeriodChange = id => { setPeriodId(Number(id)); };
 
   const reload = useCallback(() => {
     if (!periodId || !selId) return;
