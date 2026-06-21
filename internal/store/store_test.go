@@ -23,6 +23,44 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func TestStoreExposesTenantRepos(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	s := New(pool)
+	tn, err := s.Tenants.GetBySlug(ctx, "default")
+	if err != nil {
+		t.Fatalf("default tenant: %v", err)
+	}
+	if tn.ID != 1 {
+		t.Fatalf("default tenant id = %d, want 1", tn.ID)
+	}
+}
+
 func TestStoreCRUD(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,

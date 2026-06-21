@@ -9,12 +9,14 @@ import (
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/krs"
+	"okrs/internal/store/memberships"
 	"okrs/internal/store/periods"
 	"okrs/internal/store/sessions"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/shares"
 	"okrs/internal/store/statuses"
 	"okrs/internal/store/teams"
+	"okrs/internal/store/tenants"
 	"okrs/internal/store/users"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,6 +38,9 @@ type Store struct {
 	Sessions *sessions.SessionRepository
 	Grants   *grants.GrantRepository
 	Settings *settings.SettingsRepository
+
+	Tenants     *tenants.TenantRepository
+	Memberships *memberships.MembershipRepository
 }
 
 // New constructs a Store and wires all repositories.
@@ -53,6 +58,9 @@ func New(db *pgxpool.Pool) *Store {
 		Sessions: sessions.NewSessionRepository(db),
 		Grants:   grants.NewGrantRepository(db),
 		Settings: settings.NewSettingsRepository(db),
+
+		Tenants:     tenants.NewTenantRepository(db),
+		Memberships: memberships.NewMembershipRepository(db),
 	}
 }
 

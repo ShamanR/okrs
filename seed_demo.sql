@@ -9,6 +9,14 @@
 BEGIN;
 
 -- ----------------------------------------------------------------
+-- Default tenant (created by migration 027). Seeded teams/periods/goals omit tenant_id
+-- and default to 1; ensure it exists for standalone seed runs.
+-- ----------------------------------------------------------------
+INSERT INTO tenants (id, slug, name) OVERRIDING SYSTEM VALUE
+VALUES (1, 'default', 'Default')
+ON CONFLICT (id) DO NOTHING;
+
+-- ----------------------------------------------------------------
 -- Clear all tables in FK-safe order
 -- ----------------------------------------------------------------
 TRUNCATE TABLE
