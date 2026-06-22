@@ -19,6 +19,7 @@ import (
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
+	apitenants "okrs/internal/http/handlers/api/v1/tenants"
 	apiusers "okrs/internal/http/handlers/api/v1/users"
 	"okrs/internal/http/handlers/web/authhandler"
 	"okrs/internal/http/handlers/web/common"
@@ -75,6 +76,7 @@ type Server struct {
 	policy      *auth.PolicyEvaluator
 	grantsCache *grants.GrantsCache
 	hcCache     *service.HealthCheckInCache
+	tenantResolver *auth.TenantResolver
 }
 
 func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
@@ -126,6 +128,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,
 		hcCache:     hcCache,
+		tenantResolver: auth.NewTenantResolver(st.Tenants, st.Memberships),
 	}, nil
 }
 
@@ -176,13 +179,31 @@ func (s *Server) Routes() http.Handler {
 			http.Redirect(w, r, "/admin/periods", http.StatusFound)
 		})
 
+		// "No access" page for authenticated users without an active membership.
+		// Lives OUTSIDE the membership-gated group so RequireMembership can redirect here
+		// without a loop. Plan 4 replaces this stub with the pluggable NoMembershipHandler.
+		r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<!doctype html><html lang="ru"><head><meta charset="utf-8">` +
+				`<title>Нет доступа</title></head><body style="font-family:sans-serif;padding:2rem">` +
+				`<h1>Нет доступа</h1><p>У вашей учётной записи нет доступа ни к одной организации. ` +
+				`Обратитесь к администратору.</p></body></html>`))
+		})
+
 		// Protected routes.
 		r.Group(func(r chi.Router) {
 			if !s.auth.Disabled() {
 				r.Use(auth.RequireAuthMiddleware)
+				r.Use(auth.TenantResolveMiddleware(s.tenantResolver))
+				r.Use(auth.RequireMembershipMiddleware)
 				r.Use(auth.ScopeMiddleware(s.policy, s.auth))
 			}
 			r.Use(csrf.Handler)
+
+			// Tenant session: list memberships and switch active tenant.
+			tenantH := apitenants.New(s.store.Memberships, s.store.Tenants, s.store.Sessions)
+			r.Get("/api/v1/session/tenants", tenantH.ListMyTenants)
+			r.Post("/api/v1/session/tenant", tenantH.SwitchTenant)
 
 			s.registerWebRoutes(r, deps)
 			s.registerApiRoutes(r)

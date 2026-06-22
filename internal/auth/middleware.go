@@ -75,6 +75,46 @@ func ScopeMiddleware(policy *PolicyEvaluator, mgr *Manager) func(http.Handler) h
 	}
 }
 
+// TenantResolveMiddleware resolves the active tenant for the authenticated user and
+// injects it (plus the user's role in that tenant) into the request context.
+// On no membership / lookup error it leaves the tenant unset; RequireMembership decides.
+func TenantResolveMiddleware(resolver *TenantResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := UserFromContext(r.Context())
+			if user == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			sess := SessionFromContext(r.Context())
+			tn, role, err := resolver.Resolve(r.Context(), user, sess)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := WithTenant(r.Context(), tn)
+			ctx = WithActiveRole(ctx, role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// RequireMembershipMiddleware blocks requests without an active, non-suspended tenant.
+func RequireMembershipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tn := TenantFromContext(r.Context())
+		if tn == nil || tn.Status != domain.TenantActive {
+			if isAPIRequest(r) {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			http.Redirect(w, r, "/no-access", http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // AccessLogMiddleware logs every request with auth fields.
 func AccessLogMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -144,8 +184,15 @@ func AnonymousUserMiddleware(next http.Handler) http.Handler {
 		DisplayName: "Anonymous",
 		IsAdmin:     true, // no-auth mode: everyone is admin
 	}
+	tenant := &domain.Tenant{
+		ID:     1,
+		Slug:   "default",
+		Status: domain.TenantActive,
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := withUser(r.Context(), anon)
+		ctx = WithTenant(ctx, tenant)
+		ctx = WithActiveRole(ctx, domain.RoleAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

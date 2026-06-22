@@ -13,6 +13,30 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+func TestSetAndReadActiveTenant(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	ur := users.NewUserRepository(pool)
+	repo := sessions.NewSessionRepository(pool)
+
+	userID := setupSessionUser(t, ctx, ur, "github:at", "ActiveTenant")
+	if _, err := repo.CreateSession(ctx, "sess-abc", userID, "github", time.Hour, "ua", "ip"); err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	if err := repo.SetActiveTenant(ctx, "sess-abc", 1); err != nil {
+		t.Fatalf("set active tenant: %v", err)
+	}
+	sess, err := repo.GetSession(ctx, "sess-abc")
+	if err != nil {
+		t.Fatalf("get session: %v", err)
+	}
+	if sess.ActiveTenantID == nil || *sess.ActiveTenantID != 1 {
+		t.Fatalf("ActiveTenantID = %v, want 1", sess.ActiveTenantID)
+	}
+}
+
 func setupSessionUser(t *testing.T, ctx context.Context, ur *users.UserRepository, key, name string) int64 {
 	t.Helper()
 	u, err := ur.UpsertUser(ctx, users.UpsertUserInput{
