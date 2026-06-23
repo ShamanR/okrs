@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"okrs/internal/auth"
+	"okrs/internal/domain"
 	"okrs/internal/service"
 )
 
@@ -19,9 +21,9 @@ const (
 	settingKeyFeedbackFrequencyDays   = "feedback_frequency_days"
 )
 
-// settingsReader is satisfied by *store.SettingsRepository.
+// settingsReader is satisfied by *service.SettingsService (per-tenant product keys).
 type settingsReader interface {
-	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
+	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
 
 type Handler struct {
@@ -49,26 +51,29 @@ type configResponse struct {
 
 // GET /api/v1/config
 func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
-	cfg, _ := service.LoadHealthCheckInConfig(r.Context(), h.settings)
+	// Config is served inside the membership-gated group, so a tenant is present.
+	// A zero scope (no tenant) simply reads no rows and yields defaults.
+	scope, _ := auth.TenantScopeFromContext(r.Context())
+	cfg, _ := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
 	resp := configResponse{
-		DocumentationURL: h.documentationURL(r.Context()),
+		DocumentationURL: h.documentationURL(r.Context(), scope),
 		StaleDays:        cfg.StaleDays,
 		BehindMargin:     cfg.BehindMargin,
 	}
-	resp.FeedbackURL = h.settingString(r.Context(), settingKeyFeedbackURL)
-	resp.FeedbackPopupEnabled = h.settingBool(r.Context(), settingKeyFeedbackPopupEnabled)
-	resp.FeedbackMenuLinkEnabled = h.settingBool(r.Context(), settingKeyFeedbackMenuLinkEnabled)
-	resp.FeedbackFrequencyDays = h.settingInt(r.Context(), settingKeyFeedbackFrequencyDays, 30)
+	resp.FeedbackURL = h.settingString(r.Context(), scope, settingKeyFeedbackURL)
+	resp.FeedbackPopupEnabled = h.settingBool(r.Context(), scope, settingKeyFeedbackPopupEnabled)
+	resp.FeedbackMenuLinkEnabled = h.settingBool(r.Context(), scope, settingKeyFeedbackMenuLinkEnabled)
+	resp.FeedbackFrequencyDays = h.settingInt(r.Context(), scope, settingKeyFeedbackFrequencyDays, 30)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *Handler) documentationURL(ctx context.Context) string {
-	return h.settingString(ctx, settingKeyDocumentationURL)
+func (h *Handler) documentationURL(ctx context.Context, scope domain.TenantScope) string {
+	return h.settingString(ctx, scope, settingKeyDocumentationURL)
 }
 
-func (h *Handler) settingString(ctx context.Context, key string) string {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingString(ctx context.Context, scope domain.TenantScope, key string) string {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return ""
 	}
@@ -77,8 +82,8 @@ func (h *Handler) settingString(ctx context.Context, key string) string {
 	return s
 }
 
-func (h *Handler) settingBool(ctx context.Context, key string) bool {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingBool(ctx context.Context, scope domain.TenantScope, key string) bool {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return false
 	}
@@ -88,8 +93,8 @@ func (h *Handler) settingBool(ctx context.Context, key string) bool {
 }
 
 // settingInt returns def when the value is unset, malformed, or < 1.
-func (h *Handler) settingInt(ctx context.Context, key string, def int) int {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingInt(ctx context.Context, scope domain.TenantScope, key string, def int) int {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return def
 	}

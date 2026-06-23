@@ -17,7 +17,9 @@ import (
 	"okrs/internal/store/statuses"
 	"okrs/internal/store/teams"
 	"okrs/internal/store/tenants"
+	"okrs/internal/store/tenantsettings"
 	"okrs/internal/store/users"
+	"okrs/internal/store/usersettings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -39,8 +41,10 @@ type Store struct {
 	Grants   *grants.GrantRepository
 	Settings *settings.SettingsRepository
 
-	Tenants     *tenants.TenantRepository
-	Memberships *memberships.MembershipRepository
+	Tenants        *tenants.TenantRepository
+	Memberships    *memberships.MembershipRepository
+	TenantSettings *tenantsettings.TenantSettingsRepository
+	UserSettings   *usersettings.UserSettingsRepository
 }
 
 // New constructs a Store and wires all repositories.
@@ -59,8 +63,10 @@ func New(db *pgxpool.Pool) *Store {
 		Grants:   grants.NewGrantRepository(db),
 		Settings: settings.NewSettingsRepository(db),
 
-		Tenants:     tenants.NewTenantRepository(db),
-		Memberships: memberships.NewMembershipRepository(db),
+		Tenants:        tenants.NewTenantRepository(db),
+		Memberships:    memberships.NewMembershipRepository(db),
+		TenantSettings: tenantsettings.NewTenantSettingsRepository(db),
+		UserSettings:   usersettings.NewUserSettingsRepository(db),
 	}
 }
 
@@ -99,6 +105,12 @@ func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
 
 func (s *Store) GetSetting(ctx context.Context, key string) (json.RawMessage, error) {
 	return s.Settings.GetSetting(ctx, key)
+}
+
+// GetTenantSetting forwards to the per-tenant settings store. Product keys live here
+// (since migration 033); the auth layer reads them through this forwarder.
+func (s *Store) GetTenantSetting(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error) {
+	return s.TenantSettings.Get(ctx, scope, key)
 }
 
 // SeedDemo inserts demo data (used only by the --seed flag in main).

@@ -29,7 +29,9 @@ import (
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
+	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
+	"okrs/internal/store/tenantsettings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -79,6 +81,9 @@ type Server struct {
 	grantsCache *grants.GrantsCache
 	hcCache     *service.HealthCheckInCache
 	tenantResolver *auth.TenantResolver
+	tenantCache     *tenants.TenantCache
+	membershipCache *memberships.MembershipCache
+	settingsSvc     *service.SettingsService
 }
 
 func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
@@ -120,6 +125,15 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	cacheTTL := 5 * time.Minute
 	hcCache := service.NewHealthCheckInCache(hcLoader, cacheTTL, logger)
 
+	// Cache tenant + membership lookups on the per-request resolve hot path; the
+	// same instances are reused by the resolver and (for invalidation) provisioning.
+	tenantCache := tenants.NewTenantCache(st.Tenants)
+	membershipCache := memberships.NewMembershipCache(st.Memberships)
+	settingsSvc := service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(st.TenantSettings), st.TenantSettings,
+		settings.NewSystemSettingsCache(st.Settings), st.Settings,
+	)
+
 	return &Server{
 		store:       st,
 		logger:      logger,
@@ -130,9 +144,10 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,
 		hcCache:     hcCache,
-		// Cache tenant + membership lookups on the per-request resolve hot path.
-		// TODO(tenancy): invalidate these on membership/tenant writes (Plans 3/4); 5-min TTL bounds staleness for now.
-		tenantResolver: auth.NewTenantResolver(tenants.NewTenantCache(st.Tenants), memberships.NewMembershipCache(st.Memberships)),
+		tenantResolver:  auth.NewTenantResolver(tenantCache, membershipCache),
+		tenantCache:     tenantCache,
+		membershipCache: membershipCache,
+		settingsSvc:     settingsSvc,
 	}, nil
 }
 
@@ -269,7 +284,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store.Users, s.store.Settings, s.auth, s.grantsCache)
+	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache)
 	serviceH := apiadmin.NewServiceHandler(s.service)
 
 	r.Group(func(r chi.Router) {
@@ -324,7 +339,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Delete("/api/v1/admin/teams/{teamID}/hard", serviceH.HandleHardDeleteTeam)
 
 		// Admin health check-in settings API.
-		hcHandler := apihealthcheckin.New(s.service, s.store.Settings, s.hcCache)
+		hcHandler := apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache)
 		r.Get("/api/v1/admin/settings/health-checkin", hcHandler.HandleGetHealthCheckInSettings)
 		r.Post("/api/v1/admin/settings/health-checkin", hcHandler.HandleUpdateHealthCheckInSettings)
 
@@ -336,7 +351,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
 	r.Get("/api/v1/me", apiadmin.HandleMe)
-	r.Get("/api/v1/config", apiconfig.New(s.store.Settings).HandleConfig)
+	r.Get("/api/v1/config", apiconfig.New(s.settingsSvc).HandleConfig)
 	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 
 	teamHandlers := apiteams.New(s.service)
@@ -369,7 +384,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
 	r.Delete("/api/v1/krs/{krID}", krsHandler.HandleDeleteKeyResult)
 
-	hcHandler := apihealthcheckin.New(s.service, s.store.Settings, s.hcCache)
+	hcHandler := apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache)
 	r.Get("/api/v1/health-checkin", hcHandler.HandleHealthCheckIn)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {

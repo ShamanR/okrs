@@ -33,10 +33,11 @@ type userAdminStore interface {
 	SetUserAdmin(ctx context.Context, userID int64, isAdmin bool) error
 }
 
-// settingsStore covers system settings. *store.SettingsRepository satisfies it.
-type settingsStore interface {
-	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
-	SetSetting(ctx context.Context, key string, value any) error
+// tenantSettings covers per-tenant product settings. *service.SettingsService satisfies it.
+// Writes go through the product path, which rejects entitlement.* keys.
+type tenantSettings interface {
+	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
+	SetTenantProduct(ctx context.Context, scope domain.TenantScope, key string, value any) error
 }
 
 // grantsStore covers the user_hierarchy_grants operations. *store.GrantsCache satisfies it.
@@ -50,12 +51,12 @@ type grantsStore interface {
 
 type Handler struct {
 	users    userAdminStore
-	settings settingsStore
+	settings tenantSettings
 	mgr      *auth.Manager
 	grants   grantsStore
 }
 
-func New(users userAdminStore, settings settingsStore, mgr *auth.Manager, grants grantsStore) *Handler {
+func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore) *Handler {
 	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants}
 }
 
@@ -237,8 +238,13 @@ func (h *Handler) HandleRemoveGrant(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/admin/settings/access
 func (h *Handler) HandleGetAccessSettings(w http.ResponseWriter, r *http.Request) {
-	policy, _ := h.settings.GetSetting(r.Context(), "new_user_policy")
-	nodeID, _ := h.settings.GetSetting(r.Context(), "default_hierarchy_node_id")
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	policy, _ := h.settings.GetTenant(r.Context(), scope, "new_user_policy")
+	nodeID, _ := h.settings.GetTenant(r.Context(), scope, "default_hierarchy_node_id")
 	writeJSON(w, map[string]any{
 		"new_user_policy":           json.RawMessage(policy),
 		"default_hierarchy_node_id": json.RawMessage(nodeID),
@@ -255,14 +261,19 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	if body.NewUserPolicy != "" {
-		if err := h.settings.SetSetting(r.Context(), "new_user_policy", body.NewUserPolicy); err != nil {
+		if err := h.settings.SetTenantProduct(r.Context(), scope, "new_user_policy", body.NewUserPolicy); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
 	if body.DefaultHierarchyNodeID != nil {
-		if err := h.settings.SetSetting(r.Context(), "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
+		if err := h.settings.SetTenantProduct(r.Context(), scope, "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -272,8 +283,13 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 
 // GET /api/v1/admin/settings/general
 func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	writeJSON(w, map[string]any{
-		"documentation_url": h.documentationURL(r.Context()),
+		"documentation_url": h.documentationURL(r.Context(), scope),
 	})
 }
 
@@ -291,7 +307,12 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "documentation_url must be a valid http(s) URL")
 		return
 	}
-	if err := h.settings.SetSetting(r.Context(), settingKeyDocumentationURL, link); err != nil {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyDocumentationURL, link); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -299,18 +320,23 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 }
 
 // documentationURL reads the stored documentation link; empty string if unset.
-func (h *Handler) documentationURL(ctx context.Context) string {
-	return h.settingString(ctx, settingKeyDocumentationURL)
+func (h *Handler) documentationURL(ctx context.Context, scope domain.TenantScope) string {
+	return h.settingString(ctx, scope, settingKeyDocumentationURL)
 }
 
 // GET /api/v1/admin/settings/feedback
 func (h *Handler) HandleGetFeedbackSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	writeJSON(w, map[string]any{
-		"feedback_url":               h.settingString(ctx, settingKeyFeedbackURL),
-		"feedback_popup_enabled":     h.settingBool(ctx, settingKeyFeedbackPopupEnabled),
-		"feedback_menu_link_enabled": h.settingBool(ctx, settingKeyFeedbackMenuLinkEnabled),
-		"feedback_frequency_days":    h.settingInt(ctx, settingKeyFeedbackFrequencyDays, 30),
+		"feedback_url":               h.settingString(ctx, scope, settingKeyFeedbackURL),
+		"feedback_popup_enabled":     h.settingBool(ctx, scope, settingKeyFeedbackPopupEnabled),
+		"feedback_menu_link_enabled": h.settingBool(ctx, scope, settingKeyFeedbackMenuLinkEnabled),
+		"feedback_frequency_days":    h.settingInt(ctx, scope, settingKeyFeedbackFrequencyDays, 30),
 	})
 }
 
@@ -339,8 +365,13 @@ func (h *Handler) HandleUpdateFeedbackSettings(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "feedback_frequency_days must be >= 1")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	set := func(key string, val any) bool {
-		if err := h.settings.SetSetting(r.Context(), key, val); err != nil {
+		if err := h.settings.SetTenantProduct(r.Context(), scope, key, val); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return false
 		}
@@ -356,8 +387,8 @@ func (h *Handler) HandleUpdateFeedbackSettings(w http.ResponseWriter, r *http.Re
 }
 
 // settingString reads a string setting; empty when unset or malformed.
-func (h *Handler) settingString(ctx context.Context, key string) string {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingString(ctx context.Context, scope domain.TenantScope, key string) string {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return ""
 	}
@@ -367,8 +398,8 @@ func (h *Handler) settingString(ctx context.Context, key string) string {
 }
 
 // settingBool reads a bool setting; false when unset or malformed.
-func (h *Handler) settingBool(ctx context.Context, key string) bool {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingBool(ctx context.Context, scope domain.TenantScope, key string) bool {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return false
 	}
@@ -378,8 +409,8 @@ func (h *Handler) settingBool(ctx context.Context, key string) bool {
 }
 
 // settingInt reads an int setting; returns def when unset, malformed, or < 1.
-func (h *Handler) settingInt(ctx context.Context, key string, def int) int {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingInt(ctx context.Context, scope domain.TenantScope, key string, def int) int {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return def
 	}

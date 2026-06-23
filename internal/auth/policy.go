@@ -112,9 +112,9 @@ func WithAllowedTeamIDs(ctx context.Context, ids []int64) context.Context {
 	return context.WithValue(ctx, allowedTeamsKey, ids)
 }
 
-// DefaultNodeID reads the configured default hierarchy node from system settings.
-func DefaultNodeIDFromSettings(ctx context.Context, st *store.Store) (int64, error) {
-	raw, err := st.GetSetting(ctx, "default_hierarchy_node_id")
+// DefaultNodeID reads the configured default hierarchy node from the tenant's settings.
+func DefaultNodeIDFromSettings(ctx context.Context, scope domain.TenantScope, st *store.Store) (int64, error) {
+	raw, err := st.GetTenantSetting(ctx, scope, "default_hierarchy_node_id")
 	if err != nil || raw == nil {
 		return 0, err
 	}

@@ -33,14 +33,14 @@ var defaultHealthCheckInConfig = HealthCheckInConfig{
 	},
 }
 
-// SettingsReader loads system settings; *store.SettingsRepository satisfies this.
+// SettingsReader loads per-tenant settings; *service.SettingsService satisfies this.
 type SettingsReader interface {
-	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
+	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
 
-// LoadHealthCheckInConfig reads config from system_settings, falling back to defaults.
-func LoadHealthCheckInConfig(ctx context.Context, sr SettingsReader) (HealthCheckInConfig, error) {
-	raw, err := sr.GetSetting(ctx, "health_checkin_config")
+// LoadHealthCheckInConfig reads config from the tenant's settings, falling back to defaults.
+func LoadHealthCheckInConfig(ctx context.Context, scope domain.TenantScope, sr SettingsReader) (HealthCheckInConfig, error) {
+	raw, err := sr.GetTenant(ctx, scope, "health_checkin_config")
 	if err != nil || raw == nil {
 		return defaultHealthCheckInConfig, err
 	}

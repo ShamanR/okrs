@@ -6,13 +6,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"okrs/internal/domain"
 )
 
 type fakeSettings struct {
 	data map[string]json.RawMessage
 }
 
-func (f *fakeSettings) GetSetting(_ context.Context, key string) (json.RawMessage, error) {
+func (f *fakeSettings) GetTenant(_ context.Context, _ domain.TenantScope, key string) (json.RawMessage, error) {
 	return f.data[key], nil
 }
 

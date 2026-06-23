@@ -101,6 +101,33 @@ func TestMigration027CreatesDefaultTenant(t *testing.T) {
 	}
 }
 
+func TestMigration033MovesProductKeys(t *testing.T) {
+	db, cleanup := migrateTo(t, 32) // up to before the move
+	defer cleanup()
+
+	if _, err := db.Exec(`INSERT INTO system_settings (key, value_json) VALUES ('documentation_url', '"https://doc"'::jsonb)`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	migrateDBTo(t, db, 33) // apply the move
+
+	var v string
+	if err := db.QueryRow(`SELECT value_json #>> '{}' FROM tenant_settings WHERE tenant_id = 1 AND key = 'documentation_url'`).Scan(&v); err != nil {
+		t.Fatalf("expected key moved to tenant_settings: %v", err)
+	}
+	if v != "https://doc" {
+		t.Fatalf("got %q, want https://doc", v)
+	}
+
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM system_settings WHERE key = 'documentation_url'`).Scan(&n); err != nil {
+		t.Fatalf("system_settings check: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("key should be removed from system_settings, found %d", n)
+	}
+}
+
 func TestMigration032RemovesTenantDefault(t *testing.T) {
 	db, cleanup := migrateTo(t, 32)
 	defer cleanup()

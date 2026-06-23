@@ -23,6 +23,7 @@ type authStorage interface {
 	TouchSession(ctx context.Context, sessionID string) error
 	DeleteSession(ctx context.Context, sessionID string) error
 	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
+	GetTenantSetting(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
 
 // userGranter is the minimal interface Manager needs for the new-user grant policy.
@@ -101,9 +102,14 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 }
 
 func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) error {
-	// Read policy from DB settings; fall back to env-var cfg for backward compat.
+	// TODO(tenancy): the registration tenant is hardcoded to #1 here. Plan 4 resolves
+	// it from the global default_registration_tenant_id (or routes to onboarding).
+	// Product keys moved to tenant_settings in migration 033, so read them scoped.
+	scope := domain.TenantScope{TenantID: 1}
+
+	// Read policy from tenant settings; fall back to env-var cfg for backward compat.
 	policy := m.cfg.NewUserPolicy
-	if raw, _ := m.store.GetSetting(ctx, "new_user_policy"); raw != nil {
+	if raw, _ := m.store.GetTenantSetting(ctx, scope, "new_user_policy"); raw != nil {
 		var p NewUserPolicy
 		if json.Unmarshal(raw, &p) == nil && p != "" {
 			policy = p
@@ -114,7 +120,7 @@ func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) err
 	}
 
 	nodeID := m.cfg.DefaultNodeID
-	if raw, _ := m.store.GetSetting(ctx, "default_hierarchy_node_id"); raw != nil {
+	if raw, _ := m.store.GetTenantSetting(ctx, scope, "default_hierarchy_node_id"); raw != nil {
 		var id int64
 		if json.Unmarshal(raw, &id) == nil && id != 0 {
 			nodeID = id
@@ -124,8 +130,6 @@ func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) err
 		return nil
 	}
 
-	// TODO(tenancy): new-user default-node policy currently applies to the default tenant.
-	scope := domain.TenantScope{TenantID: 1}
 	grants, err := m.grants.ListUserGrants(ctx, scope, user.ID)
 	if err != nil {
 		return err

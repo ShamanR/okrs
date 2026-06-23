@@ -16,8 +16,8 @@ type serviceProvider interface {
 }
 
 type settingsProvider interface {
-	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
-	SetSetting(ctx context.Context, key string, value any) error
+	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
+	SetTenantProduct(ctx context.Context, scope domain.TenantScope, key string, value any) error
 }
 
 type cacheInvalidator interface {
@@ -54,7 +54,7 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := service.LoadHealthCheckInConfig(r.Context(), h.settings)
+	cfg, err := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load config")
 		return
@@ -70,7 +70,12 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 
 // HandleGetHealthCheckInSettings serves GET /api/v1/admin/settings/health-checkin
 func (h *Handler) HandleGetHealthCheckInSettings(w http.ResponseWriter, r *http.Request) {
-	cfg, err := service.LoadHealthCheckInConfig(r.Context(), h.settings)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	cfg, err := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -93,7 +98,12 @@ func (h *Handler) HandleUpdateHealthCheckInSettings(w http.ResponseWriter, r *ht
 		writeError(w, http.StatusBadRequest, "cache_ttl_minutes must be > 0")
 		return
 	}
-	if err := h.settings.SetSetting(r.Context(), "health_checkin_config", body); err != nil {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	if err := h.settings.SetTenantProduct(r.Context(), scope, "health_checkin_config", body); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
