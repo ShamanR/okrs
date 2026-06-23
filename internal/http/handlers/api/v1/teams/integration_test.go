@@ -86,7 +86,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("create historical goal: %v", err)
 	}
-	if err := repo.Teams.SoftDeleteTeam(ctx, deletedTeamID); err != nil {
+	if err := repo.Teams.SoftDeleteTeam(ctx, domain.TenantScope{TenantID: 1}, deletedTeamID); err != nil {
 		t.Fatalf("soft delete team: %v", err)
 	}
 

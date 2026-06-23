@@ -149,16 +149,22 @@ func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ krs.KeyResultInput)
 
 // — no-op implementations for the remaining Store interface methods —
 
-func (f *goalFakeStore) ListTeams(context.Context) ([]domain.Team, error)        { return nil, nil }
-func (f *goalFakeStore) ListDeletedTeams(context.Context) ([]domain.Team, error) { return nil, nil }
-func (f *goalFakeStore) ListAllTeams(context.Context) ([]domain.Team, error)     { return nil, nil }
-func (f *goalFakeStore) GetTeam(_ context.Context, _ int64) (domain.Team, error) {
+func (f *goalFakeStore) ListTeams(_ context.Context, _ domain.TenantScope) ([]domain.Team, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) ListDeletedTeams(_ context.Context, _ domain.TenantScope) ([]domain.Team, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) ListAllTeams(_ context.Context, _ domain.TenantScope) ([]domain.Team, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) GetTeam(_ context.Context, _ domain.TenantScope, _ int64) (domain.Team, error) {
 	return domain.Team{}, nil
 }
-func (f *goalFakeStore) CreateTeam(_ context.Context, _ storeteams.TeamInput) (int64, error) {
+func (f *goalFakeStore) CreateTeam(_ context.Context, _ domain.TenantScope, _ storeteams.TeamInput) (int64, error) {
 	return 0, nil
 }
-func (f *goalFakeStore) UpdateTeam(_ context.Context, _ storeteams.TeamInput, _ int64) error {
+func (f *goalFakeStore) UpdateTeam(_ context.Context, _ domain.TenantScope, _ storeteams.TeamInput, _ int64) error {
 	return nil
 }
 func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error) { return nil, nil }
@@ -204,16 +210,24 @@ func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ int64, _ []i
 func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ int64, _ []int64) (map[int64]time.Time, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ int64) (bool, error) { return false, nil }
-func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _, _ int64) (bool, error) {
+func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ domain.TenantScope, _ int64) (bool, error) {
 	return false, nil
 }
-func (f *goalFakeStore) ListTeamIDsWithGoalsInPeriod(_ context.Context, _ int64) (map[int64]struct{}, error) {
+func (f *goalFakeStore) TeamHasGoalsInPeriod(_ context.Context, _ domain.TenantScope, _, _ int64) (bool, error) {
+	return false, nil
+}
+func (f *goalFakeStore) ListTeamIDsWithGoalsInPeriod(_ context.Context, _ domain.TenantScope, _ int64) (map[int64]struct{}, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ int64) error { return nil }
-func (f *goalFakeStore) RestoreTeam(_ context.Context, _ int64) error    { return nil }
-func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ int64) error { return nil }
+func (f *goalFakeStore) SoftDeleteTeam(_ context.Context, _ domain.TenantScope, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) RestoreTeam(_ context.Context, _ domain.TenantScope, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) HardDeleteTeam(_ context.Context, _ domain.TenantScope, _ int64) error {
+	return nil
+}
 func (f *goalFakeStore) UpdateKeyResult(_ context.Context, _ krs.KeyResultUpdateInput) error {
 	return nil
 }

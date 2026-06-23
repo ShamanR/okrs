@@ -21,6 +21,11 @@ func New(service *service.Service) *Handler {
 
 func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 	v1.SetAPICacheControl(w)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+		return
+	}
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
@@ -30,7 +35,7 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 	if periodID > 0 {
 		periodRef = &periodID
 	}
-	nodes, err := h.service.GetHierarchy(r.Context(), periodRef)
+	nodes, err := h.service.GetHierarchy(r.Context(), scope, periodRef)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy", nil)
 		return
@@ -38,7 +43,7 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 	metrics := map[int64]service.TeamSummary{}
 	forecast := 0
 	if periodRef != nil {
-		summaries, err := h.service.GetTeamsWithPeriodSummary(r.Context(), periodID, nil)
+		summaries, err := h.service.GetTeamsWithPeriodSummary(r.Context(), scope, periodID, nil)
 		if err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy summary", nil)
 			return

@@ -52,7 +52,7 @@ func TestSearchUsersInScopeUnrestricted(t *testing.T) {
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: nil})
 
 	// nil scopeTeamIDs = admin / unrestricted
-	users, err := svc.SearchUsersInScope(context.Background(), nil, "", 10)
+	users, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, nil, "", 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestSearchUsersInScopeEmptyGrantsReturnsNil(t *testing.T) {
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
 	// empty scope slice = user with no grants
-	users, err := svc.SearchUsersInScope(context.Background(), []int64{}, "", 10)
+	users, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, []int64{}, "", 10)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestSearchUsersInScopeFiltersGrantsByAncestor(t *testing.T) {
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: grants})
 
 	// scope = [3] (grandchild); ancestors are {3, 2, 1}
-	_, err := svc.SearchUsersInScope(context.Background(), []int64{3}, "", 20)
+	_, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, []int64{3}, "", 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestSearchUsersInScopeIncludesTeamLeads(t *testing.T) {
 	// No grants at all — but Alice is a lead of scope team 5.
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
-	_, err := svc.SearchUsersInScope(context.Background(), []int64{5}, "", 20)
+	_, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, []int64{5}, "", 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestSearchUsersInScopeFiltersGrantsByDescendant(t *testing.T) {
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: grants})
 
 	// scope = [1] (root); descendants are {2, 3}
-	_, err := svc.SearchUsersInScope(context.Background(), []int64{1}, "", 20)
+	_, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, []int64{1}, "", 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -165,7 +165,7 @@ func TestSearchUsersInScopeIncludesDescendantTeamLeads(t *testing.T) {
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
 	// scope = [1] (parent); child is a descendant with lead Charlie
-	_, err := svc.SearchUsersInScope(context.Background(), []int64{1}, "", 20)
+	_, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, []int64{1}, "", 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestSearchUsersInScopeExcludesDeletedTeamLeads(t *testing.T) {
 	}
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})
 
-	_, err := svc.SearchUsersInScope(context.Background(), []int64{5}, "", 20)
+	_, err := svc.SearchUsersInScope(context.Background(), domain.TenantScope{TenantID: 1}, []int64{5}, "", 20)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

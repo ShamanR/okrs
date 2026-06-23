@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/okr"
@@ -164,8 +165,10 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	selectedFilter := resolveTeamFilter(r)
 	title := "OKR команд"
 	if teamID, err := strconv.ParseInt(selectedFilter, 10, 64); err == nil && teamID > 0 {
-		if team, teamErr := h.deps.Service.GetTeam(r.Context(), teamID); teamErr == nil {
-			title = fmt.Sprintf("Список целей %s", team.Name)
+		if scope, ok := auth.TenantScopeFromContext(r.Context()); ok {
+			if team, teamErr := h.deps.Service.GetTeam(r.Context(), scope, teamID); teamErr == nil {
+				title = fmt.Sprintf("Список целей %s", team.Name)
+			}
 		}
 	}
 	page := teamOkrsPage{
@@ -262,12 +265,17 @@ func persistTeamsFilters(w http.ResponseWriter, periodValue, selectedFilter stri
 }
 
 func (h *Handler) renderTeamManagement(w http.ResponseWriter, r *http.Request, formError string) {
-	activeTeams, err := h.deps.Service.ListTeams(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	activeTeams, err := h.deps.Service.ListTeams(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	deletedTeams, err := h.deps.Service.ListDeletedTeams(r.Context())
+	deletedTeams, err := h.deps.Service.ListDeletedTeams(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -284,6 +292,11 @@ func (h *Handler) renderTeamManagement(w http.ResponseWriter, r *http.Request, f
 
 func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -297,7 +310,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	teams, err := h.deps.Service.ListTeams(ctx)
+	teams, err := h.deps.Service.ListTeams(ctx, scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -336,7 +349,7 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 		}, teams, 0, false)
 		return
 	}
-	if _, err := h.deps.Service.CreateTeam(ctx, storeteams.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
+	if _, err := h.deps.Service.CreateTeam(ctx, scope, storeteams.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -344,7 +357,12 @@ func (h *Handler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
-	teams, err := h.deps.Service.ListAllTeams(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	teams, err := h.deps.Service.ListAllTeams(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -359,12 +377,17 @@ func (h *Handler) HandleNewTeam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	team, err := h.deps.Service.GetTeam(r.Context(), teamID)
+	team, err := h.deps.Service.GetTeam(r.Context(), scope, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -373,7 +396,7 @@ func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("deleted team cannot be edited"))
 		return
 	}
-	teams, err := h.deps.Service.ListTeams(r.Context())
+	teams, err := h.deps.Service.ListTeams(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -389,6 +412,11 @@ func (h *Handler) HandleEditTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -407,7 +435,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	teams, err := h.deps.Service.ListTeams(ctx)
+	teams, err := h.deps.Service.ListTeams(ctx, scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -471,7 +499,7 @@ func (h *Handler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := h.deps.Service.UpdateTeam(ctx, storeteams.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
+	if err := h.deps.Service.UpdateTeam(ctx, scope, storeteams.TeamInput{Name: name, Type: teamType, ParentID: parentID, Lead: lead, Description: description}, teamID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -509,12 +537,17 @@ func (h *Handler) renderTeamForm(w http.ResponseWriter, r *http.Request, values 
 
 func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.DeleteTeam(ctx, teamID); err != nil {
+	if err := h.deps.Service.DeleteTeam(ctx, scope, teamID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -523,12 +556,17 @@ func (h *Handler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleRestoreTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.RestoreTeam(ctx, teamID); err != nil {
+	if err := h.deps.Service.RestoreTeam(ctx, scope, teamID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -537,12 +575,17 @@ func (h *Handler) HandleRestoreTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleHardDeleteTeam(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.HardDeleteTeam(ctx, teamID); err != nil {
+	if err := h.deps.Service.HardDeleteTeam(ctx, scope, teamID); err != nil {
 		if err == service.ErrTeamHasGoals {
 			h.renderTeamManagement(w, r, "Команду нельзя удалить окончательно: у неё есть цели хотя бы в одном периоде.")
 			return
@@ -555,6 +598,11 @@ func (h *Handler) HandleHardDeleteTeam(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -569,7 +617,7 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("period not found"))
 		return
 	}
-	team, err := h.deps.Service.GetTeam(ctx, teamID)
+	team, err := h.deps.Service.GetTeam(ctx, scope, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, errors.Wrap(err, "failed to get team"))
 		return
@@ -643,7 +691,12 @@ func buildTeamOKRURL(teamID, periodID, goalID int64) string {
 }
 
 func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request, teamID, periodID int64, message string) {
-	team, err := h.deps.Service.GetTeam(r.Context(), teamID)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	team, err := h.deps.Service.GetTeam(r.Context(), scope, teamID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -666,7 +719,7 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		}
 		goals[i].Comments = comments
 	}
-	teams, err := h.deps.Service.ListTeams(r.Context())
+	teams, err := h.deps.Service.ListTeams(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return

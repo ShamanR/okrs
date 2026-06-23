@@ -89,7 +89,8 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		if err != nil {
 			return nil, err
 		}
-		allTeams, err := st.Teams.ListAllTeams(ctx)
+		// TODO(tenancy): per-tenant health cache
+		allTeams, err := st.Teams.ListAllTeams(ctx, domain.TenantScope{TenantID: 1})
 		if err != nil {
 			return nil, err
 		}

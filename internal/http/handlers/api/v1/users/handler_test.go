@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
+	"okrs/internal/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
 	apiusers "okrs/internal/http/handlers/api/v1/users"
 	"okrs/internal/service"
@@ -102,6 +103,7 @@ func doGet(t *testing.T, handler http.Handler, url string, scopeIDs []int64) *ht
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, url, nil)
 	ctx := auth.WithAllowedTeamIDs(req.Context(), scopeIDs)
+	ctx = auth.WithTenant(ctx, &domain.Tenant{ID: 1})
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)

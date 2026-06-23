@@ -33,7 +33,12 @@ func (h *Handler) HandleTeam(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
-	team, err := h.service.GetTeam(r.Context(), teamID)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	team, err := h.service.GetTeam(r.Context(), scope, teamID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
@@ -57,6 +62,11 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil || periodID == 0 {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
@@ -67,7 +77,7 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
 		return
 	}
-	okr, err := h.service.GetTeamOKR(r.Context(), teamID, periodID, period)
+	okr, err := h.service.GetTeamOKR(r.Context(), scope, teamID, periodID, period)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
@@ -87,6 +97,11 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil || periodID == 0 {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
@@ -97,7 +112,7 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
 		return
 	}
-	overview, err := h.service.GetTeamOverview(r.Context(), teamID, periodID)
+	overview, err := h.service.GetTeamOverview(r.Context(), scope, teamID, periodID)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load team overview", nil)
 		return

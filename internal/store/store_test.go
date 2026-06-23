@@ -308,31 +308,32 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	if hasGoals, err := s.Teams.TeamHasGoals(ctx, teamWithGoalsID); err != nil || !hasGoals {
+	scope := domain.TenantScope{TenantID: 1}
+	if hasGoals, err := s.Teams.TeamHasGoals(ctx, scope, teamWithGoalsID); err != nil || !hasGoals {
 		t.Fatalf("expected team with goals to be detected, got %v %v", hasGoals, err)
 	}
-	if hasGoals, err := s.Teams.TeamHasGoals(ctx, childNoGoalsID); err != nil || hasGoals {
+	if hasGoals, err := s.Teams.TeamHasGoals(ctx, scope, childNoGoalsID); err != nil || hasGoals {
 		t.Fatalf("expected team without goals to be clean, got %v %v", hasGoals, err)
 	}
 
-	if err := s.Teams.HardDeleteTeam(ctx, childNoGoalsID); err != nil {
+	if err := s.Teams.HardDeleteTeam(ctx, scope, childNoGoalsID); err != nil {
 		t.Fatalf("hard delete no goals: %v", err)
 	}
-	if _, err := s.Teams.GetTeam(ctx, childNoGoalsID); err == nil {
+	if _, err := s.Teams.GetTeam(ctx, scope, childNoGoalsID); err == nil {
 		t.Fatalf("expected hard-deleted team to be removed")
 	}
 
-	if err := s.Teams.SoftDeleteTeam(ctx, teamWithGoalsID); err != nil {
+	if err := s.Teams.SoftDeleteTeam(ctx, scope, teamWithGoalsID); err != nil {
 		t.Fatalf("soft delete team with goals: %v", err)
 	}
-	teamWithGoals, err := s.Teams.GetTeam(ctx, teamWithGoalsID)
+	teamWithGoals, err := s.Teams.GetTeam(ctx, scope, teamWithGoalsID)
 	if err != nil {
 		t.Fatalf("get soft-deleted team: %v", err)
 	}
 	if teamWithGoals.DeletedAt == nil {
 		t.Fatalf("expected deleted_at to be set")
 	}
-	childOfDeleted, err := s.Teams.GetTeam(ctx, childOfDeletedID)
+	childOfDeleted, err := s.Teams.GetTeam(ctx, scope, childOfDeletedID)
 	if err != nil {
 		t.Fatalf("get reparented child: %v", err)
 	}
@@ -340,7 +341,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("expected child to be reparented to original parent, got %+v", childOfDeleted.ParentID)
 	}
 
-	deletedTeams, err := s.Teams.ListDeletedTeams(ctx)
+	deletedTeams, err := s.Teams.ListDeletedTeams(ctx, scope)
 	if err != nil {
 		t.Fatalf("list deleted teams: %v", err)
 	}
@@ -348,10 +349,10 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("expected deleted team list to contain team with goals, got %+v", deletedTeams)
 	}
 
-	if err := s.Teams.RestoreTeam(ctx, teamWithGoalsID); err != nil {
+	if err := s.Teams.RestoreTeam(ctx, scope, teamWithGoalsID); err != nil {
 		t.Fatalf("restore team: %v", err)
 	}
-	restored, err := s.Teams.GetTeam(ctx, teamWithGoalsID)
+	restored, err := s.Teams.GetTeam(ctx, scope, teamWithGoalsID)
 	if err != nil {
 		t.Fatalf("get restored team: %v", err)
 	}

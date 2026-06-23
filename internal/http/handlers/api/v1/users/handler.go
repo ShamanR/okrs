@@ -12,7 +12,7 @@ import (
 )
 
 type serviceIface interface {
-	SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error)
+	SearchUsersInScope(ctx context.Context, scope domain.TenantScope, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error)
 	GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
 	ListUserLeadTeams(ctx context.Context) (map[string]string, error)
 }
@@ -55,6 +55,11 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	if len(ids) > 0 {
 		users, err = h.svc.GetUsersByUDIDs(ctx, ids)
 	} else {
+		tenantScope, ok := auth.TenantScopeFromContext(ctx)
+		if !ok {
+			v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+			return
+		}
 		var scopeTeamIDs []int64
 		if rawID := r.URL.Query().Get("scope_team_id"); rawID != "" {
 			teamID, parseErr := strconv.ParseInt(rawID, 10, 64)
@@ -66,7 +71,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		} else {
 			scopeTeamIDs, _ = auth.AllowedTeamIDsFromCtx(ctx)
 		}
-		users, err = h.svc.SearchUsersInScope(ctx, scopeTeamIDs, q, 20)
+		users, err = h.svc.SearchUsersInScope(ctx, tenantScope, scopeTeamIDs, q, 20)
 	}
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to list users", nil)
