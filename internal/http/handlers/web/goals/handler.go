@@ -178,7 +178,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, scope, teamID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -207,7 +207,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.UpdateGoalWeight(ctx, goalID, teamID, weight); err != nil {
+	if err := h.deps.Service.UpdateGoalWeight(ctx, scope, goalID, teamID, weight); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

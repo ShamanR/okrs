@@ -1,0 +1,9 @@
+ALTER TABLE teams                  ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE periods                ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE goals                  ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE goal_shares            ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE team_period_statuses   ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE user_hierarchy_grants  ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE key_results            ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE goal_comments          ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE key_result_notes       ALTER COLUMN tenant_id SET DEFAULT 1;

@@ -52,7 +52,7 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 	sr := shares.NewGoalShareRepository(pool)
-	if err := sr.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{
+	if err := sr.ReplaceGoalShares(ctx, domain.TenantScope{TenantID: 1}, goalID, []shares.GoalShareInput{
 		{TeamID: teamB, Weight: 50},
 		{TeamID: teamC, Weight: 30},
 	}); err != nil {

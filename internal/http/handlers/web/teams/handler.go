@@ -736,20 +736,20 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	for _, teamItem := range teams {
 		teamsByID[teamItem.ID] = teamItem
 	}
-	goalShares, goalShareIDs, err := h.buildGoalSharesMap(r.Context(), goals, teamsByID)
+	goalShares, goalShareIDs, err := h.buildGoalSharesMap(r.Context(), scope, goals, teamsByID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	_, childrenMap, rootTeams := buildTeamHierarchy(teams)
-	statuses, err := h.buildTeamPeriodStatuses(r.Context(), teams, periodID)
+	statuses, err := h.buildTeamPeriodStatuses(r.Context(), scope, teams, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	shareTargets := buildShareTargets(rootTeams, childrenMap, statuses)
 	goalShareTargets := buildGoalShareTargets(shareTargets, goalShareIDs)
-	status, err := h.deps.Service.GetTeamPeriodStatus(r.Context(), teamID, periodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(r.Context(), scope, teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -781,8 +781,8 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {
-	shares, err := h.deps.Service.ListGoalShares(ctx, goal.ID)
+func (h *Handler) buildGoalShareTeams(ctx context.Context, scope domain.TenantScope, goal domain.Goal, teamsByID map[int64]domain.Team) ([]goalShareTeam, error) {
+	shares, err := h.deps.Service.ListGoalShares(ctx, scope, goal.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -809,11 +809,11 @@ func (h *Handler) buildGoalShareTeams(ctx context.Context, goal domain.Goal, tea
 	return teams, nil
 }
 
-func (h *Handler) buildGoalSharesMap(ctx context.Context, goals []domain.Goal, teamsByID map[int64]domain.Team) (map[int64][]goalShareTeam, map[int64]map[int64]bool, error) {
+func (h *Handler) buildGoalSharesMap(ctx context.Context, scope domain.TenantScope, goals []domain.Goal, teamsByID map[int64]domain.Team) (map[int64][]goalShareTeam, map[int64]map[int64]bool, error) {
 	result := make(map[int64][]goalShareTeam, len(goals))
 	ids := make(map[int64]map[int64]bool, len(goals))
 	for _, goal := range goals {
-		teams, err := h.buildGoalShareTeams(ctx, goal, teamsByID)
+		teams, err := h.buildGoalShareTeams(ctx, scope, goal, teamsByID)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -827,10 +827,10 @@ func (h *Handler) buildGoalSharesMap(ctx context.Context, goals []domain.Goal, t
 	return result, ids, nil
 }
 
-func (h *Handler) buildTeamPeriodStatuses(ctx context.Context, teams []domain.Team, periodID int64) (map[int64]domain.TeamPeriodStatus, error) {
+func (h *Handler) buildTeamPeriodStatuses(ctx context.Context, scope domain.TenantScope, teams []domain.Team, periodID int64) (map[int64]domain.TeamPeriodStatus, error) {
 	statuses := make(map[int64]domain.TeamPeriodStatus, len(teams))
 	for _, team := range teams {
-		status, err := h.deps.Service.GetTeamPeriodStatus(ctx, team.ID, periodID)
+		status, err := h.deps.Service.GetTeamPeriodStatus(ctx, scope, team.ID, periodID)
 		if err != nil {
 			return nil, err
 		}

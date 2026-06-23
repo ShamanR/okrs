@@ -5,7 +5,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"okrs/internal/domain"
 )
+
+// ts0 is the zero tenant scope; the cache tests seed grants with TenantID 0.
+var ts0 = domain.TenantScope{}
 
 // fakeGrantsBackend is a controllable backend for testing GrantsCache.
 type fakeGrantsBackend struct {
@@ -26,12 +31,12 @@ func (f *fakeGrantsBackend) loadAllGrants(_ context.Context) (map[int64][]Hierar
 	}
 	return cp, nil
 }
-func (f *fakeGrantsBackend) addUserGrant(_ context.Context, userID, teamID, grantedByUserID int64) error {
+func (f *fakeGrantsBackend) addUserGrant(_ context.Context, _ domain.TenantScope, userID, teamID, grantedByUserID int64) error {
 	f.addCalls = append(f.addCalls, addGrantCall{userID, teamID, grantedByUserID})
 	f.data[userID] = append(f.data[userID], HierarchyGrant{UserID: userID, TeamID: teamID, CreatedByUserID: grantedByUserID})
 	return nil
 }
-func (f *fakeGrantsBackend) removeUserGrant(_ context.Context, userID, teamID int64) error {
+func (f *fakeGrantsBackend) removeUserGrant(_ context.Context, _ domain.TenantScope, userID, teamID int64) error {
 	f.rmCalls = append(f.rmCalls, removeGrantCall{userID, teamID})
 	grants := f.data[userID]
 	filtered := grants[:0]
@@ -43,7 +48,7 @@ func (f *fakeGrantsBackend) removeUserGrant(_ context.Context, userID, teamID in
 	f.data[userID] = filtered
 	return nil
 }
-func (f *fakeGrantsBackend) ListDescendantTeamIDs(_ context.Context, rootIDs []int64) ([]int64, error) {
+func (f *fakeGrantsBackend) ListDescendantTeamIDs(_ context.Context, _ domain.TenantScope, rootIDs []int64) ([]int64, error) {
 	return rootIDs, nil
 }
 
@@ -61,7 +66,7 @@ func TestGrantsCacheListUserGrantsCachesData(t *testing.T) {
 	cache := newGrantsCacheWithBackend(backend, time.Minute)
 	ctx := context.Background()
 
-	grants1, err := cache.ListUserGrants(ctx, 1)
+	grants1, err := cache.ListUserGrants(ctx, ts0, 1)
 	if err != nil {
 		t.Fatalf("first call: %v", err)
 	}
@@ -70,7 +75,7 @@ func TestGrantsCacheListUserGrantsCachesData(t *testing.T) {
 	}
 
 	// Second call must not hit backend again.
-	_, err = cache.ListUserGrants(ctx, 1)
+	_, err = cache.ListUserGrants(ctx, ts0, 1)
 	if err != nil {
 		t.Fatalf("second call: %v", err)
 	}
@@ -86,13 +91,13 @@ func TestGrantsCacheRefreshesAfterTTL(t *testing.T) {
 	cache := newGrantsCacheWithBackend(backend, 10*time.Millisecond)
 	ctx := context.Background()
 
-	if _, err := cache.ListUserGrants(ctx, 1); err != nil {
+	if _, err := cache.ListUserGrants(ctx, ts0, 1); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 
 	time.Sleep(20 * time.Millisecond)
 
-	if _, err := cache.ListUserGrants(ctx, 1); err != nil {
+	if _, err := cache.ListUserGrants(ctx, ts0, 1); err != nil {
 		t.Fatalf("after TTL: %v", err)
 	}
 	if n := backend.loadCount.Load(); n < 2 {
@@ -113,7 +118,7 @@ func TestGrantsCacheInvalidatesOnAddGrant(t *testing.T) {
 		t.Fatalf("expected 1 load after warm, got %d", n)
 	}
 
-	if err := cache.AddUserGrant(ctx, 2, 7, 1); err != nil {
+	if err := cache.AddUserGrant(ctx, ts0, 2, 7, 1); err != nil {
 		t.Fatalf("add grant: %v", err)
 	}
 	if len(backend.addCalls) != 1 {
@@ -121,7 +126,7 @@ func TestGrantsCacheInvalidatesOnAddGrant(t *testing.T) {
 	}
 
 	// Next read must reload from backend.
-	grants, err := cache.ListUserGrants(ctx, 2)
+	grants, err := cache.ListUserGrants(ctx, ts0, 2)
 	if err != nil {
 		t.Fatalf("after add: %v", err)
 	}
@@ -145,14 +150,14 @@ func TestGrantsCacheInvalidatesOnRemoveGrant(t *testing.T) {
 		t.Fatalf("warm: %v", err)
 	}
 
-	if err := cache.RemoveUserGrant(ctx, 3, 9); err != nil {
+	if err := cache.RemoveUserGrant(ctx, ts0, 3, 9); err != nil {
 		t.Fatalf("remove grant: %v", err)
 	}
 	if len(backend.rmCalls) != 1 {
 		t.Fatalf("expected 1 remove call to backend, got %d", len(backend.rmCalls))
 	}
 
-	grants, err := cache.ListUserGrants(ctx, 3)
+	grants, err := cache.ListUserGrants(ctx, ts0, 3)
 	if err != nil {
 		t.Fatalf("after remove: %v", err)
 	}
@@ -185,7 +190,7 @@ func TestGrantsCacheListUserGrantsReturnsEmptyForUnknownUser(t *testing.T) {
 	cache := newGrantsCacheWithBackend(newFakeBackend(nil), time.Minute)
 	ctx := context.Background()
 
-	grants, err := cache.ListUserGrants(ctx, 999)
+	grants, err := cache.ListUserGrants(ctx, ts0, 999)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

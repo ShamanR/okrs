@@ -28,8 +28,8 @@ type authStorage interface {
 // userGranter is the minimal interface Manager needs for the new-user grant policy.
 // Both *store.Store and *store.GrantsCache satisfy it.
 type userGranter interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
-	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
+	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
+	AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
 }
 
 // Manager handles provider selection, session creation, and user upsert.
@@ -124,14 +124,16 @@ func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) err
 		return nil
 	}
 
-	grants, err := m.grants.ListUserGrants(ctx, user.ID)
+	// TODO(tenancy): new-user default-node policy currently applies to the default tenant.
+	scope := domain.TenantScope{TenantID: 1}
+	grants, err := m.grants.ListUserGrants(ctx, scope, user.ID)
 	if err != nil {
 		return err
 	}
 	if len(grants) > 0 {
 		return nil
 	}
-	return m.grants.AddUserGrant(ctx, user.ID, nodeID, domain.SystemUserAnonymous)
+	return m.grants.AddUserGrant(ctx, scope, user.ID, nodeID, domain.SystemUserAnonymous)
 }
 
 // ResolveSession loads the session and user by session ID.

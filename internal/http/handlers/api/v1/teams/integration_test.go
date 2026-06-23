@@ -300,7 +300,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if err := repo.KRs.UpdateBoolean(ctx, domain.TenantScope{TenantID: 1}, krID, true); err != nil {
 		t.Fatalf("update child key result progress: %v", err)
 	}
-	if err := repo.Statuses.SetTeamPeriodStatus(ctx, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
+	if err := repo.Statuses.SetTeamPeriodStatus(ctx, domain.TenantScope{TenantID: 1}, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
 		t.Fatalf("set status: %v", err)
 	}
 

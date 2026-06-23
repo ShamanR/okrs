@@ -69,7 +69,8 @@ func ScopeMiddleware(policy *PolicyEvaluator, mgr *Manager) func(http.Handler) h
 				next.ServeHTTP(w, r)
 				return
 			}
-			ctx, _ := policy.LoadScope(r.Context(), user, mgr.Config())
+			scope, _ := TenantScopeFromContext(r.Context())
+			ctx, _ := policy.LoadScope(r.Context(), scope, user, mgr.Config())
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

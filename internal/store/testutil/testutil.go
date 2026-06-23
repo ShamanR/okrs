@@ -54,6 +54,20 @@ func SetupDB(t testing.TB) (*pgxpool.Pool, func()) {
 		cleanup()
 		t.Fatalf("pool: %v", err)
 	}
+	// Migration 032 drops the transitional tenant_id DEFAULT 1 in production so a forgotten
+	// tenant_id fails loudly. Test fixtures, however, are single-tenant and seed rows with raw
+	// SQL that omits tenant_id; restore the default here so those fixtures land in tenant 1.
+	// (The migration's own behaviour is verified separately via migrateTo(32).)
+	for _, tbl := range []string{
+		"teams", "periods", "goals", "goal_shares", "team_period_statuses",
+		"user_hierarchy_grants", "key_results", "goal_comments", "key_result_notes",
+	} {
+		if _, err := pool.Exec(ctx, "ALTER TABLE "+tbl+" ALTER COLUMN tenant_id SET DEFAULT 1"); err != nil {
+			pool.Close()
+			cleanup()
+			t.Fatalf("restore tenant_id default on %s: %v", tbl, err)
+		}
+	}
 	return pool, func() {
 		pool.Close()
 		cleanup()

@@ -102,7 +102,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		if err != nil {
 			return nil, err
 		}
-		statuses, err := st.Statuses.ListTeamPeriodStatuses(ctx, periodID, allTeamIDs)
+		statuses, err := st.Statuses.ListTeamPeriodStatuses(ctx, domain.TenantScope{TenantID: 1}, periodID, allTeamIDs)
 		if err != nil {
 			return nil, err
 		}

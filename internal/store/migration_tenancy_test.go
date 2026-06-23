@@ -101,6 +101,20 @@ func TestMigration027CreatesDefaultTenant(t *testing.T) {
 	}
 }
 
+func TestMigration032RemovesTenantDefault(t *testing.T) {
+	db, cleanup := migrateTo(t, 32)
+	defer cleanup()
+
+	// After the default is dropped, an INSERT omitting tenant_id is rejected.
+	if _, err := db.Exec(`INSERT INTO teams (name) VALUES ('NoTenant')`); err == nil {
+		t.Fatalf("insert without tenant_id should fail after default removed")
+	}
+	// Explicit tenant_id still works.
+	if _, err := db.Exec(`INSERT INTO teams (name, tenant_id) VALUES ('WithTenant', 1)`); err != nil {
+		t.Fatalf("insert with explicit tenant_id should succeed: %v", err)
+	}
+}
+
 func TestMigration031InvitationsAndPeriodUniqueness(t *testing.T) {
 	db, cleanup := migrateTo(t, 31)
 	defer cleanup()

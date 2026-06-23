@@ -123,6 +123,11 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
@@ -149,7 +154,7 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status", map[string]string{"status": "invalid"})
 		return
 	}
-	if err := h.service.UpdateTeamPeriodStatus(r.Context(), teamID, req.PeriodID, status); err != nil {
+	if err := h.service.UpdateTeamPeriodStatus(r.Context(), scope, teamID, req.PeriodID, status); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
 		return
 	}

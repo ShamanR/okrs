@@ -41,11 +41,11 @@ type settingsStore interface {
 
 // grantsStore covers the user_hierarchy_grants operations. *store.GrantsCache satisfies it.
 type grantsStore interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
+	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
 	AllGrants(ctx context.Context) (map[int64][]grants.HierarchyGrant, error)
-	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
-	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
-	RemoveUserGrant(ctx context.Context, userID, teamID int64) error
+	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
+	AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
+	RemoveUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error
 }
 
 type Handler struct {
@@ -86,7 +86,12 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	for id := range distinct {
 		roots = append(roots, id)
 	}
-	activeIDs, err := h.grants.ListDescendantTeamIDs(r.Context(), roots)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	activeIDs, err := h.grants.ListDescendantTeamIDs(r.Context(), scope, roots)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -166,7 +171,12 @@ func (h *Handler) HandleListGrants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	grants, err := h.grants.ListUserGrants(r.Context(), userID)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	grants, err := h.grants.ListUserGrants(r.Context(), scope, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -188,8 +198,13 @@ func (h *Handler) HandleAddGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "team_id required")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	grantedBy := auth.UserIDFromContext(r.Context())
-	if err := h.grants.AddUserGrant(r.Context(), userID, body.TeamID, grantedBy); err != nil {
+	if err := h.grants.AddUserGrant(r.Context(), scope, userID, body.TeamID, grantedBy); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -208,7 +223,12 @@ func (h *Handler) HandleRemoveGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid team id")
 		return
 	}
-	if err := h.grants.RemoveUserGrant(r.Context(), userID, teamID); err != nil {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	if err := h.grants.RemoveUserGrant(r.Context(), scope, userID, teamID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

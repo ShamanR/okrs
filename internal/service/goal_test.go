@@ -86,7 +86,7 @@ func (f *goalFakeStore) DeleteGoal(_ context.Context, _ domain.TenantScope, id i
 	f.deleteGoalCalls = append(f.deleteGoalCalls, id)
 	return nil
 }
-func (f *goalFakeStore) DeleteGoalShare(_ context.Context, goalID, teamID int64) error {
+func (f *goalFakeStore) DeleteGoalShare(_ context.Context, _ domain.TenantScope, goalID, teamID int64) error {
 	f.deleteShareCalls = append(f.deleteShareCalls, deleteShareArg{goalID, teamID})
 	return nil
 }
@@ -94,11 +94,11 @@ func (f *goalFakeStore) UpdateGoalOwner(_ context.Context, _ domain.TenantScope,
 	f.updateOwnerCalls = append(f.updateOwnerCalls, updateOwnerArg{goalID, teamID, weight})
 	return nil
 }
-func (f *goalFakeStore) SetTeamPeriodStatus(_ context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
+func (f *goalFakeStore) SetTeamPeriodStatus(_ context.Context, _ domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus) error {
 	f.setStatusCalls = append(f.setStatusCalls, setStatusArg{teamID, periodID, status})
 	return nil
 }
-func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, goalID int64, shares []shares.GoalShareInput) error {
+func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, _ domain.TenantScope, goalID int64, shares []shares.GoalShareInput) error {
 	f.replaceSharesCalls = append(f.replaceSharesCalls, replaceSharesArg{goalID, shares})
 	return nil
 }
@@ -114,16 +114,16 @@ func (f *goalFakeStore) ReplaceProjectStages(_ context.Context, _ domain.TenantS
 	f.replaceStageCalls = append(f.replaceStageCalls, replaceStagesArg{krID, stages})
 	return nil
 }
-func (f *goalFakeStore) GetTeamPeriodStatus(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
+func (f *goalFakeStore) GetTeamPeriodStatus(_ context.Context, _ domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
 	if s, ok := f.statuses[[2]int64{teamID, periodID}]; ok {
 		return s, nil
 	}
 	return domain.TeamPeriodStatusNoGoals, nil
 }
-func (f *goalFakeStore) ListGoalShares(_ context.Context, goalID int64) ([]shares.GoalShare, error) {
+func (f *goalFakeStore) ListGoalShares(_ context.Context, _ domain.TenantScope, goalID int64) ([]shares.GoalShare, error) {
 	return f.goalShares[goalID], nil
 }
-func (f *goalFakeStore) ListGoalSharesByGoalIDs(_ context.Context, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
+func (f *goalFakeStore) ListGoalSharesByGoalIDs(_ context.Context, _ domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
 	result := make(map[int64][]shares.GoalShare, len(goalIDs))
 	for _, id := range goalIDs {
 		if sl := f.goalShares[id]; len(sl) > 0 {
@@ -202,15 +202,15 @@ func (f *goalFakeStore) AddGoalComment(_ context.Context, _ domain.TenantScope, 
 func (f *goalFakeStore) ListGoalComments(_ context.Context, _ domain.TenantScope, _ int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) GetGoalShare(_ context.Context, _, _ int64) (shares.GoalShare, error) {
+func (f *goalFakeStore) GetGoalShare(_ context.Context, _ domain.TenantScope, _, _ int64) (shares.GoalShare, error) {
 	return shares.GoalShare{}, nil
 }
-func (f *goalFakeStore) UpdateGoalTeamWeight(_ context.Context, _, _ int64, _ int) error { return nil }
-func (f *goalFakeStore) GetTeamPeriodStatusWithTime(_ context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
-	s, err := f.GetTeamPeriodStatus(context.Background(), teamID, periodID)
+func (f *goalFakeStore) UpdateGoalTeamWeight(_ context.Context, _ domain.TenantScope, _, _ int64, _ int) error { return nil }
+func (f *goalFakeStore) GetTeamPeriodStatusWithTime(_ context.Context, _ domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
+	s, err := f.GetTeamPeriodStatus(context.Background(), domain.TenantScope{}, teamID, periodID)
 	return s, nil, err
 }
-func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ int64, _ []int64) (map[int64]domain.TeamPeriodStatus, error) {
+func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64]domain.TeamPeriodStatus, error) {
 	return nil, nil
 }
 func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64]time.Time, error) {

@@ -294,13 +294,13 @@ type fakeGrants struct {
 	activeTeamIDs map[int64]bool
 }
 
-func (f *fakeGrants) ListUserGrants(context.Context, int64) ([]grants.HierarchyGrant, error) {
+func (f *fakeGrants) ListUserGrants(context.Context, domain.TenantScope, int64) ([]grants.HierarchyGrant, error) {
 	return nil, nil
 }
 func (f *fakeGrants) AllGrants(context.Context) (map[int64][]grants.HierarchyGrant, error) {
 	return f.all, nil
 }
-func (f *fakeGrants) ListDescendantTeamIDs(_ context.Context, roots []int64) ([]int64, error) {
+func (f *fakeGrants) ListDescendantTeamIDs(_ context.Context, _ domain.TenantScope, roots []int64) ([]int64, error) {
 	var out []int64
 	for _, id := range roots {
 		if f.activeTeamIDs[id] {
@@ -309,8 +309,8 @@ func (f *fakeGrants) ListDescendantTeamIDs(_ context.Context, roots []int64) ([]
 	}
 	return out, nil
 }
-func (f *fakeGrants) AddUserGrant(context.Context, int64, int64, int64) error { return nil }
-func (f *fakeGrants) RemoveUserGrant(context.Context, int64, int64) error     { return nil }
+func (f *fakeGrants) AddUserGrant(context.Context, domain.TenantScope, int64, int64, int64) error { return nil }
+func (f *fakeGrants) RemoveUserGrant(context.Context, domain.TenantScope, int64, int64) error     { return nil }
 
 // GrantedNodeCount must count only grants pointing at active teams: a grant to a
 // soft-deleted team expands to no visible access and must not be counted.
@@ -326,6 +326,7 @@ func TestHandleListUsersExcludesDeletedTeamGrantsFromCount(t *testing.T) {
 	h := New(users, nil, nil, g)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
+	r = r.WithContext(auth.WithTenant(r.Context(), &domain.Tenant{ID: 1, Status: domain.TenantActive}))
 	w := httptest.NewRecorder()
 	h.HandleListUsers(w, r)
 

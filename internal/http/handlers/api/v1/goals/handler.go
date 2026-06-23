@@ -93,7 +93,7 @@ func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
 		}
 		targets = append(targets, service.ShareTarget{TeamID: target.TeamID, Weight: target.Weight})
 	}
-	if err := h.service.ShareGoal(r.Context(), goalID, targets); err != nil {
+	if err := h.service.ShareGoal(r.Context(), scope, goalID, targets); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to share goal", nil)
 		return
 	}
@@ -131,7 +131,7 @@ func (h *Handler) HandleUpdateGoalWeight(w http.ResponseWriter, r *http.Request)
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid weight", map[string]string{"weight": "0..100"})
 		return
 	}
-	if err := h.service.UpdateGoalWeight(r.Context(), goalID, req.TeamID, req.Weight); err != nil {
+	if err := h.service.UpdateGoalWeight(r.Context(), scope, goalID, req.TeamID, req.Weight); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update weight", nil)
 		return
 	}
@@ -239,7 +239,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if teamID != nil {
-		if err := h.service.UpdateGoalWeight(r.Context(), goalID, *teamID, weight); err != nil {
+		if err := h.service.UpdateGoalWeight(r.Context(), scope, goalID, *teamID, weight); err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update weight", nil)
 			return
 		}
@@ -306,7 +306,7 @@ func (h *Handler) HandleLeaveGoalShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if goal.TeamID != teamID {
-		if _, err := h.service.GetGoalShare(r.Context(), goalID, teamID); err != nil {
+		if _, err := h.service.GetGoalShare(r.Context(), scope, goalID, teamID); err != nil {
 			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 			return
 		}

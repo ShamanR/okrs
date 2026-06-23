@@ -21,8 +21,8 @@ const allowedTeamsKey policyContextKey = 0
 // grantsReader is the minimal interface PolicyEvaluator needs for scope resolution.
 // Both *store.Store and *store.GrantsCache satisfy it.
 type grantsReader interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
-	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
+	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
+	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
 }
 
 // PolicyEvaluator resolves and caches per-request team access scope.
@@ -49,12 +49,12 @@ func (e *PolicyEvaluator) AllowedTeamIDs(ctx context.Context) ([]int64, bool) {
 // expansion — an empty slice if they have no grants (no access).
 // The cfg param is kept for signature compatibility but default-node policy is
 // applied at registration time by Manager.applyNewUserPolicy, not per-request.
-func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg Config) (context.Context, error) {
+func (e *PolicyEvaluator) LoadScope(ctx context.Context, scope domain.TenantScope, user *domain.User, cfg Config) (context.Context, error) {
 	if user == nil || user.IsAdmin {
 		return context.WithValue(ctx, allowedTeamsKey, []int64(nil)), nil
 	}
 
-	grants, err := e.grants.ListUserGrants(ctx, user.ID)
+	grants, err := e.grants.ListUserGrants(ctx, scope, user.ID)
 	if err != nil {
 		return ctx, err
 	}
@@ -70,7 +70,7 @@ func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg 
 		}
 	}
 
-	allIDs, err := e.grants.ListDescendantTeamIDs(ctx, rootIDs)
+	allIDs, err := e.grants.ListDescendantTeamIDs(ctx, scope, rootIDs)
 	if err != nil {
 		return ctx, err
 	}

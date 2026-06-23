@@ -9,6 +9,9 @@ import (
 	"okrs/internal/store/testutil"
 )
 
+// sc1 is the default-tenant scope used across the existing single-tenant status tests.
+var sc1 = domain.TenantScope{TenantID: 1}
+
 func TestTeamPeriodStatusRoundTrip(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
@@ -20,7 +23,7 @@ func TestTeamPeriodStatusRoundTrip(t *testing.T) {
 	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('StatusPeriod','2025-01-01','2025-03-31',1) RETURNING id`).Scan(&periodID)
 
 	// Missing entry returns TeamPeriodStatusNoGoals.
-	status, err := r.GetTeamPeriodStatus(ctx, teamID, periodID)
+	status, err := r.GetTeamPeriodStatus(ctx, sc1, teamID, periodID)
 	if err != nil {
 		t.Fatalf("GetTeamPeriodStatus missing: %v", err)
 	}
@@ -28,10 +31,10 @@ func TestTeamPeriodStatusRoundTrip(t *testing.T) {
 		t.Fatalf("expected NoGoals for missing entry, got %s", status)
 	}
 
-	if err := r.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
+	if err := r.SetTeamPeriodStatus(ctx, sc1, teamID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
 		t.Fatalf("SetTeamPeriodStatus: %v", err)
 	}
-	got, err := r.GetTeamPeriodStatus(ctx, teamID, periodID)
+	got, err := r.GetTeamPeriodStatus(ctx, sc1, teamID, periodID)
 	if err != nil {
 		t.Fatalf("GetTeamPeriodStatus after set: %v", err)
 	}
@@ -40,8 +43,8 @@ func TestTeamPeriodStatusRoundTrip(t *testing.T) {
 	}
 
 	// ON CONFLICT update returns the new value.
-	r.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusClosed)
-	got, _ = r.GetTeamPeriodStatus(ctx, teamID, periodID)
+	r.SetTeamPeriodStatus(ctx, sc1, teamID, periodID, domain.TeamPeriodStatusClosed)
+	got, _ = r.GetTeamPeriodStatus(ctx, sc1, teamID, periodID)
 	if got != domain.TeamPeriodStatusClosed {
 		t.Fatalf("expected AtRisk after overwrite, got %s", got)
 	}
@@ -59,10 +62,10 @@ func TestListTeamPeriodStatuses(t *testing.T) {
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T3') RETURNING id`).Scan(&t3)
 	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('LP','2025-04-01','2025-06-30',1) RETURNING id`).Scan(&periodID)
 
-	r.SetTeamPeriodStatus(ctx, t1, periodID, domain.TeamPeriodStatusInProgress)
-	r.SetTeamPeriodStatus(ctx, t2, periodID, domain.TeamPeriodStatusClosed)
+	r.SetTeamPeriodStatus(ctx, sc1, t1, periodID, domain.TeamPeriodStatusInProgress)
+	r.SetTeamPeriodStatus(ctx, sc1, t2, periodID, domain.TeamPeriodStatusClosed)
 
-	m, err := r.ListTeamPeriodStatuses(ctx, periodID, []int64{t1, t2, t3})
+	m, err := r.ListTeamPeriodStatuses(ctx, sc1, periodID, []int64{t1, t2, t3})
 	if err != nil {
 		t.Fatalf("ListTeamPeriodStatuses: %v", err)
 	}
@@ -89,7 +92,7 @@ func TestGetTeamPeriodStatusWithTime(t *testing.T) {
 	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('TWPeriod','2025-07-01','2025-09-30',1) RETURNING id`).Scan(&periodID)
 
 	// Missing → NoGoals, nil time.
-	status, ts, err := r.GetTeamPeriodStatusWithTime(ctx, teamID, periodID)
+	status, ts, err := r.GetTeamPeriodStatusWithTime(ctx, sc1, teamID, periodID)
 	if err != nil {
 		t.Fatalf("GetTeamPeriodStatusWithTime missing: %v", err)
 	}
@@ -97,8 +100,8 @@ func TestGetTeamPeriodStatusWithTime(t *testing.T) {
 		t.Fatalf("expected NoGoals+nil time, got %s %v", status, ts)
 	}
 
-	r.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusInProgress)
-	status, ts, err = r.GetTeamPeriodStatusWithTime(ctx, teamID, periodID)
+	r.SetTeamPeriodStatus(ctx, sc1, teamID, periodID, domain.TeamPeriodStatusInProgress)
+	status, ts, err = r.GetTeamPeriodStatusWithTime(ctx, sc1, teamID, periodID)
 	if err != nil {
 		t.Fatalf("GetTeamPeriodStatusWithTime after set: %v", err)
 	}

@@ -47,7 +47,7 @@ func TestLeaveGoalShareRemovesGoalFromTeamOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	sr := shares.NewGoalShareRepository(pool)
-	if err := sr.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{
+	if err := sr.ReplaceGoalShares(ctx, domain.TenantScope{TenantID: 1}, goalID, []shares.GoalShareInput{
 		{TeamID: teamB, Weight: 50},
 		{TeamID: teamC, Weight: 30},
 	}); err != nil {
@@ -138,7 +138,7 @@ func TestLeaveGoalShareUnattachedTeamReturns404(t *testing.T) {
 		t.Fatal(err)
 	}
 	sr := shares.NewGoalShareRepository(pool)
-	if err := sr.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{{TeamID: teamB, Weight: 50}}); err != nil {
+	if err := sr.ReplaceGoalShares(ctx, domain.TenantScope{TenantID: 1}, goalID, []shares.GoalShareInput{{TeamID: teamB, Weight: 50}}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,7 +166,7 @@ func TestLeaveGoalShareUnattachedTeamReturns404(t *testing.T) {
 	}
 
 	// Nothing should have been detached.
-	shareList, err := sr.ListGoalShares(ctx, goalID)
+	shareList, err := sr.ListGoalShares(ctx, domain.TenantScope{TenantID: 1}, goalID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestDetachOwnerFromSharedGoalKeepsItForOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 	sr := shares.NewGoalShareRepository(pool)
-	if err := sr.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{
+	if err := sr.ReplaceGoalShares(ctx, domain.TenantScope{TenantID: 1}, goalID, []shares.GoalShareInput{
 		{TeamID: teamB, Weight: 50},
 		{TeamID: teamC, Weight: 30},
 	}); err != nil {

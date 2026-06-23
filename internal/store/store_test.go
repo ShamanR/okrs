@@ -510,6 +510,16 @@ func runMigrations(databaseURL string) error {
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}
+	// Migration 032 drops the transitional tenant_id DEFAULT 1; these single-tenant fixtures
+	// insert with raw SQL that omits tenant_id, so restore the default for tests.
+	for _, tbl := range []string{
+		"teams", "periods", "goals", "goal_shares", "team_period_statuses",
+		"user_hierarchy_grants", "key_results", "goal_comments", "key_result_notes",
+	} {
+		if _, err := db.ExecContext(ctx, "ALTER TABLE "+tbl+" ALTER COLUMN tenant_id SET DEFAULT 1"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
