@@ -74,15 +74,15 @@ func newGoalTestService(gf *goalFakeStore) *Service {
 
 // — Store interface implementation (tracking methods first) —
 
-func (f *goalFakeStore) GetGoal(_ context.Context, id int64) (domain.Goal, error) {
+func (f *goalFakeStore) GetGoal(_ context.Context, _ domain.TenantScope, id int64) (domain.Goal, error) {
 	return f.goals[id], nil
 }
-func (f *goalFakeStore) CreateGoal(_ context.Context, input goals.GoalInput) (int64, error) {
+func (f *goalFakeStore) CreateGoal(_ context.Context, _ domain.TenantScope, input goals.GoalInput) (int64, error) {
 	id := f.nextGoalID
 	f.nextGoalID++
 	return id, nil
 }
-func (f *goalFakeStore) DeleteGoal(_ context.Context, id int64) error {
+func (f *goalFakeStore) DeleteGoal(_ context.Context, _ domain.TenantScope, id int64) error {
 	f.deleteGoalCalls = append(f.deleteGoalCalls, id)
 	return nil
 }
@@ -90,7 +90,7 @@ func (f *goalFakeStore) DeleteGoalShare(_ context.Context, goalID, teamID int64)
 	f.deleteShareCalls = append(f.deleteShareCalls, deleteShareArg{goalID, teamID})
 	return nil
 }
-func (f *goalFakeStore) UpdateGoalOwner(_ context.Context, goalID, teamID int64, weight int) error {
+func (f *goalFakeStore) UpdateGoalOwner(_ context.Context, _ domain.TenantScope, goalID, teamID int64, weight int) error {
 	f.updateOwnerCalls = append(f.updateOwnerCalls, updateOwnerArg{goalID, teamID, weight})
 	return nil
 }
@@ -132,7 +132,7 @@ func (f *goalFakeStore) ListGoalSharesByGoalIDs(_ context.Context, goalIDs []int
 	}
 	return result, nil
 }
-func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID int64) ([]domain.Goal, error) {
+func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, _ domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error) {
 	if m := f.goalsAfterDelete[teamID]; m != nil {
 		return m[periodID], nil
 	}
@@ -167,33 +167,39 @@ func (f *goalFakeStore) CreateTeam(_ context.Context, _ domain.TenantScope, _ st
 func (f *goalFakeStore) UpdateTeam(_ context.Context, _ domain.TenantScope, _ storeteams.TeamInput, _ int64) error {
 	return nil
 }
-func (f *goalFakeStore) ListPeriods(context.Context) ([]domain.Period, error) { return nil, nil }
-func (f *goalFakeStore) GetPeriod(_ context.Context, _ int64) (domain.Period, error) {
-	return domain.Period{}, nil
-}
-func (f *goalFakeStore) FindPeriodForDate(_ context.Context, _ time.Time) (domain.Period, error) {
-	return domain.Period{}, nil
-}
-func (f *goalFakeStore) CreatePeriod(_ context.Context, _ periods.PeriodInput) (int64, error) {
-	return 0, nil
-}
-func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ int64, _ periods.PeriodInput) error {
-	return nil
-}
-func (f *goalFakeStore) DeletePeriod(_ context.Context, _ int64) error      { return nil }
-func (f *goalFakeStore) MovePeriod(_ context.Context, _ int64, _ int) error { return nil }
-func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ int64, _ []int64) (map[int64][]domain.Goal, error) {
+func (f *goalFakeStore) ListPeriods(_ context.Context, _ domain.TenantScope) ([]domain.Period, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) UpdateGoal(_ context.Context, _ goals.GoalUpdateInput) error { return nil }
-func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ goals.GoalFieldsUpdateInput) error {
+func (f *goalFakeStore) GetPeriod(_ context.Context, _ domain.TenantScope, _ int64) (domain.Period, error) {
+	return domain.Period{}, nil
+}
+func (f *goalFakeStore) FindPeriodForDate(_ context.Context, _ domain.TenantScope, _ time.Time) (domain.Period, error) {
+	return domain.Period{}, nil
+}
+func (f *goalFakeStore) CreatePeriod(_ context.Context, _ domain.TenantScope, _ periods.PeriodInput) (int64, error) {
+	return 0, nil
+}
+func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ domain.TenantScope, _ int64, _ periods.PeriodInput) error {
 	return nil
 }
-func (f *goalFakeStore) MoveGoal(_ context.Context, _ int64, _ int) error { return nil }
-func (f *goalFakeStore) AddGoalComment(_ context.Context, _ int64, _ string, _ int64) error {
+func (f *goalFakeStore) DeletePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
 	return nil
 }
-func (f *goalFakeStore) ListGoalComments(_ context.Context, _ int64) ([]domain.GoalComment, error) {
+func (f *goalFakeStore) MovePeriod(_ context.Context, _ domain.TenantScope, _ int64, _ int) error {
+	return nil
+}
+func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64][]domain.Goal, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) UpdateGoal(_ context.Context, _ domain.TenantScope, _ goals.GoalUpdateInput) error { return nil }
+func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ domain.TenantScope, _ goals.GoalFieldsUpdateInput) error {
+	return nil
+}
+func (f *goalFakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, _ int64, _ int) error { return nil }
+func (f *goalFakeStore) AddGoalComment(_ context.Context, _ domain.TenantScope, _ int64, _ string, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) ListGoalComments(_ context.Context, _ domain.TenantScope, _ int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }
 func (f *goalFakeStore) GetGoalShare(_ context.Context, _, _ int64) (shares.GoalShare, error) {
@@ -207,7 +213,7 @@ func (f *goalFakeStore) GetTeamPeriodStatusWithTime(_ context.Context, teamID, p
 func (f *goalFakeStore) ListTeamPeriodStatuses(_ context.Context, _ int64, _ []int64) (map[int64]domain.TeamPeriodStatus, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ int64, _ []int64) (map[int64]time.Time, error) {
+func (f *goalFakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64]time.Time, error) {
 	return nil, nil
 }
 func (f *goalFakeStore) TeamHasGoals(_ context.Context, _ domain.TenantScope, _ int64) (bool, error) {
@@ -278,7 +284,7 @@ func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
 	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 1, PeriodID: 10})
+	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10})
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed, got %v", err)
 	}
@@ -289,7 +295,7 @@ func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 1, PeriodID: 10})
+	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10})
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed for in_progress, got %v", err)
 	}
@@ -300,7 +306,7 @@ func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 	// no entry in statuses → defaults to NoGoals
 	svc := newGoalTestService(st)
 
-	goalID, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 2, PeriodID: 5})
+	goalID, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -321,7 +327,7 @@ func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 	st.statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
 	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), goals.GoalInput{TeamID: 2, PeriodID: 5})
+	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -337,7 +343,7 @@ func TestDeleteGoalBySharedTeamRemovesShareOnly(t *testing.T) {
 	st.goals[7] = domain.Goal{ID: 7, TeamID: 1, PeriodID: 5}
 	svc := newGoalTestService(st)
 
-	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), 7, 2)
+	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 7, 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -358,7 +364,7 @@ func TestDeleteGoalByOwnerTransfersOwnershipWhenShared(t *testing.T) {
 	st.goalShares[8] = []shares.GoalShare{{GoalID: 8, TeamID: 3, Weight: 30}}
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), 8, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 8, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -382,7 +388,7 @@ func TestDeleteGoalByOwnerDeletesGoalWhenNoSharesAndPeriodOpen(t *testing.T) {
 	// statuses defaults to NoGoals → open period
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), 9, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 9, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -397,7 +403,7 @@ func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
 	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), 10, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10, 1)
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed, got %v", err)
 	}
@@ -413,7 +419,7 @@ func TestDeleteGoalResetsStatusWhenLastGoalRemoved(t *testing.T) {
 	// goalsAfterDelete is empty → no goals remain after deletion
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), 11, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 11, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -438,7 +444,7 @@ func TestUpdateGoalOwnerAndSharesBlockedByInProgressPeriod(t *testing.T) {
 	st.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), 20, []int64{2})
+	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 20, []int64{2})
 	if err != ErrCannotShareWithClosedPeriod {
 		t.Fatalf("expected ErrCannotShareWithClosedPeriod, got %v", err)
 	}
@@ -450,7 +456,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 	// team 3 has open period (defaults to NoGoals)
 	svc := newGoalTestService(st)
 
-	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), 21, []int64{3})
+	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 21, []int64{3})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

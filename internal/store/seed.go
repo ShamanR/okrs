@@ -13,6 +13,7 @@ import (
 )
 
 func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs.KRRepository, periodID int64) error {
+	scope := domain.TenantScope{TenantID: 1} // TODO(tenancy): seed supports single-tenant only
 	teamNames := []string{"Platform", "Payments", "Growth"}
 	teamIDs := make([]int64, 0, len(teamNames))
 	for _, name := range teamNames {
@@ -33,7 +34,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 	}
 
 	for _, teamID := range teamIDs {
-		goalID, err := goalsRepo.CreateGoal(ctx, goals.GoalInput{
+		goalID, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Improve reliability for team %d", teamID),
@@ -60,7 +61,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
 		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
 
-		goalID2, err := goalsRepo.CreateGoal(ctx, goals.GoalInput{
+		goalID2, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Grow adoption for team %d", teamID),

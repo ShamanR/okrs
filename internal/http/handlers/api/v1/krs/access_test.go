@@ -71,7 +71,7 @@ func buildKRAccessFixture(t *testing.T, pool *pgxpool.Pool, repo *store.Store) (
 		t.Fatalf("insert period: %v", err)
 	}
 	var err error
-	goalID, err = repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err = repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Goal",
 		Priority: domain.PriorityP1, Weight: 100,
 		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,

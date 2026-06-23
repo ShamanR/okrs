@@ -70,7 +70,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 		Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Goal",
 		Priority: domain.PriorityP1, Weight: 100,
 		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,

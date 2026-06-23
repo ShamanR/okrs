@@ -43,7 +43,7 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 	if err := pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('Q1','2026-01-01','2026-03-31',1) RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatal(err)
 	}
-	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: ownerTeam, PeriodID: periodID, Title: "Shared goal",
 		Priority: domain.PriorityP1, Weight: 100,
 		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,

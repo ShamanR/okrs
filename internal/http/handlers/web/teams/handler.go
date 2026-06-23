@@ -156,7 +156,12 @@ type teamOKRPage struct {
 }
 
 func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
-	period, periodValue, periods, err := h.resolvePeriodFilter(r.Context(), r)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	period, periodValue, periods, err := h.resolvePeriodFilter(r.Context(), scope, r)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -165,10 +170,8 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 	selectedFilter := resolveTeamFilter(r)
 	title := "OKR команд"
 	if teamID, err := strconv.ParseInt(selectedFilter, 10, 64); err == nil && teamID > 0 {
-		if scope, ok := auth.TenantScopeFromContext(r.Context()); ok {
-			if team, teamErr := h.deps.Service.GetTeam(r.Context(), scope, teamID); teamErr == nil {
-				title = fmt.Sprintf("Список целей %s", team.Name)
-			}
+		if team, teamErr := h.deps.Service.GetTeam(r.Context(), scope, teamID); teamErr == nil {
+			title = fmt.Sprintf("Список целей %s", team.Name)
 		}
 	}
 	page := teamOkrsPage{
@@ -186,8 +189,8 @@ func (h *Handler) HandleTeamManagement(w http.ResponseWriter, r *http.Request) {
 	h.renderTeamManagement(w, r, "")
 }
 
-func (h *Handler) resolvePeriodFilter(ctx context.Context, r *http.Request) (domain.Period, string, []domain.Period, error) {
-	periods, err := h.deps.Service.ListPeriods(ctx)
+func (h *Handler) resolvePeriodFilter(ctx context.Context, scope domain.TenantScope, r *http.Request) (domain.Period, string, []domain.Period, error) {
+	periods, err := h.deps.Service.ListPeriods(ctx, scope)
 	if err != nil {
 		return domain.Period{}, "", nil, err
 	}
@@ -214,7 +217,7 @@ func (h *Handler) resolvePeriodFilter(ctx context.Context, r *http.Request) (dom
 		}
 	}
 	if selectedPeriod.ID == 0 && len(periods) > 0 {
-		if current, err := h.deps.Service.FindPeriodForDate(ctx, time.Now().In(h.deps.Zone)); err == nil {
+		if current, err := h.deps.Service.FindPeriodForDate(ctx, scope, time.Now().In(h.deps.Zone)); err == nil {
 			selectedPeriod = current
 		} else {
 			selectedPeriod = periods[0]
@@ -608,7 +611,7 @@ func (h *Handler) HandleTeamOKR(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, _, _, err := h.resolvePeriodFilter(ctx, r)
+	period, _, _, err := h.resolvePeriodFilter(ctx, scope, r)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -659,7 +662,12 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	goalID, err := h.deps.Service.CreateGoal(ctx, goals.GoalInput{
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	goalID, err := h.deps.Service.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       common.TrimmedFormValue(r, "title"),
@@ -701,18 +709,18 @@ func (h *Handler) renderTeamOKRWithError(w http.ResponseWriter, r *http.Request,
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, err := h.deps.Service.GetPeriod(r.Context(), periodID)
+	period, err := h.deps.Service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goals, err := h.deps.Service.ListGoalsByTeamPeriod(r.Context(), teamID, periodID)
+	goals, err := h.deps.Service.ListGoalsByTeamPeriod(r.Context(), scope, teamID, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	for i := range goals {
-		comments, err := h.deps.Service.ListGoalComments(r.Context(), goals[i].ID)
+		comments, err := h.deps.Service.ListGoalComments(r.Context(), scope, goals[i].ID)
 		if err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return

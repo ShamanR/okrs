@@ -43,18 +43,18 @@ type TeamRepo interface {
 }
 
 type GoalRepo interface {
-	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
-	ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
-	GetGoal(ctx context.Context, id int64) (domain.Goal, error)
-	CreateGoal(ctx context.Context, input goals.GoalInput) (int64, error)
-	DeleteGoal(ctx context.Context, id int64) error
-	UpdateGoal(ctx context.Context, input goals.GoalUpdateInput) error
-	UpdateGoalFields(ctx context.Context, input goals.GoalFieldsUpdateInput) error
-	UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error
-	MoveGoal(ctx context.Context, goalID int64, direction int) error
-	AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error
-	ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error)
-	ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
+	ListGoalsByTeamPeriod(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error)
+	ListGoalsByTeamsPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
+	GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error)
+	CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error)
+	DeleteGoal(ctx context.Context, scope domain.TenantScope, id int64) error
+	UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error
+	UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error
+	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
+	MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error
+	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error
+	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
+	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
 
 type GoalShareRepo interface {
@@ -67,13 +67,13 @@ type GoalShareRepo interface {
 }
 
 type PeriodRepo interface {
-	ListPeriods(ctx context.Context) ([]domain.Period, error)
-	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
-	FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error)
-	CreatePeriod(ctx context.Context, input periods.PeriodInput) (int64, error)
-	UpdatePeriod(ctx context.Context, periodID int64, input periods.PeriodInput) error
-	DeletePeriod(ctx context.Context, periodID int64) error
-	MovePeriod(ctx context.Context, periodID int64, direction int) error
+	ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error)
+	GetPeriod(ctx context.Context, scope domain.TenantScope, id int64) (domain.Period, error)
+	FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error)
+	CreatePeriod(ctx context.Context, scope domain.TenantScope, input periods.PeriodInput) (int64, error)
+	UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input periods.PeriodInput) error
+	DeletePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error
+	MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error
 }
 
 type KRRepo interface {
@@ -285,12 +285,12 @@ func (s *Service) GetTeam(ctx context.Context, scope domain.TenantScope, teamID 
 	return s.teams.GetTeam(ctx, scope, teamID)
 }
 
-func (s *Service) ListPeriods(ctx context.Context) ([]domain.Period, error) {
-	return s.periods.ListPeriods(ctx)
+func (s *Service) ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error) {
+	return s.periods.ListPeriods(ctx, scope)
 }
 
-func (s *Service) GetPeriod(ctx context.Context, periodID int64) (domain.Period, error) {
-	return s.periods.GetPeriod(ctx, periodID)
+func (s *Service) GetPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (domain.Period, error) {
+	return s.periods.GetPeriod(ctx, scope, periodID)
 }
 
 func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, scope domain.TenantScope, periodID int64, orgID *int64) ([]TeamSummary, error) {
@@ -321,7 +321,7 @@ func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, scope 
 	if err != nil {
 		return nil, err
 	}
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, periodID, allTeamIDs)
+	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, allTeamIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -426,7 +426,7 @@ func (s *Service) GetTeamOKR(ctx context.Context, scope domain.TenantScope, team
 	if !visible {
 		return TeamOKR{}, ErrTeamNotVisibleInPeriod
 	}
-	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -517,10 +517,10 @@ func (s *Service) GetDirectChildrenSummary(ctx context.Context, scope domain.Ten
 	if len(children) == 0 {
 		return []TeamChildSummary{}, nil
 	}
-	return s.buildDirectChildrenSummary(ctx, periodID, children, nil)
+	return s.buildDirectChildrenSummary(ctx, scope, periodID, children, nil)
 }
 
-func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64, children []TeamNode, goalsByTeam map[int64][]domain.Goal) ([]TeamChildSummary, error) {
+func (s *Service) buildDirectChildrenSummary(ctx context.Context, scope domain.TenantScope, periodID int64, children []TeamNode, goalsByTeam map[int64][]domain.Goal) ([]TeamChildSummary, error) {
 	childIDs := make([]int64, 0, len(children))
 	for _, child := range children {
 		childIDs = append(childIDs, child.Team.ID)
@@ -529,7 +529,7 @@ func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64
 	if err != nil {
 		return nil, err
 	}
-	lastUpdates, err := s.goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, childIDs)
+	lastUpdates, err := s.goals.ListTeamLastGoalUpdateInPeriod(ctx, scope, periodID, childIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -546,7 +546,7 @@ func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64
 		if goalsByTeam != nil {
 			goalsList = goalsByTeam[child.Team.ID]
 		} else {
-			goalsList, err = s.goals.ListGoalsByTeamPeriod(ctx, child.Team.ID, periodID)
+			goalsList, err = s.goals.ListGoalsByTeamPeriod(ctx, scope, child.Team.ID, periodID)
 			if err != nil {
 				return nil, err
 			}
@@ -584,7 +584,7 @@ func (s *Service) GetTeamOverview(ctx context.Context, scope domain.TenantScope,
 	}
 	children := findDirectChildren(teamID, hierarchy)
 	descendantIDs := collectDescendantIDs(teamID, hierarchy)
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, periodID, descendantIDs)
+	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, descendantIDs)
 	if err != nil {
 		return TeamOverview{}, err
 	}
@@ -605,7 +605,7 @@ func (s *Service) GetTeamOverview(ctx context.Context, scope domain.TenantScope,
 	}
 	childrenSummary := []TeamChildSummary{}
 	if len(children) > 0 {
-		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, goalsByTeam)
+		childrenSummary, err = s.buildDirectChildrenSummary(ctx, scope, periodID, children, goalsByTeam)
 		if err != nil {
 			return TeamOverview{}, err
 		}
@@ -741,8 +741,8 @@ func (s *Service) UpdateGoalWeight(ctx context.Context, goalID, teamID int64, we
 	return s.shares.UpdateGoalTeamWeight(ctx, goalID, teamID, weight)
 }
 
-func (s *Service) AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error {
-	return s.goals.AddGoalComment(ctx, goalID, text, authorUserID)
+func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
+	return s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
 }
 
 func (s *Service) UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error {
@@ -757,8 +757,8 @@ func (s *Service) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult,
 	return s.krs.GetKeyResult(ctx, id)
 }
 
-func (s *Service) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
-	goal, err := s.goals.GetGoal(ctx, id)
+func (s *Service) GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error) {
+	goal, err := s.goals.GetGoal(ctx, scope, id)
 	if err != nil {
 		return domain.Goal{}, err
 	}
@@ -777,12 +777,12 @@ type KeyResultMetaInput struct {
 	ProjectStages        []krs.ProjectStageInput
 }
 
-func (s *Service) UpdateGoal(ctx context.Context, input goals.GoalUpdateInput) error {
-	return s.goals.UpdateGoal(ctx, input)
+func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error {
+	return s.goals.UpdateGoal(ctx, scope, input)
 }
 
-func (s *Service) MoveGoal(ctx context.Context, goalID int64, direction int) error {
-	return s.goals.MoveGoal(ctx, goalID, direction)
+func (s *Service) MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error {
+	return s.goals.MoveGoal(ctx, scope, goalID, direction)
 }
 
 func (s *Service) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
@@ -923,24 +923,24 @@ func (s *Service) UpdateTeam(ctx context.Context, scope domain.TenantScope, inpu
 
 // — Period passthroughs —
 
-func (s *Service) FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error) {
-	return s.periods.FindPeriodForDate(ctx, date)
+func (s *Service) FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error) {
+	return s.periods.FindPeriodForDate(ctx, scope, date)
 }
 
-func (s *Service) CreatePeriod(ctx context.Context, input periods.PeriodInput) (int64, error) {
-	return s.periods.CreatePeriod(ctx, input)
+func (s *Service) CreatePeriod(ctx context.Context, scope domain.TenantScope, input periods.PeriodInput) (int64, error) {
+	return s.periods.CreatePeriod(ctx, scope, input)
 }
 
-func (s *Service) UpdatePeriod(ctx context.Context, periodID int64, input periods.PeriodInput) error {
-	return s.periods.UpdatePeriod(ctx, periodID, input)
+func (s *Service) UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input periods.PeriodInput) error {
+	return s.periods.UpdatePeriod(ctx, scope, periodID, input)
 }
 
-func (s *Service) DeletePeriod(ctx context.Context, periodID int64) error {
-	return s.periods.DeletePeriod(ctx, periodID)
+func (s *Service) DeletePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	return s.periods.DeletePeriod(ctx, scope, periodID)
 }
 
-func (s *Service) MovePeriod(ctx context.Context, periodID int64, direction int) error {
-	return s.periods.MovePeriod(ctx, periodID, direction)
+func (s *Service) MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error {
+	return s.periods.MovePeriod(ctx, scope, periodID, direction)
 }
 
 func (s *Service) GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {
@@ -1050,16 +1050,16 @@ func (s *Service) SearchUsersInScope(ctx context.Context, scope domain.TenantSco
 
 // — Goal passthroughs —
 
-func (s *Service) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error) {
-	return s.goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+func (s *Service) ListGoalsByTeamPeriod(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error) {
+	return s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 }
 
-func (s *Service) UpdateGoalFields(ctx context.Context, input goals.GoalFieldsUpdateInput) error {
-	return s.goals.UpdateGoalFields(ctx, input)
+func (s *Service) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error {
+	return s.goals.UpdateGoalFields(ctx, scope, input)
 }
 
-func (s *Service) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
-	return s.goals.ListGoalComments(ctx, goalID)
+func (s *Service) ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error) {
+	return s.goals.ListGoalComments(ctx, scope, goalID)
 }
 
 func (s *Service) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
@@ -1096,7 +1096,7 @@ func (s *Service) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, 
 
 // CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
 // Returns ErrPeriodClosed if the team's period status is InProgress or Closed.
-func (s *Service) CreateGoal(ctx context.Context, input goals.GoalInput) (int64, error) {
+func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error) {
 	status, err := s.statuses.GetTeamPeriodStatus(ctx, input.TeamID, input.PeriodID)
 	if err != nil {
 		return 0, err
@@ -1104,7 +1104,7 @@ func (s *Service) CreateGoal(ctx context.Context, input goals.GoalInput) (int64,
 	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
 		return 0, ErrPeriodClosed
 	}
-	goalID, err := s.goals.CreateGoal(ctx, input)
+	goalID, err := s.goals.CreateGoal(ctx, scope, input)
 	if err != nil {
 		return 0, err
 	}
@@ -1119,8 +1119,8 @@ func (s *Service) CreateGoal(ctx context.Context, input goals.GoalInput) (int64,
 // DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.
 // Returns the effective requesting teamID and the goal's periodID for redirect.
 // Returns ErrPeriodClosed if the owner tries to delete in a closed period with no shares.
-func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64) (effectiveTeamID, periodID int64, err error) {
-	goal, err := s.goals.GetGoal(ctx, goalID)
+func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64) (effectiveTeamID, periodID int64, err error) {
+	goal, err := s.goals.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1131,7 +1131,7 @@ func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64
 		if err := s.shares.DeleteGoalShare(ctx, goalID, requestingTeamID); err != nil {
 			return 0, 0, err
 		}
-		_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
 	shareList, err := s.shares.ListGoalShares(ctx, goalID)
@@ -1140,13 +1140,13 @@ func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64
 	}
 	if len(shareList) > 0 {
 		newOwner := shareList[0]
-		if err := s.goals.UpdateGoalOwner(ctx, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
+		if err := s.goals.UpdateGoalOwner(ctx, scope, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
 			return 0, 0, err
 		}
 		if err := s.shares.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
 			return 0, 0, err
 		}
-		_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
 	status, err := s.statuses.GetTeamPeriodStatus(ctx, goal.TeamID, goal.PeriodID)
@@ -1156,15 +1156,15 @@ func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64
 	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
 		return 0, 0, ErrPeriodClosed
 	}
-	if err := s.goals.DeleteGoal(ctx, goalID); err != nil {
+	if err := s.goals.DeleteGoal(ctx, scope, goalID); err != nil {
 		return 0, 0, err
 	}
-	_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+	_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 	return requestingTeamID, goal.PeriodID, nil
 }
 
-func (s *Service) resetStatusIfNoGoals(ctx context.Context, teamID, periodID int64) error {
-	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+func (s *Service) resetStatusIfNoGoals(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) error {
+	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 	if err != nil || len(goalsList) > 0 {
 		return err
 	}
@@ -1177,8 +1177,8 @@ func (s *Service) resetStatusIfNoGoals(ctx context.Context, teamID, periodID int
 
 // UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
 // Returns ErrCannotShareWithClosedPeriod if any selected team has an in_progress or closed period.
-func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
-	goal, err := s.goals.GetGoal(ctx, goalID)
+func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
+	goal, err := s.goals.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1216,7 +1216,7 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, se
 					ownerWeight = 0
 				}
 			}
-			if err := s.goals.UpdateGoalOwner(ctx, goalID, ownerID, ownerWeight); err != nil {
+			if err := s.goals.UpdateGoalOwner(ctx, scope, goalID, ownerID, ownerWeight); err != nil {
 				return 0, 0, err
 			}
 			continue

@@ -73,7 +73,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("insert current period: %v", err)
 	}
 
-	if _, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	if _, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      deletedTeamID,
 		PeriodID:    historyPeriodID,
 		Title:       "History goal",
@@ -171,7 +171,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("expected 404 for deleted team in current period, got %d", currentDeletedResp.StatusCode)
 	}
 
-	if _, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	if _, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      deletedTeamID,
 		PeriodID:    currentPeriodID,
 		Title:       "Current goal",
@@ -273,7 +273,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      childID,
 		PeriodID:    periodID,
 		Title:       "Child goal",

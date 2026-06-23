@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
+	"okrs/internal/domain"
 	httpserver "okrs/internal/http"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
@@ -65,12 +66,13 @@ func main() {
 	pgstore := store.New(pool)
 	if seed {
 		now := time.Now().In(zone)
-		period, err := pgstore.Periods.FindPeriodForDate(context.Background(), now)
+		seedScope := domain.TenantScope{TenantID: 1}
+		period, err := pgstore.Periods.FindPeriodForDate(context.Background(), seedScope, now)
 		var periodID int64
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				name, startDate, endDate := quarterPeriod(now)
-				periodID, err = pgstore.Periods.CreatePeriod(context.Background(), periods.PeriodInput{
+				periodID, err = pgstore.Periods.CreatePeriod(context.Background(), seedScope, periods.PeriodInput{
 					Name:      name,
 					StartDate: startDate,
 					EndDate:   endDate,

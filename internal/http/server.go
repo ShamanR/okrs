@@ -85,11 +85,11 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		return nil, err
 	}
 	hcLoader := func(ctx context.Context, periodID int64) (*service.PeriodData, error) {
-		period, err := st.Periods.GetPeriod(ctx, periodID)
+		// TODO(tenancy): per-tenant health cache
+		period, err := st.Periods.GetPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID)
 		if err != nil {
 			return nil, err
 		}
-		// TODO(tenancy): per-tenant health cache
 		allTeams, err := st.Teams.ListAllTeams(ctx, domain.TenantScope{TenantID: 1})
 		if err != nil {
 			return nil, err
@@ -98,7 +98,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		for i, t := range allTeams {
 			allTeamIDs[i] = t.ID
 		}
-		goalsByTeam, err := st.Goals.ListGoalsByTeamsPeriod(ctx, periodID, allTeamIDs)
+		goalsByTeam, err := st.Goals.ListGoalsByTeamsPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, allTeamIDs) // TODO(tenancy)
 		if err != nil {
 			return nil, err
 		}
@@ -136,7 +136,8 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 func (s *Server) Routes() http.Handler {
 	ctx := context.Background()
 	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, func(ctx context.Context) int64 {
-		p, err := s.service.FindPeriodForDate(ctx, time.Now().In(s.zone))
+		// TODO(tenancy): per-tenant health cache
+		p, err := s.service.FindPeriodForDate(ctx, domain.TenantScope{TenantID: 1}, time.Now().In(s.zone))
 		if err != nil {
 			return 0
 		}

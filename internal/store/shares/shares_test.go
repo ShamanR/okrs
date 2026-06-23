@@ -23,7 +23,7 @@ func prepareGoal(t *testing.T, pool *pgxpool.Pool, ctx context.Context, suffix s
 		t.Fatalf("insert period %s: %v", suffix, err)
 	}
 	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
-	goalID, err := gr.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := gr.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID,
 		Title: "G " + suffix, Priority: domain.PriorityP1, Weight: 100,
 	})

@@ -26,12 +26,22 @@ func New(service *service.Service) *Handler {
 
 // goalForKR resolves the parent goal of a KR and returns it.
 // Returns an error if the KR or its goal cannot be found.
-func (h *Handler) goalForKR(ctx context.Context, krID int64) (domain.Goal, error) {
+func (h *Handler) goalForKR(ctx context.Context, scope domain.TenantScope, krID int64) (domain.Goal, error) {
 	kr, err := h.service.GetKeyResult(ctx, krID)
 	if err != nil {
 		return domain.Goal{}, err
 	}
-	return h.service.GetGoal(ctx, kr.GoalID)
+	return h.service.GetGoal(ctx, scope, kr.GoalID)
+}
+
+// tenantScope extracts TenantScope from the request context, writing 403 and
+// returning false if it is missing.
+func (h *Handler) tenantScope(w http.ResponseWriter, r *http.Request) (domain.TenantScope, bool) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+	}
+	return scope, ok
 }
 
 func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +50,11 @@ func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
 		return
 	}
-	goal, err := h.service.GetGoal(r.Context(), goalID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
@@ -84,7 +98,11 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -127,7 +145,11 @@ func (h *Handler) HandleUpdateNumericalProgress(w http.ResponseWriter, r *http.R
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -152,7 +174,11 @@ func (h *Handler) HandleUpdateBooleanProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -177,7 +203,11 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -217,7 +247,11 @@ func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -250,7 +284,11 @@ func (h *Handler) HandleUpdateKRDescription(w http.ResponseWriter, r *http.Reque
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -284,12 +322,16 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
 	kr, err := h.service.GetKeyResult(r.Context(), krID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
 	}
-	goal, err := h.service.GetGoal(r.Context(), kr.GoalID)
+	goal, err := h.service.GetGoal(r.Context(), scope, kr.GoalID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
@@ -307,7 +349,11 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid kr id", map[string]string{"kr_id": "invalid"})
 		return
 	}
-	goal, err := h.goalForKR(r.Context(), krID)
+	scope, ok := h.tenantScope(w, r)
+	if !ok {
+		return
+	}
+	goal, err := h.goalForKR(r.Context(), scope, krID)
 	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return

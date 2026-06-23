@@ -72,7 +72,7 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
 		return
 	}
-	period, err := h.service.GetPeriod(r.Context(), periodID)
+	period, err := h.service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
 		return
@@ -107,7 +107,7 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
 		return
 	}
-	period, err := h.service.GetPeriod(r.Context(), periodID)
+	period, err := h.service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
 		return
@@ -238,7 +238,12 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	goalID, err := h.service.CreateGoal(r.Context(), goals.GoalInput{
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+		return
+	}
+	goalID, err := h.service.CreateGoal(r.Context(), scope, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    req.PeriodID,
 		Title:       req.Title,

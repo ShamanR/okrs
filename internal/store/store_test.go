@@ -105,7 +105,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       "Ship something",
@@ -134,7 +134,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("update boolean: %v", err)
 	}
 
-	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, domain.TenantScope{TenantID: 1}, teamID, periodID)
 	if err != nil {
 		t.Fatalf("list goals: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      ownerID,
 		PeriodID:    periodID,
 		Title:       "Shared goal",
@@ -224,7 +224,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("upsert boolean meta: %v", err)
 	}
 
-	goalsByTeam, err := s.Goals.ListGoalsByTeamsPeriod(ctx, periodID, []int64{ownerID, sharedTeamID})
+	goalsByTeam, err := s.Goals.ListGoalsByTeamsPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedTeamID})
 	if err != nil {
 		t.Fatalf("list goals by teams period: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	if _, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	if _, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      teamWithGoalsID,
 		PeriodID:    periodID,
 		Title:       "Historic goal",
@@ -407,7 +407,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      ownerID,
 		PeriodID:    periodID,
 		Title:       "Goal with KR activity",
@@ -447,7 +447,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert key result note: %v", err)
 	}
 
-	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, ownerID, periodID)
+	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, domain.TenantScope{TenantID: 1}, ownerID, periodID)
 	if err != nil {
 		t.Fatalf("list goals by team period: %v", err)
 	}
@@ -461,7 +461,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set metadata-only key result updated_at: %v", err)
 	}
-	updatesAfterMetadataEdit, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	updatesAfterMetadataEdit, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedID})
 	if err != nil {
 		t.Fatalf("list team last update after metadata edit: %v", err)
 	}
@@ -472,7 +472,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {
 		t.Fatalf("set newer key result progress_updated_at: %v", err)
 	}
-	updates, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	updates, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedID})
 	if err != nil {
 		t.Fatalf("list team last update: %v", err)
 	}

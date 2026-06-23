@@ -52,7 +52,7 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 		for _, summary := range summaries {
 			metrics[summary.ID] = summary
 		}
-		period, err := h.service.GetPeriod(r.Context(), periodID)
+		period, err := h.service.GetPeriod(r.Context(), scope, periodID)
 		if err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy period", nil)
 			return

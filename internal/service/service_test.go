@@ -74,8 +74,10 @@ func (f *fakeStore) GetTeam(_ context.Context, _ domain.TenantScope, id int64) (
 	}
 	return domain.Team{}, nil
 }
-func (f *fakeStore) ListPeriods(context.Context) ([]domain.Period, error) { return f.periods, nil }
-func (f *fakeStore) GetPeriod(_ context.Context, id int64) (domain.Period, error) {
+func (f *fakeStore) ListPeriods(_ context.Context, _ domain.TenantScope) ([]domain.Period, error) {
+	return f.periods, nil
+}
+func (f *fakeStore) GetPeriod(_ context.Context, _ domain.TenantScope, id int64) (domain.Period, error) {
 	for _, period := range f.periods {
 		if period.ID == id {
 			return period, nil
@@ -83,16 +85,16 @@ func (f *fakeStore) GetPeriod(_ context.Context, id int64) (domain.Period, error
 	}
 	return domain.Period{}, nil
 }
-func (f *fakeStore) FindPeriodForDate(context.Context, time.Time) (domain.Period, error) {
+func (f *fakeStore) FindPeriodForDate(_ context.Context, _ domain.TenantScope, _ time.Time) (domain.Period, error) {
 	return f.currentPeriod, nil
 }
-func (f *fakeStore) ListGoalsByTeamPeriod(_ context.Context, teamID, periodID int64) ([]domain.Goal, error) {
+func (f *fakeStore) ListGoalsByTeamPeriod(_ context.Context, _ domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error) {
 	if f.goalsByTeam[teamID] == nil {
 		return nil, nil
 	}
 	return f.goalsByTeam[teamID][periodID], nil
 }
-func (f *fakeStore) ListGoalsByTeamsPeriod(_ context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
+func (f *fakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ domain.TenantScope, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
 	result := make(map[int64][]domain.Goal, len(teamIDs))
 	for _, teamID := range teamIDs {
 		if f.goalsByTeam[teamID] == nil {
@@ -161,7 +163,7 @@ func (f *fakeStore) ListTeamPeriodStatuses(_ context.Context, periodID int64, te
 	}
 	return result, nil
 }
-func (f *fakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
+func (f *fakeStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
 	result := make(map[int64]time.Time)
 	for _, teamID := range teamIDs {
 		goals := f.goalsByTeam[teamID][periodID]
@@ -237,16 +239,16 @@ func (f *fakeStore) UpdateGoalTeamWeight(context.Context, int64, int64, int) err
 func (f *fakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
-func (f *fakeStore) AddGoalComment(context.Context, int64, string, int64) error      { return nil }
+func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) error      { return nil }
 func (f *fakeStore) UpsertKeyResultNote(context.Context, int64, string, int64) error { return nil }
 func (f *fakeStore) UpdateKeyResultDescription(context.Context, int64, string) error { return nil }
-func (f *fakeStore) GetGoal(context.Context, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
-func (f *fakeStore) UpdateGoal(context.Context, goals.GoalUpdateInput) error         { return nil }
+func (f *fakeStore) GetGoal(context.Context, domain.TenantScope, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
+func (f *fakeStore) UpdateGoal(context.Context, domain.TenantScope, goals.GoalUpdateInput) error         { return nil }
 func (f *fakeStore) CreateKeyResult(context.Context, krs.KeyResultInput) (int64, error) {
 	return 0, nil
 }
 func (f *fakeStore) UpdateKeyResult(context.Context, krs.KeyResultUpdateInput) error { return nil }
-func (f *fakeStore) MoveGoal(_ context.Context, goalID int64, direction int) error {
+func (f *fakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, goalID int64, direction int) error {
 	f.movedGoals[goalID] = direction
 	return nil
 }
@@ -268,15 +270,23 @@ func (f *fakeStore) CreateTeam(_ context.Context, _ domain.TenantScope, _ storet
 func (f *fakeStore) UpdateTeam(_ context.Context, _ domain.TenantScope, _ storeteams.TeamInput, _ int64) error {
 	return nil
 }
-func (f *fakeStore) CreatePeriod(context.Context, periods.PeriodInput) (int64, error)    { return 0, nil }
-func (f *fakeStore) UpdatePeriod(context.Context, int64, periods.PeriodInput) error      { return nil }
-func (f *fakeStore) DeletePeriod(context.Context, int64) error                           { return nil }
-func (f *fakeStore) MovePeriod(context.Context, int64, int) error                        { return nil }
-func (f *fakeStore) CreateGoal(context.Context, goals.GoalInput) (int64, error)          { return 0, nil }
-func (f *fakeStore) DeleteGoal(context.Context, int64) error                             { return nil }
-func (f *fakeStore) UpdateGoalFields(context.Context, goals.GoalFieldsUpdateInput) error { return nil }
-func (f *fakeStore) UpdateGoalOwner(context.Context, int64, int64, int) error            { return nil }
-func (f *fakeStore) ListGoalComments(context.Context, int64) ([]domain.GoalComment, error) {
+func (f *fakeStore) CreatePeriod(_ context.Context, _ domain.TenantScope, _ periods.PeriodInput) (int64, error) {
+	return 0, nil
+}
+func (f *fakeStore) UpdatePeriod(_ context.Context, _ domain.TenantScope, _ int64, _ periods.PeriodInput) error {
+	return nil
+}
+func (f *fakeStore) DeletePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
+	return nil
+}
+func (f *fakeStore) MovePeriod(_ context.Context, _ domain.TenantScope, _ int64, _ int) error {
+	return nil
+}
+func (f *fakeStore) CreateGoal(context.Context, domain.TenantScope, goals.GoalInput) (int64, error)          { return 0, nil }
+func (f *fakeStore) DeleteGoal(context.Context, domain.TenantScope, int64) error                             { return nil }
+func (f *fakeStore) UpdateGoalFields(context.Context, domain.TenantScope, goals.GoalFieldsUpdateInput) error { return nil }
+func (f *fakeStore) UpdateGoalOwner(context.Context, domain.TenantScope, int64, int64, int) error            { return nil }
+func (f *fakeStore) ListGoalComments(context.Context, domain.TenantScope, int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }
 func (f *fakeStore) GetGoalShare(context.Context, int64, int64) (shares.GoalShare, error) {
@@ -358,7 +368,7 @@ func TestMoveGoal(t *testing.T) {
 	store := newFakeStore()
 	service := newTestService(store, nil)
 
-	if err := service.MoveGoal(context.Background(), 10, -1); err != nil {
+	if err := service.MoveGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10, -1); err != nil {
 		t.Fatalf("move goal: %v", err)
 	}
 	if store.movedGoals[10] != -1 {
@@ -719,7 +729,7 @@ func TestBuildDirectChildrenSummaryWithoutSummaryMap(t *testing.T) {
 	svc := newTestService(store, nil)
 	children := []TeamNode{{Team: domain.Team{ID: 2, Name: "Child", ParentID: ptr(1)}}}
 
-	rows, err := svc.buildDirectChildrenSummary(context.Background(), 11, children, nil)
+	rows, err := svc.buildDirectChildrenSummary(context.Background(), domain.TenantScope{TenantID: 1}, 11, children, nil)
 	if err != nil {
 		t.Fatalf("build summary: %v", err)
 	}

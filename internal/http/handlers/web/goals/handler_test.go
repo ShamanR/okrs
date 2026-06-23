@@ -9,18 +9,22 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"okrs/internal/auth"
+	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// goalRouteCtx sets chi URL params on the request.
+// goalRouteCtx sets chi URL params and an active tenant (as the middleware would) on the request.
 func goalRouteCtx(r *http.Request, params map[string]string) *http.Request {
 	rctx := chi.NewRouteContext()
 	for k, v := range params {
 		rctx.URLParams.Add(k, v)
 	}
-	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
+	ctx := context.WithValue(r.Context(), chi.RouteCtxKey, rctx)
+	ctx = auth.WithTenant(ctx, &domain.Tenant{ID: 1, Status: domain.TenantActive})
+	return r.WithContext(ctx)
 }
 
 // multipartBody builds a multipart form body with the given fields.
