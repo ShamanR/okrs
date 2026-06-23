@@ -81,7 +81,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR",
 		Description: "",
@@ -91,7 +91,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
+	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
 		t.Fatalf("meta: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
 	}
-	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID: goalID, Title: "Note KR", Weight: 100, Kind: domain.KRKindBoolean,
 	})
 	if err != nil {

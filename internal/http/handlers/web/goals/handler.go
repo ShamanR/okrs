@@ -64,6 +64,11 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "403 Forbidden", http.StatusForbidden)
+		return
+	}
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -101,7 +106,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		meta.ProjectStages = stages
 	}
 
-	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, krs.KeyResultInput{
+	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, scope, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),

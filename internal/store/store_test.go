@@ -120,7 +120,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR 1",
 		Description: "",
@@ -130,7 +130,7 @@ func TestStoreCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := s.KRs.UpsertBooleanMeta(ctx, krID, true); err != nil {
+	if err := s.KRs.UpsertBooleanMeta(ctx, domain.TenantScope{TenantID: 1}, krID, true); err != nil {
 		t.Fatalf("update boolean: %v", err)
 	}
 
@@ -210,7 +210,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert goal share: %v", err)
 	}
 
-	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR bool",
 		Description: "",
@@ -220,7 +220,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create key result: %v", err)
 	}
-	if err := s.KRs.UpsertBooleanMeta(ctx, krID, true); err != nil {
+	if err := s.KRs.UpsertBooleanMeta(ctx, domain.TenantScope{TenantID: 1}, krID, true); err != nil {
 		t.Fatalf("upsert boolean meta: %v", err)
 	}
 
@@ -424,7 +424,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight) VALUES ($1, $2, 100)`, goalID, sharedID); err != nil {
 		t.Fatalf("insert goal share: %v", err)
 	}
-	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR for timestamp aggregation",
 		Description: "desc",

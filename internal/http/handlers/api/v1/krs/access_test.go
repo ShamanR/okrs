@@ -79,13 +79,13 @@ func buildKRAccessFixture(t *testing.T, pool *pgxpool.Pool, repo *store.Store) (
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
 	}
-	krID, err = repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err = repo.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID: goalID, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical,
 	})
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{
+	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{
 		KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%",
 	}); err != nil {
 		t.Fatalf("upsert numerical meta: %v", err)

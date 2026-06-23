@@ -27,7 +27,7 @@ func New(service *service.Service) *Handler {
 // goalForKR resolves the parent goal of a KR and returns it.
 // Returns an error if the KR or its goal cannot be found.
 func (h *Handler) goalForKR(ctx context.Context, scope domain.TenantScope, krID int64) (domain.Goal, error) {
-	kr, err := h.service.GetKeyResult(ctx, krID)
+	kr, err := h.service.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return domain.Goal{}, err
 	}
@@ -78,7 +78,7 @@ func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 		return
 	}
-	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), krs.KeyResultInput{
+	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), scope, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -126,7 +126,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error(), nil)
 		return
 	}
-	if err := h.service.UpdateKeyResultWithMeta(r.Context(), krs.KeyResultUpdateInput{
+	if err := h.service.UpdateKeyResultWithMeta(r.Context(), scope, krs.KeyResultUpdateInput{
 		ID:          krID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -161,7 +161,7 @@ func (h *Handler) HandleUpdateNumericalProgress(w http.ResponseWriter, r *http.R
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	if err := h.service.UpdateKRProgressNumerical(r.Context(), krID, req.CurrentValue); err != nil {
+	if err := h.service.UpdateKRProgressNumerical(r.Context(), scope, krID, req.CurrentValue); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
@@ -190,7 +190,7 @@ func (h *Handler) HandleUpdateBooleanProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	if err := h.service.UpdateKRProgressBoolean(r.Context(), krID, req.Done); err != nil {
+	if err := h.service.UpdateKRProgressBoolean(r.Context(), scope, krID, req.Done); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
@@ -234,7 +234,7 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 		}
 		updates = append(updates, service.ProjectStageUpdate{ID: stage.ID, IsDone: stage.Done})
 	}
-	if err := h.service.UpdateKRProgressProject(r.Context(), krID, updates); err != nil {
+	if err := h.service.UpdateKRProgressProject(r.Context(), scope, krID, updates); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
@@ -268,7 +268,7 @@ func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
-	if err := h.service.UpsertKeyResultNote(r.Context(), krID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
+	if err := h.service.UpsertKeyResultNote(r.Context(), scope, krID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to upsert note", nil)
 		return
 	}
@@ -301,7 +301,7 @@ func (h *Handler) HandleUpdateKRDescription(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	req.Description = strings.ReplaceAll(req.Description, "\r\n", "\n")
-	if err := h.service.UpdateKeyResultDescription(r.Context(), krID, req.Description); err != nil {
+	if err := h.service.UpdateKeyResultDescription(r.Context(), scope, krID, req.Description); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update description", nil)
 		return
 	}
@@ -326,7 +326,7 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	kr, err := h.service.GetKeyResult(r.Context(), krID)
+	kr, err := h.service.GetKeyResult(r.Context(), scope, krID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
@@ -336,7 +336,7 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	if err := h.service.DeleteKeyResult(r.Context(), krID); err != nil {
+	if err := h.service.DeleteKeyResult(r.Context(), scope, krID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete key result", nil)
 		return
 	}
@@ -358,7 +358,7 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "key result not found", nil)
 		return
 	}
-	if err := h.service.MoveKeyResult(r.Context(), krID, direction); err != nil {
+	if err := h.service.MoveKeyResult(r.Context(), scope, krID, direction); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move key result", nil)
 		return
 	}

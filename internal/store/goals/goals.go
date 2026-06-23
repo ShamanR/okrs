@@ -687,7 +687,7 @@ func (r *GoalRepository) GetGoal(ctx context.Context, scope domain.TenantScope, 
 	if err := row.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 		return domain.Goal{}, err
 	}
-	krsSlice, err := r.krs.ListKeyResultsByGoal(ctx, goal.ID)
+	krsSlice, err := r.krs.ListKeyResultsByGoal(ctx, scope, goal.ID)
 	if err != nil {
 		return domain.Goal{}, err
 	}

@@ -48,7 +48,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		krID, err := krsRepo.CreateKeyResult(ctx, krs.KeyResultInput{
+		krID, err := krsRepo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
 			GoalID:      goalID,
 			Title:       "Incident reduction project",
 			Description: "Deliver reliability initiatives.",
@@ -58,8 +58,8 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
-		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
+		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
+		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
 
 		goalID2, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
@@ -75,7 +75,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		krID2, err := krsRepo.CreateKeyResult(ctx, krs.KeyResultInput{
+		krID2, err := krsRepo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
 			GoalID:      goalID2,
 			Title:       "MAU growth",
 			Description: "Increase monthly active usage.",
@@ -85,7 +85,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		_ = krsRepo.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
+		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
 	}
 
 	return nil

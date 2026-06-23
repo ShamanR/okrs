@@ -77,23 +77,23 @@ type PeriodRepo interface {
 }
 
 type KRRepo interface {
-	GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error)
-	CreateKeyResult(ctx context.Context, input krs.KeyResultInput) (int64, error)
-	UpdateKeyResult(ctx context.Context, input krs.KeyResultUpdateInput) error
-	DeleteKeyResult(ctx context.Context, id int64) error
-	MoveKeyResult(ctx context.Context, krID int64, direction int) error
-	UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error
-	UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error
-	FindGoalIDByKR(ctx context.Context, krID int64) (int64, error)
-	FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error)
-	UpdateNumericalCurrent(ctx context.Context, krID int64, current float64) error
-	UpdateBoolean(ctx context.Context, krID int64, done bool) error
-	ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error)
-	UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error
-	BatchUpdateProjectStagesDone(ctx context.Context, krID int64, updates map[int64]bool) error
-	UpsertNumericalMeta(ctx context.Context, input krs.NumericalMetaInput) error
-	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
-	ReplaceProjectStages(ctx context.Context, krID int64, stages []krs.ProjectStageInput) error
+	GetKeyResult(ctx context.Context, scope domain.TenantScope, id int64) (domain.KeyResult, error)
+	CreateKeyResult(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput) (int64, error)
+	UpdateKeyResult(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput) error
+	DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error
+	MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error
+	UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error
+	UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error
+	FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error)
+	FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error)
+	UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error
+	UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error
+	ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error)
+	UpdateProjectStageDone(ctx context.Context, scope domain.TenantScope, stageID int64, done bool) error
+	BatchUpdateProjectStagesDone(ctx context.Context, scope domain.TenantScope, krID int64, updates map[int64]bool) error
+	UpsertNumericalMeta(ctx context.Context, scope domain.TenantScope, input krs.NumericalMetaInput) error
+	UpsertBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error
+	ReplaceProjectStages(ctx context.Context, scope domain.TenantScope, krID int64, stages []krs.ProjectStageInput) error
 }
 
 type TeamStatusRepo interface {
@@ -672,26 +672,26 @@ func collectDescendantIDs(targetID int64, nodes []TeamNode) []int64 {
 	return descendants
 }
 
-func (s *Service) UpdateKRProgressNumerical(ctx context.Context, krID int64, current float64) error {
-	kr, err := s.krs.GetKeyResult(ctx, krID)
+func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
+	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
 	if kr.Kind != domain.KRKindNumerical {
 		return fmt.Errorf("unsupported kr kind for numerical update: %s", kr.Kind)
 	}
-	return s.krs.UpdateNumericalCurrent(ctx, krID, current)
+	return s.krs.UpdateNumericalCurrent(ctx, scope, krID, current)
 }
 
-func (s *Service) UpdateKRProgressBoolean(ctx context.Context, krID int64, done bool) error {
-	kr, err := s.krs.GetKeyResult(ctx, krID)
+func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
+	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
 	if kr.Kind != domain.KRKindBoolean {
 		return fmt.Errorf("unsupported kr kind for boolean update: %s", kr.Kind)
 	}
-	return s.krs.UpdateBoolean(ctx, krID, done)
+	return s.krs.UpdateBoolean(ctx, scope, krID, done)
 }
 
 type ProjectStageUpdate struct {
@@ -699,15 +699,15 @@ type ProjectStageUpdate struct {
 	IsDone bool
 }
 
-func (s *Service) UpdateKRProgressProject(ctx context.Context, krID int64, updates []ProjectStageUpdate) error {
-	kr, err := s.krs.GetKeyResult(ctx, krID)
+func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.TenantScope, krID int64, updates []ProjectStageUpdate) error {
+	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
 	if kr.Kind != domain.KRKindProject {
 		return fmt.Errorf("unsupported kr kind for project update: %s", kr.Kind)
 	}
-	stages, err := s.krs.ListProjectStages(ctx, krID)
+	stages, err := s.krs.ListProjectStages(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
@@ -721,7 +721,7 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, krID int64, updat
 			validUpdates[stage.ID] = done
 		}
 	}
-	return s.krs.BatchUpdateProjectStagesDone(ctx, krID, validUpdates)
+	return s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, validUpdates)
 }
 
 type ShareTarget struct {
@@ -745,16 +745,16 @@ func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, 
 	return s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
 }
 
-func (s *Service) UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error {
-	return s.krs.UpsertKeyResultNote(ctx, krID, text, authorUserID)
+func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	return s.krs.UpsertKeyResultNote(ctx, scope, krID, text, authorUserID)
 }
 
-func (s *Service) UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error {
-	return s.krs.UpdateKeyResultDescription(ctx, krID, description)
+func (s *Service) UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error {
+	return s.krs.UpdateKeyResultDescription(ctx, scope, krID, description)
 }
 
-func (s *Service) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
-	return s.krs.GetKeyResult(ctx, id)
+func (s *Service) GetKeyResult(ctx context.Context, scope domain.TenantScope, id int64) (domain.KeyResult, error) {
+	return s.krs.GetKeyResult(ctx, scope, id)
 }
 
 func (s *Service) GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error) {
@@ -785,32 +785,32 @@ func (s *Service) MoveGoal(ctx context.Context, scope domain.TenantScope, goalID
 	return s.goals.MoveGoal(ctx, scope, goalID, direction)
 }
 
-func (s *Service) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
-	return s.krs.MoveKeyResult(ctx, krID, direction)
+func (s *Service) MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error {
+	return s.krs.MoveKeyResult(ctx, scope, krID, direction)
 }
 
-func (s *Service) CreateKeyResultWithMeta(ctx context.Context, input krs.KeyResultInput, meta KeyResultMetaInput) (int64, error) {
-	krID, err := s.krs.CreateKeyResult(ctx, input)
+func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta KeyResultMetaInput) (int64, error) {
+	krID, err := s.krs.CreateKeyResult(ctx, scope, input)
 	if err != nil {
 		return 0, err
 	}
-	if err := s.applyKeyResultMeta(ctx, krID, input.Kind, meta); err != nil {
+	if err := s.applyKeyResultMeta(ctx, scope, krID, input.Kind, meta); err != nil {
 		return 0, err
 	}
 	return krID, nil
 }
 
-func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, input krs.KeyResultUpdateInput, meta KeyResultMetaInput) error {
-	if err := s.krs.UpdateKeyResult(ctx, input); err != nil {
+func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta KeyResultMetaInput) error {
+	if err := s.krs.UpdateKeyResult(ctx, scope, input); err != nil {
 		return err
 	}
-	return s.applyKeyResultMeta(ctx, input.ID, input.Kind, meta)
+	return s.applyKeyResultMeta(ctx, scope, input.ID, input.Kind, meta)
 }
 
-func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
+func (s *Service) applyKeyResultMeta(ctx context.Context, scope domain.TenantScope, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
 	switch kind {
 	case domain.KRKindNumerical:
-		return s.krs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{
+		return s.krs.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{
 			KeyResultID:     krID,
 			StartValue:      meta.NumericalStart,
 			TargetValue:     meta.NumericalTarget,
@@ -820,9 +820,9 @@ func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domai
 			ZeroingCriteria: meta.ZeroingCriteria,
 		})
 	case domain.KRKindBoolean:
-		return s.krs.UpsertBooleanMeta(ctx, krID, meta.BooleanDone)
+		return s.krs.UpsertBooleanMeta(ctx, scope, krID, meta.BooleanDone)
 	case domain.KRKindProject:
-		return s.krs.ReplaceProjectStages(ctx, krID, meta.ProjectStages)
+		return s.krs.ReplaceProjectStages(ctx, scope, krID, meta.ProjectStages)
 	default:
 		return nil
 	}
@@ -1080,16 +1080,16 @@ func (s *Service) ListGoalShares(ctx context.Context, goalID int64) ([]shares.Go
 
 // — Key result passthroughs —
 
-func (s *Service) DeleteKeyResult(ctx context.Context, id int64) error {
-	return s.krs.DeleteKeyResult(ctx, id)
+func (s *Service) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error {
+	return s.krs.DeleteKeyResult(ctx, scope, id)
 }
 
-func (s *Service) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
-	return s.krs.FindGoalIDByKR(ctx, krID)
+func (s *Service) FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error) {
+	return s.krs.FindGoalIDByKR(ctx, scope, krID)
 }
 
-func (s *Service) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
-	return s.krs.FindGoalIDByStage(ctx, stageID)
+func (s *Service) FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error) {
+	return s.krs.FindGoalIDByStage(ctx, scope, stageID)
 }
 
 // — Business logic —

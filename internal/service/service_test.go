@@ -211,22 +211,22 @@ func (f *fakeStore) HardDeleteTeam(_ context.Context, _ domain.TenantScope, id i
 	f.hardDeleted = append(f.hardDeleted, id)
 	return nil
 }
-func (f *fakeStore) UpdateNumericalCurrent(_ context.Context, krID int64, current float64) error {
+func (f *fakeStore) UpdateNumericalCurrent(_ context.Context, _ domain.TenantScope, krID int64, current float64) error {
 	f.numericalUpdates[krID] = current
 	return nil
 }
-func (f *fakeStore) UpdateBoolean(_ context.Context, krID int64, done bool) error {
+func (f *fakeStore) UpdateBoolean(_ context.Context, _ domain.TenantScope, krID int64, done bool) error {
 	f.booleanUpdates[krID] = done
 	return nil
 }
-func (f *fakeStore) ListProjectStages(_ context.Context, krID int64) ([]domain.KRProjectStage, error) {
+func (f *fakeStore) ListProjectStages(_ context.Context, _ domain.TenantScope, krID int64) ([]domain.KRProjectStage, error) {
 	return f.projectStages[krID], nil
 }
-func (f *fakeStore) UpdateProjectStageDone(_ context.Context, stageID int64, done bool) error {
+func (f *fakeStore) UpdateProjectStageDone(_ context.Context, _ domain.TenantScope, stageID int64, done bool) error {
 	f.stageUpdates[stageID] = done
 	return nil
 }
-func (f *fakeStore) BatchUpdateProjectStagesDone(_ context.Context, _ int64, updates map[int64]bool) error {
+func (f *fakeStore) BatchUpdateProjectStagesDone(_ context.Context, _ domain.TenantScope, _ int64, updates map[int64]bool) error {
 	for id, done := range updates {
 		f.stageUpdates[id] = done
 	}
@@ -236,29 +236,29 @@ func (f *fakeStore) ReplaceGoalShares(context.Context, int64, []shares.GoalShare
 	return nil
 }
 func (f *fakeStore) UpdateGoalTeamWeight(context.Context, int64, int64, int) error { return nil }
-func (f *fakeStore) GetKeyResult(_ context.Context, id int64) (domain.KeyResult, error) {
+func (f *fakeStore) GetKeyResult(_ context.Context, _ domain.TenantScope, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
 func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) error      { return nil }
-func (f *fakeStore) UpsertKeyResultNote(context.Context, int64, string, int64) error { return nil }
-func (f *fakeStore) UpdateKeyResultDescription(context.Context, int64, string) error { return nil }
+func (f *fakeStore) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error { return nil }
+func (f *fakeStore) UpdateKeyResultDescription(context.Context, domain.TenantScope, int64, string) error { return nil }
 func (f *fakeStore) GetGoal(context.Context, domain.TenantScope, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
 func (f *fakeStore) UpdateGoal(context.Context, domain.TenantScope, goals.GoalUpdateInput) error         { return nil }
-func (f *fakeStore) CreateKeyResult(context.Context, krs.KeyResultInput) (int64, error) {
+func (f *fakeStore) CreateKeyResult(context.Context, domain.TenantScope, krs.KeyResultInput) (int64, error) {
 	return 0, nil
 }
-func (f *fakeStore) UpdateKeyResult(context.Context, krs.KeyResultUpdateInput) error { return nil }
+func (f *fakeStore) UpdateKeyResult(context.Context, domain.TenantScope, krs.KeyResultUpdateInput) error { return nil }
 func (f *fakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, goalID int64, direction int) error {
 	f.movedGoals[goalID] = direction
 	return nil
 }
-func (f *fakeStore) MoveKeyResult(_ context.Context, krID int64, direction int) error {
+func (f *fakeStore) MoveKeyResult(_ context.Context, _ domain.TenantScope, krID int64, direction int) error {
 	f.movedKRs[krID] = direction
 	return nil
 }
-func (f *fakeStore) UpsertNumericalMeta(context.Context, krs.NumericalMetaInput) error { return nil }
-func (f *fakeStore) UpsertBooleanMeta(context.Context, int64, bool) error              { return nil }
-func (f *fakeStore) ReplaceProjectStages(context.Context, int64, []krs.ProjectStageInput) error {
+func (f *fakeStore) UpsertNumericalMeta(context.Context, domain.TenantScope, krs.NumericalMetaInput) error { return nil }
+func (f *fakeStore) UpsertBooleanMeta(context.Context, domain.TenantScope, int64, bool) error              { return nil }
+func (f *fakeStore) ReplaceProjectStages(context.Context, domain.TenantScope, int64, []krs.ProjectStageInput) error {
 	return nil
 }
 func (f *fakeStore) SetTeamPeriodStatus(context.Context, int64, int64, domain.TeamPeriodStatus) error {
@@ -293,11 +293,11 @@ func (f *fakeStore) GetGoalShare(context.Context, int64, int64) (shares.GoalShar
 	return shares.GoalShare{}, nil
 }
 func (f *fakeStore) DeleteGoalShare(context.Context, int64, int64) error { return nil }
-func (f *fakeStore) DeleteKeyResult(context.Context, int64) error        { return nil }
-func (f *fakeStore) FindGoalIDByKR(context.Context, int64) (int64, error) {
+func (f *fakeStore) DeleteKeyResult(context.Context, domain.TenantScope, int64) error        { return nil }
+func (f *fakeStore) FindGoalIDByKR(context.Context, domain.TenantScope, int64) (int64, error) {
 	return 0, nil
 }
-func (f *fakeStore) FindGoalIDByStage(context.Context, int64) (int64, error) {
+func (f *fakeStore) FindGoalIDByStage(context.Context, domain.TenantScope, int64) (int64, error) {
 	return 0, nil
 }
 func (f *fakeStore) GetUsersByDisplayNames(context.Context, []string) ([]*domain.User, error) {
@@ -328,7 +328,7 @@ func TestUpdateKRProgressNumerical(t *testing.T) {
 	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindNumerical}
 	service := newTestService(store, nil)
 
-	if err := service.UpdateKRProgressNumerical(context.Background(), 1, 42); err != nil {
+	if err := service.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 42); err != nil {
 		t.Fatalf("update numerical: %v", err)
 	}
 	if store.numericalUpdates[1] != 42 {
@@ -341,7 +341,7 @@ func TestUpdateKRProgressBoolean(t *testing.T) {
 	store.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindBoolean}
 	service := newTestService(store, nil)
 
-	if err := service.UpdateKRProgressBoolean(context.Background(), 3, true); err != nil {
+	if err := service.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 3, true); err != nil {
 		t.Fatalf("update boolean: %v", err)
 	}
 	if !store.booleanUpdates[3] {
@@ -356,7 +356,7 @@ func TestUpdateKRProgressProject(t *testing.T) {
 	service := newTestService(store, nil)
 
 	updates := []ProjectStageUpdate{{ID: 100, IsDone: true}}
-	if err := service.UpdateKRProgressProject(context.Background(), 4, updates); err != nil {
+	if err := service.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 4, updates); err != nil {
 		t.Fatalf("update project: %v", err)
 	}
 	if !store.stageUpdates[100] {
@@ -380,7 +380,7 @@ func TestMoveKeyResult(t *testing.T) {
 	store := newFakeStore()
 	service := newTestService(store, nil)
 
-	if err := service.MoveKeyResult(context.Background(), 20, 1); err != nil {
+	if err := service.MoveKeyResult(context.Background(), domain.TenantScope{TenantID: 1}, 20, 1); err != nil {
 		t.Fatalf("move kr: %v", err)
 	}
 	if store.movedKRs[20] != 1 {

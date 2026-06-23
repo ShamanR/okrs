@@ -287,7 +287,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create child goal: %v", err)
 	}
-	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR bool",
 		Description: "",
@@ -297,7 +297,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create child key result: %v", err)
 	}
-	if err := repo.KRs.UpdateBoolean(ctx, krID, true); err != nil {
+	if err := repo.KRs.UpdateBoolean(ctx, domain.TenantScope{TenantID: 1}, krID, true); err != nil {
 		t.Fatalf("update child key result progress: %v", err)
 	}
 	if err := repo.Statuses.SetTeamPeriodStatus(ctx, childID, periodID, domain.TeamPeriodStatusInProgress); err != nil {
