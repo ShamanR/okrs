@@ -7,11 +7,12 @@ import (
 	"strconv"
 
 	"okrs/internal/auth"
+	"okrs/internal/domain"
 	"okrs/internal/service"
 )
 
 type serviceProvider interface {
-	GetHealthCheckIn(ctx context.Context, userUDID string, isAdmin bool, periodID int64, cfg service.HealthCheckInConfig) (*service.HealthCheckInResult, error)
+	GetHealthCheckIn(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg service.HealthCheckInConfig) (*service.HealthCheckInResult, error)
 }
 
 type settingsProvider interface {
@@ -47,6 +48,11 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 
 	cfg, err := service.LoadHealthCheckInConfig(r.Context(), h.settings)
 	if err != nil {
@@ -54,7 +60,7 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.GetHealthCheckIn(r.Context(), user.UDID, user.IsAdmin, periodID, cfg)
+	result, err := h.svc.GetHealthCheckIn(r.Context(), scope, user.UDID, user.IsAdmin, periodID, cfg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

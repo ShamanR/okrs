@@ -386,11 +386,11 @@ func emptyCategories(cfg HealthCheckInConfig) map[string]*HealthCheckInCategory 
 
 // GetHealthCheckIn computes the health check-in for the given user and period.
 // Uses cached period data; loads from DB on first call or after TTL.
-func (s *Service) GetHealthCheckIn(ctx context.Context, userUDID string, isAdmin bool, periodID int64, cfg HealthCheckInConfig) (*HealthCheckInResult, error) {
+func (s *Service) GetHealthCheckIn(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg HealthCheckInConfig) (*HealthCheckInResult, error) {
 	if s.hcCache == nil {
 		return &HealthCheckInResult{HasScope: false}, nil
 	}
-	data, err := s.hcCache.Get(ctx, periodID)
+	data, err := s.hcCache.Get(ctx, scope, periodID)
 	if err != nil {
 		return nil, err
 	}

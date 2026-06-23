@@ -28,6 +28,8 @@ import (
 	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/memberships"
+	"okrs/internal/store/tenants"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -84,13 +86,12 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	if err != nil {
 		return nil, err
 	}
-	hcLoader := func(ctx context.Context, periodID int64) (*service.PeriodData, error) {
-		// TODO(tenancy): per-tenant health cache
-		period, err := st.Periods.GetPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID)
+	hcLoader := func(ctx context.Context, scope domain.TenantScope, periodID int64) (*service.PeriodData, error) {
+		period, err := st.Periods.GetPeriod(ctx, scope, periodID)
 		if err != nil {
 			return nil, err
 		}
-		allTeams, err := st.Teams.ListAllTeams(ctx, domain.TenantScope{TenantID: 1})
+		allTeams, err := st.Teams.ListAllTeams(ctx, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -98,11 +99,11 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		for i, t := range allTeams {
 			allTeamIDs[i] = t.ID
 		}
-		goalsByTeam, err := st.Goals.ListGoalsByTeamsPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, allTeamIDs) // TODO(tenancy)
+		goalsByTeam, err := st.Goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, allTeamIDs)
 		if err != nil {
 			return nil, err
 		}
-		statuses, err := st.Statuses.ListTeamPeriodStatuses(ctx, domain.TenantScope{TenantID: 1}, periodID, allTeamIDs)
+		statuses, err := st.Statuses.ListTeamPeriodStatuses(ctx, scope, periodID, allTeamIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -129,19 +130,30 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,
 		hcCache:     hcCache,
-		tenantResolver: auth.NewTenantResolver(st.Tenants, st.Memberships),
+		// Cache tenant + membership lookups on the per-request resolve hot path.
+		// TODO(tenancy): invalidate these on membership/tenant writes (Plans 3/4); 5-min TTL bounds staleness for now.
+		tenantResolver: auth.NewTenantResolver(tenants.NewTenantCache(st.Tenants), memberships.NewMembershipCache(st.Memberships)),
 	}, nil
 }
 
 func (s *Server) Routes() http.Handler {
 	ctx := context.Background()
-	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, func(ctx context.Context) int64 {
-		// TODO(tenancy): per-tenant health cache
-		p, err := s.service.FindPeriodForDate(ctx, domain.TenantScope{TenantID: 1}, time.Now().In(s.zone))
+	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, func(ctx context.Context) []service.HCActive {
+		now := time.Now().In(s.zone)
+		tenants, err := s.store.Tenants.List(ctx)
 		if err != nil {
-			return 0
+			return nil
 		}
-		return p.ID
+		var active []service.HCActive
+		for _, tn := range tenants {
+			scope := domain.TenantScope{TenantID: tn.ID}
+			p, err := s.service.FindPeriodForDate(ctx, scope, now)
+			if err != nil {
+				continue
+			}
+			active = append(active, service.HCActive{Scope: scope, PeriodID: p.ID})
+		}
+		return active
 	})
 
 	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
