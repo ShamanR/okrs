@@ -24,6 +24,8 @@ type authStorage interface {
 	DeleteSession(ctx context.Context, sessionID string) error
 	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
 	GetTenantSetting(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
+	AnySystemAdmin(ctx context.Context) (bool, error)
+	SetSystemAdmin(ctx context.Context, userID int64, v bool) error
 }
 
 // userGranter is the minimal interface Manager needs for the new-user grant policy.
@@ -86,6 +88,10 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 		return nil, nil, fmt.Errorf("upsert user: %w", err)
 	}
 
+	if err := m.maybeBootstrapSystemAdmin(ctx, identity, user); err != nil {
+		return nil, nil, err
+	}
+
 	if err := m.applyNewUserPolicy(ctx, user); err != nil {
 		return nil, nil, err
 	}
@@ -138,6 +144,33 @@ func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) err
 		return nil
 	}
 	return m.grants.AddUserGrant(ctx, scope, user.ID, nodeID, domain.SystemUserAnonymous)
+}
+
+// maybeBootstrapSystemAdmin promotes the configured bootstrap identity to system-admin
+// on first matching login, but only while no system-admin exists yet. The identity is
+// matched by provider:subject or by email (the operator may know only the email).
+func (m *Manager) maybeBootstrapSystemAdmin(ctx context.Context, identity *Identity, user *domain.User) error {
+	want := m.cfg.BootstrapSystemAdmin
+	if want == "" || user.IsSystemAdmin {
+		return nil
+	}
+	matches := want == ProviderSubjectKey(identity.Provider, identity.Subject) ||
+		(identity.Email != "" && want == identity.Email)
+	if !matches {
+		return nil
+	}
+	exists, err := m.store.AnySystemAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	if err := m.store.SetSystemAdmin(ctx, user.ID, true); err != nil {
+		return err
+	}
+	user.IsSystemAdmin = true
+	return nil
 }
 
 // ResolveSession loads the session and user by session ID.

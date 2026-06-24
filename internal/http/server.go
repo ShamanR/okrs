@@ -18,6 +18,7 @@ import (
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
+	apisystem "okrs/internal/http/handlers/api/v1/system"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
 	apitenants "okrs/internal/http/handlers/api/v1/tenants"
 	apiusers "okrs/internal/http/handlers/api/v1/users"
@@ -84,6 +85,7 @@ type Server struct {
 	tenantCache     *tenants.TenantCache
 	membershipCache *memberships.MembershipCache
 	settingsSvc     *service.SettingsService
+	provisioning    *service.ProvisioningService
 }
 
 func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
@@ -133,6 +135,11 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		tenantsettings.NewTenantSettingsCache(st.TenantSettings), st.TenantSettings,
 		settings.NewSystemSettingsCache(st.Settings), st.Settings,
 	)
+	provisioning := service.NewProvisioningService(
+		st.Tenants, tenantCache,
+		st.Memberships, membershipCache,
+		settingsSvc,
+	)
 
 	return &Server{
 		store:       st,
@@ -148,6 +155,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		tenantCache:     tenantCache,
 		membershipCache: membershipCache,
 		settingsSvc:     settingsSvc,
+		provisioning:    provisioning,
 	}, nil
 }
 
@@ -219,6 +227,11 @@ func (s *Server) Routes() http.Handler {
 				`Обратитесь к администратору.</p></body></html>`))
 		})
 
+		// System-admin plane — tenant-less, so it lives OUTSIDE the membership-gated
+		// group (a system admin need not be a member of any tenant). Gated by
+		// RequireSystemAdmin (session is_system_admin OR provisioning token).
+		s.registerSystemRoutes(r, csrf)
+
 		// Protected routes.
 		r.Group(func(r chi.Router) {
 			if !s.auth.Disabled() {
@@ -289,7 +302,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 
 	r.Group(func(r chi.Router) {
 		if !s.auth.Disabled() {
-			r.Use(auth.RequireAdminMiddleware)
+			r.Use(auth.RequireTenantAdminMiddleware)
 		}
 
 		// Admin SPA — all web admin pages serve the React shell.
@@ -344,6 +357,33 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Post("/api/v1/admin/settings/health-checkin", hcHandler.HandleUpdateHealthCheckInSettings)
 
 		r.Get("/admin/health-checkin", adminShell)
+	})
+}
+
+func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddleware) {
+	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants)
+
+	r.Group(func(r chi.Router) {
+		if !s.auth.Disabled() {
+			r.Use(auth.RequireAuthMiddleware)
+		}
+		r.Use(auth.RequireSystemAdminMiddleware(s.auth.Config().ProvisioningToken))
+		r.Use(csrf.Handler)
+
+		// System-admin shell (minimal; powered by the /api/v1/system/* endpoints below).
+		r.Get("/system", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = s.tmpl.ExecuteTemplate(w, "system-shell", nil)
+		})
+
+		r.Post("/api/v1/system/tenants", sysH.HandleCreateTenant)
+		r.Get("/api/v1/system/tenants", sysH.HandleListTenants)
+		r.Post("/api/v1/system/tenants/{id}/members", sysH.HandleAttachMember)
+		r.Put("/api/v1/system/tenants/{id}/entitlements", sysH.HandleSetEntitlements)
+		r.Post("/api/v1/system/tenants/{id}/suspend", sysH.HandleSuspend)
+		r.Post("/api/v1/system/tenants/{id}/restore", sysH.HandleRestore)
+		r.Get("/api/v1/system/users", sysH.HandleListUsers)
+		r.Put("/api/v1/system/settings/default-registration-tenant", sysH.HandleSetDefaultRegistrationTenant)
 	})
 }
 

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
+	"okrs/internal/entitlements"
 	"okrs/internal/domain"
 	httpserver "okrs/internal/http"
 	"okrs/internal/store"
@@ -97,6 +98,10 @@ func main() {
 
 	grantsCache := grants.NewGrantsCache(pgstore.Grants)
 
+	// OSS feature-gating: every feature is on, every limit is unlimited. A SaaS
+	// build registers a billing-backed implementation under a different name.
+	entitlements.Register("unlimited", func() entitlements.Entitlements { return entitlements.UnlimitedEntitlements{} })
+
 	authCfg := loadAuthConfig()
 	authMgr, err := auth.NewManager(authCfg, pgstore, grantsCache)
 	if err != nil {
@@ -148,6 +153,8 @@ func loadAuthConfig() auth.Config {
 			cfg.DefaultNodeID = id
 		}
 	}
+	cfg.ProvisioningToken = os.Getenv("PROVISIONING_TOKEN")
+	cfg.BootstrapSystemAdmin = os.Getenv("BOOTSTRAP_SYSTEM_ADMIN")
 
 	// Google
 	cfg.Google.ClientID = os.Getenv("AUTH_GOOGLE_CLIENT_ID")

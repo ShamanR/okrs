@@ -85,6 +85,18 @@ func (r *TenantRepository) List(ctx context.Context) ([]domain.Tenant, error) {
 	return out, rows.Err()
 }
 
+// SetStatus transitions a tenant between active/suspended.
+func (r *TenantRepository) SetStatus(ctx context.Context, id int64, status domain.TenantStatus) error {
+	ct, err := r.db.Exec(ctx, `UPDATE tenants SET status = $2 WHERE id = $1`, id, status)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func pgErrCode(err error) string {
 	var pgErr interface{ SQLState() string }
 	if errors.As(err, &pgErr) {

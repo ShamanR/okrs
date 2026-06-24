@@ -1,0 +1,73 @@
+{{define "system-shell"}}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OKR System · Тенанты</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#edf0f4;color:#111827;font-size:14px;padding:2rem;max-width:880px;margin:0 auto}
+h1{font-size:20px;margin-bottom:1rem}
+h2{font-size:15px;margin:1.5rem 0 .5rem}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:8px;overflow:hidden}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid #e5e7eb}
+th{background:#f8fafc;font-weight:600}
+form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:.5rem}
+input{padding:6px 10px;border:1.5px solid #e5e7eb;border-radius:7px}
+button{padding:6px 14px;border:none;border-radius:7px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer}
+.err{color:#b91c1c;margin-top:.5rem}
+.status-suspended{color:#b45309;font-weight:600}
+</style>
+</head>
+<body>
+<h1>Система · Тенанты</h1>
+<table><thead><tr><th>ID</th><th>Slug</th><th>Название</th><th>Статус</th></tr></thead>
+<tbody id="tenants"></tbody></table>
+
+<h2>Создать тенант</h2>
+<form id="create-form">
+  <input id="name" placeholder="Название" required>
+  <input id="slug" placeholder="slug" required>
+  <button type="submit">Создать</button>
+</form>
+<div class="err" id="err"></div>
+
+<script>
+const errEl = document.getElementById('err');
+function showErr(m){ errEl.textContent = m || ''; }
+
+async function loadTenants(){
+  const res = await fetch('/api/v1/system/tenants', {headers:{'Accept':'application/json'}});
+  if(!res.ok){ showErr('Не удалось загрузить тенантов ('+res.status+')'); return; }
+  const list = await res.json();
+  const tbody = document.getElementById('tenants');
+  tbody.replaceChildren();
+  (list||[]).forEach(t => {
+    const tr = document.createElement('tr');
+    [t.id, t.slug, t.name].forEach(v => { const td=document.createElement('td'); td.textContent=String(v); tr.appendChild(td); });
+    const st = document.createElement('td'); st.textContent = t.status;
+    if(t.status === 'suspended') st.className = 'status-suspended';
+    tr.appendChild(st);
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById('create-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  showErr('');
+  const name = document.getElementById('name').value.trim();
+  const slug = document.getElementById('slug').value.trim();
+  const res = await fetch('/api/v1/system/tenants', {
+    method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'},
+    body: JSON.stringify({name, slug})
+  });
+  if(res.status === 201){ document.getElementById('create-form').reset(); loadTenants(); }
+  else { const b = await res.json().catch(()=>({})); showErr(b.error || ('Ошибка '+res.status)); }
+});
+
+loadTenants();
+</script>
+</body>
+</html>
+{{end}}

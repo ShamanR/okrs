@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -44,11 +45,13 @@ func RequireAuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireAdminMiddleware returns 403 for non-admin users.
-func RequireAdminMiddleware(next http.Handler) http.Handler {
+// RequireTenantAdminMiddleware gates the tenant-admin plane (/admin, /api/v1/admin/*).
+// It admits the request only when the active role in the resolved tenant is admin
+// (set by TenantResolveMiddleware). A plain member of the tenant gets 403.
+func RequireTenantAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user := UserFromContext(r.Context())
-		if user == nil || !user.IsAdmin {
+		role, ok := ActiveRoleFromContext(r.Context())
+		if !ok || role != domain.RoleAdmin {
 			if isAPIRequest(r) {
 				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
@@ -58,6 +61,35 @@ func RequireAdminMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// RequireSystemAdminMiddleware gates the system-admin plane (/system, /api/v1/system/*).
+// It admits the request when the session user is a system admin, OR when a non-empty
+// provisioning token is configured and the request carries "Authorization: Bearer <token>"
+// (machine/control-plane callers). Otherwise 403.
+func RequireSystemAdminMiddleware(provisioningToken string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if user := UserFromContext(r.Context()); user != nil && user.IsSystemAdmin {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if provisioningToken != "" {
+				const prefix = "Bearer "
+				h := r.Header.Get("Authorization")
+				if strings.HasPrefix(h, prefix) &&
+					subtle.ConstantTimeCompare([]byte(h[len(prefix):]), []byte(provisioningToken)) == 1 {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			if isAPIRequest(r) {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			http.Error(w, "403 Forbidden", http.StatusForbidden)
+		})
+	}
 }
 
 // ScopeMiddleware loads the user's allowed hierarchy into context.

@@ -113,6 +113,14 @@ func (s *Store) GetTenantSetting(ctx context.Context, scope domain.TenantScope, 
 	return s.TenantSettings.Get(ctx, scope, key)
 }
 
+func (s *Store) AnySystemAdmin(ctx context.Context) (bool, error) {
+	return s.Users.AnySystemAdmin(ctx)
+}
+
+func (s *Store) SetSystemAdmin(ctx context.Context, userID int64, v bool) error {
+	return s.Users.SetSystemAdmin(ctx, userID, v)
+}
+
 // SeedDemo inserts demo data (used only by the --seed flag in main).
 func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
 	return seedDemo(ctx, s.Goals, s.KRs, periodID)

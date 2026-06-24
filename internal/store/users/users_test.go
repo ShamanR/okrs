@@ -47,6 +47,36 @@ func TestUpsertUserIdempotency(t *testing.T) {
 	}
 }
 
+func TestSetSystemAdminLoadsOnRead(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := users.NewUserRepository(pool)
+
+	u, err := r.UpsertUser(ctx, users.UpsertUserInput{
+		ProviderSubjectKey: "github|sa",
+		Provider:           "github",
+		Subject:            "sa",
+		DisplayName:        "Root",
+	})
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if u.IsSystemAdmin {
+		t.Fatal("new user must not be system admin")
+	}
+	if err := r.SetSystemAdmin(ctx, u.ID, true); err != nil {
+		t.Fatalf("set system admin: %v", err)
+	}
+	got, err := r.GetUser(ctx, u.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !got.IsSystemAdmin {
+		t.Fatal("is_system_admin should be loaded as true after SetSystemAdmin")
+	}
+}
+
 func TestGetUser(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

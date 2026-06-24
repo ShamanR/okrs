@@ -105,13 +105,13 @@ Response:
 }
 ```
 
-- `documentation_url` — ссылка на внешнюю документацию из `system_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
-- `stale_days` — порог «дней без обновления» из настроек Health Check-in (`system_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
+- `documentation_url` — ссылка на внешнюю документацию из `tenant_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
+- `stale_days` — порог «дней без обновления» из настроек Health Check-in (`tenant_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
 - `behind_margin` — допустимое отставание (п.п.) от ожидаемого темпа периода из категории «Отстающие» Health Check-in (`health_checkin_config.behind_margin`), по умолчанию `10`. SPA использует его для раскраски процента прогресса команды в sidebar, чтобы она совпадала с этой категорией.
-- `feedback_url` — ссылка на внешний опрос обратной связи из `system_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
-- `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`system_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
-- `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`system_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
-- `feedback_frequency_days` — минимальный интервал между показами всплывающего окна (дней) из `system_settings`, по умолчанию `30`. Логика показа на стороне SPA через cookies — см. `030-user-flows.md`.
+- `feedback_url` — ссылка на внешний опрос обратной связи из `tenant_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
+- `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`tenant_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
+- `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`tenant_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
+- `feedback_frequency_days` — минимальный интервал между показами всплывающего окна (дней) из `tenant_settings`, по умолчанию `30`. Логика показа на стороне SPA через cookies — см. `030-user-flows.md`.
 
 ## Admin API endpoints
 
@@ -150,7 +150,7 @@ Response:
 - `empty` — новый пользователь не получает доступа (пустая иерархия)
 - `default_node` — новый пользователь получает грант на `default_hierarchy_node_id` при первом логине, если у него ещё нет ни одного гранта
 
-Политика хранится в `system_settings` и применяется без перезапуска. Изменение политики не влияет на уже выданные гранты.
+Политика хранится в `tenant_settings` активного тенанта (с миграции 033; ранее — в глобальном `system_settings`) и применяется без перезапуска. Изменение политики не влияет на уже выданные гранты. Все `/api/v1/admin/settings/*` читают и пишут ключи в `tenant_settings` тенанта вызывающего админа.
 
 ### Общие настройки
 
@@ -170,7 +170,7 @@ Validation:
 
 - `documentation_url` — пустая строка (очищает ссылку, скрывает пункт меню) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
 
-Значение хранится в `system_settings` (ключ `documentation_url`) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его всем авторизованным пользователям.
+Значение хранится в `tenant_settings` (ключ `documentation_url`, per-tenant) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его авторизованному пользователю для его активного тенанта.
 
 ### Настройки обратной связи
 
@@ -194,9 +194,25 @@ Validation:
 - `feedback_url` — любая ссылка (строгого требования http(s), в отличие от `documentation_url`, нет; допускаются ссылки без схемы). Пустая строка скрывает пункт меню и окно. Запрещены только потенциально опасные схемы (`javascript:`, `data:`, `vbscript:`), так как значение подставляется в `href` — иначе `400 VALIDATION_ERROR`.
 - `feedback_frequency_days` — целое число `>= 1`; иначе `400 VALIDATION_ERROR`.
 
-Значения хранятся в `system_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их всем авторизованным пользователям. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
+Значения хранятся в `tenant_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`, per-tenant) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их авторизованному пользователю для его активного тенанта. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
 
 Все admin API endpoints требуют CSRF token при вызове из браузера.
+
+## System API endpoints (system-admin плоскость)
+
+`/api/v1/system/*` — кросс-тенантная provisioning-плоскость, доступная только
+**system-admin** (флаг `users.is_system_admin`) ИЛИ машинному вызывающему с заголовком
+`Authorization: Bearer <PROVISIONING_TOKEN>` (instance-level токен в env). Эти endpoints
+берут `tenant_id` из URL и не читают тенант из контекста; гейт — `RequireSystemAdmin`.
+Не membership-gated (system-admin может не состоять ни в одном тенанте). UI — `/system`.
+
+- `POST /api/v1/system/tenants` — создать тенант; body: `{"name": "...", "slug": "...", "entitlements": {"sso": true}}` → `201` `{id, slug, name, status}`. `422` при невалидном slug, `409` если slug занят.
+- `GET /api/v1/system/tenants` — список тенантов.
+- `POST /api/v1/system/tenants/{id}/members` — прямое назначение membership существующему глобальному пользователю; body: `{"user_id": 1, "role": "admin"}` → `201`. (Назначение по email через invitation — Фаза онбординга, Plan 4.)
+- `PUT /api/v1/system/tenants/{id}/entitlements` — записать ключи `entitlement.*`; body: `{"sso": true, "max_users": 50}` (bare-ключи неймспейсятся в `entitlement.*`) → `204`.
+- `POST /api/v1/system/tenants/{id}/suspend` / `POST /api/v1/system/tenants/{id}/restore` → `204`; `404` если тенант не найден.
+- `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
+- `PUT /api/v1/system/settings/default-registration-tenant` — глобальный ключ `default_registration_tenant_id` в `system_settings`; body: `{"tenant_id": 1}` или `{"tenant_id": null}` → `204`.
 
 Ошибки возвращаются в нормализованном виде:
 

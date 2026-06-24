@@ -5,8 +5,34 @@ import (
 	"errors"
 	"testing"
 
+	"okrs/internal/domain"
 	"okrs/internal/store/testutil"
 )
+
+func TestTenantSetStatus(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := NewTenantRepository(pool)
+	ctx := context.Background()
+
+	tn, err := repo.Create(ctx, "acme", "Acme Inc")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := repo.SetStatus(ctx, tn.ID, domain.TenantSuspended); err != nil {
+		t.Fatalf("set status: %v", err)
+	}
+	got, err := repo.GetByID(ctx, tn.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Status != domain.TenantSuspended {
+		t.Fatalf("status = %q, want suspended", got.Status)
+	}
+	if err := repo.SetStatus(ctx, 999999, domain.TenantActive); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for missing tenant, got %v", err)
+	}
+}
 
 func TestTenantRepositoryCreateAndGet(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
