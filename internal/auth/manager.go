@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
 )
 
@@ -28,27 +27,19 @@ type authStorage interface {
 	SetSystemAdmin(ctx context.Context, userID int64, v bool) error
 }
 
-// userGranter is the minimal interface Manager needs for the new-user grant policy.
-// Both *store.Store and *store.GrantsCache satisfy it.
-type userGranter interface {
-	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
-	AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
-}
-
 // Manager handles provider selection, session creation, and user upsert.
 type Manager struct {
 	cfg       Config
 	providers map[string]Provider
 	store     authStorage
-	grants    userGranter
 }
 
-func NewManager(cfg Config, st authStorage, grants userGranter) (*Manager, error) {
+func NewManager(cfg Config, st authStorage) (*Manager, error) {
 	providers, err := buildProviders(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{cfg: cfg, providers: providers, store: st, grants: grants}, nil
+	return &Manager{cfg: cfg, providers: providers, store: st}, nil
 }
 
 func (m *Manager) Disabled() bool {
@@ -92,9 +83,8 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 		return nil, nil, err
 	}
 
-	if err := m.applyNewUserPolicy(ctx, user); err != nil {
-		return nil, nil, err
-	}
+	// New-user routing (membership in the registration tenant + new_user_policy) is handled
+	// post-login by service.OnboardingService.EnsureRegistration, invoked from the OAuth callback.
 
 	sessionID, err := generateSessionID()
 	if err != nil {
@@ -105,45 +95,6 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 		return nil, nil, fmt.Errorf("create session: %w", err)
 	}
 	return user, sess, nil
-}
-
-func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) error {
-	// TODO(tenancy): the registration tenant is hardcoded to #1 here. Plan 4 resolves
-	// it from the global default_registration_tenant_id (or routes to onboarding).
-	// Product keys moved to tenant_settings in migration 033, so read them scoped.
-	scope := domain.TenantScope{TenantID: 1}
-
-	// Read policy from tenant settings; fall back to env-var cfg for backward compat.
-	policy := m.cfg.NewUserPolicy
-	if raw, _ := m.store.GetTenantSetting(ctx, scope, "new_user_policy"); raw != nil {
-		var p NewUserPolicy
-		if json.Unmarshal(raw, &p) == nil && p != "" {
-			policy = p
-		}
-	}
-	if policy != PolicyDefaultNode {
-		return nil
-	}
-
-	nodeID := m.cfg.DefaultNodeID
-	if raw, _ := m.store.GetTenantSetting(ctx, scope, "default_hierarchy_node_id"); raw != nil {
-		var id int64
-		if json.Unmarshal(raw, &id) == nil && id != 0 {
-			nodeID = id
-		}
-	}
-	if nodeID == 0 {
-		return nil
-	}
-
-	grants, err := m.grants.ListUserGrants(ctx, scope, user.ID)
-	if err != nil {
-		return err
-	}
-	if len(grants) > 0 {
-		return nil
-	}
-	return m.grants.AddUserGrant(ctx, scope, user.ID, nodeID, domain.SystemUserAnonymous)
 }
 
 // maybeBootstrapSystemAdmin promotes the configured bootstrap identity to system-admin

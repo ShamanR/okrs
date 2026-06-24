@@ -8,6 +8,30 @@ import (
 	"okrs/internal/store/testutil"
 )
 
+func TestListAccessRequests(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewMembershipRepository(pool)
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name, email)
+		VALUES ('github:r','github','r','Req','r@example.com') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := repo.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipRequested}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+
+	reqs, err := repo.ListAccessRequests(ctx, domain.TenantScope{TenantID: 1})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(reqs) != 1 || reqs[0].UserID != uid || reqs[0].DisplayName != "Req" {
+		t.Fatalf("got %+v", reqs)
+	}
+}
+
 func TestMembershipUpsertAndList(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

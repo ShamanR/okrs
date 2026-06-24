@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
 )
 
@@ -62,18 +61,11 @@ func (f *fakeAuthStore) SetSystemAdmin(_ context.Context, userID int64, v bool) 
 	f.systemAdmins[userID] = v
 	return nil
 }
-func (f *fakeAuthStore) ListUserGrants(context.Context, domain.TenantScope, int64) ([]grants.HierarchyGrant, error) {
-	return nil, nil
-}
-func (f *fakeAuthStore) AddUserGrant(context.Context, domain.TenantScope, int64, int64, int64) error {
-	return nil
-}
-
 func TestLoginBootstrapsFirstSystemAdmin(t *testing.T) {
 	store := newFakeAuthStore()
 	cfg := DefaultConfig()
 	cfg.BootstrapSystemAdmin = "github:42"
-	mgr, err := NewManager(cfg, store, store)
+	mgr, err := NewManager(cfg, store)
 	if err != nil {
 		t.Fatalf("new manager: %v", err)
 	}

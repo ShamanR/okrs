@@ -214,6 +214,22 @@ Validation:
 - `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
 - `PUT /api/v1/system/settings/default-registration-tenant` — глобальный ключ `default_registration_tenant_id` в `system_settings`; body: `{"tenant_id": 1}` или `{"tenant_id": null}` → `204`.
 
+## Onboarding endpoints
+
+**Tenant-admin** (`RequireTenantAdmin`, в активном тенанте):
+
+- `POST /api/v1/admin/invitations` — создать приглашение; body: `{"email": "...", "role": "user|admin"}` → `201` `{token, url, email, role}`. Токен хранится **хэшированным**; в OSS админ передаёт `url` приглашённому сам (SMTP нет). Приглашение существует без `user_id`.
+- `GET /api/v1/admin/invitations` — список pending-приглашений тенанта.
+- `GET /api/v1/admin/access-requests` — очередь join-request'ов (`status=requested`).
+- `POST /api/v1/admin/access-requests/{userID}/approve` → `204` (membership → `active`).
+- `POST /api/v1/admin/access-requests/{userID}/deny` → `204` (pending-membership удаляется).
+
+**Любой авторизованный** (auth, но **не** membership-gated):
+
+- `POST /api/v1/onboarding/join-request` — запросить доступ по slug; body: `{"slug": "..."}` → `204`; `404` если slug не найден, `409` если уже активный член.
+
+**Invite-ссылка (web):** `GET /invite/{token}` — кладёт токен в короткоживущую cookie и ведёт на логин; OAuth-callback гасит токен (single-use) и привязывает `active` membership к **текущей идентичности** (`provider:subject`), а не к email. Повторный/истёкший/чужой токен — отказ; email-match доступ не даёт.
+
 Ошибки возвращаются в нормализованном виде:
 
 - `VALIDATION_ERROR`

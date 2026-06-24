@@ -8,6 +8,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/invitations"
 	"okrs/internal/store/krs"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/periods"
@@ -45,6 +46,7 @@ type Store struct {
 	Memberships    *memberships.MembershipRepository
 	TenantSettings *tenantsettings.TenantSettingsRepository
 	UserSettings   *usersettings.UserSettingsRepository
+	Invitations    *invitations.InvitationRepository
 }
 
 // New constructs a Store and wires all repositories.
@@ -67,6 +69,7 @@ func New(db *pgxpool.Pool) *Store {
 		Memberships:    memberships.NewMembershipRepository(db),
 		TenantSettings: tenantsettings.NewTenantSettingsRepository(db),
 		UserSettings:   usersettings.NewUserSettingsRepository(db),
+		Invitations:    invitations.NewInvitationRepository(db),
 	}
 }
 

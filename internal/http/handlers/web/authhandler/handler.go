@@ -1,6 +1,7 @@
 package authhandler
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"html/template"
@@ -9,18 +10,33 @@ import (
 	"strings"
 
 	"okrs/internal/auth"
+	"okrs/internal/domain"
 
 	"github.com/go-chi/chi/v5"
 )
 
-type Handler struct {
-	mgr    *auth.Manager
-	tmpl   *template.Template
-	logger *slog.Logger
+// Onboarder routes a freshly logged-in user: redeem an invite token or register a new user
+// into the default tenant. *service.OnboardingService satisfies it.
+type Onboarder interface {
+	ClaimInvitation(ctx context.Context, rawToken string, userID int64) (*domain.Membership, error)
+	EnsureRegistration(ctx context.Context, userID int64) (bool, error)
 }
 
-func New(mgr *auth.Manager, tmpl *template.Template, logger *slog.Logger) *Handler {
-	return &Handler{mgr: mgr, tmpl: tmpl, logger: logger}
+// sessionWriter focuses a session on a tenant after claim. *store.SessionRepository satisfies it.
+type sessionWriter interface {
+	SetActiveTenant(ctx context.Context, sessionID string, tenantID int64) error
+}
+
+type Handler struct {
+	mgr     *auth.Manager
+	tmpl    *template.Template
+	logger  *slog.Logger
+	onboard Onboarder
+	sessions sessionWriter
+}
+
+func New(mgr *auth.Manager, tmpl *template.Template, logger *slog.Logger, onboard Onboarder, sessions sessionWriter) *Handler {
+	return &Handler{mgr: mgr, tmpl: tmpl, logger: logger, onboard: onboard, sessions: sessions}
 }
 
 func (h *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +126,8 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	secure := r.TLS != nil
 	auth.SetSessionCookie(w, h.mgr.CookieName(), sess.ID, h.mgr.SessionTTL(), secure)
 
+	h.onboardAfterLogin(w, r, user.ID, sess.ID)
+
 	h.logger.Info("user logged in",
 		slog.Int64("user_id", user.ID),
 		slog.String("provider", identity.Provider),
@@ -124,6 +142,43 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "okrs_oauth_next", MaxAge: -1, Path: "/"})
 	}
 	http.Redirect(w, r, next, http.StatusFound)
+}
+
+// HandleInvite carries an invitation token through the OAuth round-trip: it stashes the
+// token in a short-lived cookie and sends the visitor to login. The callback redeems it.
+func (h *Handler) HandleInvite(w http.ResponseWriter, r *http.Request) {
+	token := chi.URLParam(r, "token")
+	if token == "" {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "okrs_invite",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		MaxAge:   600,
+		SameSite: http.SameSiteLaxMode,
+	})
+	http.Redirect(w, r, "/login?next=/", http.StatusFound)
+}
+
+// onboardAfterLogin redeems a pending invite (priority) or registers a new user into the
+// default tenant. It never blocks login: an invalid invite or a no-default-tenant case just
+// leaves the user without a membership, and RequireMembershipMiddleware routes them to
+// /no-access on the next request (the single source of truth for that gate).
+func (h *Handler) onboardAfterLogin(w http.ResponseWriter, r *http.Request, userID int64, sessionID string) {
+	if ic, err := r.Cookie("okrs_invite"); err == nil && ic.Value != "" {
+		http.SetCookie(w, &http.Cookie{Name: "okrs_invite", MaxAge: -1, Path: "/"})
+		if m, err := h.onboard.ClaimInvitation(r.Context(), ic.Value, userID); err == nil {
+			_ = h.sessions.SetActiveTenant(r.Context(), sessionID, m.TenantID)
+			return
+		}
+		// Invalid invite falls through to normal new-user routing below.
+	}
+	if _, err := h.onboard.EnsureRegistration(r.Context(), userID); err != nil {
+		h.logger.Error("ensure registration", slog.String("error", err.Error()))
+	}
 }
 
 func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {

@@ -103,7 +103,7 @@ func main() {
 	entitlements.Register("unlimited", func() entitlements.Entitlements { return entitlements.UnlimitedEntitlements{} })
 
 	authCfg := loadAuthConfig()
-	authMgr, err := auth.NewManager(authCfg, pgstore, grantsCache)
+	authMgr, err := auth.NewManager(authCfg, pgstore)
 	if err != nil {
 		logger.Error("failed to init auth", slog.String("error", err.Error()))
 		os.Exit(1)

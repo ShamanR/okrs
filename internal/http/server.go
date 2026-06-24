@@ -17,6 +17,7 @@ import (
 	apihealthcheckin "okrs/internal/http/handlers/api/v1/healthcheckin"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
+	apionboarding "okrs/internal/http/handlers/api/v1/onboarding"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	apisystem "okrs/internal/http/handlers/api/v1/system"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
@@ -26,6 +27,7 @@ import (
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/http/handlers/web/goals"
 	"okrs/internal/http/middleware"
+	"okrs/internal/onboarding"
 	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
@@ -39,6 +41,10 @@ import (
 
 //go:embed templates/*.html
 var templatesFS embed.FS
+
+// noMembershipHandlerName selects the registered onboarding.NoMembershipHandler. OSS uses
+// the "stub" page; a SaaS build registers and selects its own.
+const noMembershipHandlerName = "stub"
 
 func parseTemplates() (*template.Template, error) {
 	return template.New("").Funcs(template.FuncMap{
@@ -86,6 +92,7 @@ type Server struct {
 	membershipCache *memberships.MembershipCache
 	settingsSvc     *service.SettingsService
 	provisioning    *service.ProvisioningService
+	onboarding      *service.OnboardingService
 }
 
 func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
@@ -140,6 +147,9 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		st.Memberships, membershipCache,
 		settingsSvc,
 	)
+	onboardingSvc := service.NewOnboardingService(
+		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
+	)
 
 	return &Server{
 		store:       st,
@@ -156,10 +166,16 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		membershipCache: membershipCache,
 		settingsSvc:     settingsSvc,
 		provisioning:    provisioning,
+		onboarding:      onboardingSvc,
 	}, nil
 }
 
 func (s *Server) Routes() http.Handler {
+	// OSS no-membership page (pluggable seam): renders the join-request template.
+	onboarding.Register(noMembershipHandlerName, onboarding.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
+		_ = s.tmpl.ExecuteTemplate(w, "no-membership", nil)
+	}})
+
 	ctx := context.Background()
 	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, func(ctx context.Context) []service.HCActive {
 		now := time.Now().In(s.zone)
@@ -196,7 +212,7 @@ func (s *Server) Routes() http.Handler {
 		}
 
 		// Auth routes — public, no CSRF (OAuth callbacks use GET).
-		authH := authhandler.New(s.auth, s.tmpl, s.logger)
+		authH := authhandler.New(s.auth, s.tmpl, s.logger, s.onboarding, s.store.Sessions)
 		r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
 			if s.auth.Disabled() {
 				http.Redirect(w, r, "/", http.StatusFound)
@@ -206,6 +222,7 @@ func (s *Server) Routes() http.Handler {
 		})
 		r.Get("/auth/{provider}/start", authH.HandleProviderStart)
 		r.Get("/auth/{provider}/callback", authH.HandleCallback)
+		r.Get("/invite/{token}", authH.HandleInvite)
 		r.Post("/logout", authH.HandleLogout)
 
 		// Legacy redirects for bookmarks.
@@ -218,13 +235,26 @@ func (s *Server) Routes() http.Handler {
 
 		// "No access" page for authenticated users without an active membership.
 		// Lives OUTSIDE the membership-gated group so RequireMembership can redirect here
-		// without a loop. Plan 4 replaces this stub with the pluggable NoMembershipHandler.
+		// without a loop. Rendered by the pluggable NoMembershipHandler seam (OSS "stub").
 		r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
+			h, ok := onboarding.Get(noMembershipHandlerName)
+			if !ok {
+				http.Error(w, "no-membership handler not registered", http.StatusInternalServerError)
+				return
+			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(`<!doctype html><html lang="ru"><head><meta charset="utf-8">` +
-				`<title>Нет доступа</title></head><body style="font-family:sans-serif;padding:2rem">` +
-				`<h1>Нет доступа</h1><p>У вашей учётной записи нет доступа ни к одной организации. ` +
-				`Обратитесь к администратору.</p></body></html>`))
+			h.ServeNoMembership(w, r)
+		})
+
+		// Self-service join-request — authenticated but NOT membership-gated (the caller
+		// has no membership yet). Lives beside /no-access for the same reason.
+		r.Group(func(r chi.Router) {
+			if !s.auth.Disabled() {
+				r.Use(auth.RequireAuthMiddleware)
+			}
+			r.Use(csrf.Handler)
+			onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
+			r.Post("/api/v1/onboarding/join-request", onboardH.HandleJoinRequest)
 		})
 
 		// System-admin plane — tenant-less, so it lives OUTSIDE the membership-gated
@@ -355,6 +385,14 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		hcHandler := apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache)
 		r.Get("/api/v1/admin/settings/health-checkin", hcHandler.HandleGetHealthCheckInSettings)
 		r.Post("/api/v1/admin/settings/health-checkin", hcHandler.HandleUpdateHealthCheckInSettings)
+
+		// Onboarding: tenant-admin invitations + access-request queue.
+		onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
+		r.Post("/api/v1/admin/invitations", onboardH.HandleCreateInvitation)
+		r.Get("/api/v1/admin/invitations", onboardH.HandleListInvitations)
+		r.Get("/api/v1/admin/access-requests", onboardH.HandleListAccessRequests)
+		r.Post("/api/v1/admin/access-requests/{userID}/approve", onboardH.HandleApproveAccessRequest)
+		r.Post("/api/v1/admin/access-requests/{userID}/deny", onboardH.HandleDenyAccessRequest)
 
 		r.Get("/admin/health-checkin", adminShell)
 	})

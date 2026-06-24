@@ -42,6 +42,25 @@ type Membership struct {
 	CreatedByUserID *int64
 }
 
+type InvitationStatus string
+
+const (
+	InvitationPending InvitationStatus = "pending"
+	InvitationClaimed InvitationStatus = "claimed"
+	InvitationRevoked InvitationStatus = "revoked"
+)
+
+type Invitation struct {
+	ID              int64
+	TenantID        int64
+	Email           string
+	Role            Role
+	Status          InvitationStatus
+	CreatedByUserID *int64
+	CreatedAt       time.Time
+	ExpiresAt       *time.Time
+}
+
 var reservedTenantSlugs = map[string]bool{
 	"www": true, "api": true, "app": true, "admin": true, "static": true,
 	"assets": true, "mail": true, "auth": true, "system": true,

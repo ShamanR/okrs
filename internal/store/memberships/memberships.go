@@ -3,6 +3,7 @@ package memberships
 import (
 	"context"
 	"errors"
+	"time"
 
 	"okrs/internal/domain"
 
@@ -11,6 +12,15 @@ import (
 )
 
 var ErrNotFound = errors.New("memberships: not found")
+
+// AccessRequest is the read model for the tenant-admin "join requests" queue.
+type AccessRequest struct {
+	UserID      int64
+	DisplayName string
+	Email       string
+	Role        domain.Role
+	CreatedAt   time.Time
+}
 
 // MembershipRepository handles membership persistence (user ↔ tenant ↔ role/status).
 type MembershipRepository struct {
@@ -76,6 +86,36 @@ func (r *MembershipRepository) ListByUser(ctx context.Context, userID int64) ([]
 		out = append(out, m)
 	}
 	return out, rows.Err()
+}
+
+// ListAccessRequests returns the tenant's pending (status='requested') memberships joined
+// to users for display in the tenant-admin queue.
+func (r *MembershipRepository) ListAccessRequests(ctx context.Context, scope domain.TenantScope) ([]AccessRequest, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT m.user_id, u.display_name, COALESCE(u.email,''), m.role, m.created_at
+		FROM memberships m JOIN users u ON u.id = m.user_id
+		WHERE m.tenant_id = $1 AND m.status = 'requested'
+		ORDER BY m.created_at`, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AccessRequest
+	for rows.Next() {
+		var a AccessRequest
+		if err := rows.Scan(&a.UserID, &a.DisplayName, &a.Email, &a.Role, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// DeleteRequested removes a pending join-request membership (deny). No-op if none.
+func (r *MembershipRepository) DeleteRequested(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM memberships WHERE user_id = $2 AND tenant_id = $1 AND status = 'requested'`,
+		scope.TenantID, userID)
+	return err
 }
 
 func (r *MembershipRepository) SetStatus(ctx context.Context, userID, tenantID int64, status domain.MembershipStatus) error {

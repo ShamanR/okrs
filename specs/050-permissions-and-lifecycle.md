@@ -128,6 +128,31 @@ Lifecycle ещё не является полноценной policy enforcement
 - CRUD goal / KR / comment / progress в доступных командах;
 - обновление team period status.
 
+## Онбординг и членство
+
+Активным считается только membership со `status=active`; `RequireMembership` пропускает
+только его (`requested` — нет). Авторизованный пользователь без активного membership
+редиректится на `/no-access` (вне membership-gated группы, чтобы не было петли); страницу
+рендерит подключаемый `NoMembershipHandler` (OSS-дефолт «stub» — заглушка + форма
+join-request).
+
+Три примитива (детали — `040-api-contract.md`):
+
+1. **Новый пользователь.** После первого OAuth-логина (callback) без активного membership:
+   если задан глобальный `default_registration_tenant_id` → автосоздаётся `active`
+   membership (`role=user`) в этом тенанте и применяется его `new_user_policy`; иначе →
+   `/no-access`. Логику выполняет `OnboardingService.EnsureRegistration` из callback'а
+   (перенесена из `auth.Manager`, чтобы таргетить резолвнутый тенант, а не хардкод #1).
+2. **Приглашение (tenant-admin).** Админ создаёт `tenant_invitations` с одноразовым токеном;
+   приглашённый открывает `/invite/{token}` → токен в cookie → логинится любым OAuth →
+   callback гасит токен (атомарно, single-use) и привязывает `active` membership к **текущей
+   идентичности** (`provider:subject`). **Безопасность:** claim только по валидному токену;
+   email-match доступа не даёт; повтор/истёкший/чужой токен — отказ; один email через двух
+   провайдеров = две независимые учётки.
+3. **Запрос доступа (user).** С `/no-access` пользователь вводит slug → membership
+   `status=requested` → очередь в `/admin` (`access-requests`) → approve (`active`) / deny
+   (удаление). Публичного каталога тенантов нет.
+
 ## Target state
 
 Целевое состояние для будущих итераций:
