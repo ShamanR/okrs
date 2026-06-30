@@ -119,7 +119,13 @@ Response:
 
 ### Пользователи
 
-- `GET /api/v1/admin/users` — список всех пользователей (id, display_name, avatar_url, provider, last_login_at, is_admin, а также `GrantedNodeCount` — число выданных пользователю узлов иерархии). `GrantedNodeCount` считается на сервере bulk-запросом по всем пользователям (`GrantsCache.AllGrants`), чтобы UI мог фильтровать «без доступов» и показывать счётчик узлов без per-user обращений (список может содержать тысячи пользователей).
+- `GET /api/v1/admin/users` — **только пользователи активного тенанта**: активные члены и
+  запросившие доступ (`memberships.status` = `active`/`requested`); пользователи без membership в
+  тенанте не возвращаются. Каждый элемент: поля пользователя (id, display_name, avatar_url,
+  provider, last_login_at, is_admin) + `GrantedNodeCount` (число выданных узлов иерархии, считается
+  только активным) + `Status` (`active`/`requested`) + `Role` (роль в тенанте). UI использует
+  `Status`, чтобы показывать запросившим кнопки «Добавить»/«Отклонить» (см. ниже), а членам —
+  управление доступом.
 - `GET /api/v1/admin/users/{userID}` — карточка пользователя с grants
 - `POST /api/v1/admin/users/{userID}/admin` — выдать права администратора
 - `DELETE /api/v1/admin/users/{userID}/admin` — снять права администратора
@@ -172,6 +178,8 @@ Validation:
 
 Значение хранится в `tenant_settings` (ключ `documentation_url`, per-tenant) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его авторизованному пользователю для его активного тенанта.
 
+Общие настройки также включают `empty_hierarchy_message` (markdown, per-tenant ключ `tenant_settings`): текст, показываемый в трекере пользователю без доступных команд (пусто → дефолт). Редактируется в том же `GET/POST /api/v1/admin/settings/general` и возвращается в `GET /api/v1/config` (`empty_hierarchy_message`); рендерится как markdown.
+
 ### Настройки обратной связи
 
 - `GET /api/v1/admin/settings/feedback` — текущие настройки сбора обратной связи
@@ -212,7 +220,11 @@ Validation:
 - `PUT /api/v1/system/tenants/{id}/entitlements` — записать ключи `entitlement.*`; body: `{"sso": true, "max_users": 50}` (bare-ключи неймспейсятся в `entitlement.*`) → `204`.
 - `POST /api/v1/system/tenants/{id}/suspend` / `POST /api/v1/system/tenants/{id}/restore` → `204`; `404` если тенант не найден.
 - `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
-- `GET /api/v1/system/tenants/{id}/members` — участники тенанта: `[{user_id, display_name, email, role, status}]` (все статусы, отсортировано по имени).
+- `GET /api/v1/system/tenants/{id}/members` — участники тенанта: `[{user_id, display_name, email, role, status}]` (все статусы, отсортировано по имени). UI показывает `requested` вверху с «Подключить» (= `POST …/members`) / «Отклонить» (deny ниже).
+- `POST /api/v1/system/tenants/{id}/members/{userID}/deny` — удалить заявку (`requested`-membership) пользователя в тенанте → `204`. На активного члена не действует.
+- `DELETE /api/v1/system/tenants/{id}/members/{userID}` — удалить участника из тенанта: убирает membership (любого статуса) **и** все его hierarchy-гранты в этом тенанте → `204`. Идемпотентно. (Кнопка «Удалить» на активных строках; `deny` выше — только для заявок.)
+- `GET /api/v1/system/settings` дополнительно возвращает `no_access_message` (markdown, глобально).
+- `PUT /api/v1/system/settings/no-access-message` — body `{"message": "<markdown>"}` → `204`. Текст страницы `/no-access` (пусто → дефолт); рендерится как markdown.
 - `GET /api/v1/system/tenants/{id}/entitlements` — текущие ключи `entitlement.*` со срезанным префиксом: `{ "sso": true, "max_users": 50 }`.
 - `GET /api/v1/system/settings` — глобальные system-настройки для UI: `{ "default_registration_tenant_id": <int|null> }`.
 - `PUT /api/v1/system/settings/default-registration-tenant` — глобальный ключ `default_registration_tenant_id` в `system_settings`; body: `{"tenant_id": 1}` или `{"tenant_id": null}` → `204`.

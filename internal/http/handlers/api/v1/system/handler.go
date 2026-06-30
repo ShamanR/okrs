@@ -24,6 +24,8 @@ type Provisioner interface {
 	SetEntitlements(ctx context.Context, tenantID int64, entitlements map[string]any) error
 	Suspend(ctx context.Context, tenantID int64) error
 	Restore(ctx context.Context, tenantID int64) error
+	DenyMember(ctx context.Context, tenantID, userID int64) error
+	RemoveMember(ctx context.Context, tenantID, userID int64) error
 }
 
 // SystemSettings reads/writes instance + tenant settings; *service.SettingsService satisfies it.
@@ -252,6 +254,42 @@ func (h *Handler) HandleListMembers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
+// POST /api/v1/system/tenants/{id}/members/{userID}/deny
+func (h *Handler) HandleDenyMember(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	if err := h.prov.DenyMember(r.Context(), id, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DELETE /api/v1/system/tenants/{id}/members/{userID}
+func (h *Handler) HandleRemoveMember(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	if err := h.prov.RemoveMember(r.Context(), id, userID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GET /api/v1/system/tenants/{id}/entitlements
 func (h *Handler) HandleGetEntitlements(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
@@ -280,7 +318,35 @@ func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
 	if raw != nil {
 		_ = json.Unmarshal(raw, &tenantID)
 	}
-	writeJSON(w, map[string]any{"default_registration_tenant_id": tenantID})
+	msgRaw, err := h.settings.SystemGet(r.Context(), "no_access_message")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var msg string
+	if msgRaw != nil {
+		_ = json.Unmarshal(msgRaw, &msg)
+	}
+	writeJSON(w, map[string]any{
+		"default_registration_tenant_id": tenantID,
+		"no_access_message":              msg,
+	})
+}
+
+// PUT /api/v1/system/settings/no-access-message  {message}
+func (h *Handler) HandleSetNoAccessMessage(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := h.settings.SystemSet(r.Context(), "no_access_message", body.Message); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {

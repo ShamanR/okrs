@@ -261,6 +261,48 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
+// TenantUser pairs a user with its membership in a specific tenant.
+type TenantUser struct {
+	User   *domain.User
+	Status domain.MembershipStatus
+	Role   domain.Role
+}
+
+// ListByTenant returns every user with a membership in the tenant (any status), with that
+// membership's status and role, ordered by display name.
+func (r *UserRepository) ListByTenant(ctx context.Context, scope domain.TenantScope) ([]TenantUser, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, u.udid, u.provider_subject_key, u.provider, u.subject, u.display_name,
+		       u.avatar_url, COALESCE(u.email,''), u.attributes_json, u.is_admin, u.is_system_admin,
+		       u.created_at, u.updated_at, u.last_login_at, m.status, m.role
+		FROM memberships m JOIN users u ON u.id = m.user_id
+		WHERE m.tenant_id = $1
+		ORDER BY u.display_name`, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TenantUser
+	for rows.Next() {
+		var u domain.User
+		var attrRaw []byte
+		var status domain.MembershipStatus
+		var role domain.Role
+		if err := rows.Scan(
+			&u.ID, &u.UDID, &u.ProviderSubjectKey, &u.Provider, &u.Subject, &u.DisplayName,
+			&u.AvatarURL, &u.Email, &attrRaw, &u.IsAdmin, &u.IsSystemAdmin,
+			&u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &status, &role,
+		); err != nil {
+			return nil, err
+		}
+		if len(attrRaw) > 0 {
+			_ = json.Unmarshal(attrRaw, &u.AttributesJSON)
+		}
+		out = append(out, TenantUser{User: &u, Status: status, Role: role})
+	}
+	return out, rows.Err()
+}
+
 func scanUser(row scanner) (*domain.User, error) {
 	var u domain.User
 	var attrRaw []byte

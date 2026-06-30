@@ -13,6 +13,7 @@ import (
 	"okrs/internal/domain"
 	apisystem "okrs/internal/http/handlers/api/v1/system"
 	"okrs/internal/service"
+	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
@@ -42,7 +43,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	prov := service.NewProvisioningService(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
-		settingsSvc,
+		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)),
 	)
 	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo, memRepo)
 
@@ -60,11 +61,14 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	r.Get("/api/v1/system/tenants", h.HandleListTenants)
 	r.Post("/api/v1/system/tenants/{id}/members", h.HandleAttachMember)
 	r.Get("/api/v1/system/tenants/{id}/members", h.HandleListMembers)
+	r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", h.HandleDenyMember)
+	r.Delete("/api/v1/system/tenants/{id}/members/{userID}", h.HandleRemoveMember)
 	r.Put("/api/v1/system/tenants/{id}/entitlements", h.HandleSetEntitlements)
 	r.Get("/api/v1/system/tenants/{id}/entitlements", h.HandleGetEntitlements)
 	r.Post("/api/v1/system/tenants/{id}/suspend", h.HandleSuspend)
 	r.Get("/api/v1/system/settings", h.HandleGetSettings)
 	r.Put("/api/v1/system/settings/default-registration-tenant", h.HandleSetDefaultRegistrationTenant)
+	r.Put("/api/v1/system/settings/no-access-message", h.HandleSetNoAccessMessage)
 	return r, tnRepo, userRepo
 }
 
@@ -178,6 +182,63 @@ func TestSystemGetSettings(t *testing.T) {
 	_ = json.NewDecoder(w.Body).Decode(&got)
 	if got.DefaultRegistrationTenantID == nil || *got.DefaultRegistrationTenantID != 1 {
 		t.Fatalf("default tenant = %v", got.DefaultRegistrationTenantID)
+	}
+}
+
+func TestSystemDenyMemberRouteWired(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+	// No requested row → DeleteRequested is a no-op; the route should still resolve to 204.
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants/1/members/999/deny", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("deny route: %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestSystemRemoveMember(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants/1/members",
+		strings.NewReader(`{"user_id":1,"role":"admin"}`)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("attach: %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/v1/system/tenants/1/members/1", nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("remove: %d (%s)", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/system/tenants/1/members", nil))
+	var members []map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&members)
+	for _, m := range members {
+		if m["user_id"].(float64) == 1 {
+			t.Fatalf("user 1 should be removed, still present: %v", members)
+		}
+	}
+}
+
+func TestSystemNoAccessMessageRoundTrip(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/settings/no-access-message",
+		strings.NewReader(`{"message":"# Hello\nask **ops**"}`)))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("put: %d (%s)", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/system/settings", nil))
+	var got struct {
+		NoAccessMessage string `json:"no_access_message"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.NoAccessMessage != "# Hello\nask **ops**" {
+		t.Fatalf("no_access_message = %q", got.NoAccessMessage)
 	}
 }
 

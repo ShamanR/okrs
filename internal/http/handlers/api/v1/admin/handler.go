@@ -11,6 +11,7 @@ import (
 	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/users"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -24,11 +25,13 @@ const (
 	settingKeyFeedbackPopupEnabled    = "feedback_popup_enabled"
 	settingKeyFeedbackMenuLinkEnabled = "feedback_menu_link_enabled"
 	settingKeyFeedbackFrequencyDays   = "feedback_frequency_days"
+	settingKeyEmptyHierarchyMessage   = "empty_hierarchy_message"
 )
 
 // userAdminStore covers user operations. *store.UserRepository satisfies it.
 type userAdminStore interface {
 	ListUsers(ctx context.Context) ([]*domain.User, error)
+	ListByTenant(ctx context.Context, scope domain.TenantScope) ([]users.TenantUser, error)
 	GetUser(ctx context.Context, id int64) (*domain.User, error)
 	SetUserAdmin(ctx context.Context, userID int64, isAdmin bool) error
 }
@@ -61,8 +64,15 @@ func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grant
 }
 
 // GET /api/v1/admin/users
+// Tenant-scoped: only the active tenant's members and access requesters, each carrying its
+// membership Status/Role. Active members are augmented with their granted-node count.
 func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.users.ListUsers(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	tenantUsers, err := h.users.ListByTenant(r.Context(), scope)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -87,11 +97,6 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	for id := range distinct {
 		roots = append(roots, id)
 	}
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusForbidden, "no active tenant")
-		return
-	}
 	activeIDs, err := h.grants.ListDescendantTeamIDs(r.Context(), scope, roots)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -102,22 +107,26 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 		activeSet[id] = struct{}{}
 	}
 
-	// Augment each user with the number of hierarchy nodes granted to them, so
-	// the admin UI can filter "no access" users and show a node count without
-	// issuing a per-user grants request (the user list may hold thousands).
+	// Augment each user with the number of hierarchy nodes granted to them, plus the membership
+	// Status/Role so the admin UI can distinguish requesters (add/deny) from members.
 	type userListItem struct {
 		*domain.User
 		GrantedNodeCount int
+		Status           string
+		Role             string
 	}
-	items := make([]userListItem, 0, len(users))
-	for _, u := range users {
+	items := make([]userListItem, 0, len(tenantUsers))
+	for _, tu := range tenantUsers {
 		count := 0
-		for _, g := range allGrants[u.ID] {
+		for _, g := range allGrants[tu.User.ID] {
 			if _, ok := activeSet[g.TeamID]; ok {
 				count++
 			}
 		}
-		items = append(items, userListItem{User: u, GrantedNodeCount: count})
+		items = append(items, userListItem{
+			User: tu.User, GrantedNodeCount: count,
+			Status: string(tu.Status), Role: string(tu.Role),
+		})
 	}
 	writeJSON(w, items)
 }
@@ -289,14 +298,16 @@ func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, map[string]any{
-		"documentation_url": h.documentationURL(r.Context(), scope),
+		"documentation_url":       h.documentationURL(r.Context(), scope),
+		"empty_hierarchy_message": h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage),
 	})
 }
 
 // POST /api/v1/admin/settings/general  body: {"documentation_url":"https://..."}
 func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		DocumentationURL string `json:"documentation_url"`
+		DocumentationURL      string `json:"documentation_url"`
+		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -313,6 +324,10 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyDocumentationURL, link); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyEmptyHierarchyMessage, body.EmptyHierarchyMessage); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

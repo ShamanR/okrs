@@ -965,18 +965,19 @@ function AccessSettingsPanel({teams}) {
 
 function GeneralSettingsPanel() {
   const [url, setUrl] = useState('');
+  const [emptyMsg, setEmptyMsg] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(()=>{
     apiGet('/api/v1/admin/settings/general').then(r=>r&&r.json()).then(data=>{
-      if (data) setUrl(data.documentation_url||'');
+      if (data) { setUrl(data.documentation_url||''); setEmptyMsg(data.empty_hierarchy_message||''); }
     });
   },[]);
 
   async function save() {
     setSaving(true); setSaved(false);
-    const res = await apiPost('/api/v1/admin/settings/general', {documentation_url: url.trim()});
+    const res = await apiPost('/api/v1/admin/settings/general', {documentation_url: url.trim(), empty_hierarchy_message: emptyMsg});
     setSaving(false);
     if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
     else if (res && res.status===400) alert('Укажите корректную http(s)-ссылку или оставьте поле пустым.');
@@ -993,6 +994,14 @@ function GeneralSettingsPanel() {
       <input type="url" value={url} onChange={e=>setUrl(e.target.value)}
         placeholder="https://github.com/ShamanR/okrs/wiki"
         style={{...inpStyle,fontSize:13,marginBottom:16}}/>
+    </DetailSection>
+    <DetailSection title="Сообщение при отсутствии доступа к командам">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:16,lineHeight:1.6}}>
+        Markdown. Показывается в трекере пользователю без доступных команд. Пусто → текст по умолчанию.
+      </div>
+      <div style={{marginBottom:16}}>
+        <MarkdownEditor value={emptyMsg} onChange={setEmptyMsg} rows={4} textareaStyle={{...inpStyle,resize:'vertical',lineHeight:1.5,minHeight:96}}/>
+      </div>
       <div style={{display:'flex',alignItems:'center',gap:10}}>
         <Btn variant="primary" onClick={save} disabled={saving}>
           {saving?'Сохранение…':'Сохранить'}
@@ -1093,13 +1102,16 @@ function UsersSection({users, teams, currentUser, reload}) {
   },[activeTeams]);
   const ledTeams = u => (u && u.UDID && ledByUdid[u.UDID]) || [];
 
+  const isRequester = u => u.Status === 'requested';
   const adminCount = users.filter(u=>u.IsAdmin).length;
-  const noAccessCount = users.filter(u=>!u.IsAdmin && (u.GrantedNodeCount||0)===0).length;
+  const requestCount = users.filter(isRequester).length;
+  const noAccessCount = users.filter(u=>!isRequester(u) && !u.IsAdmin && (u.GrantedNodeCount||0)===0).length;
 
   const ql = q.trim().toLowerCase();
   const filtered = users.filter(u=>{
     if (filter==='admins' && !u.IsAdmin) return false;
-    if (filter==='noaccess' && !(!u.IsAdmin && (u.GrantedNodeCount||0)===0)) return false;
+    if (filter==='requests' && !isRequester(u)) return false;
+    if (filter==='noaccess' && (isRequester(u) || u.IsAdmin || (u.GrantedNodeCount||0)>0)) return false;
     if (!ql) return true;
     const led = ledTeams(u).map(t=>t.name).join(' ');
     return [u.DisplayName, u.Email, u.Provider, led].some(s=>(s||'').toLowerCase().includes(ql));
@@ -1107,6 +1119,7 @@ function UsersSection({users, teams, currentUser, reload}) {
 
   const chips = [
     {id:'all', label:'Все пользователи', count:users.length},
+    {id:'requests', label:'Заявки', count:requestCount},
     {id:'admins', label:'Админы', count:adminCount},
     {id:'noaccess', label:'Без доступов', count:noAccessCount},
   ];
@@ -1136,8 +1149,9 @@ function UsersSection({users, teams, currentUser, reload}) {
         {filtered.map(u=>{
           const led = ledTeams(u);
           const nodes = u.GrantedNodeCount||0;
-          return <div key={u.ID} onClick={()=>setModalId(u.ID)}
-            style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',borderBottom:'1px solid '+T.hairline,cursor:'pointer',background:'white'}}
+          const requester = isRequester(u);
+          return <div key={u.ID} onClick={()=>{ if(!requester) setModalId(u.ID); }}
+            style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',borderBottom:'1px solid '+T.hairline,cursor:requester?'default':'pointer',background:'white'}}
             onMouseEnter={e=>e.currentTarget.style.background='#fafbfc'}
             onMouseLeave={e=>e.currentTarget.style.background='white'}>
             <Avatar user={u} size={36}/>
@@ -1145,21 +1159,31 @@ function UsersSection({users, teams, currentUser, reload}) {
               <div style={{display:'flex',alignItems:'center',gap:6}}>
                 <span style={{fontSize:14,fontWeight:600,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.DisplayName}</span>
                 {u.ID===currentUser?.id&&<span style={{fontSize:9.5,color:T.mutedFg,background:'#f1f5f9',padding:'1px 6px',borderRadius:4,fontWeight:700,flexShrink:0}}>ВЫ</span>}
+                {requester&&<span style={{fontSize:9.5,color:'#92400e',background:'#fef3c7',padding:'1px 6px',borderRadius:4,fontWeight:700,flexShrink:0}}>ЗАЯВКА</span>}
               </div>
               <div style={{fontSize:11.5,color:T.mutedFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',marginTop:2}}>
                 {u.Email}{led.length>0&&` · лид: ${led.map(t=>t.name).join(', ')}`}
               </div>
             </div>
-            <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
-              {u.IsAdmin
-                ? <><Chip color="#92400e" bg="#fef3c7">Admin</Chip><span style={{fontSize:11,color:'#059669',fontWeight:600}}>полный доступ</span></>
-                : nodes>0
-                  ? <span style={{fontSize:12.5,color:'#0891b2',fontWeight:600}}>{nodes} узл</span>
-                  : <span style={{fontSize:12,color:'#dc2626',fontWeight:600}}>нет доступа</span>}
-            </div>
-            <div onClick={e=>e.stopPropagation()} style={{flexShrink:0}}>
-              <RowAction title="Редактировать" onClick={()=>setModalId(u.ID)}>✎</RowAction>
-            </div>
+            {requester
+              ? <div onClick={e=>e.stopPropagation()} style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                  <button onClick={async()=>{ const r=await apiPost(`/api/v1/admin/access-requests/${u.ID}/approve`,{}); if(r&&r.ok) reload(); else alert('Не удалось добавить пользователя'); }}
+                    style={{padding:'6px 12px',border:'none',borderRadius:7,background:'#059669',color:'#fff',fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Добавить</button>
+                  <button onClick={async()=>{ const r=await apiPost(`/api/v1/admin/access-requests/${u.ID}/deny`,{}); if(r&&r.ok) reload(); else alert('Не удалось отклонить заявку'); }}
+                    style={{padding:'6px 12px',border:'1.5px solid '+T.cardBorder,borderRadius:7,background:'#fff',color:T.danger,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Отклонить</button>
+                </div>
+              : <>
+                  <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
+                    {u.IsAdmin
+                      ? <><Chip color="#92400e" bg="#fef3c7">Admin</Chip><span style={{fontSize:11,color:'#059669',fontWeight:600}}>полный доступ</span></>
+                      : nodes>0
+                        ? <span style={{fontSize:12.5,color:'#0891b2',fontWeight:600}}>{nodes} узл</span>
+                        : <span style={{fontSize:12,color:'#dc2626',fontWeight:600}}>нет доступа</span>}
+                  </div>
+                  <div onClick={e=>e.stopPropagation()} style={{flexShrink:0}}>
+                    <RowAction title="Редактировать" onClick={()=>setModalId(u.ID)}>✎</RowAction>
+                  </div>
+                </>}
           </div>;
         })}
       </div>

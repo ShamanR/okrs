@@ -29,6 +29,46 @@ func insertTeam(t *testing.T, pool *pgxpool.Pool, ctx context.Context, name stri
 	return id
 }
 
+func TestRemoveAllUserGrantsScoped(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := grants.NewGrantRepository(pool)
+
+	mkUser := func(key string) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key,provider,subject,display_name)
+			VALUES ($1,'github',$1,$1) RETURNING id`, key).Scan(&id); err != nil {
+			t.Fatalf("user %s: %v", key, err)
+		}
+		return id
+	}
+	u7, u8 := mkUser("g7"), mkUser("g8")
+	t1 := insertTeam(t, pool, ctx, "A", nil)
+	t2 := insertTeam(t, pool, ctx, "B", nil)
+	if err := r.AddUserGrant(ctx, sc1, u7, t1, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AddUserGrant(ctx, sc1, u7, t2, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.AddUserGrant(ctx, sc1, u8, t1, 1); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.RemoveAllUserGrants(ctx, sc1, u7); err != nil {
+		t.Fatalf("remove all: %v", err)
+	}
+	g7, _ := r.ListUserGrants(ctx, sc1, u7)
+	if len(g7) != 0 {
+		t.Fatalf("user 7 grants should be gone, got %d", len(g7))
+	}
+	g8, _ := r.ListUserGrants(ctx, sc1, u8)
+	if len(g8) != 1 {
+		t.Fatalf("user 8 grants must survive, got %d", len(g8))
+	}
+}
+
 func TestGrantRepositoryCRUD(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

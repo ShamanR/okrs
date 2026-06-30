@@ -19,6 +19,7 @@ const (
 	settingKeyFeedbackPopupEnabled    = "feedback_popup_enabled"
 	settingKeyFeedbackMenuLinkEnabled = "feedback_menu_link_enabled"
 	settingKeyFeedbackFrequencyDays   = "feedback_frequency_days"
+	settingKeyEmptyHierarchyMessage   = "empty_hierarchy_message"
 )
 
 // settingsReader is satisfied by *service.SettingsService (per-tenant product keys).
@@ -47,6 +48,9 @@ type configResponse struct {
 	FeedbackPopupEnabled    bool   `json:"feedback_popup_enabled"`
 	FeedbackMenuLinkEnabled bool   `json:"feedback_menu_link_enabled"`
 	FeedbackFrequencyDays   int    `json:"feedback_frequency_days"`
+	// EmptyHierarchyMessage (markdown) shown in the tracker when the user has no accessible
+	// teams; empty → the SPA's default text.
+	EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
 }
 
 // GET /api/v1/config
@@ -64,6 +68,7 @@ func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	resp.FeedbackPopupEnabled = h.settingBool(r.Context(), scope, settingKeyFeedbackPopupEnabled)
 	resp.FeedbackMenuLinkEnabled = h.settingBool(r.Context(), scope, settingKeyFeedbackMenuLinkEnabled)
 	resp.FeedbackFrequencyDays = h.settingInt(r.Context(), scope, settingKeyFeedbackFrequencyDays, 30)
+	resp.EmptyHierarchyMessage = h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage)
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }

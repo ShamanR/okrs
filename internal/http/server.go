@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -162,7 +163,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	provisioning := service.NewProvisioningService(
 		st.Tenants, tenantCache,
 		st.Memberships, membershipCache,
-		settingsSvc,
+		settingsSvc, grantsCache,
 	)
 	onboardingSvc := service.NewOnboardingService(
 		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
@@ -209,7 +210,12 @@ func (s *Server) Routes() http.Handler {
 	// OSS no-membership page (pluggable seam): the box ships the "stub" page; a SaaS build
 	// registers its own and selects it via Options.NoMembershipName.
 	onboarding.Register("stub", onboarding.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
-		_ = s.tmpl.ExecuteTemplate(w, "no-membership", nil)
+		// Inject the customizable (markdown) no-access message; the page renders it client-side.
+		var msg string
+		if raw, _ := s.settingsSvc.SystemGet(r.Context(), "no_access_message"); raw != nil {
+			_ = json.Unmarshal(raw, &msg)
+		}
+		_ = s.tmpl.ExecuteTemplate(w, "no-membership", map[string]any{"NoAccessMessage": msg})
 	}})
 
 	ctx := context.Background()
@@ -269,32 +275,38 @@ func (s *Server) Routes() http.Handler {
 			http.Redirect(w, r, "/admin/periods", http.StatusFound)
 		})
 
-		// "No access" page for authenticated users without an active membership.
-		// Lives OUTSIDE the membership-gated group so RequireMembership can redirect here
-		// without a loop. Rendered by the pluggable NoMembershipHandler seam (OSS "stub").
-		r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
-			h, ok := onboarding.Get(s.noMembershipName)
-			if !ok {
-				http.Error(w, "no-membership handler not registered", http.StatusInternalServerError)
-				return
-			}
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			h.ServeNoMembership(w, r)
-		})
-
 		// Public control-plane mounts (SaaS): outer tier — session loaded, no auth gate, no CSRF
 		// (e.g. billing webhooks with their own signature verification). nil in OSS.
 		if s.publicRoutes != nil {
 			s.publicRoutes(r)
 		}
 
-		// Self-service join-request — authenticated but NOT membership-gated (the caller
-		// has no membership yet). Lives beside /no-access for the same reason.
+		// No-membership page + self-service join-request: authenticated but NOT
+		// membership-gated (the caller has no membership yet), so they live OUTSIDE the
+		// membership group — RequireMembership redirects here without a loop. csrf.Handler is
+		// on this group so serving GET /no-access sets the okr_csrf_token cookie that the
+		// join-request POST then validates (double-submit).
 		r.Group(func(r chi.Router) {
 			if !s.auth.Disabled() {
 				r.Use(auth.RequireAuthMiddleware)
 			}
 			r.Use(csrf.Handler)
+
+			r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
+				h, ok := onboarding.Get(s.noMembershipName)
+				if !ok {
+					http.Error(w, "no-membership handler not registered", http.StatusInternalServerError)
+					return
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				h.ServeNoMembership(w, r)
+			})
+
+			// /api/v1/me is global identity ("who am I"), not tenant data — available to any
+			// authenticated user, including one without a membership (so the no-access shell
+			// can render the shared header the same way every other page does).
+			r.Get("/api/v1/me", apiadmin.HandleMe)
+
 			onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
 			r.Post("/api/v1/onboarding/join-request", onboardH.HandleJoinRequest)
 
@@ -476,6 +488,8 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		r.Get("/api/v1/system/tenants", sysH.HandleListTenants)
 		r.Post("/api/v1/system/tenants/{id}/members", sysH.HandleAttachMember)
 		r.Get("/api/v1/system/tenants/{id}/members", sysH.HandleListMembers)
+		r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", sysH.HandleDenyMember)
+		r.Delete("/api/v1/system/tenants/{id}/members/{userID}", sysH.HandleRemoveMember)
 		r.Put("/api/v1/system/tenants/{id}/entitlements", sysH.HandleSetEntitlements)
 		r.Get("/api/v1/system/tenants/{id}/entitlements", sysH.HandleGetEntitlements)
 		r.Post("/api/v1/system/tenants/{id}/suspend", sysH.HandleSuspend)
@@ -483,13 +497,13 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		r.Get("/api/v1/system/users", sysH.HandleListUsers)
 		r.Get("/api/v1/system/settings", sysH.HandleGetSettings)
 		r.Put("/api/v1/system/settings/default-registration-tenant", sysH.HandleSetDefaultRegistrationTenant)
+		r.Put("/api/v1/system/settings/no-access-message", sysH.HandleSetNoAccessMessage)
 	})
 }
 
 func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
 	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
-	r.Get("/api/v1/me", apiadmin.HandleMe)
 	r.Get("/api/v1/config", apiconfig.New(s.settingsSvc).HandleConfig)
 	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 

@@ -12,18 +12,24 @@ import (
 // ProvisioningService is the cross-tenant control surface used by the system-admin
 // plane and (later) SaaS/service-desk control planes. It wraps the tenant and
 // membership repositories, invalidating the resolve-hot-path caches after each write.
+// grantRemover removes all of a user's grants in a tenant. *grants.GrantsCache satisfies it.
+type grantRemover interface {
+	RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
+}
+
 type ProvisioningService struct {
 	tenants     *tenants.TenantRepository
 	tenantCache *tenants.TenantCache
 	members     *memberships.MembershipRepository
 	memberCache *memberships.MembershipCache
 	settings    *SettingsService
+	grants      grantRemover
 }
 
 func NewProvisioningService(
 	tnRepo *tenants.TenantRepository, tenantCache *tenants.TenantCache,
 	memRepo *memberships.MembershipRepository, memberCache *memberships.MembershipCache,
-	settings *SettingsService,
+	settings *SettingsService, grants grantRemover,
 ) *ProvisioningService {
 	return &ProvisioningService{
 		tenants:     tnRepo,
@@ -31,6 +37,7 @@ func NewProvisioningService(
 		members:     memRepo,
 		memberCache: memberCache,
 		settings:    settings,
+		grants:      grants,
 	}
 }
 
@@ -67,6 +74,30 @@ func (p *ProvisioningService) SetEntitlements(ctx context.Context, tenantID int6
 			return err
 		}
 	}
+	return nil
+}
+
+// RemoveMember severs a user's access to a tenant: delete their grants there, then their
+// membership (any status). Idempotent.
+func (p *ProvisioningService) RemoveMember(ctx context.Context, tenantID, userID int64) error {
+	scope := domain.TenantScope{TenantID: tenantID}
+	if err := p.grants.RemoveAllUserGrants(ctx, scope, userID); err != nil {
+		return err
+	}
+	if err := p.members.Delete(ctx, scope, userID); err != nil {
+		return err
+	}
+	p.memberCache.InvalidateUser(userID)
+	return nil
+}
+
+// DenyMember removes a pending (requested) membership in a tenant.
+func (p *ProvisioningService) DenyMember(ctx context.Context, tenantID, userID int64) error {
+	scope := domain.TenantScope{TenantID: tenantID}
+	if err := p.members.DeleteRequested(ctx, scope, userID); err != nil {
+		return err
+	}
+	p.memberCache.InvalidateUser(userID)
 	return nil
 }
 

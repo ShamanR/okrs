@@ -4,9 +4,61 @@ import (
 	"context"
 	"testing"
 
+	"okrs/internal/domain"
 	"okrs/internal/store/testutil"
 	"okrs/internal/store/users"
 )
+
+func TestUserListByTenantScopedWithStatus(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := users.NewUserRepository(pool)
+
+	if _, err := pool.Exec(ctx, `INSERT INTO tenants (id, slug, name) OVERRIDING SYSTEM VALUE VALUES (2,'t2','T2')`); err != nil {
+		t.Fatalf("tenant 2: %v", err)
+	}
+	mk := func(key string) int64 {
+		var id int64
+		if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+			VALUES ($1,'github',$1,$1) RETURNING id`, key).Scan(&id); err != nil {
+			t.Fatalf("user %s: %v", key, err)
+		}
+		return id
+	}
+	exec := func(sql string, args ...any) {
+		if _, err := pool.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("exec: %v", err)
+		}
+	}
+	memberA := mk("a") // active in tenant 1
+	reqB := mk("b")    // requested in tenant 1
+	otherC := mk("c")  // member of tenant 2 only
+	exec(`INSERT INTO memberships (user_id, tenant_id, role, status) VALUES ($1,1,'admin','active')`, memberA)
+	exec(`INSERT INTO memberships (user_id, tenant_id, role, status) VALUES ($1,1,'user','requested')`, reqB)
+	exec(`INSERT INTO memberships (user_id, tenant_id, role, status) VALUES ($1,2,'user','active')`, otherC)
+
+	got, err := r.ListByTenant(ctx, domain.TenantScope{TenantID: 1})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	byID := map[int64]users.TenantUser{}
+	for _, tu := range got {
+		byID[tu.User.ID] = tu
+	}
+	if _, leaked := byID[otherC]; leaked {
+		t.Fatalf("tenant-2-only user must not appear under tenant 1")
+	}
+	if byID[memberA].Status != domain.MembershipActive || byID[memberA].Role != domain.RoleAdmin {
+		t.Fatalf("memberA = %+v", byID[memberA])
+	}
+	if byID[reqB].Status != domain.MembershipRequested {
+		t.Fatalf("reqB status = %q, want requested", byID[reqB].Status)
+	}
+	if byID[memberA].User.DisplayName != "a" {
+		t.Fatalf("user fields not loaded: %+v", byID[memberA].User)
+	}
+}
 
 func TestUpsertUserIdempotency(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)

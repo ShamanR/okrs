@@ -61,6 +61,12 @@ func (r *GrantRepository) RemoveUserGrant(ctx context.Context, scope domain.Tena
 	return err
 }
 
+// RemoveAllUserGrants deletes every hierarchy grant a user has within the tenant.
+func (r *GrantRepository) RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM user_hierarchy_grants WHERE user_id = $1 AND tenant_id = $2`, userID, scope.TenantID)
+	return err
+}
+
 // listAllGrants loads the full user_hierarchy_grants table as a map[userID][]HierarchyGrant.
 // Grants for all tenants are loaded; consumers filter by tenant via the grant's TenantID.
 func (r *GrantRepository) listAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
@@ -116,6 +122,7 @@ type grantsBackend interface {
 	loadAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error)
 	addUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
 	removeUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error
+	removeAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
 }
 
@@ -130,6 +137,9 @@ func (b *storeGrantsBackend) addUserGrant(ctx context.Context, scope domain.Tena
 }
 func (b *storeGrantsBackend) removeUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error {
 	return b.r.RemoveUserGrant(ctx, scope, userID, teamID)
+}
+func (b *storeGrantsBackend) removeAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	return b.r.RemoveAllUserGrants(ctx, scope, userID)
 }
 func (b *storeGrantsBackend) ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error) {
 	return b.r.ListDescendantTeamIDs(ctx, scope, rootIDs)
@@ -182,6 +192,15 @@ func (c *GrantsCache) ListUserGrants(ctx context.Context, scope domain.TenantSco
 // AddUserGrant writes to the backing store and invalidates the cache.
 func (c *GrantsCache) AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error {
 	if err := c.backend.addUserGrant(ctx, scope, userID, teamID, grantedByUserID); err != nil {
+		return err
+	}
+	c.invalidate()
+	return nil
+}
+
+// RemoveAllUserGrants removes every grant a user has in the tenant and invalidates the cache.
+func (c *GrantsCache) RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	if err := c.backend.removeAllUserGrants(ctx, scope, userID); err != nil {
 		return err
 	}
 	c.invalidate()

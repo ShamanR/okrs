@@ -48,6 +48,10 @@ func (f *fakeGrantsBackend) removeUserGrant(_ context.Context, _ domain.TenantSc
 	f.data[userID] = filtered
 	return nil
 }
+func (f *fakeGrantsBackend) removeAllUserGrants(_ context.Context, _ domain.TenantScope, userID int64) error {
+	delete(f.data, userID)
+	return nil
+}
 func (f *fakeGrantsBackend) ListDescendantTeamIDs(_ context.Context, _ domain.TenantScope, rootIDs []int64) ([]int64, error) {
 	return rootIDs, nil
 }

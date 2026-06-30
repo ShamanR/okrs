@@ -13,6 +13,7 @@ async function api(url, opts={}) {
 const get  = (u)    => api(u);
 const post = (u, b) => api(u, {method:'POST', headers:csrfHeaders(), body: b===undefined?undefined:JSON.stringify(b)});
 const put  = (u, b) => api(u, {method:'PUT',  headers:csrfHeaders(), body: JSON.stringify(b)});
+const del  = (u)    => api(u, {method:'DELETE', headers:csrfHeaders()});
 async function errMsg(res){ try { const j = await res.json(); return j.error || ('Ошибка '+res.status); } catch { return 'Ошибка '+res.status; } }
 
 const C = { card:'#fff', border:'#e5e7eb', accent:'#2563eb', danger:'#b91c1c', ok:'#047857', muted:'#6b7280' };
@@ -62,6 +63,11 @@ function MembersSection({tenants, users}) {
     if (res.status===201){ setUid(''); setQ(''); loadMembers(tid); } else setErr(await errMsg(res));
   };
   const filtered = (users||[]).filter(u=>((u.display_name||'')+' '+(u.email||'')).toLowerCase().includes(q.toLowerCase())).slice(0,50);
+  // Requesters first, then active members.
+  const ordered = [...members].sort((a,b)=>(a.status==='requested'?0:1)-(b.status==='requested'?0:1));
+  const connect = async (m)=>{ setErr(''); const res=await post(`/api/v1/system/tenants/${tid}/members`, {user_id:m.user_id, role:m.role||'user'}); if(res.status===201) loadMembers(tid); else setErr(await errMsg(res)); };
+  const deny = async (m)=>{ setErr(''); const res=await post(`/api/v1/system/tenants/${tid}/members/${m.user_id}/deny`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
+  const remove = async (m)=>{ if(!confirm(`Удалить ${m.display_name||m.email||('пользователя #'+m.user_id)} из тенанта?`)) return; setErr(''); const res=await del(`/api/v1/system/tenants/${tid}/members/${m.user_id}`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
   return <div style={box}>
     <h2 style={{fontSize:15,marginBottom:10}}>Участники</h2>
     <select style={inp} value={tid} onChange={e=>setTid(e.target.value)}>
@@ -69,10 +75,16 @@ function MembersSection({tenants, users}) {
       {(tenants||[]).map(t=><option key={t.id} value={t.id}>{t.name} ({t.slug})</option>)}
     </select>
     {tid && <table style={{width:'100%',borderCollapse:'collapse',marginTop:12}}>
-      <thead><tr>{['Имя','Email','Роль','Статус'].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-      <tbody>{members.map(m=><tr key={m.user_id}>
+      <thead><tr>{['Имя','Email','Роль','Статус',''].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+      <tbody>{ordered.map(m=><tr key={m.user_id} style={m.status==='requested'?{background:'#fffbeb'}:null}>
         <td style={{padding:'6px 8px'}}>{m.display_name}</td><td style={{padding:'6px 8px'}}>{m.email}</td>
         <td style={{padding:'6px 8px'}}>{m.role}</td><td style={{padding:'6px 8px',color:m.status==='requested'?C.muted:C.ok}}>{m.status}</td>
+        <td style={{padding:'6px 8px',textAlign:'right'}}>{m.status==='requested'
+          ? <span>
+              <button style={{...btn,background:C.ok,marginRight:6}} onClick={()=>connect(m)}>Подключить</button>
+              <button style={{...btn,background:C.muted}} onClick={()=>deny(m)}>Отклонить</button>
+            </span>
+          : <button style={{...btn,background:C.danger}} onClick={()=>remove(m)}>Удалить</button>}</td>
       </tr>)}</tbody>
     </table>}
     {tid && <form onSubmit={attach} style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap',alignItems:'center'}}>
@@ -143,6 +155,22 @@ function EntitlementsSection({tenants}) {
   </div>;
 }
 
+function MessagesSection() {
+  const [msg, setMsg] = useState('');
+  const [saved, setSaved] = useState('');
+  useEffect(()=>{ (async()=>{ const r=await get('/api/v1/system/settings'); if(r&&r.ok){ const j=await r.json(); setMsg(j.no_access_message||''); } })(); },[]);
+  const save = async ()=>{ setSaved(''); const r=await put('/api/v1/system/settings/no-access-message', {message: msg}); setSaved(r.status===204?'Сохранено':await errMsg(r)); };
+  return <div style={box}>
+    <h2 style={{fontSize:15,marginBottom:6}}>Сообщение «нет доступа»</h2>
+    <div style={{color:C.muted,marginBottom:10}}>Markdown. Показывается на странице /no-access. Пусто → текст по умолчанию.</div>
+    <MarkdownEditor value={msg} onChange={setMsg} rows={6}/>
+    <div style={{marginTop:8,display:'flex',gap:8,alignItems:'center'}}>
+      <button style={btn} onClick={save}>Сохранить</button>
+      {saved && <span style={{color:saved==='Сохранено'?C.ok:C.danger}}>{saved}</span>}
+    </div>
+  </div>;
+}
+
 function App() {
   const [tenants,setTenants]=useState([]); const [users,setUsers]=useState([]); const [tab,setTab]=useState('tenants');
   const reloadTenants = useCallback(async()=>{ const res=await get('/api/v1/system/tenants'); if(res&&res.ok) setTenants(await res.json()||[]); },[]);
@@ -151,12 +179,13 @@ function App() {
   return <div style={{maxWidth:920,margin:'0 auto',padding:'24px 16px'}}>
     <h1 style={{fontSize:20,marginBottom:16}}>Система · Управление</h1>
     <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-      {tabBtn('tenants','Тенанты')}{tabBtn('members','Участники')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}
+      {tabBtn('tenants','Тенанты')}{tabBtn('members','Участники')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}{tabBtn('messages','Сообщения')}
     </div>
     {tab==='tenants' && <TenantsSection tenants={tenants} reload={reloadTenants}/>}
     {tab==='members' && <MembersSection tenants={tenants} users={users}/>}
     {tab==='registration' && <RegistrationSection tenants={tenants}/>}
     {tab==='entitlements' && <EntitlementsSection tenants={tenants}/>}
+    {tab==='messages' && <MessagesSection/>}
   </div>;
 }
 

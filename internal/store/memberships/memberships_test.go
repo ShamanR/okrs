@@ -8,6 +8,41 @@ import (
 	"okrs/internal/store/testutil"
 )
 
+func TestMembershipDeleteAnyStatusScoped(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewMembershipRepository(pool)
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:d','github','d','D') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO tenants (id, slug, name) OVERRIDING SYSTEM VALUE VALUES (2,'t2','T2')`); err != nil {
+		t.Fatalf("tenant 2: %v", err)
+	}
+	if _, err := repo.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive}); err != nil {
+		t.Fatalf("seed t1: %v", err)
+	}
+	if _, err := repo.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 2, Role: domain.RoleUser, Status: domain.MembershipActive}); err != nil {
+		t.Fatalf("seed t2: %v", err)
+	}
+
+	if err := repo.Delete(ctx, domain.TenantScope{TenantID: 1}, uid); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := repo.Get(ctx, uid, 1); err != ErrNotFound {
+		t.Fatalf("t1 membership should be gone, got %v", err)
+	}
+	if _, err := repo.Get(ctx, uid, 2); err != nil {
+		t.Fatalf("t2 membership must survive: %v", err)
+	}
+	if err := repo.Delete(ctx, domain.TenantScope{TenantID: 1}, uid); err != nil {
+		t.Fatalf("second delete should be a no-op: %v", err)
+	}
+}
+
 func TestListByTenantReturnsAllStatuses(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

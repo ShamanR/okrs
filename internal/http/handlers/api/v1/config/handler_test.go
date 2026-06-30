@@ -38,6 +38,21 @@ func TestHandleConfigReturnsDocumentationURL(t *testing.T) {
 	}
 }
 
+func TestHandleConfigEmptyHierarchyMessage(t *testing.T) {
+	raw, _ := json.Marshal("ask ops")
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"empty_hierarchy_message": raw}})
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+	var got struct {
+		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.EmptyHierarchyMessage != "ask ops" {
+		t.Fatalf("empty_hierarchy_message = %q", got.EmptyHierarchyMessage)
+	}
+}
+
 func TestHandleConfigEmptyWhenUnset(t *testing.T) {
 	h := New(&fakeSettings{data: map[string]json.RawMessage{}})
 
