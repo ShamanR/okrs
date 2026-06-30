@@ -10,6 +10,7 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/entitlements"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	apiconfig "okrs/internal/http/handlers/api/v1/config"
@@ -41,10 +42,6 @@ import (
 
 //go:embed templates/*.html
 var templatesFS embed.FS
-
-// noMembershipHandlerName selects the registered onboarding.NoMembershipHandler. OSS uses
-// the "stub" page; a SaaS build registers and selects its own.
-const noMembershipHandlerName = "stub"
 
 func parseTemplates() (*template.Template, error) {
 	return template.New("").Funcs(template.FuncMap{
@@ -93,9 +90,29 @@ type Server struct {
 	settingsSvc     *service.SettingsService
 	provisioning    *service.ProvisioningService
 	onboarding      *service.OnboardingService
+	entitlements     entitlements.Entitlements
+	noMembershipName string
+	publicRoutes     func(chi.Router)
+	authedRoutes     func(chi.Router)
+	tenantRoutes     func(chi.Router)
 }
 
-func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager) (*Server, error) {
+// Options parameterizes the server with injectable seams. Each zero value falls back to the
+// OSS default, so NewServer(..., Options{}) reproduces today's behaviour.
+type Options struct {
+	// Resolver, if nil, defaults to a session-only resolver built from the tenant/membership caches.
+	Resolver *auth.TenantResolver
+	// Entitlements, if nil, defaults to entitlements.UnlimitedEntitlements{}.
+	Entitlements entitlements.Entitlements
+	// NoMembershipName selects the registered onboarding.NoMembershipHandler; "" → "stub".
+	NoMembershipName string
+	// Route-mount hooks for an embedded control-plane (SaaS). Each nil → no extra routes.
+	PublicRoutes func(chi.Router) // outer: session loaded, no auth gate, no CSRF (webhooks)
+	AuthedRoutes func(chi.Router) // authed, not membership-gated (create-organization)
+	TenantRoutes func(chi.Router) // membership-gated, tenant-scoped (billing UI)
+}
+
+func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager, opts Options) (*Server, error) {
 	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, err
@@ -151,6 +168,19 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
 	)
 
+	resolver := opts.Resolver
+	if resolver == nil {
+		resolver = auth.NewTenantResolver(auth.NewSessionStrategy(tenantCache, membershipCache))
+	}
+	ent := opts.Entitlements
+	if ent == nil {
+		ent = entitlements.UnlimitedEntitlements{}
+	}
+	noMembership := opts.NoMembershipName
+	if noMembership == "" {
+		noMembership = "stub"
+	}
+
 	return &Server{
 		store:       st,
 		logger:      logger,
@@ -161,18 +191,24 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,
 		hcCache:     hcCache,
-		tenantResolver:  auth.NewTenantResolver(tenantCache, membershipCache),
+		tenantResolver:  resolver,
 		tenantCache:     tenantCache,
 		membershipCache: membershipCache,
 		settingsSvc:     settingsSvc,
 		provisioning:    provisioning,
 		onboarding:      onboardingSvc,
+		entitlements:     ent,
+		noMembershipName: noMembership,
+		publicRoutes:     opts.PublicRoutes,
+		authedRoutes:     opts.AuthedRoutes,
+		tenantRoutes:     opts.TenantRoutes,
 	}, nil
 }
 
 func (s *Server) Routes() http.Handler {
-	// OSS no-membership page (pluggable seam): renders the join-request template.
-	onboarding.Register(noMembershipHandlerName, onboarding.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
+	// OSS no-membership page (pluggable seam): the box ships the "stub" page; a SaaS build
+	// registers its own and selects it via Options.NoMembershipName.
+	onboarding.Register("stub", onboarding.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
 		_ = s.tmpl.ExecuteTemplate(w, "no-membership", nil)
 	}})
 
@@ -237,7 +273,7 @@ func (s *Server) Routes() http.Handler {
 		// Lives OUTSIDE the membership-gated group so RequireMembership can redirect here
 		// without a loop. Rendered by the pluggable NoMembershipHandler seam (OSS "stub").
 		r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
-			h, ok := onboarding.Get(noMembershipHandlerName)
+			h, ok := onboarding.Get(s.noMembershipName)
 			if !ok {
 				http.Error(w, "no-membership handler not registered", http.StatusInternalServerError)
 				return
@@ -245,6 +281,12 @@ func (s *Server) Routes() http.Handler {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			h.ServeNoMembership(w, r)
 		})
+
+		// Public control-plane mounts (SaaS): outer tier — session loaded, no auth gate, no CSRF
+		// (e.g. billing webhooks with their own signature verification). nil in OSS.
+		if s.publicRoutes != nil {
+			s.publicRoutes(r)
+		}
 
 		// Self-service join-request — authenticated but NOT membership-gated (the caller
 		// has no membership yet). Lives beside /no-access for the same reason.
@@ -255,6 +297,12 @@ func (s *Server) Routes() http.Handler {
 			r.Use(csrf.Handler)
 			onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
 			r.Post("/api/v1/onboarding/join-request", onboardH.HandleJoinRequest)
+
+			// Authed control-plane mounts (SaaS): authed but not membership-gated
+			// (e.g. self-service "create organization"). nil in OSS.
+			if s.authedRoutes != nil {
+				s.authedRoutes(r)
+			}
 		})
 
 		// System-admin plane — tenant-less, so it lives OUTSIDE the membership-gated
@@ -280,6 +328,11 @@ func (s *Server) Routes() http.Handler {
 			s.registerWebRoutes(r, deps)
 			s.registerApiRoutes(r)
 			s.registerAdminRoutes(r, deps)
+
+			// Tenant-scoped control-plane mounts (SaaS): membership-gated (e.g. billing UI). nil in OSS.
+			if s.tenantRoutes != nil {
+				s.tenantRoutes(r)
+			}
 		})
 	})
 
@@ -399,16 +452,21 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddleware) {
-	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants)
+	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants, s.store.Memberships)
 
 	r.Group(func(r chi.Router) {
+		// Authorization is mandatory for the whole system plane in EVERY mode: the
+		// RequireSystemAdmin gate always applies (no AUTH_MODE=disabled bypass). RequireAuth is
+		// only about loading/redirecting the session and is skipped in disabled mode; the gate
+		// still rejects anonymous-local (not a system-admin), so disabled-mode access needs a
+		// provisioning token.
 		if !s.auth.Disabled() {
 			r.Use(auth.RequireAuthMiddleware)
 		}
 		r.Use(auth.RequireSystemAdminMiddleware(s.auth.Config().ProvisioningToken))
 		r.Use(csrf.Handler)
 
-		// System-admin shell (minimal; powered by the /api/v1/system/* endpoints below).
+		// System-admin shell (React panel; powered by the /api/v1/system/* endpoints below).
 		r.Get("/system", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = s.tmpl.ExecuteTemplate(w, "system-shell", nil)
@@ -417,10 +475,13 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		r.Post("/api/v1/system/tenants", sysH.HandleCreateTenant)
 		r.Get("/api/v1/system/tenants", sysH.HandleListTenants)
 		r.Post("/api/v1/system/tenants/{id}/members", sysH.HandleAttachMember)
+		r.Get("/api/v1/system/tenants/{id}/members", sysH.HandleListMembers)
 		r.Put("/api/v1/system/tenants/{id}/entitlements", sysH.HandleSetEntitlements)
+		r.Get("/api/v1/system/tenants/{id}/entitlements", sysH.HandleGetEntitlements)
 		r.Post("/api/v1/system/tenants/{id}/suspend", sysH.HandleSuspend)
 		r.Post("/api/v1/system/tenants/{id}/restore", sysH.HandleRestore)
 		r.Get("/api/v1/system/users", sysH.HandleListUsers)
+		r.Get("/api/v1/system/settings", sysH.HandleGetSettings)
 		r.Put("/api/v1/system/settings/default-registration-tenant", sysH.HandleSetDefaultRegistrationTenant)
 	})
 }

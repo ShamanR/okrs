@@ -44,7 +44,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc,
 	)
-	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo)
+	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo, memRepo)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -59,8 +59,12 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	r.Post("/api/v1/system/tenants", h.HandleCreateTenant)
 	r.Get("/api/v1/system/tenants", h.HandleListTenants)
 	r.Post("/api/v1/system/tenants/{id}/members", h.HandleAttachMember)
+	r.Get("/api/v1/system/tenants/{id}/members", h.HandleListMembers)
 	r.Put("/api/v1/system/tenants/{id}/entitlements", h.HandleSetEntitlements)
+	r.Get("/api/v1/system/tenants/{id}/entitlements", h.HandleGetEntitlements)
 	r.Post("/api/v1/system/tenants/{id}/suspend", h.HandleSuspend)
+	r.Get("/api/v1/system/settings", h.HandleGetSettings)
+	r.Put("/api/v1/system/settings/default-registration-tenant", h.HandleSetDefaultRegistrationTenant)
 	return r, tnRepo, userRepo
 }
 
@@ -104,6 +108,76 @@ func TestSystemCreateTenantAndAttachMember(t *testing.T) {
 	got, _ := tnRepo.GetByID(ctx, created.ID)
 	if got.Status != domain.TenantSuspended {
 		t.Fatalf("status = %q, want suspended", got.Status)
+	}
+}
+
+func TestSystemListMembersAndEntitlements(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants",
+		strings.NewReader(`{"name":"Acme","slug":"acme"}`)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: %d (%s)", w.Code, w.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&created)
+	id := itoa(created.ID)
+
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants/"+id+"/members",
+		strings.NewReader(`{"user_id":1,"role":"admin"}`)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("attach: %d (%s)", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/tenants/"+id+"/entitlements",
+		strings.NewReader(`{"sso":true}`)))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("set entitlements: %d (%s)", w.Code, w.Body.String())
+	}
+
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/system/tenants/"+id+"/members", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("members: %d", w.Code)
+	}
+	var members []map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&members)
+	if len(members) != 1 || members[0]["role"] != "admin" || members[0]["status"] != "active" {
+		t.Fatalf("members = %v", members)
+	}
+
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/system/tenants/"+id+"/entitlements", nil))
+	var ent map[string]any
+	_ = json.NewDecoder(w.Body).Decode(&ent)
+	if ent["sso"] != true {
+		t.Fatalf("entitlements = %v", ent)
+	}
+}
+
+func TestSystemGetSettings(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/settings/default-registration-tenant",
+		strings.NewReader(`{"tenant_id":1}`)))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("set default: %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/system/settings", nil))
+	var got struct {
+		DefaultRegistrationTenantID *int64 `json:"default_registration_tenant_id"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.DefaultRegistrationTenantID == nil || *got.DefaultRegistrationTenantID != 1 {
+		t.Fatalf("default tenant = %v", got.DefaultRegistrationTenantID)
 	}
 }
 

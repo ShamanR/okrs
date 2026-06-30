@@ -11,6 +11,37 @@ import (
 	"okrs/internal/store/testutil"
 )
 
+func TestTenantEntitlementsStripsPrefix(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	svc := service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	scope := domain.TenantScope{TenantID: 1}
+
+	if err := svc.SetTenantEntitlement(ctx, scope, "entitlement.sso", true); err != nil {
+		t.Fatalf("set entitlement: %v", err)
+	}
+	if err := svc.SetTenantProduct(ctx, scope, "documentation_url", "https://x"); err != nil {
+		t.Fatalf("set product: %v", err)
+	}
+
+	ent, err := svc.TenantEntitlements(ctx, scope)
+	if err != nil {
+		t.Fatalf("entitlements: %v", err)
+	}
+	if _, ok := ent["sso"]; !ok {
+		t.Fatalf("expected stripped key 'sso', got %v", ent)
+	}
+	if _, leaked := ent["documentation_url"]; leaked {
+		t.Fatalf("product key leaked into entitlements: %v", ent)
+	}
+}
+
 func TestSettingsServiceWriteAuthority(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

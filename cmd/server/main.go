@@ -14,12 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"okrs/app"
 	"okrs/internal/auth"
-	"okrs/internal/entitlements"
 	"okrs/internal/domain"
-	httpserver "okrs/internal/http"
+	"okrs/internal/entitlements"
 	"okrs/internal/store"
-	"okrs/internal/store/grants"
 	"okrs/internal/store/periods"
 
 	// Register OAuth2 providers via side-effect imports.
@@ -96,30 +95,30 @@ func main() {
 		logger.Info("seed data created")
 	}
 
-	grantsCache := grants.NewGrantsCache(pgstore.Grants)
-
 	// OSS feature-gating: every feature is on, every limit is unlimited. A SaaS
 	// build registers a billing-backed implementation under a different name.
 	entitlements.Register("unlimited", func() entitlements.Entitlements { return entitlements.UnlimitedEntitlements{} })
 
 	authCfg := loadAuthConfig()
-	authMgr, err := auth.NewManager(authCfg, pgstore)
-	if err != nil {
-		logger.Error("failed to init auth", slog.String("error", err.Error()))
-		os.Exit(1)
-	}
 	logger.Info("auth mode", slog.String("mode", string(authCfg.Mode)),
 		slog.Any("providers", authCfg.EnabledProviders))
 
-	server, err := httpserver.NewServer(pgstore, grantsCache, logger, zone, authMgr)
+	// Assemble the box via the public façade on OSS defaults (session resolver, unlimited
+	// entitlements, stub no-membership, no control-plane mounts).
+	a, err := app.New(app.Config{
+		Pool:   pgstore.DB,
+		Logger: logger,
+		Zone:   zone,
+		Auth:   authCfg,
+	})
 	if err != nil {
-		logger.Error("failed to start", slog.String("error", err.Error()))
+		logger.Error("failed to assemble app", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
 
 	addr := fmt.Sprintf(":%s", port)
 	logger.Info("listening", slog.String("addr", addr))
-	if err := http.ListenAndServe(addr, server.Routes()); err != nil {
+	if err := http.ListenAndServe(addr, a.Handler); err != nil {
 		logger.Error("server stopped", slog.String("error", err.Error()))
 		os.Exit(1)
 	}

@@ -22,42 +22,28 @@ type MembershipLookup interface {
 	ListByUser(ctx context.Context, userID int64) ([]domain.Membership, error)
 }
 
-// TenantResolver resolves the active tenant for a request (SessionStrategy).
-// Subdomain/email-domain strategies are added later (premium) without changing this core.
+// TenantResolver runs an ordered list of strategies; the first that resolves wins.
+// SubdomainStrategy and friends are added later (premium) by registering more strategies,
+// without changing this core.
 type TenantResolver struct {
-	tenants TenantLookup
-	members MembershipLookup
+	strategies []ResolveStrategy
 }
 
-func NewTenantResolver(t TenantLookup, m MembershipLookup) *TenantResolver {
-	return &TenantResolver{tenants: t, members: m}
+func NewTenantResolver(strategies ...ResolveStrategy) *TenantResolver {
+	return &TenantResolver{strategies: strategies}
 }
 
-// Resolve returns the active tenant and the user's role in it.
-// Preference: session.ActiveTenantID (if the user is an active member); otherwise the
-// first active membership. ErrNoMembership if the user has none.
+// Resolve returns the active tenant and the user's role in it, trying each strategy in order.
+// ErrNoMembership if none resolves.
 func (r *TenantResolver) Resolve(ctx context.Context, user *domain.User, sess *domain.AuthSession) (*domain.Tenant, domain.Role, error) {
-	memberships, err := r.members.ListByUser(ctx, user.ID)
-	if err != nil {
-		return nil, "", err
-	}
-	if len(memberships) == 0 {
-		return nil, "", ErrNoMembership
-	}
-
-	pick := memberships[0]
-	if sess != nil && sess.ActiveTenantID != nil {
-		for _, m := range memberships {
-			if m.TenantID == *sess.ActiveTenantID {
-				pick = m
-				break
-			}
+	for _, st := range r.strategies {
+		tn, role, ok, err := st.Resolve(ctx, user, sess)
+		if err != nil {
+			return nil, "", err
+		}
+		if ok {
+			return tn, role, nil
 		}
 	}
-
-	tn, err := r.tenants.GetByID(ctx, pick.TenantID)
-	if err != nil {
-		return nil, "", err
-	}
-	return tn, pick.Role, nil
+	return nil, "", ErrNoMembership
 }

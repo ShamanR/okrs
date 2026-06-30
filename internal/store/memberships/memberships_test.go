@@ -8,6 +8,44 @@ import (
 	"okrs/internal/store/testutil"
 )
 
+func TestListByTenantReturnsAllStatuses(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewMembershipRepository(pool)
+
+	var active, pending int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:a','github','a','Active') RETURNING id`).Scan(&active); err != nil {
+		t.Fatalf("seed active: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:p','github','p','Pending') RETURNING id`).Scan(&pending); err != nil {
+		t.Fatalf("seed pending: %v", err)
+	}
+	if _, err := repo.Upsert(ctx, domain.Membership{UserID: active, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive}); err != nil {
+		t.Fatalf("upsert active: %v", err)
+	}
+	if _, err := repo.Upsert(ctx, domain.Membership{UserID: pending, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipRequested}); err != nil {
+		t.Fatalf("upsert pending: %v", err)
+	}
+
+	got, err := repo.ListByTenant(ctx, domain.TenantScope{TenantID: 1})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	byUser := map[int64]AccessRequest{}
+	for _, a := range got {
+		byUser[a.UserID] = a
+	}
+	if byUser[active].Status != domain.MembershipActive || byUser[active].Role != domain.RoleAdmin {
+		t.Fatalf("active = %+v", byUser[active])
+	}
+	if byUser[pending].Status != domain.MembershipRequested {
+		t.Fatalf("pending = %+v", byUser[pending])
+	}
+}
+
 func TestListAccessRequests(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

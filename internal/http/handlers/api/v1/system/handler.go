@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"okrs/internal/domain"
+	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
 
 	"github.com/go-chi/chi/v5"
@@ -25,9 +26,16 @@ type Provisioner interface {
 	Restore(ctx context.Context, tenantID int64) error
 }
 
-// SystemSettings writes global instance settings; *service.SettingsService satisfies it.
+// SystemSettings reads/writes instance + tenant settings; *service.SettingsService satisfies it.
 type SystemSettings interface {
 	SystemSet(ctx context.Context, key string, value any) error
+	SystemGet(ctx context.Context, key string) (json.RawMessage, error)
+	TenantEntitlements(ctx context.Context, scope domain.TenantScope) (map[string]json.RawMessage, error)
+}
+
+// MemberLister lists a tenant's members; *store.MembershipRepository satisfies it.
+type MemberLister interface {
+	ListByTenant(ctx context.Context, scope domain.TenantScope) ([]memberships.AccessRequest, error)
 }
 
 // UserLister returns the global (cross-tenant) user list; *store.UserRepository satisfies it.
@@ -45,10 +53,11 @@ type Handler struct {
 	settings SystemSettings
 	users    UserLister
 	tenants  TenantLister
+	members  MemberLister
 }
 
-func New(prov Provisioner, settings SystemSettings, users UserLister, tenantsList TenantLister) *Handler {
-	return &Handler{prov: prov, settings: settings, users: users, tenants: tenantsList}
+func New(prov Provisioner, settings SystemSettings, users UserLister, tenantsList TenantLister, members MemberLister) *Handler {
+	return &Handler{prov: prov, settings: settings, users: users, tenants: tenantsList, members: members}
 }
 
 type tenantDTO struct {
@@ -220,6 +229,58 @@ func (h *Handler) HandleSetDefaultRegistrationTenant(w http.ResponseWriter, r *h
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// GET /api/v1/system/tenants/{id}/members
+func (h *Handler) HandleListMembers(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	list, err := h.members.ListByTenant(r.Context(), domain.TenantScope{TenantID: id})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, m := range list {
+		out = append(out, map[string]any{
+			"user_id": m.UserID, "display_name": m.DisplayName, "email": m.Email,
+			"role": string(m.Role), "status": string(m.Status),
+		})
+	}
+	writeJSON(w, out)
+}
+
+// GET /api/v1/system/tenants/{id}/entitlements
+func (h *Handler) HandleGetEntitlements(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	ent, err := h.settings.TenantEntitlements(r.Context(), domain.TenantScope{TenantID: id})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if ent == nil {
+		ent = map[string]json.RawMessage{}
+	}
+	writeJSON(w, ent)
+}
+
+// GET /api/v1/system/settings
+func (h *Handler) HandleGetSettings(w http.ResponseWriter, r *http.Request) {
+	raw, err := h.settings.SystemGet(r.Context(), "default_registration_tenant_id")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	var tenantID *int64
+	if raw != nil {
+		_ = json.Unmarshal(raw, &tenantID)
+	}
+	writeJSON(w, map[string]any{"default_registration_tenant_id": tenantID})
 }
 
 func pathID(w http.ResponseWriter, r *http.Request) (int64, bool) {

@@ -13,12 +13,13 @@ import (
 
 var ErrNotFound = errors.New("memberships: not found")
 
-// AccessRequest is the read model for the tenant-admin "join requests" queue.
+// AccessRequest is the read model for member/join-request listings.
 type AccessRequest struct {
 	UserID      int64
 	DisplayName string
 	Email       string
 	Role        domain.Role
+	Status      domain.MembershipStatus
 	CreatedAt   time.Time
 }
 
@@ -92,7 +93,7 @@ func (r *MembershipRepository) ListByUser(ctx context.Context, userID int64) ([]
 // to users for display in the tenant-admin queue.
 func (r *MembershipRepository) ListAccessRequests(ctx context.Context, scope domain.TenantScope) ([]AccessRequest, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT m.user_id, u.display_name, COALESCE(u.email,''), m.role, m.created_at
+		SELECT m.user_id, u.display_name, COALESCE(u.email,''), m.role, m.status, m.created_at
 		FROM memberships m JOIN users u ON u.id = m.user_id
 		WHERE m.tenant_id = $1 AND m.status = 'requested'
 		ORDER BY m.created_at`, scope.TenantID)
@@ -103,7 +104,30 @@ func (r *MembershipRepository) ListAccessRequests(ctx context.Context, scope dom
 	var out []AccessRequest
 	for rows.Next() {
 		var a AccessRequest
-		if err := rows.Scan(&a.UserID, &a.DisplayName, &a.Email, &a.Role, &a.CreatedAt); err != nil {
+		if err := rows.Scan(&a.UserID, &a.DisplayName, &a.Email, &a.Role, &a.Status, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ListByTenant returns every membership of the tenant (all statuses) joined to users,
+// ordered by display name — the read model for the system-admin members view.
+func (r *MembershipRepository) ListByTenant(ctx context.Context, scope domain.TenantScope) ([]AccessRequest, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT m.user_id, u.display_name, COALESCE(u.email,''), m.role, m.status, m.created_at
+		FROM memberships m JOIN users u ON u.id = m.user_id
+		WHERE m.tenant_id = $1
+		ORDER BY u.display_name`, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AccessRequest
+	for rows.Next() {
+		var a AccessRequest
+		if err := rows.Scan(&a.UserID, &a.DisplayName, &a.Email, &a.Role, &a.Status, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)

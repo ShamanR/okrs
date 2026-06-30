@@ -24,9 +24,16 @@ AI должен сохранять разделение ответственно
 - `internal/service` — доменные сценарии и orchestration; использует репозитории через интерфейсы (`TeamRepo`, `GoalRepo`, `KRRepo` и т.д.); инициализируется через `service.Deps`;
 - `internal/auth` — auth manager, middleware chain, provider interface, policy evaluator;
 - `internal/auth/providers/{name}` — реализации провайдеров; каждый провайдер — изолированный пакет;
-- `internal/http` — SSR handlers и templates;
+- `internal/http` — SSR handlers и templates; `NewServer(..., Options)` параметризуется
+  инжектируемыми seam'ами (resolver, `Entitlements`, имя no-membership-страницы, mount'ы
+  control-plane роутов по уровням);
 - `internal/http/handlers/api/v1` — API-контракт для JSON/form-data;
-- `internal/http/handlers/web/admin` — admin SSR handlers.
+- `internal/http/handlers/web/admin` — admin SSR handlers;
+- `app` (public, **корень модуля**) — фасад: `app.New(Config) (*App, error)` собирает приложение
+  из `Config` + seam'ов, выбираемых по имени из реестров (`auth.RegisterResolveStrategy`,
+  `entitlements.Register`, `onboarding.Register`) и mount-хуков `PublicRoutes`/`AuthedRoutes`/
+  `TenantRoutes` (по одному на middleware-уровень). Единственный публичный пакет; всё остальное —
+  `internal/`. `cmd/server` — тонкий OSS-entrypoint поверх `app`.
 
 ## Repository layer
 
@@ -81,6 +88,26 @@ import (
 - в контекст запроса инжектируется системный пользователь `anonymous-local` (IsAdmin=true);
 - `/admin/*` доступен всем;
 - комментарии пишутся от `anonymous-local`.
+
+## OSS / SaaS split
+
+Коробка (`okrs`, public) самодостаточна и мультитенантна. Расширяется через registry-seam'ы,
+выбираемые по имени в `app.Config`:
+
+- `auth.RegisterResolveStrategy(name, factory)` — стратегии резолва тенанта (OSS: `session`;
+  премиум `subdomain` — Фаза 1, регистрируется blank-import'ом, не трогая core);
+- `entitlements.Register(name, factory)` — реализация `Entitlements` (OSS: `unlimited`);
+- `onboarding.Register(name, handler)` — no-membership-страница (OSS: `stub`);
+- `auth.Register(name, factory)` — OAuth-провайдеры (blank-import).
+
+Приватный `okrs-saas` импортирует `okrs/app`, blank-import'ит пакеты с SaaS-регистрациями,
+выбирает их по имени в `Config` и монтирует control-plane роуты в **один процесс** через
+`PublicRoutes`/`AuthedRoutes`/`TenantRoutes` (по одному на middleware-уровень: вебхуки без auth;
+self-service создание организации под auth-без-membership; биллинг-UI под membership-гейтом) —
+общая сессия с трекером. Биллинг/Stripe-данные — в собственной БД `okrs-saas`, не в схеме
+коробки; результат отражается через provisioning (`PUT /api/v1/system/.../entitlements`). Схема
+коробки не содержит SaaS-понятий; секреты (provisioning-token, DSN) — в env. Лендинг —
+отдельный репо `okrs-landing` (статика).
 
 ## Жёсткие правила для AI-реализации
 

@@ -51,6 +51,21 @@ func (s *SettingsService) GetTenant(ctx context.Context, scope domain.TenantScop
 	return snap[key], nil
 }
 
+// TenantEntitlements returns the tenant's entitlement.* keys with the prefix stripped.
+func (s *SettingsService) TenantEntitlements(ctx context.Context, scope domain.TenantScope) (map[string]json.RawMessage, error) {
+	snap, err := s.tsCache.GetAll(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]json.RawMessage)
+	for k, v := range snap {
+		if strings.HasPrefix(k, EntitlementPrefix) {
+			out[strings.TrimPrefix(k, EntitlementPrefix)] = v
+		}
+	}
+	return out, nil
+}
+
 // SetTenantProduct writes a tenant-admin product key. entitlement.* is rejected.
 func (s *SettingsService) SetTenantProduct(ctx context.Context, scope domain.TenantScope, key string, value any) error {
 	if strings.HasPrefix(key, EntitlementPrefix) {
