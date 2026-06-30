@@ -22,10 +22,12 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		// team with this name and inserting only when none exists.
 		var id int64
 		err := goalsRepo.DB().QueryRow(ctx,
-			`SELECT id FROM teams WHERE name=$1 AND deleted_at IS NULL ORDER BY id LIMIT 1`, name).Scan(&id)
+			`SELECT id FROM teams WHERE name=$1 AND deleted_at IS NULL AND tenant_id=$2 ORDER BY id LIMIT 1`, name, scope.TenantID).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
+			// tenant_id is explicit: migration 032 dropped the transitional DEFAULT 1, so the
+			// seed must set it (single-tenant seed → default tenant #1).
 			err = goalsRepo.DB().QueryRow(ctx,
-				`INSERT INTO teams (name, team_type) VALUES ($1,$2) RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
+				`INSERT INTO teams (name, team_type, tenant_id) VALUES ($1,$2,$3) RETURNING id`, name, domain.TeamTypeTeam, scope.TenantID).Scan(&id)
 		}
 		if err != nil {
 			return err

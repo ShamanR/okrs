@@ -24,6 +24,14 @@ func NewCSRF() *CSRFMiddleware {
 
 func (m *CSRFMiddleware) Handler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Bearer-authenticated requests (machine/provisioning callers) are not cookie-ambient:
+		// a browser cannot attach an Authorization header on a cross-site request without a
+		// CORS preflight, so such requests cannot be CSRF-forged. Skip the double-submit check.
+		if hasBearerAuth(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		cookieToken, hasCookie := readCSRFCookie(r)
 
 		if isUnsafeMethod(r.Method) {
@@ -84,6 +92,11 @@ func writeCSRFError(w http.ResponseWriter, r *http.Request) {
 
 func isAPIRoute(r *http.Request) bool {
 	return strings.HasPrefix(r.URL.Path, "/api/v1/")
+}
+
+// hasBearerAuth reports whether the request carries an Authorization: Bearer header.
+func hasBearerAuth(r *http.Request) bool {
+	return strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 
 func generateCSRFToken() string {
