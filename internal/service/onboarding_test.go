@@ -178,7 +178,7 @@ func TestClaimInvitationSingleUseBindsToIdentity(t *testing.T) {
 
 	raw, hash, _ := service.GenerateInviteToken()
 	inv := invitations.NewInvitationRepository(pool)
-	if _, err := inv.Create(ctx, domain.TenantScope{TenantID: 2}, "invited@example.com", domain.RoleAdmin, hash, 1, nil); err != nil {
+	if _, err := inv.Create(ctx, domain.TenantScope{TenantID: 2}, domain.RoleAdmin, hash, 1, intp(1), nil); err != nil {
 		t.Fatalf("seed invite: %v", err)
 	}
 
@@ -198,3 +198,5 @@ func TestClaimInvitationSingleUseBindsToIdentity(t *testing.T) {
 		t.Fatalf("unknown token must fail, got %v", err)
 	}
 }
+
+func intp(n int) *int { return &n }

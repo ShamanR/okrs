@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 
 	"github.com/go-chi/chi/v5"
@@ -90,8 +91,8 @@ func TestHandleInviteSetsCookieAndRedirects(t *testing.T) {
 	rw := httptest.NewRecorder()
 	r.ServeHTTP(rw, httptest.NewRequest(http.MethodGet, "/invite/tok-abc", nil))
 
-	if rw.Code != http.StatusFound {
-		t.Fatalf("expected 302, got %d", rw.Code)
+	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/login?next=/" {
+		t.Fatalf("want 302 → /login?next=/, got %d → %q", rw.Code, rw.Header().Get("Location"))
 	}
 	var found bool
 	for _, c := range rw.Result().Cookies() {
@@ -101,5 +102,32 @@ func TestHandleInviteSetsCookieAndRedirects(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("okrs_invite cookie not set; cookies=%v", rw.Result().Cookies())
+	}
+}
+
+func TestHandleInviteAuthenticatedClaimsImmediately(t *testing.T) {
+	ob := &fakeOnboarder{claimTenant: 7}
+	sw := &fakeSessions{}
+	h := New(nil, nil, nil, ob, sw)
+	r := chi.NewRouter()
+	r.Get("/invite/{token}", h.HandleInvite)
+
+	ctx := auth.WithSession(auth.WithUser(context.Background(), &domain.User{ID: 3}), &domain.AuthSession{ID: "sess-1"})
+	rw := httptest.NewRecorder()
+	r.ServeHTTP(rw, httptest.NewRequest(http.MethodGet, "/invite/tok", nil).WithContext(ctx))
+
+	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/" {
+		t.Fatalf("want 302 → /, got %d → %q", rw.Code, rw.Header().Get("Location"))
+	}
+	if ob.claimCalls != 1 || ob.lastClaimUser != 3 {
+		t.Fatalf("claim not invoked for the user: %+v", ob)
+	}
+	if sw.activeTenant != 7 || sw.sessionID != "sess-1" {
+		t.Fatalf("active tenant not focused on claimed tenant: %+v", sw)
+	}
+	for _, c := range rw.Result().Cookies() {
+		if c.Name == "okrs_invite" && c.Value != "" && c.MaxAge >= 0 {
+			t.Fatalf("authenticated claim must not stash okrs_invite cookie")
+		}
 	}
 }

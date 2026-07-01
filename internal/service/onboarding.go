@@ -69,27 +69,22 @@ func HashInviteToken(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ClaimInvitation redeems a pending token (single-use, atomic) and binds an active membership
-// in the invite's tenant to the current identity. Replay/expired/revoked/unknown → ErrInvalidInvitation.
+// ClaimInvitation redeems a pending invite link (atomic, cap-safe) and binds an active
+// membership in the link's tenant to the current identity. Repeat claims of a multi-use link
+// by an already-active member are idempotent (Upsert). Invalid/expired/revoked/exhausted →
+// ErrInvalidInvitation.
 func (s *OnboardingService) ClaimInvitation(ctx context.Context, rawToken string, userID int64) (*domain.Membership, error) {
-	inv, err := s.inv.GetPendingByTokenHash(ctx, HashInviteToken(rawToken))
+	res, err := s.inv.Consume(ctx, HashInviteToken(rawToken))
 	if errors.Is(err, invitations.ErrNotFound) {
 		return nil, ErrInvalidInvitation
 	}
 	if err != nil {
 		return nil, err
 	}
-	claimed, err := s.inv.MarkClaimed(ctx, inv.ID) // atomic single-use guard
-	if err != nil {
-		return nil, err
-	}
-	if !claimed {
-		return nil, ErrInvalidInvitation
-	}
 	m, err := s.mem.Upsert(ctx, domain.Membership{
 		UserID:   userID,
-		TenantID: inv.TenantID,
-		Role:     inv.Role,
+		TenantID: res.TenantID,
+		Role:     res.Role,
 		Status:   domain.MembershipActive,
 	})
 	if err != nil {

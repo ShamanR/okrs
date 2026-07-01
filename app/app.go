@@ -69,9 +69,14 @@ func New(cfg Config) (*App, error) {
 	if len(names) == 0 {
 		names = []string{"session"}
 	}
+	// One tenant + membership cache instance, shared between the resolver (read) and the
+	// server's provisioning/onboarding services (invalidate). Two instances would let a write
+	// invalidate a cache the resolver never reads, so removals/adds lag by the cache TTL.
+	tenantCache := tenants.NewTenantCache(st.Tenants)
+	membershipCache := memberships.NewMembershipCache(st.Memberships)
 	deps := auth.ResolveDeps{
-		Tenants:     tenants.NewTenantCache(st.Tenants),
-		Memberships: memberships.NewMembershipCache(st.Memberships),
+		Tenants:     tenantCache,
+		Memberships: membershipCache,
 	}
 	var strategies []auth.ResolveStrategy
 	for _, name := range names {
@@ -94,6 +99,8 @@ func New(cfg Config) (*App, error) {
 
 	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, httpserver.Options{
 		Resolver:         auth.NewTenantResolver(strategies...),
+		TenantCache:      tenantCache,
+		MembershipCache:  membershipCache,
 		Entitlements:     entFactory(),
 		NoMembershipName: cfg.NoMembershipName,
 		PublicRoutes:     cfg.PublicRoutes,

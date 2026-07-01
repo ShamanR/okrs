@@ -1088,6 +1088,84 @@ function FeedbackSettingsPanel() {
 }
 
 // ── USERS SECTION ────────────────────────────────────────────────────────────
+function InviteLinksPanel() {
+  const [links, setLinks] = useState([]);
+  const [role, setRole] = useState('user');
+  const [kind, setKind] = useState('once'); // once | unlimited | limited
+  const [limit, setLimit] = useState(5);
+  const [expires, setExpires] = useState(''); // yyyy-mm-dd or ''
+  const [created, setCreated] = useState(null); // {url}
+  const [busy, setBusy] = useState(false);
+
+  const load = () => apiGet('/api/v1/admin/invitations').then(r=>r&&r.json()).then(d=>setLinks(Array.isArray(d)?d:[])).catch(()=>setLinks([]));
+  useEffect(()=>{ load(); },[]);
+
+  async function create() {
+    setBusy(true);
+    try {
+      const body = {role};
+      if (kind==='once') body.max_uses = 1;
+      else if (kind==='limited') body.max_uses = Math.max(1, parseInt(limit,10)||1);
+      // 'unlimited' → omit max_uses
+      if (expires) body.expires_at = new Date(expires+'T23:59:59').toISOString();
+      const r = await apiPost('/api/v1/admin/invitations', body);
+      if (!r || !r.ok) { alert('Не удалось создать ссылку'); return; }
+      const d = await r.json();
+      setCreated({url:d.url});
+      await load();
+    } finally { setBusy(false); }
+  }
+
+  async function revoke(id) {
+    const r = await apiPost(`/api/v1/admin/invitations/${id}/revoke`, {});
+    if (r && r.ok) load(); else alert('Не удалось отозвать ссылку');
+  }
+
+  const usesLabel = l => l.max_uses==null ? `${l.use_count}/∞` : `${l.use_count}/${l.max_uses}`;
+
+  return <div style={{background:'white',borderRadius:14,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden',marginBottom:16}}>
+    <div style={{padding:'14px 16px',borderBottom:'1px solid '+T.hairline,fontSize:13,fontWeight:700,color:T.headingFg}}>Пригласительные ссылки</div>
+    <div style={{padding:'14px 16px',display:'flex',gap:12,alignItems:'flex-end',flexWrap:'wrap',borderBottom:'1px solid '+T.hairline}}>
+      <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:T.mutedFg,fontWeight:600}}>Роль
+        <select value={role} onChange={e=>setRole(e.target.value)} style={{...inpStyle,padding:'8px 10px'}}>
+          <option value="user">Пользователь</option>
+          <option value="admin">Администратор</option>
+        </select>
+      </label>
+      <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:T.mutedFg,fontWeight:600}}>Тип
+        <select value={kind} onChange={e=>setKind(e.target.value)} style={{...inpStyle,padding:'8px 10px'}}>
+          <option value="once">Одноразовая</option>
+          <option value="unlimited">Многоразовая (без лимита)</option>
+          <option value="limited">До N использований</option>
+        </select>
+      </label>
+      {kind==='limited' && <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:T.mutedFg,fontWeight:600}}>N
+        <input type="number" min="1" value={limit} onChange={e=>setLimit(e.target.value)} style={{...inpStyle,padding:'8px 10px',width:80}}/>
+      </label>}
+      <label style={{display:'flex',flexDirection:'column',gap:4,fontSize:12,color:T.mutedFg,fontWeight:600}}>Срок (опц.)
+        <input type="date" value={expires} onChange={e=>setExpires(e.target.value)} style={{...inpStyle,padding:'8px 10px'}}/>
+      </label>
+      <button onClick={create} disabled={busy} style={{padding:'9px 16px',border:'none',borderRadius:8,background:T.accent,color:'#fff',fontWeight:600,cursor:busy?'default':'pointer',fontFamily:'inherit',opacity:busy?0.6:1}}>Создать</button>
+    </div>
+    {created && <div style={{padding:'12px 16px',borderBottom:'1px solid '+T.hairline,display:'flex',gap:10,alignItems:'center',background:'#f5f3ff'}}>
+      <input readOnly value={created.url} style={{...inpStyle,flex:1,fontFamily:'ui-monospace,Menlo,monospace',fontSize:12.5}} onFocus={e=>e.target.select()}/>
+      <button onClick={()=>{ navigator.clipboard?.writeText(created.url); }} style={{padding:'9px 14px',border:'1.5px solid '+T.cardBorder,borderRadius:8,background:'#fff',color:T.accent,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Копировать</button>
+    </div>}
+    <div>
+      {links.length===0 && <div style={{padding:'20px 16px',textAlign:'center',color:T.dimFg,fontSize:13}}>Активных ссылок нет</div>}
+      {links.map(l=>(
+        <div key={l.id} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 16px',borderBottom:'1px solid '+T.hairline}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13.5,fontWeight:600,color:T.headingFg}}>{l.role==='admin'?'Администратор':'Пользователь'} · использовано {usesLabel(l)}</div>
+            <div style={{fontSize:11.5,color:T.mutedFg,marginTop:2}}>{l.expires_at?`Действует до ${fmtDateTime(l.expires_at)}`:'Без срока'}</div>
+          </div>
+          <button onClick={()=>revoke(l.id)} style={{padding:'6px 12px',border:'1.5px solid '+T.cardBorder,borderRadius:7,background:'#fff',color:T.danger,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>Отозвать</button>
+        </div>
+      ))}
+    </div>
+  </div>;
+}
+
 function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all'); // all | admins | noaccess
@@ -1127,6 +1205,7 @@ function UsersSection({users, teams, currentUser, reload}) {
   const modalUser = users.find(u=>u.ID===modalId) || null;
 
   return <div style={{padding:'20px 24px 24px'}}>
+    <InviteLinksPanel/>
     <div style={{background:'white',borderRadius:14,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}>
       <div style={{padding:'14px 16px',borderBottom:'1px solid '+T.hairline,display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Поиск по имени, роли, email, команде…" style={{...inpStyle,flex:1,minWidth:240,padding:'9px 14px'}}/>

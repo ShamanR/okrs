@@ -4,13 +4,17 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"okrs/app"
 	"okrs/internal/auth"
+	"okrs/internal/domain"
 	"okrs/internal/entitlements"
+	"okrs/internal/store/memberships"
+	"okrs/internal/store/sessions"
 	"okrs/internal/store/testutil"
 
 	"github.com/go-chi/chi/v5"
@@ -117,5 +121,66 @@ func TestAppUnknownResolveStrategy(t *testing.T) {
 	defer cleanup()
 	if _, err := app.New(app.Config{Pool: pool, Zone: time.UTC, Auth: auth.DefaultConfig(), ResolveStrategyNames: []string{"nope"}}); err == nil {
 		t.Fatal("unknown resolve strategy must error")
+	}
+}
+
+// Removing a member must take effect on the very next request: the tenant resolver and the
+// mutating services must share one membership cache, or the resolver keeps serving the deleted
+// membership until its TTL and the user still reaches the tracker (empty goals, but periods
+// still listed because periods are tenant-scoped, not grant-scoped).
+func TestRemovedMemberLosesTenantResolutionImmediately(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name, email)
+		VALUES ('github:victim','github','victim','Victim','v@example.com') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := memberships.NewMembershipRepository(pool).Upsert(ctx, domain.Membership{
+		UserID: uid, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipActive,
+	}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+	if _, err := sessions.NewSessionRepository(pool).CreateSession(ctx, "sess-victim", uid, "github", time.Hour, "", ""); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	a, err := app.New(app.Config{
+		Pool: pool, Zone: time.UTC,
+		Auth: auth.Config{Mode: auth.ModeEnabled, SessionCookie: "okrs_session", SessionTTL: time.Hour, ProvisioningToken: "tkn"},
+	})
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+	cookie := &http.Cookie{Name: "okrs_session", Value: "sess-victim"}
+
+	// 1. Active member → tracker resolves and serves (this populates the resolver's cache).
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(cookie)
+	a.Handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusOK {
+		t.Fatalf("pre-removal GET / = %d, want 200", rw.Code)
+	}
+
+	// 2. Remove the member via the system plane (invalidates the services' membership cache).
+	rw = httptest.NewRecorder()
+	del := httptest.NewRequest(http.MethodDelete, "/api/v1/system/tenants/1/members/"+strconv.FormatInt(uid, 10), nil)
+	del.AddCookie(cookie)
+	del.Header.Set("Authorization", "Bearer tkn")
+	a.Handler.ServeHTTP(rw, del)
+	if rw.Code != http.StatusNoContent {
+		t.Fatalf("remove member = %d (%s), want 204", rw.Code, rw.Body.String())
+	}
+
+	// 3. The removed user must no longer resolve the tenant → membership gate redirects to /no-access.
+	rw = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(cookie)
+	a.Handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/no-access" {
+		t.Fatalf("post-removal GET / = %d → %q, want 302 → /no-access (stale resolver membership cache)", rw.Code, rw.Header().Get("Location"))
 	}
 }

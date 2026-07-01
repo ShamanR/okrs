@@ -53,12 +53,14 @@ const (
 type Invitation struct {
 	ID              int64
 	TenantID        int64
-	Email           string
+	Email           *string // nullable — generic links store NULL
 	Role            Role
 	Status          InvitationStatus
 	CreatedByUserID *int64
 	CreatedAt       time.Time
 	ExpiresAt       *time.Time
+	MaxUses         *int // nil = unlimited, 1 = one-time, N = up to N uses
+	UseCount        int
 }
 
 var reservedTenantSlugs = map[string]bool{

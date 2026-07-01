@@ -55,6 +55,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *pgxpool.Pool) {
 		})
 	})
 	r.Post("/api/v1/admin/invitations", h.HandleCreateInvitation)
+	r.Post("/api/v1/admin/invitations/{id}/revoke", h.HandleRevokeInvitation)
 	r.Get("/api/v1/admin/invitations", h.HandleListInvitations)
 	r.Get("/api/v1/admin/access-requests", h.HandleListAccessRequests)
 	r.Post("/api/v1/admin/access-requests/{userID}/approve", h.HandleApproveAccessRequest)
@@ -62,31 +63,90 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *pgxpool.Pool) {
 	return r, pool
 }
 
-func TestCreateAndListInvitation(t *testing.T) {
+func TestCreateInvitationLink(t *testing.T) {
 	admin := &domain.User{ID: 1, DisplayName: "Admin"}
 	r, _ := buildRouter(t, admin)
 
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/invitations",
-		strings.NewReader(`{"email":"x@example.com","role":"admin"}`)))
+		strings.NewReader(`{"role":"admin","max_uses":5}`)))
 	if w.Code != http.StatusCreated {
 		t.Fatalf("create: code %d (%s)", w.Code, w.Body.String())
 	}
 	var created struct {
-		Token string `json:"token"`
-		URL   string `json:"url"`
+		Token   string `json:"token"`
+		URL     string `json:"url"`
+		Role    string `json:"role"`
+		MaxUses *int   `json:"max_uses"`
 	}
 	_ = json.NewDecoder(w.Body).Decode(&created)
-	if created.Token == "" || !strings.HasSuffix(created.URL, created.Token) {
-		t.Fatalf("bad token/url: %+v", created)
+	if created.Token == "" || !strings.HasSuffix(created.URL, "/invite/"+created.Token) {
+		t.Fatalf("bad create body: %+v", created)
+	}
+	if created.Role != "admin" || created.MaxUses == nil || *created.MaxUses != 5 {
+		t.Fatalf("bad create body: %+v", created)
 	}
 
-	w = httptest.NewRecorder()
-	r.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/v1/admin/invitations", nil))
+	// List returns the link with counts and no email.
+	lw := httptest.NewRecorder()
+	r.ServeHTTP(lw, httptest.NewRequest(http.MethodGet, "/api/v1/admin/invitations", nil))
+	if lw.Code != http.StatusOK {
+		t.Fatalf("list: code %d", lw.Code)
+	}
 	var list []map[string]any
-	_ = json.NewDecoder(w.Body).Decode(&list)
+	_ = json.NewDecoder(lw.Body).Decode(&list)
 	if len(list) != 1 {
-		t.Fatalf("expected 1 pending invite, got %d", len(list))
+		t.Fatalf("want 1 link, got %d", len(list))
+	}
+	if _, hasEmail := list[0]["email"]; hasEmail {
+		t.Fatalf("list must not expose email: %+v", list[0])
+	}
+	if list[0]["use_count"] == nil || list[0]["max_uses"] == nil {
+		t.Fatalf("list must include counts: %+v", list[0])
+	}
+}
+
+func TestCreateInvitationRejectsBadMaxUses(t *testing.T) {
+	admin := &domain.User{ID: 1, DisplayName: "Admin"}
+	r, _ := buildRouter(t, admin)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/admin/invitations",
+		strings.NewReader(`{"role":"user","max_uses":0}`)))
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("max_uses=0 must be 400, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestRevokeInvitation(t *testing.T) {
+	admin := &domain.User{ID: 1, DisplayName: "Admin"}
+	r, pool := buildRouter(t, admin)
+	_ = pool
+
+	cw := httptest.NewRecorder()
+	r.ServeHTTP(cw, httptest.NewRequest(http.MethodPost, "/api/v1/admin/invitations",
+		strings.NewReader(`{"role":"user"}`)))
+	if cw.Code != http.StatusCreated {
+		t.Fatalf("create: %d", cw.Code)
+	}
+	// One link exists → id is 1 in a fresh DB.
+	rw := httptest.NewRecorder()
+	r.ServeHTTP(rw, httptest.NewRequest(http.MethodPost, "/api/v1/admin/invitations/1/revoke", nil))
+	if rw.Code != http.StatusNoContent {
+		t.Fatalf("revoke: %d (%s)", rw.Code, rw.Body.String())
+	}
+	// Revoking again is idempotent 204.
+	rw2 := httptest.NewRecorder()
+	r.ServeHTTP(rw2, httptest.NewRequest(http.MethodPost, "/api/v1/admin/invitations/1/revoke", nil))
+	if rw2.Code != http.StatusNoContent {
+		t.Fatalf("re-revoke: %d", rw2.Code)
+	}
+	// Now not listed.
+	lw := httptest.NewRecorder()
+	r.ServeHTTP(lw, httptest.NewRequest(http.MethodGet, "/api/v1/admin/invitations", nil))
+	var list []map[string]any
+	_ = json.NewDecoder(lw.Body).Decode(&list)
+	if len(list) != 0 {
+		t.Fatalf("revoked link must not be listed, got %d", len(list))
 	}
 }
 

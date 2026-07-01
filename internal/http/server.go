@@ -103,6 +103,12 @@ type Server struct {
 type Options struct {
 	// Resolver, if nil, defaults to a session-only resolver built from the tenant/membership caches.
 	Resolver *auth.TenantResolver
+	// TenantCache / MembershipCache, if non-nil, are the caches the injected Resolver reads from.
+	// The server reuses them for provisioning/onboarding so membership/tenant writes invalidate the
+	// same instances the resolver serves. When nil (OSS Options{}), the server builds its own and
+	// also builds the default resolver from them, so they stay consistent.
+	TenantCache     *tenants.TenantCache
+	MembershipCache *memberships.MembershipCache
 	// Entitlements, if nil, defaults to entitlements.UnlimitedEntitlements{}.
 	Entitlements entitlements.Entitlements
 	// NoMembershipName selects the registered onboarding.NoMembershipHandler; "" → "stub".
@@ -152,10 +158,19 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	cacheTTL := 5 * time.Minute
 	hcCache := service.NewHealthCheckInCache(hcLoader, cacheTTL, logger)
 
-	// Cache tenant + membership lookups on the per-request resolve hot path; the
-	// same instances are reused by the resolver and (for invalidation) provisioning.
-	tenantCache := tenants.NewTenantCache(st.Tenants)
-	membershipCache := memberships.NewMembershipCache(st.Memberships)
+	// Cache tenant + membership lookups on the per-request resolve hot path. These MUST be the
+	// same instances the resolver reads, or membership/tenant writes (provisioning, onboarding)
+	// invalidate a cache the resolver never consults and the change is invisible until the TTL.
+	// app.New injects them via Options alongside the resolver built from them; Options{} (OSS)
+	// falls back to building them here and the default resolver below from the same instances.
+	tenantCache := opts.TenantCache
+	if tenantCache == nil {
+		tenantCache = tenants.NewTenantCache(st.Tenants)
+	}
+	membershipCache := opts.MembershipCache
+	if membershipCache == nil {
+		membershipCache = memberships.NewMembershipCache(st.Memberships)
+	}
 	settingsSvc := service.NewSettingsService(
 		tenantsettings.NewTenantSettingsCache(st.TenantSettings), st.TenantSettings,
 		settings.NewSystemSettingsCache(st.Settings), st.Settings,
@@ -454,6 +469,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		// Onboarding: tenant-admin invitations + access-request queue.
 		onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
 		r.Post("/api/v1/admin/invitations", onboardH.HandleCreateInvitation)
+		r.Post("/api/v1/admin/invitations/{id}/revoke", onboardH.HandleRevokeInvitation)
 		r.Get("/api/v1/admin/invitations", onboardH.HandleListInvitations)
 		r.Get("/api/v1/admin/access-requests", onboardH.HandleListAccessRequests)
 		r.Post("/api/v1/admin/access-requests/{userID}/approve", onboardH.HandleApproveAccessRequest)

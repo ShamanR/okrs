@@ -216,7 +216,7 @@ Validation:
 
 - `POST /api/v1/system/tenants` — создать тенант; body: `{"name": "...", "slug": "...", "entitlements": {"sso": true}}` → `201` `{id, slug, name, status}`. `422` при невалидном slug, `409` если slug занят.
 - `GET /api/v1/system/tenants` — список тенантов.
-- `POST /api/v1/system/tenants/{id}/members` — прямое назначение membership существующему глобальному пользователю; body: `{"user_id": 1, "role": "admin"}` → `201`. (Назначение по email через invitation — Фаза онбординга, Plan 4.)
+- `POST /api/v1/system/tenants/{id}/members` — прямое назначение membership существующему глобальному пользователю; body: `{"user_id": 1, "role": "admin"}` → `201`. (Самостоятельный онбординг — через пригласительные ссылки, ниже.)
 - `PUT /api/v1/system/tenants/{id}/entitlements` — записать ключи `entitlement.*`; body: `{"sso": true, "max_users": 50}` (bare-ключи неймспейсятся в `entitlement.*`) → `204`.
 - `POST /api/v1/system/tenants/{id}/suspend` / `POST /api/v1/system/tenants/{id}/restore` → `204`; `404` если тенант не найден.
 - `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
@@ -237,8 +237,9 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 
 **Tenant-admin** (`RequireTenantAdmin`, в активном тенанте):
 
-- `POST /api/v1/admin/invitations` — создать приглашение; body: `{"email": "...", "role": "user|admin"}` → `201` `{token, url, email, role}`. Токен хранится **хэшированным**; в OSS админ передаёт `url` приглашённому сам (SMTP нет). Приглашение существует без `user_id`.
-- `GET /api/v1/admin/invitations` — список pending-приглашений тенанта.
+- `POST /api/v1/admin/invitations` — создать пригласительную **ссылку** (без email); body: `{"role"?: "user|admin", "max_uses"?: int, "expires_at"?: RFC3339}` → `201` `{token, url, role, max_uses}`. `max_uses` отсутствует/`null` → безлимитная; `1` → одноразовая; `N` → до N использований; `max_uses <= 0` → `400`. Токен хранится **хэшированным**; в OSS админ передаёт `url` приглашённому сам (SMTP нет).
+- `GET /api/v1/admin/invitations` — список pending-ссылок тенанта: `[{id, role, status, max_uses, use_count, created_at, expires_at}]` (без email).
+- `POST /api/v1/admin/invitations/{id}/revoke` — отозвать ссылку (`status='revoked'`); идемпотентно, tenant-scoped → `204`.
 - `GET /api/v1/admin/access-requests` — очередь join-request'ов (`status=requested`).
 - `POST /api/v1/admin/access-requests/{userID}/approve` → `204` (membership → `active`).
 - `POST /api/v1/admin/access-requests/{userID}/deny` → `204` (pending-membership удаляется).
@@ -247,7 +248,7 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 
 - `POST /api/v1/onboarding/join-request` — запросить доступ по slug; body: `{"slug": "..."}` → `204`; `404` если slug не найден, `409` если уже активный член.
 
-**Invite-ссылка (web):** `GET /invite/{token}` — кладёт токен в короткоживущую cookie и ведёт на логин; OAuth-callback гасит токен (single-use) и привязывает `active` membership к **текущей идентичности** (`provider:subject`), а не к email. Повторный/истёкший/чужой токен — отказ; email-match доступ не даёт.
+**Invite-ссылка (web):** `GET /invite/{token}` — если посетитель **уже авторизован**, ссылка гасится сразу (`Consume`), его `active` membership привязывается к **текущей идентичности** (`provider:subject`), сессия переключается на тенант ссылки, и он редиректится в приложение (`/`). Если посетитель **не авторизован** — токен кладётся в короткоживущую cookie и ведёт на логин; OAuth-callback гасит токен и привязывает membership. Многоразовость определяется `max_uses`/`use_count` (атомарный `Consume`). Истёкший/отозванный/исчерпанный/неизвестный токен — мягкий редирект без ошибки; доступ по email не выдаётся.
 
 Ошибки возвращаются в нормализованном виде:
 

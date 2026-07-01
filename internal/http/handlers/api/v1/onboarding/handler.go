@@ -20,8 +20,9 @@ import (
 
 // invitationStore covers tenant invitation persistence. *store.InvitationRepository satisfies it.
 type invitationStore interface {
-	Create(ctx context.Context, scope domain.TenantScope, email string, role domain.Role, tokenHash string, createdBy int64, expiresAt *time.Time) (*domain.Invitation, error)
+	Create(ctx context.Context, scope domain.TenantScope, role domain.Role, tokenHash string, createdBy int64, maxUses *int, expiresAt *time.Time) (*domain.Invitation, error)
 	ListPendingByTenant(ctx context.Context, scope domain.TenantScope) ([]domain.Invitation, error)
+	Revoke(ctx context.Context, scope domain.TenantScope, id int64) error
 }
 
 // onboardService covers the join-request + access-request flows. *service.OnboardingService satisfies it.
@@ -42,7 +43,7 @@ func New(invites invitationStore, onboard onboardService, baseURL string) *Handl
 	return &Handler{invites: invites, onboard: onboard, baseURL: baseURL}
 }
 
-// POST /api/v1/admin/invitations  {email, role}
+// POST /api/v1/admin/invitations  {role?, max_uses?, expires_at?}
 func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request) {
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
@@ -50,15 +51,16 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var body struct {
-		Email string `json:"email"`
-		Role  string `json:"role"`
+		Role      string     `json:"role"`
+		MaxUses   *int       `json:"max_uses"`
+		ExpiresAt *time.Time `json:"expires_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
-	if body.Email == "" {
-		writeError(w, http.StatusBadRequest, "email required")
+	if body.MaxUses != nil && *body.MaxUses <= 0 {
+		writeError(w, http.StatusBadRequest, "max_uses must be positive")
 		return
 	}
 	role := domain.Role(body.Role)
@@ -75,17 +77,36 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if _, err := h.invites.Create(r.Context(), scope, body.Email, role, hash, createdBy, nil); err != nil {
+	if _, err := h.invites.Create(r.Context(), scope, role, hash, createdBy, body.MaxUses, body.ExpiresAt); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, map[string]any{
-		"token": raw,
-		"url":   h.baseURL + "/invite/" + raw,
-		"email": body.Email,
-		"role":  string(role),
+		"token":    raw,
+		"url":      h.baseURL + "/invite/" + raw,
+		"role":     string(role),
+		"max_uses": body.MaxUses,
 	})
+}
+
+// POST /api/v1/admin/invitations/{id}/revoke
+func (h *Handler) HandleRevokeInvitation(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid id")
+		return
+	}
+	if err := h.invites.Revoke(r.Context(), scope, id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // GET /api/v1/admin/invitations
@@ -103,8 +124,9 @@ func (h *Handler) HandleListInvitations(w http.ResponseWriter, r *http.Request) 
 	out := make([]map[string]any, 0, len(list))
 	for _, inv := range list {
 		out = append(out, map[string]any{
-			"id": inv.ID, "email": inv.Email, "role": string(inv.Role),
-			"status": string(inv.Status), "created_at": inv.CreatedAt,
+			"id": inv.ID, "role": string(inv.Role), "status": string(inv.Status),
+			"max_uses": inv.MaxUses, "use_count": inv.UseCount,
+			"created_at": inv.CreatedAt, "expires_at": inv.ExpiresAt,
 		})
 	}
 	writeJSON(w, out)

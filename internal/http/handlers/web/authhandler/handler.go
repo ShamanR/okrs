@@ -144,12 +144,24 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, next, http.StatusFound)
 }
 
-// HandleInvite carries an invitation token through the OAuth round-trip: it stashes the
-// token in a short-lived cookie and sends the visitor to login. The callback redeems it.
+// HandleInvite redeems an invite-link token. An already-authenticated visitor is claimed
+// immediately (and their session is focused on the invite's tenant) and sent to the app;
+// an anonymous visitor gets the token stashed in a short-lived cookie and is sent to login,
+// where the callback redeems it. Invalid tokens never block: authenticated visitors are
+// bounced to the app (RequireMembership routes them onward), anonymous ones to login.
 func (h *Handler) HandleInvite(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	if token == "" {
 		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+	if user := auth.UserFromContext(r.Context()); user != nil {
+		if m, err := h.onboard.ClaimInvitation(r.Context(), token, user.ID); err == nil {
+			if sess := auth.SessionFromContext(r.Context()); sess != nil {
+				_ = h.sessions.SetActiveTenant(r.Context(), sess.ID, m.TenantID)
+			}
+		}
+		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
