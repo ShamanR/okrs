@@ -18,6 +18,19 @@ func TestUnlimitedEntitlements(t *testing.T) {
 	}
 }
 
+// The OSS "unlimited" implementation must be registered by the package itself (via init), so an
+// external embedder using app.New with the default config gets it without registering anything.
+// Declared before TestRegistry so the registry isn't already populated by that test's Register.
+func TestUnlimitedRegisteredByDefault(t *testing.T) {
+	f, ok := entitlements.Get("unlimited")
+	if !ok {
+		t.Fatal(`built-in "unlimited" entitlements must be registered by default`)
+	}
+	if _, isUnlimited := f().(entitlements.UnlimitedEntitlements); !isUnlimited {
+		t.Fatal(`"unlimited" must map to UnlimitedEntitlements`)
+	}
+}
+
 func TestRegistry(t *testing.T) {
 	entitlements.Register("unlimited", func() entitlements.Entitlements { return entitlements.UnlimitedEntitlements{} })
 	f, ok := entitlements.Get("unlimited")

@@ -1181,15 +1181,17 @@ function UsersSection({users, teams, currentUser, reload}) {
   const ledTeams = u => (u && u.UDID && ledByUdid[u.UDID]) || [];
 
   const isRequester = u => u.Status === 'requested';
-  const adminCount = users.filter(u=>u.IsAdmin).length;
+  // Admin is tenant-scoped: the membership role in the active tenant, not a global flag.
+  const isAdmin = u => u.Role === 'admin';
+  const adminCount = users.filter(isAdmin).length;
   const requestCount = users.filter(isRequester).length;
-  const noAccessCount = users.filter(u=>!isRequester(u) && !u.IsAdmin && (u.GrantedNodeCount||0)===0).length;
+  const noAccessCount = users.filter(u=>!isRequester(u) && !isAdmin(u) && (u.GrantedNodeCount||0)===0).length;
 
   const ql = q.trim().toLowerCase();
   const filtered = users.filter(u=>{
-    if (filter==='admins' && !u.IsAdmin) return false;
+    if (filter==='admins' && !isAdmin(u)) return false;
     if (filter==='requests' && !isRequester(u)) return false;
-    if (filter==='noaccess' && (isRequester(u) || u.IsAdmin || (u.GrantedNodeCount||0)>0)) return false;
+    if (filter==='noaccess' && (isRequester(u) || isAdmin(u) || (u.GrantedNodeCount||0)>0)) return false;
     if (!ql) return true;
     const led = ledTeams(u).map(t=>t.name).join(' ');
     return [u.DisplayName, u.Email, u.Provider, led].some(s=>(s||'').toLowerCase().includes(ql));
@@ -1253,7 +1255,7 @@ function UsersSection({users, teams, currentUser, reload}) {
                 </div>
               : <>
                   <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:2,flexShrink:0}}>
-                    {u.IsAdmin
+                    {isAdmin(u)
                       ? <><Chip color="#92400e" bg="#fef3c7">Admin</Chip><span style={{fontSize:11,color:'#059669',fontWeight:600}}>полный доступ</span></>
                       : nodes>0
                         ? <span style={{fontSize:12.5,color:'#0891b2',fontWeight:600}}>{nodes} узл</span>
@@ -1289,11 +1291,11 @@ function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSav
   const [grants, setGrants] = useState(null);          // original grants loaded from API
   const [loading, setLoading] = useState(true);
   const [pendingGrantIds, setPendingGrantIds] = useState([]);
-  const [pendingAdmin, setPendingAdmin] = useState(user.IsAdmin);
+  const [pendingAdmin, setPendingAdmin] = useState(user.Role==='admin');
   const [saving, setSaving] = useState(false);
 
   useEffect(()=>{
-    setLoading(true); setPendingAdmin(user.IsAdmin);
+    setLoading(true); setPendingAdmin(user.Role==='admin');
     apiGet(`/api/v1/admin/users/${user.ID}/grants`).then(r=>r&&r.json()).then(data=>{
       const arr = Array.isArray(data)?data:[];
       setGrants(arr); setPendingGrantIds(arr.map(g=>g.TeamID)); setLoading(false);
@@ -1301,13 +1303,13 @@ function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSav
   },[user.ID]);
 
   const isSelf = user.ID===currentUser?.id;
-  const adminCount = allUsers.filter(u=>u.IsAdmin).length;
+  const adminCount = allUsers.filter(u=>u.Role==='admin').length;
   const activeTeams = teams.filter(t=>!t.deleted_at);
 
   async function save() {
     setSaving(true);
     try {
-      if (pendingAdmin !== user.IsAdmin) {
+      if (pendingAdmin !== (user.Role==='admin')) {
         if (!pendingAdmin && adminCount<=1) { alert('Нельзя снять admin-права с последнего администратора.'); return; }
         if (!pendingAdmin && isSelf && !confirm('Снять admin-права с себя? Вы потеряете доступ к этому разделу.')) return;
         const res = pendingAdmin ? await apiPost(`/api/v1/admin/users/${user.ID}/admin`, {}) : await apiDel(`/api/v1/admin/users/${user.ID}/admin`);

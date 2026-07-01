@@ -51,6 +51,10 @@ type configResponse struct {
 	// EmptyHierarchyMessage (markdown) shown in the tracker when the user has no accessible
 	// teams; empty → the SPA's default text.
 	EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
+	// IsAdmin reports whether the caller is a tenant admin in the active tenant (membership
+	// role = admin). The shared header uses it to show the /admin link. Tenant-scoped — not the
+	// legacy global users.is_admin.
+	IsAdmin bool `json:"is_admin"`
 }
 
 // GET /api/v1/config
@@ -69,6 +73,9 @@ func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	resp.FeedbackMenuLinkEnabled = h.settingBool(r.Context(), scope, settingKeyFeedbackMenuLinkEnabled)
 	resp.FeedbackFrequencyDays = h.settingInt(r.Context(), scope, settingKeyFeedbackFrequencyDays, 30)
 	resp.EmptyHierarchyMessage = h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage)
+	if role, ok := auth.ActiveRoleFromContext(r.Context()); ok && role == domain.RoleAdmin {
+		resp.IsAdmin = true
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }

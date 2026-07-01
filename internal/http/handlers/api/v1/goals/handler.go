@@ -2,6 +2,7 @@ package goals
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -94,6 +95,10 @@ func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
 		targets = append(targets, service.ShareTarget{TeamID: target.TeamID, Weight: target.Weight})
 	}
 	if err := h.service.ShareGoal(r.Context(), scope, goalID, targets); err != nil {
+		if errors.Is(err, service.ErrShareTargetNotInTenant) {
+			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team_id", map[string]string{"team_id": "not in tenant"})
+			return
+		}
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to share goal", nil)
 		return
 	}

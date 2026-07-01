@@ -143,7 +143,7 @@ function HeaderNavMenu({ user, active }) {
                   <span className="nav-menu__item-icon">💬</span>Обратная связь
                 </a>
               )}
-              {user?.is_admin && (
+              {cfg?.is_admin && (
                 <a href="/admin" className="nav-menu__item"><span className="nav-menu__item-icon">🛠</span>Администрирование</a>
               )}
               <button onClick={logout} className="nav-menu__item nav-menu__item--danger">

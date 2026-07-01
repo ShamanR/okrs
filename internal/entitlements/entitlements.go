@@ -34,6 +34,13 @@ var (
 	registry   = make(map[string]Factory)
 )
 
+// init registers the built-in OSS "unlimited" implementation so it is always available by name,
+// without any caller having to register it (same self-registration pattern as the "session"
+// resolve strategy). A SaaS module may register additional implementations, or override this.
+func init() {
+	Register("unlimited", func() Entitlements { return UnlimitedEntitlements{} })
+}
+
 // Register makes an implementation available by name (same pattern as auth.Register).
 func Register(name string, f Factory) {
 	registryMu.Lock()

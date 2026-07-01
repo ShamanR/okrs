@@ -142,6 +142,7 @@ var (
 	ErrTeamNotVisibleInPeriod      = errors.New("team not visible in period")
 	ErrPeriodClosed                = errors.New("period is closed")
 	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
+	ErrShareTargetNotInTenant      = errors.New("share target team is not in the active tenant")
 )
 
 // New constructs a Service from a Deps bundle.
@@ -730,6 +731,24 @@ type ShareTarget struct {
 }
 
 func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget) error {
+	// Validate every target team belongs to the active tenant before writing shares. The share
+	// repository only scopes the goal, so an unchecked target team_id could attach the goal to a
+	// team in another tenant. One scoped lookup builds the allow-set (no per-target query).
+	if len(targets) > 0 {
+		tenantTeams, err := s.teams.ListAllTeams(ctx, scope)
+		if err != nil {
+			return err
+		}
+		valid := make(map[int64]struct{}, len(tenantTeams))
+		for _, t := range tenantTeams {
+			valid[t.ID] = struct{}{}
+		}
+		for _, target := range targets {
+			if _, ok := valid[target.TeamID]; !ok {
+				return ErrShareTargetNotInTenant
+			}
+		}
+	}
 	shareInputs := make([]shares.GoalShareInput, 0, len(targets))
 	for _, target := range targets {
 		shareInputs = append(shareInputs, shares.GoalShareInput{TeamID: target.TeamID, Weight: target.Weight})

@@ -204,6 +204,39 @@ func TestClaimInvitationAppliesNewUserPolicy(t *testing.T) {
 	}
 }
 
+func TestSetMemberRole(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc := newOnboardingForTest(t, pool)
+	mem := memberships.NewMembershipRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:sr','github','sr','SR') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := mem.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipActive}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+
+	if err := svc.SetMemberRole(ctx, scope, uid, domain.RoleAdmin); err != nil {
+		t.Fatalf("promote: %v", err)
+	}
+	m, _ := mem.Get(ctx, uid, 1)
+	if m.Role != domain.RoleAdmin {
+		t.Fatalf("role = %q, want admin", m.Role)
+	}
+	if err := svc.SetMemberRole(ctx, scope, uid, domain.RoleUser); err != nil {
+		t.Fatalf("demote: %v", err)
+	}
+	m, _ = mem.Get(ctx, uid, 1)
+	if m.Role != domain.RoleUser {
+		t.Fatalf("role = %q, want user", m.Role)
+	}
+}
+
 func TestRemoveMemberUnlinksFromTenant(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

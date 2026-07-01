@@ -323,6 +323,24 @@ func newTestService(st *fakeStore, grants GrantsProvider) *Service {
 	return New(Deps{Teams: st, Goals: st, Shares: st, Periods: st, KRs: st, Statuses: st, Users: st, Grants: grants})
 }
 
+// ShareGoal must reject targets that don't belong to the active tenant, so a caller can't attach
+// a goal to a foreign/global team ID (cross-tenant reference).
+func TestShareGoalRejectsForeignTeamTarget(t *testing.T) {
+	store := newFakeStore()
+	store.teams = []domain.Team{{ID: 1}, {ID: 2}} // only these belong to the tenant
+	svc := newTestService(store, nil)
+	scope := domain.TenantScope{TenantID: 1}
+
+	err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 2, Weight: 50}, {TeamID: 99, Weight: 50}})
+	if err != ErrShareTargetNotInTenant {
+		t.Fatalf("foreign target (99) must be rejected with ErrShareTargetNotInTenant, got %v", err)
+	}
+
+	if err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 1, Weight: 100}}); err != nil {
+		t.Fatalf("all-valid targets must be accepted, got %v", err)
+	}
+}
+
 func TestUpdateKRProgressNumerical(t *testing.T) {
 	store := newFakeStore()
 	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindNumerical}

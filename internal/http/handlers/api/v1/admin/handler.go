@@ -33,7 +33,13 @@ type userAdminStore interface {
 	ListUsers(ctx context.Context) ([]*domain.User, error)
 	ListByTenant(ctx context.Context, scope domain.TenantScope) ([]users.TenantUser, error)
 	GetUser(ctx context.Context, id int64) (*domain.User, error)
-	SetUserAdmin(ctx context.Context, userID int64, isAdmin bool) error
+}
+
+// memberRoleSetter toggles a user's tenant-scoped role (admin/user). *service.OnboardingService
+// satisfies it. Admin status is tenant-scoped, so the toggle writes memberships.role, not the
+// legacy global users.is_admin.
+type memberRoleSetter interface {
+	SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error
 }
 
 // tenantSettings covers per-tenant product settings. *service.SettingsService satisfies it.
@@ -57,10 +63,11 @@ type Handler struct {
 	settings tenantSettings
 	mgr      *auth.Manager
 	grants   grantsStore
+	roles    memberRoleSetter
 }
 
-func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore) *Handler {
-	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants}
+func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore, roles memberRoleSetter) *Handler {
+	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants, roles: roles}
 }
 
 // GET /api/v1/admin/users
@@ -146,28 +153,29 @@ func (h *Handler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, user)
 }
 
-// POST /api/v1/admin/users/{userID}/admin  — grant admin
+// POST /api/v1/admin/users/{userID}/admin  — grant admin in the active tenant
 func (h *Handler) HandleGrantAdmin(w http.ResponseWriter, r *http.Request) {
-	userID, err := parseID(r, "userID")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user id")
-		return
-	}
-	if err := h.users.SetUserAdmin(r.Context(), userID, true); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	h.setMemberRole(w, r, domain.RoleAdmin)
 }
 
-// DELETE /api/v1/admin/users/{userID}/admin  — revoke admin
+// DELETE /api/v1/admin/users/{userID}/admin  — revoke admin in the active tenant
 func (h *Handler) HandleRevokeAdmin(w http.ResponseWriter, r *http.Request) {
+	h.setMemberRole(w, r, domain.RoleUser)
+}
+
+// setMemberRole applies a tenant-scoped role change to the target member.
+func (h *Handler) setMemberRole(w http.ResponseWriter, r *http.Request, role domain.Role) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	userID, err := parseID(r, "userID")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	if err := h.users.SetUserAdmin(r.Context(), userID, false); err != nil {
+	if err := h.roles.SetMemberRole(r.Context(), scope, userID, role); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

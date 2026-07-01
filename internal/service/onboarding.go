@@ -153,6 +153,17 @@ func (s *OnboardingService) DenyRequest(ctx context.Context, scope domain.Tenant
 	return nil
 }
 
+// SetMemberRole changes a user's role (user/admin) within the scoped tenant and invalidates the
+// membership cache so the new role takes effect (incl. the access scope) on the next request.
+// This is the tenant-scoped admin toggle — it does not touch the legacy global users.is_admin.
+func (s *OnboardingService) SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error {
+	if err := s.mem.SetRole(ctx, scope, userID, role); err != nil {
+		return err
+	}
+	s.memCache.InvalidateUser(userID)
+	return nil
+}
+
 // RemoveMember unlinks a user from the scoped tenant: it revokes all their hierarchy grants
 // there, deletes their membership (any status), and invalidates the membership cache so the
 // change takes effect on the next request. Idempotent — a non-member removal is a no-op.

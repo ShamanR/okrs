@@ -325,6 +325,15 @@ func (s *Server) Routes() http.Handler {
 			onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
 			r.Post("/api/v1/onboarding/join-request", onboardH.HandleJoinRequest)
 
+			// Tenant switcher: authenticated but NOT membership-gated, so a user whose active
+			// tenant is suspended (or where they lost membership) can still list their tenants
+			// and switch to one they're active in — otherwise RequireMembership would lock them
+			// out before they could recover. These handlers key off the user + explicit target,
+			// not the resolved active tenant.
+			tenantH := apitenants.New(s.store.Memberships, s.store.Tenants, s.store.Sessions)
+			r.Get("/api/v1/session/tenants", tenantH.ListMyTenants)
+			r.Post("/api/v1/session/tenant", tenantH.SwitchTenant)
+
 			// Authed control-plane mounts (SaaS): authed but not membership-gated
 			// (e.g. self-service "create organization"). nil in OSS.
 			if s.authedRoutes != nil {
@@ -346,11 +355,6 @@ func (s *Server) Routes() http.Handler {
 				r.Use(auth.ScopeMiddleware(s.policy, s.auth))
 			}
 			r.Use(csrf.Handler)
-
-			// Tenant session: list memberships and switch active tenant.
-			tenantH := apitenants.New(s.store.Memberships, s.store.Tenants, s.store.Sessions)
-			r.Get("/api/v1/session/tenants", tenantH.ListMyTenants)
-			r.Post("/api/v1/session/tenant", tenantH.SwitchTenant)
 
 			s.registerWebRoutes(r, deps)
 			s.registerApiRoutes(r)
@@ -407,7 +411,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache)
+	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding)
 	serviceH := apiadmin.NewServiceHandler(s.service)
 
 	r.Group(func(r chi.Router) {

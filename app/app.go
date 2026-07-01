@@ -43,6 +43,23 @@ type App struct {
 	Handler http.Handler
 }
 
+// withAuthDefaults fills unset auth fields with OSS defaults so a near-empty Config yields the
+// OSS box (AUTH_MODE=disabled) rather than an unusable empty Mode — which would demand a login
+// while no providers are configured. Explicitly-set fields are left untouched.
+func withAuthDefaults(c auth.Config) auth.Config {
+	d := auth.DefaultConfig()
+	if c.Mode == "" {
+		c.Mode = d.Mode
+	}
+	if c.SessionCookie == "" {
+		c.SessionCookie = d.SessionCookie
+	}
+	if c.SessionTTL == 0 {
+		c.SessionTTL = d.SessionTTL
+	}
+	return c
+}
+
 func New(cfg Config) (*App, error) {
 	if cfg.Pool == nil {
 		return nil, fmt.Errorf("app: Config.Pool is required")
@@ -59,7 +76,7 @@ func New(cfg Config) (*App, error) {
 	st := store.New(cfg.Pool)
 	grantsCache := grants.NewGrantsCache(st.Grants)
 
-	authMgr, err := auth.NewManager(cfg.Auth, st)
+	authMgr, err := auth.NewManager(withAuthDefaults(cfg.Auth), st)
 	if err != nil {
 		return nil, fmt.Errorf("app: auth: %w", err)
 	}

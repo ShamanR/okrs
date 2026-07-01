@@ -135,6 +135,19 @@ func (r *MembershipRepository) ListByTenant(ctx context.Context, scope domain.Te
 	return out, rows.Err()
 }
 
+// SetRole updates a user's role within a tenant. Returns ErrNotFound if no membership exists.
+func (r *MembershipRepository) SetRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error {
+	ct, err := r.db.Exec(ctx, `UPDATE memberships SET role = $3 WHERE user_id = $1 AND tenant_id = $2`,
+		userID, scope.TenantID, role)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // Delete removes the (user, tenant) membership regardless of status. No-op if none.
 func (r *MembershipRepository) Delete(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM memberships WHERE user_id = $2 AND tenant_id = $1`, scope.TenantID, userID)
