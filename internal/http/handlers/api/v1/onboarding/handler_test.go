@@ -27,6 +27,11 @@ import (
 
 // buildRouter wires onboarding routes, injecting tenant #1 + the given user into context.
 func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *pgxpool.Pool) {
+	return buildRouterBase(t, user, "https://okrs.example")
+}
+
+// buildRouterBase is buildRouter with a configurable invite baseURL ("" → request-derived).
+func buildRouterBase(t *testing.T, user *domain.User, baseURL string) (*chi.Mux, *pgxpool.Pool) {
 	t.Helper()
 	pool, cleanup := testutil.SetupDB(t)
 	t.Cleanup(cleanup)
@@ -42,7 +47,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *pgxpool.Pool) {
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
 	onboardSvc := service.NewOnboardingService(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
-	h := apionboarding.New(invRepo, onboardSvc, "https://okrs.example")
+	h := apionboarding.New(invRepo, onboardSvc, baseURL)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -59,6 +64,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *pgxpool.Pool) {
 	r.Get("/api/v1/admin/invitations", h.HandleListInvitations)
 	r.Get("/api/v1/admin/access-requests", h.HandleListAccessRequests)
 	r.Post("/api/v1/admin/access-requests/{userID}/approve", h.HandleApproveAccessRequest)
+	r.Delete("/api/v1/admin/members/{userID}", h.HandleRemoveMember)
 	r.Post("/api/v1/onboarding/join-request", h.HandleJoinRequest)
 	return r, pool
 }
@@ -103,6 +109,31 @@ func TestCreateInvitationLink(t *testing.T) {
 	}
 	if list[0]["use_count"] == nil || list[0]["max_uses"] == nil {
 		t.Fatalf("list must include counts: %+v", list[0])
+	}
+}
+
+func TestCreateInvitationDerivesURLFromRequest(t *testing.T) {
+	admin := &domain.User{ID: 1, DisplayName: "Admin"}
+	r, _ := buildRouterBase(t, admin, "") // no configured baseURL → derive from request
+
+	// Simulate an ingress that terminates TLS and forwards the public host.
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/invitations", strings.NewReader(`{"role":"user"}`))
+	req.Host = "okrs.acme.internal"
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("X-Forwarded-Host", "okrs.acme.com")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create: code %d (%s)", w.Code, w.Body.String())
+	}
+	var created struct {
+		Token string `json:"token"`
+		URL   string `json:"url"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&created)
+	want := "https://okrs.acme.com/invite/" + created.Token
+	if created.URL != want {
+		t.Fatalf("url = %q, want %q", created.URL, want)
 	}
 }
 
@@ -181,6 +212,31 @@ func TestAccessRequestQueueApprove(t *testing.T) {
 	m, _ := memRepo.Get(ctx, uid, 1)
 	if m.Status != domain.MembershipActive {
 		t.Fatalf("status = %q, want active", m.Status)
+	}
+}
+
+func TestRemoveMemberEndpoint(t *testing.T) {
+	admin := &domain.User{ID: 1, DisplayName: "Admin"}
+	r, pool := buildRouter(t, admin)
+	ctx := context.Background()
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:rm','github','rm','RM') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	memRepo := memberships.NewMembershipRepository(pool)
+	if _, err := memRepo.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipActive}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/v1/admin/members/"+strconv.FormatInt(uid, 10), nil))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("remove: code %d (%s)", w.Code, w.Body.String())
+	}
+	if _, err := memRepo.Get(ctx, uid, 1); err != memberships.ErrNotFound {
+		t.Fatalf("membership must be removed, got %v", err)
 	}
 }
 

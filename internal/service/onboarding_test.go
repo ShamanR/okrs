@@ -161,6 +161,94 @@ func TestEnsureRegistrationNoDefaultTenantIsNoop(t *testing.T) {
 	}
 }
 
+func TestClaimInvitationAppliesNewUserPolicy(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc := newOnboardingForTest(t, pool)
+
+	// Tenant #1: default-node policy pointing at a seeded team.
+	var teamID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, tenant_id) VALUES ('Root', 1) RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("seed team: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO tenant_settings (tenant_id, key, value_json) VALUES
+		(1, 'new_user_policy', '"default_node"'),
+		(1, 'default_hierarchy_node_id', to_jsonb($1::bigint))
+		ON CONFLICT (tenant_id, key) DO UPDATE SET value_json = EXCLUDED.value_json`, teamID); err != nil {
+		t.Fatalf("seed tenant settings: %v", err)
+	}
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:inv','github','inv','Inv') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	raw, hash, _ := service.GenerateInviteToken()
+	inv := invitations.NewInvitationRepository(pool)
+	if _, err := inv.Create(ctx, domain.TenantScope{TenantID: 1}, domain.RoleUser, hash, 1, intp(1), nil); err != nil {
+		t.Fatalf("seed invite: %v", err)
+	}
+
+	if _, err := svc.ClaimInvitation(ctx, raw, uid); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+
+	gs, err := grants.NewGrantRepository(pool).ListUserGrants(ctx, domain.TenantScope{TenantID: 1}, uid)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(gs) != 1 || gs[0].TeamID != teamID {
+		t.Fatalf("claim must apply the default-node policy grant; grants = %+v", gs)
+	}
+}
+
+func TestRemoveMemberUnlinksFromTenant(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc := newOnboardingForTest(t, pool)
+	mem := memberships.NewMembershipRepository(pool)
+	gr := grants.NewGrantRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	var uid, teamID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:rm','github','rm','RM') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, tenant_id) VALUES ('Root', 1) RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("seed team: %v", err)
+	}
+	if _, err := mem.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipActive}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+	if err := gr.AddUserGrant(ctx, scope, uid, teamID, domain.SystemUserAnonymous); err != nil {
+		t.Fatalf("seed grant: %v", err)
+	}
+
+	if err := svc.RemoveMember(ctx, scope, uid); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	if _, err := mem.Get(ctx, uid, 1); err != memberships.ErrNotFound {
+		t.Fatalf("membership must be gone, got %v", err)
+	}
+	gs, err := gr.ListUserGrants(ctx, scope, uid)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(gs) != 0 {
+		t.Fatalf("grants must be revoked, got %+v", gs)
+	}
+
+	// Idempotent: removing a non-member again is a no-op.
+	if err := svc.RemoveMember(ctx, scope, uid); err != nil {
+		t.Fatalf("second remove should be no-op nil, got %v", err)
+	}
+}
+
 func TestClaimInvitationSingleUseBindsToIdentity(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

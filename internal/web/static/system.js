@@ -30,7 +30,7 @@ function TenantsSection({tenants, reload}) {
   };
   const setStatus = async (id, action)=>{ setErr(''); const res = await post(`/api/v1/system/tenants/${id}/${action}`); if (res.status===204) reload(); else setErr(await errMsg(res)); };
   return <div style={box}>
-    <h2 style={{fontSize:15,marginBottom:10}}>Тенанты</h2>
+    <h2 style={{fontSize:15,marginBottom:10}}>Пространства</h2>
     <table style={{width:'100%',borderCollapse:'collapse'}}>
       <thead><tr>{['ID','Slug','Название','Статус',''].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
       <tbody>{(tenants||[]).map(t=><tr key={t.id}>
@@ -58,7 +58,7 @@ function MembersSection({tenants, users}) {
   const loadMembers = useCallback(async (id)=>{ if(!id){setMembers([]);return;} const res=await get(`/api/v1/system/tenants/${id}/members`); if(res&&res.ok) setMembers(await res.json()||[]); },[]);
   useEffect(()=>{ loadMembers(tid); },[tid,loadMembers]);
   const attach = async (e)=>{ e.preventDefault(); setErr('');
-    if(!tid||!uid){ setErr('Выберите тенант и пользователя'); return; }
+    if(!tid||!uid){ setErr('Выберите пространство и пользователя'); return; }
     const res = await post(`/api/v1/system/tenants/${tid}/members`, {user_id:Number(uid), role});
     if (res.status===201){ setUid(''); setQ(''); loadMembers(tid); } else setErr(await errMsg(res));
   };
@@ -67,11 +67,11 @@ function MembersSection({tenants, users}) {
   const ordered = [...members].sort((a,b)=>(a.status==='requested'?0:1)-(b.status==='requested'?0:1));
   const connect = async (m)=>{ setErr(''); const res=await post(`/api/v1/system/tenants/${tid}/members`, {user_id:m.user_id, role:m.role||'user'}); if(res.status===201) loadMembers(tid); else setErr(await errMsg(res)); };
   const deny = async (m)=>{ setErr(''); const res=await post(`/api/v1/system/tenants/${tid}/members/${m.user_id}/deny`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
-  const remove = async (m)=>{ if(!confirm(`Удалить ${m.display_name||m.email||('пользователя #'+m.user_id)} из тенанта?`)) return; setErr(''); const res=await del(`/api/v1/system/tenants/${tid}/members/${m.user_id}`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
+  const remove = async (m)=>{ if(!confirm(`Удалить ${m.display_name||m.email||('пользователя #'+m.user_id)} из пространства?`)) return; setErr(''); const res=await del(`/api/v1/system/tenants/${tid}/members/${m.user_id}`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
   return <div style={box}>
     <h2 style={{fontSize:15,marginBottom:10}}>Участники</h2>
     <select style={inp} value={tid} onChange={e=>setTid(e.target.value)}>
-      <option value="">— выберите тенант —</option>
+      <option value="">— выберите пространство —</option>
       {(tenants||[]).map(t=><option key={t.id} value={t.id}>{t.name} ({t.slug})</option>)}
     </select>
     {tid && <table style={{width:'100%',borderCollapse:'collapse',marginTop:12}}>
@@ -105,7 +105,7 @@ function RegistrationSection({tenants}) {
   useEffect(()=>{ (async()=>{ const res=await get('/api/v1/system/settings'); if(res&&res.ok){ const j=await res.json(); setVal(j.default_registration_tenant_id==null?'':String(j.default_registration_tenant_id)); } })(); },[]);
   const save = async ()=>{ setMsg(''); const res=await put('/api/v1/system/settings/default-registration-tenant', {tenant_id: val===''?null:Number(val)}); setMsg(res.status===204?'Сохранено':await errMsg(res)); };
   return <div style={box}>
-    <h2 style={{fontSize:15,marginBottom:6}}>Тенант регистрации по умолчанию</h2>
+    <h2 style={{fontSize:15,marginBottom:6}}>Пространство регистрации по умолчанию</h2>
     <div style={{color:C.muted,marginBottom:8}}>Куда попадает новый пользователь без приглашения. «Нет» → страница-заглушка.</div>
     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
       <select style={inp} value={val} onChange={e=>setVal(e.target.value)}>
@@ -128,7 +128,7 @@ function EntitlementsSection({tenants}) {
     <h2 style={{fontSize:15,marginBottom:6}}>Entitlements</h2>
     <div style={{color:C.muted,marginBottom:10}}>В OSS не ограничивают (всё включено); запись — задел для SaaS-сборки.</div>
     <select style={inp} value={tid} onChange={e=>setTid(e.target.value)}>
-      <option value="">— выберите тенант —</option>
+      <option value="">— выберите пространство —</option>
       {(tenants||[]).map(t=><option key={t.id} value={t.id}>{t.name} ({t.slug})</option>)}
     </select>
     {tid && <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:8}}>
@@ -179,7 +179,7 @@ function App() {
   return <div style={{maxWidth:920,margin:'0 auto',padding:'24px 16px'}}>
     <h1 style={{fontSize:20,marginBottom:16}}>Система · Управление</h1>
     <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-      {tabBtn('tenants','Тенанты')}{tabBtn('members','Участники')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}{tabBtn('messages','Сообщения')}
+      {tabBtn('tenants','Пространства')}{tabBtn('members','Участники')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}{tabBtn('messages','Сообщения')}
     </div>
     {tab==='tenants' && <TenantsSection tenants={tenants} reload={reloadTenants}/>}
     {tab==='members' && <MembersSection tenants={tenants} users={users}/>}

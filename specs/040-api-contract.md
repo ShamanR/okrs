@@ -243,6 +243,7 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/admin/access-requests` — очередь join-request'ов (`status=requested`).
 - `POST /api/v1/admin/access-requests/{userID}/approve` → `204` (membership → `active`).
 - `POST /api/v1/admin/access-requests/{userID}/deny` → `204` (pending-membership удаляется).
+- `DELETE /api/v1/admin/members/{userID}` — отвязать пользователя от активного тенанта: удаляются все его гранты иерархии в этом тенанте и membership (любого статуса), кэш инвалидируется. Идемпотентно → `204`.
 
 **Любой авторизованный** (auth, но **не** membership-gated):
 

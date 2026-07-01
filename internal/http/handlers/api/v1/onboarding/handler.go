@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"okrs/internal/auth"
@@ -31,6 +32,7 @@ type onboardService interface {
 	ListAccessRequests(ctx context.Context, scope domain.TenantScope) ([]memberships.AccessRequest, error)
 	ApproveRequest(ctx context.Context, scope domain.TenantScope, userID int64) error
 	DenyRequest(ctx context.Context, scope domain.TenantScope, userID int64) error
+	RemoveMember(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
 type Handler struct {
@@ -41,6 +43,38 @@ type Handler struct {
 
 func New(invites invitationStore, onboard onboardService, baseURL string) *Handler {
 	return &Handler{invites: invites, onboard: onboard, baseURL: baseURL}
+}
+
+// inviteBaseURL returns the scheme+host to build invite links against. An explicitly configured
+// baseURL (AUTH_BASE_URL) wins as an operator override; otherwise it is derived from the request
+// so links point at the domain the app is actually served on, honoring the X-Forwarded-* headers
+// set by an ingress/reverse proxy.
+func (h *Handler) inviteBaseURL(r *http.Request) string {
+	if h.baseURL != "" {
+		return strings.TrimRight(h.baseURL, "/")
+	}
+	scheme := "http"
+	if proto := firstForwardedValue(r.Header.Get("X-Forwarded-Proto")); proto != "" {
+		scheme = proto
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+	host := r.Host
+	if fwd := firstForwardedValue(r.Header.Get("X-Forwarded-Host")); fwd != "" {
+		host = fwd
+	}
+	return scheme + "://" + host
+}
+
+// firstForwardedValue returns the first entry of a possibly comma-separated X-Forwarded-* header.
+func firstForwardedValue(v string) string {
+	if v == "" {
+		return ""
+	}
+	if i := strings.IndexByte(v, ','); i >= 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
 }
 
 // POST /api/v1/admin/invitations  {role?, max_uses?, expires_at?}
@@ -84,7 +118,7 @@ func (h *Handler) HandleCreateInvitation(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusCreated)
 	writeJSON(w, map[string]any{
 		"token":    raw,
-		"url":      h.baseURL + "/invite/" + raw,
+		"url":      h.inviteBaseURL(r) + "/invite/" + raw,
 		"role":     string(role),
 		"max_uses": body.MaxUses,
 	})
@@ -162,6 +196,11 @@ func (h *Handler) HandleApproveAccessRequest(w http.ResponseWriter, r *http.Requ
 // POST /api/v1/admin/access-requests/{userID}/deny
 func (h *Handler) HandleDenyAccessRequest(w http.ResponseWriter, r *http.Request) {
 	h.accessRequestAction(w, r, h.onboard.DenyRequest)
+}
+
+// DELETE /api/v1/admin/members/{userID} — unlink a user from the active tenant.
+func (h *Handler) HandleRemoveMember(w http.ResponseWriter, r *http.Request) {
+	h.accessRequestAction(w, r, h.onboard.RemoveMember)
 }
 
 func (h *Handler) accessRequestAction(w http.ResponseWriter, r *http.Request, fn func(context.Context, domain.TenantScope, int64) error) {

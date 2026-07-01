@@ -25,11 +25,12 @@ var (
 	ErrTenantNotFound    = errors.New("onboarding: tenant not found")
 )
 
-// NewUserGranter applies the new-user hierarchy-grant policy. Both *grants.GrantRepository
-// and *grants.GrantsCache satisfy it.
+// NewUserGranter applies (and, on removal, revokes) a user's tenant hierarchy grants. Both
+// *grants.GrantRepository and *grants.GrantsCache satisfy it.
 type NewUserGranter interface {
 	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
 	AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
+	RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
 // OnboardingService decides post-login outcomes: invitation claim, self-service join-request,
@@ -70,9 +71,11 @@ func HashInviteToken(raw string) string {
 }
 
 // ClaimInvitation redeems a pending invite link (atomic, cap-safe) and binds an active
-// membership in the link's tenant to the current identity. Repeat claims of a multi-use link
-// by an already-active member are idempotent (Upsert). Invalid/expired/revoked/exhausted →
-// ErrInvalidInvitation.
+// membership in the link's tenant to the current identity, then applies that tenant's new-user
+// policy (e.g. the default-node grant) — the same onboarding step EnsureRegistration runs — so a
+// user who joins via a link gets the same baseline access as one auto-registered. Repeat claims
+// of a multi-use link by an already-active member are idempotent (Upsert + grant no-op).
+// Invalid/expired/revoked/exhausted → ErrInvalidInvitation.
 func (s *OnboardingService) ClaimInvitation(ctx context.Context, rawToken string, userID int64) (*domain.Membership, error) {
 	res, err := s.inv.Consume(ctx, HashInviteToken(rawToken))
 	if errors.Is(err, invitations.ErrNotFound) {
@@ -81,6 +84,7 @@ func (s *OnboardingService) ClaimInvitation(ctx context.Context, rawToken string
 	if err != nil {
 		return nil, err
 	}
+	scope := domain.TenantScope{TenantID: res.TenantID}
 	m, err := s.mem.Upsert(ctx, domain.Membership{
 		UserID:   userID,
 		TenantID: res.TenantID,
@@ -91,6 +95,9 @@ func (s *OnboardingService) ClaimInvitation(ctx context.Context, rawToken string
 		return nil, err
 	}
 	s.memCache.InvalidateUser(userID)
+	if err := s.applyNewUserPolicy(ctx, scope, userID); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -140,6 +147,20 @@ func (s *OnboardingService) ApproveRequest(ctx context.Context, scope domain.Ten
 // DenyRequest removes a pending membership.
 func (s *OnboardingService) DenyRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	if err := s.mem.DeleteRequested(ctx, scope, userID); err != nil {
+		return err
+	}
+	s.memCache.InvalidateUser(userID)
+	return nil
+}
+
+// RemoveMember unlinks a user from the scoped tenant: it revokes all their hierarchy grants
+// there, deletes their membership (any status), and invalidates the membership cache so the
+// change takes effect on the next request. Idempotent — a non-member removal is a no-op.
+func (s *OnboardingService) RemoveMember(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	if err := s.granter.RemoveAllUserGrants(ctx, scope, userID); err != nil {
+		return err
+	}
+	if err := s.mem.Delete(ctx, scope, userID); err != nil {
 		return err
 	}
 	s.memCache.InvalidateUser(userID)

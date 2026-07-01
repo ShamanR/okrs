@@ -1259,8 +1259,14 @@ function UsersSection({users, teams, currentUser, reload}) {
                         ? <span style={{fontSize:12.5,color:'#0891b2',fontWeight:600}}>{nodes} узл</span>
                         : <span style={{fontSize:12,color:'#dc2626',fontWeight:600}}>нет доступа</span>}
                   </div>
-                  <div onClick={e=>e.stopPropagation()} style={{flexShrink:0}}>
+                  <div onClick={e=>e.stopPropagation()} style={{display:'flex',gap:6,flexShrink:0}}>
                     <RowAction title="Редактировать" onClick={()=>setModalId(u.ID)}>✎</RowAction>
+                    {u.ID!==currentUser?.id &&
+                      <RowAction title="Удалить из пространства" danger onClick={async()=>{
+                        if(!confirm(`Удалить «${u.DisplayName}» из пространства? Пользователь потеряет членство и все доступы в этом пространстве.`)) return;
+                        const res=await apiDel(`/api/v1/admin/members/${u.ID}`);
+                        if(res&&res.ok) reload(); else alert('Не удалось удалить пользователя из пространства');
+                      }}>🗑</RowAction>}
                   </div>
                 </>}
           </div>;

@@ -474,6 +474,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Get("/api/v1/admin/access-requests", onboardH.HandleListAccessRequests)
 		r.Post("/api/v1/admin/access-requests/{userID}/approve", onboardH.HandleApproveAccessRequest)
 		r.Post("/api/v1/admin/access-requests/{userID}/deny", onboardH.HandleDenyAccessRequest)
+		r.Delete("/api/v1/admin/members/{userID}", onboardH.HandleRemoveMember)
 
 		r.Get("/admin/health-checkin", adminShell)
 	})
