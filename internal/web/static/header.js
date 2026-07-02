@@ -39,6 +39,42 @@ function HeaderAvatar({ user, size }) {
   );
 }
 
+// TenantSwitcher — список организаций пользователя в drawer. Показывается только
+// когда организаций больше одной. Выбор другой организации меняет активный тенант
+// сессии (POST /api/v1/session/tenant) и перезагружает страницу.
+function TenantSwitcher() {
+  const [tenants, setTenants] = React.useState([]);
+  React.useEffect(() => {
+    fetch('/api/v1/session/tenants', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(list => { if (Array.isArray(list)) setTenants(list); })
+      .catch(() => {});
+  }, []);
+  if (!tenants || tenants.length < 2) return null;
+  const switchTo = (id) => {
+    fetch('/api/v1/session/tenant', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _hdrCSRF() },
+      body: JSON.stringify({ tenant_id: id }),
+    }).then(r => { if (r.ok) location.reload(); });
+  };
+  return (
+    <div className="nav-menu__sections">
+      <div className="nav-menu__label">Организация</div>
+      {tenants.map(t => (
+        <button
+          key={t.id}
+          onClick={() => { if (!t.active) switchTo(t.id); }}
+          className={`nav-menu__item${t.active ? ' nav-menu__item--active' : ''}`}
+        >
+          <span className="nav-menu__item-icon">{t.active ? '✓' : '🏢'}</span>{t.name || t.slug}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // HeaderNavMenu — глобальное гамбургер-меню. Единый источник правды для
 // навигации/аккаунта в шапке всех страниц (трекер, настройки, админка, заглушки).
 // Рендерит только кнопку ☰ и выезжающий слева drawer. Сам тянет /api/v1/config
@@ -86,6 +122,7 @@ function HeaderNavMenu({ user, active }) {
                 </a>
               ))}
             </div>
+            <TenantSwitcher />
             <div className="nav-menu__foot">
               <div className="nav-menu__profile">
                 <HeaderAvatar user={user} size={40} />
@@ -106,7 +143,7 @@ function HeaderNavMenu({ user, active }) {
                   <span className="nav-menu__item-icon">💬</span>Обратная связь
                 </a>
               )}
-              {user?.is_admin && (
+              {cfg?.is_admin && (
                 <a href="/admin" className="nav-menu__item"><span className="nav-menu__item-icon">🛠</span>Администрирование</a>
               )}
               <button onClick={logout} className="nav-menu__item nav-menu__item--danger">

@@ -193,6 +193,7 @@ type User struct {
 	Email              string
 	AttributesJSON     map[string]any
 	IsAdmin            bool
+	IsSystemAdmin      bool
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	LastLoginAt        time.Time
@@ -207,6 +208,8 @@ type AuthSession struct {
 	LastSeenAt time.Time
 	UserAgent  string
 	IP         string
+
+	ActiveTenantID *int64
 }
 
 const (

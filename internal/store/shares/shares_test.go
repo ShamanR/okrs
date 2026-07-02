@@ -13,6 +13,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+// sc1 is the default-tenant scope used across the existing single-tenant share tests.
+var sc1 = domain.TenantScope{TenantID: 1}
+
 func prepareGoal(t *testing.T, pool *pgxpool.Pool, ctx context.Context, suffix string) int64 {
 	t.Helper()
 	var teamID, periodID int64
@@ -23,7 +26,7 @@ func prepareGoal(t *testing.T, pool *pgxpool.Pool, ctx context.Context, suffix s
 		t.Fatalf("insert period %s: %v", suffix, err)
 	}
 	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
-	goalID, err := gr.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := gr.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID,
 		Title: "G " + suffix, Priority: domain.PriorityP1, Weight: 100,
 	})
@@ -44,7 +47,7 @@ func TestGoalSharesReplaceAndList(t *testing.T) {
 
 	r := shares.NewGoalShareRepository(pool)
 
-	list, err := r.ListGoalShares(ctx, goalID)
+	list, err := r.ListGoalShares(ctx, sc1, goalID)
 	if err != nil {
 		t.Fatalf("ListGoalShares empty: %v", err)
 	}
@@ -52,18 +55,18 @@ func TestGoalSharesReplaceAndList(t *testing.T) {
 		t.Fatalf("expected 0 shares initially, got %d", len(list))
 	}
 
-	if err := r.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{{TeamID: sharedTeamID, Weight: 50}}); err != nil {
+	if err := r.ReplaceGoalShares(ctx, sc1, goalID, []shares.GoalShareInput{{TeamID: sharedTeamID, Weight: 50}}); err != nil {
 		t.Fatalf("ReplaceGoalShares add: %v", err)
 	}
-	list, _ = r.ListGoalShares(ctx, goalID)
+	list, _ = r.ListGoalShares(ctx, sc1, goalID)
 	if len(list) != 1 || list[0].TeamID != sharedTeamID {
 		t.Fatalf("expected 1 share for sharedTeam, got %+v", list)
 	}
 
-	if err := r.ReplaceGoalShares(ctx, goalID, nil); err != nil {
+	if err := r.ReplaceGoalShares(ctx, sc1, goalID, nil); err != nil {
 		t.Fatalf("ReplaceGoalShares nil: %v", err)
 	}
-	list, _ = r.ListGoalShares(ctx, goalID)
+	list, _ = r.ListGoalShares(ctx, sc1, goalID)
 	if len(list) != 0 {
 		t.Fatalf("expected 0 shares after nil replace, got %d", len(list))
 	}
@@ -79,9 +82,9 @@ func TestGetGoalShare(t *testing.T) {
 	goalID := prepareGoal(t, pool, ctx, "get")
 
 	r := shares.NewGoalShareRepository(pool)
-	r.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{{TeamID: sharedTeamID, Weight: 30}})
+	r.ReplaceGoalShares(ctx, sc1, goalID, []shares.GoalShareInput{{TeamID: sharedTeamID, Weight: 30}})
 
-	share, err := r.GetGoalShare(ctx, goalID, sharedTeamID)
+	share, err := r.GetGoalShare(ctx, sc1, goalID, sharedTeamID)
 	if err != nil {
 		t.Fatalf("GetGoalShare: %v", err)
 	}
@@ -100,12 +103,12 @@ func TestDeleteGoalShare(t *testing.T) {
 	goalID := prepareGoal(t, pool, ctx, "del")
 
 	r := shares.NewGoalShareRepository(pool)
-	r.ReplaceGoalShares(ctx, goalID, []shares.GoalShareInput{{TeamID: sharedTeamID, Weight: 20}})
+	r.ReplaceGoalShares(ctx, sc1, goalID, []shares.GoalShareInput{{TeamID: sharedTeamID, Weight: 20}})
 
-	if err := r.DeleteGoalShare(ctx, goalID, sharedTeamID); err != nil {
+	if err := r.DeleteGoalShare(ctx, sc1, goalID, sharedTeamID); err != nil {
 		t.Fatalf("DeleteGoalShare: %v", err)
 	}
-	list, _ := r.ListGoalShares(ctx, goalID)
+	list, _ := r.ListGoalShares(ctx, sc1, goalID)
 	if len(list) != 0 {
 		t.Fatalf("expected 0 shares after delete, got %d", len(list))
 	}

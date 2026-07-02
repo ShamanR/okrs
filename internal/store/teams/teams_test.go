@@ -10,20 +10,23 @@ import (
 	"okrs/internal/store/users"
 )
 
+// sc1 is the default-tenant scope used across the existing single-tenant CRUD tests.
+var sc1 = domain.TenantScope{TenantID: 1}
+
 func TestTeamsCRUD(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
 	ctx := context.Background()
 	r := teams.NewTeamRepository(pool)
 
-	id, err := r.CreateTeam(ctx, teams.TeamInput{
+	id, err := r.CreateTeam(ctx, sc1, teams.TeamInput{
 		Name: "Alpha", Type: domain.TeamTypeTeam,
 	})
 	if err != nil {
 		t.Fatalf("CreateTeam: %v", err)
 	}
 
-	team, err := r.GetTeam(ctx, id)
+	team, err := r.GetTeam(ctx, sc1, id)
 	if err != nil {
 		t.Fatalf("GetTeam: %v", err)
 	}
@@ -31,15 +34,15 @@ func TestTeamsCRUD(t *testing.T) {
 		t.Fatalf("unexpected team %+v", team)
 	}
 
-	if err := r.UpdateTeam(ctx, teams.TeamInput{Name: "Alpha 2", Type: domain.TeamTypeUnit}, id); err != nil {
+	if err := r.UpdateTeam(ctx, sc1, teams.TeamInput{Name: "Alpha 2", Type: domain.TeamTypeUnit}, id); err != nil {
 		t.Fatalf("UpdateTeam: %v", err)
 	}
-	team, _ = r.GetTeam(ctx, id)
+	team, _ = r.GetTeam(ctx, sc1, id)
 	if team.Name != "Alpha 2" || team.Type != domain.TeamTypeUnit {
 		t.Fatalf("expected updated team, got %+v", team)
 	}
 
-	list, err := r.ListTeams(ctx)
+	list, err := r.ListTeams(ctx, sc1)
 	if err != nil {
 		t.Fatalf("ListTeams: %v", err)
 	}
@@ -61,11 +64,11 @@ func TestCreateTeamAllowsDuplicateNames(t *testing.T) {
 	ctx := context.Background()
 	r := teams.NewTeamRepository(pool)
 
-	id1, err := r.CreateTeam(ctx, teams.TeamInput{Name: "SRE", Type: domain.TeamTypeTeam})
+	id1, err := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "SRE", Type: domain.TeamTypeTeam})
 	if err != nil {
 		t.Fatalf("CreateTeam first: %v", err)
 	}
-	id2, err := r.CreateTeam(ctx, teams.TeamInput{Name: "SRE", Type: domain.TeamTypeTeam})
+	id2, err := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "SRE", Type: domain.TeamTypeTeam})
 	if err != nil {
 		t.Fatalf("CreateTeam duplicate name must succeed, got: %v", err)
 	}
@@ -80,28 +83,28 @@ func TestSoftDeleteReparentsChildren(t *testing.T) {
 	ctx := context.Background()
 	r := teams.NewTeamRepository(pool)
 
-	parentID, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "Parent", Type: domain.TeamTypeUnit})
-	midID, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "Mid", Type: domain.TeamTypeTeam, ParentID: &parentID})
-	childID, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "Child", Type: domain.TeamTypeTeam, ParentID: &midID})
+	parentID, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "Parent", Type: domain.TeamTypeUnit})
+	midID, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "Mid", Type: domain.TeamTypeTeam, ParentID: &parentID})
+	childID, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "Child", Type: domain.TeamTypeTeam, ParentID: &midID})
 
-	if err := r.SoftDeleteTeam(ctx, midID); err != nil {
+	if err := r.SoftDeleteTeam(ctx, sc1, midID); err != nil {
 		t.Fatalf("SoftDeleteTeam: %v", err)
 	}
 
 	// Mid should be soft-deleted (DeletedAt set).
-	mid, _ := r.GetTeam(ctx, midID)
+	mid, _ := r.GetTeam(ctx, sc1, midID)
 	if mid.DeletedAt == nil {
 		t.Fatal("expected DeletedAt to be set on soft-deleted team")
 	}
 
 	// Child should be reparented to Parent.
-	child, _ := r.GetTeam(ctx, childID)
+	child, _ := r.GetTeam(ctx, sc1, childID)
 	if child.ParentID == nil || *child.ParentID != parentID {
 		t.Fatalf("expected child to be reparented to %d, got %v", parentID, child.ParentID)
 	}
 
 	// Soft-deleted team appears in ListDeletedTeams but not ListTeams.
-	deleted, _ := r.ListDeletedTeams(ctx)
+	deleted, _ := r.ListDeletedTeams(ctx, sc1)
 	foundDeleted := false
 	for _, tm := range deleted {
 		if tm.ID == midID {
@@ -111,7 +114,7 @@ func TestSoftDeleteReparentsChildren(t *testing.T) {
 	if !foundDeleted {
 		t.Fatal("expected mid team in ListDeletedTeams")
 	}
-	active, _ := r.ListTeams(ctx)
+	active, _ := r.ListTeams(ctx, sc1)
 	for _, tm := range active {
 		if tm.ID == midID {
 			t.Fatal("soft-deleted team must not appear in ListTeams")
@@ -119,10 +122,10 @@ func TestSoftDeleteReparentsChildren(t *testing.T) {
 	}
 
 	// Restore puts it back.
-	if err := r.RestoreTeam(ctx, midID); err != nil {
+	if err := r.RestoreTeam(ctx, sc1, midID); err != nil {
 		t.Fatalf("RestoreTeam: %v", err)
 	}
-	mid, _ = r.GetTeam(ctx, midID)
+	mid, _ = r.GetTeam(ctx, sc1, midID)
 	if mid.DeletedAt != nil {
 		t.Fatal("expected DeletedAt to be nil after restore")
 	}
@@ -134,21 +137,21 @@ func TestHardDeleteReparentsChildren(t *testing.T) {
 	ctx := context.Background()
 	r := teams.NewTeamRepository(pool)
 
-	parentID, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "HParent", Type: domain.TeamTypeUnit})
-	midID, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "HMid", Type: domain.TeamTypeTeam, ParentID: &parentID})
-	childID, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "HChild", Type: domain.TeamTypeTeam, ParentID: &midID})
+	parentID, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "HParent", Type: domain.TeamTypeUnit})
+	midID, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "HMid", Type: domain.TeamTypeTeam, ParentID: &parentID})
+	childID, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "HChild", Type: domain.TeamTypeTeam, ParentID: &midID})
 
-	if err := r.HardDeleteTeam(ctx, midID); err != nil {
+	if err := r.HardDeleteTeam(ctx, sc1, midID); err != nil {
 		t.Fatalf("HardDeleteTeam: %v", err)
 	}
 
 	// Mid should be gone.
-	if _, err := r.GetTeam(ctx, midID); err == nil {
+	if _, err := r.GetTeam(ctx, sc1, midID); err == nil {
 		t.Fatal("expected error fetching hard-deleted team")
 	}
 
 	// Child should be reparented to Parent.
-	child, err := r.GetTeam(ctx, childID)
+	child, err := r.GetTeam(ctx, sc1, childID)
 	if err != nil {
 		t.Fatalf("GetTeam child: %v", err)
 	}
@@ -163,10 +166,10 @@ func TestListAllTeamsIncludesDeleted(t *testing.T) {
 	ctx := context.Background()
 	r := teams.NewTeamRepository(pool)
 
-	id, _ := r.CreateTeam(ctx, teams.TeamInput{Name: "AllTeam", Type: domain.TeamTypeTeam})
-	r.SoftDeleteTeam(ctx, id)
+	id, _ := r.CreateTeam(ctx, sc1, teams.TeamInput{Name: "AllTeam", Type: domain.TeamTypeTeam})
+	r.SoftDeleteTeam(ctx, sc1, id)
 
-	all, err := r.ListAllTeams(ctx)
+	all, err := r.ListAllTeams(ctx, sc1)
 	if err != nil {
 		t.Fatalf("ListAllTeams: %v", err)
 	}
@@ -197,7 +200,7 @@ func TestTeamLeadUDID(t *testing.T) {
 		t.Fatalf("upsert user: %v", err)
 	}
 
-	id, err := r.CreateTeam(ctx, teams.TeamInput{
+	id, err := r.CreateTeam(ctx, sc1, teams.TeamInput{
 		Name: "UDID Team", Type: domain.TeamTypeTeam,
 		Lead: "Lead User", LeadUDID: &u.UDID,
 	})
@@ -205,7 +208,7 @@ func TestTeamLeadUDID(t *testing.T) {
 		t.Fatalf("create team: %v", err)
 	}
 
-	team, err := r.GetTeam(ctx, id)
+	team, err := r.GetTeam(ctx, sc1, id)
 	if err != nil {
 		t.Fatalf("get team: %v", err)
 	}
@@ -213,12 +216,12 @@ func TestTeamLeadUDID(t *testing.T) {
 		t.Errorf("LeadUDID: got %v, want %q", team.LeadUDID, u.UDID)
 	}
 
-	if err := r.UpdateTeam(ctx, teams.TeamInput{
+	if err := r.UpdateTeam(ctx, sc1, teams.TeamInput{
 		Name: "UDID Team", Type: domain.TeamTypeTeam, Lead: "Lead User", LeadUDID: nil,
 	}, id); err != nil {
 		t.Fatalf("update team: %v", err)
 	}
-	team2, _ := r.GetTeam(ctx, id)
+	team2, _ := r.GetTeam(ctx, sc1, id)
 	if team2.LeadUDID != nil {
 		t.Errorf("expected nil LeadUDID after clear, got %v", team2.LeadUDID)
 	}

@@ -33,7 +33,12 @@ func (h *Handler) HandleTeam(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
-	team, err := h.service.GetTeam(r.Context(), teamID)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	team, err := h.service.GetTeam(r.Context(), scope, teamID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
@@ -57,17 +62,22 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil || periodID == 0 {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
 		return
 	}
-	period, err := h.service.GetPeriod(r.Context(), periodID)
+	period, err := h.service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
 		return
 	}
-	okr, err := h.service.GetTeamOKR(r.Context(), teamID, periodID, period)
+	okr, err := h.service.GetTeamOKR(r.Context(), scope, teamID, periodID, period)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
@@ -87,17 +97,22 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParsePeriodID(r)
 	if err != nil || periodID == 0 {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
 		return
 	}
-	period, err := h.service.GetPeriod(r.Context(), periodID)
+	period, err := h.service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
 		return
 	}
-	overview, err := h.service.GetTeamOverview(r.Context(), teamID, periodID)
+	overview, err := h.service.GetTeamOverview(r.Context(), scope, teamID, periodID)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load team overview", nil)
 		return
@@ -108,6 +123,11 @@ func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
@@ -134,7 +154,7 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status", map[string]string{"status": "invalid"})
 		return
 	}
-	if err := h.service.UpdateTeamPeriodStatus(r.Context(), teamID, req.PeriodID, status); err != nil {
+	if err := h.service.UpdateTeamPeriodStatus(r.Context(), scope, teamID, req.PeriodID, status); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
 		return
 	}
@@ -223,7 +243,12 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	goalID, err := h.service.CreateGoal(r.Context(), goals.GoalInput{
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+		return
+	}
+	goalID, err := h.service.CreateGoal(r.Context(), scope, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    req.PeriodID,
 		Title:       req.Title,

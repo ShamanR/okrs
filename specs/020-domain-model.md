@@ -233,21 +233,43 @@
 - доступ к узлу автоматически распространяется на все дочерние команды (рекурсивный запрос);
 - итоговая область видимости = объединение всех явных грантов + optional default_node + все их потомки.
 
-### SystemSettings
+### Настройки — три уровня
 
-**Поля:**
+Настройки разнесены по трём store'ам, по трём плоскостям администрирования
+(см. `050-permissions-and-lifecycle.md`). На горячем пути читаются снапшотом (все ключи
+одним запросом) через кэш, не per-key SQL.
 
-- key (PK)
-- value_json (JSONB)
+#### SystemSettings (`system_settings`, global)
 
-**Текущие ключи:**
+Плоскость **system-admin**. Глобальные key/value-ключи инстанса (без `tenant_id`):
 
-| key                        | Тип      | Смысл                                                            |
-|----------------------------|----------|------------------------------------------------------------------|
-| new_user_policy            | string   | `"empty"` или `"default_node"` — политика для новых пользователей |
-| default_hierarchy_node_id  | int64    | ID узла иерархии для политики `default_node`; null если не задан |
-| health_checkin_config      | object   | Настройки Health Check-in: `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `in_counter` (map[string]bool) |
-| documentation_url          | string   | Ссылка на внешнюю документацию; пустая строка или отсутствие ключа = пункт меню скрыт. Должна быть абсолютным http(s) URL |
+- key (PK), value_json (JSONB)
+
+| key                            | Тип          | Смысл                                                        |
+|--------------------------------|--------------|--------------------------------------------------------------|
+| default_registration_tenant_id | int64 / null | В какой тенант попадает новый пользователь без membership; `null` → страница-заглушка |
+
+#### TenantSettings (`tenant_settings`, per-tenant)
+
+Плоскость **tenant-admin**. PK `(tenant_id, key)`, value_json (JSONB). Два класса ключей с
+разной write-authority (проверяется в service-слое):
+
+- продуктовые ключи (пишет tenant-admin): `new_user_policy` (`"empty"`/`"default_node"`),
+  `default_hierarchy_node_id` (int64/null), `health_checkin_config` (object:
+  `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`,
+  `in_counter` map[string]bool), `documentation_url` (абсолютный http(s) URL или пусто),
+  `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`;
+- ключи `entitlement.*` (пишет только system-admin/provisioning): `entitlement.sso`,
+  `entitlement.subdomains`, `entitlement.file_uploads`, `entitlement.max_users`, …
+  Читаются интерфейсом `Entitlements`; OSS-реализация (`UnlimitedEntitlements`) возвращает
+  `true`/`∞` и эти ключи игнорирует.
+
+Продуктовые ключи переехали сюда из `system_settings` миграцией 033.
+
+#### UserSettings (`user_settings`, per-user)
+
+Плоскость **user**. PK `(user_id, key)`, value_json (JSONB). Личные преференсы (напр.
+`default_landing_tenant_id`). Не на горячем пути (грузится на `/settings`).
 
 ---
 

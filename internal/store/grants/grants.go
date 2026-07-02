@@ -5,6 +5,8 @@ import (
 	"sync"
 	"time"
 
+	"okrs/internal/domain"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,14 +23,15 @@ type HierarchyGrant struct {
 	ID              int64
 	UserID          int64
 	TeamID          int64
+	TenantID        int64
 	CreatedAt       time.Time
 	CreatedByUserID int64
 }
 
-func (r *GrantRepository) ListUserGrants(ctx context.Context, userID int64) ([]HierarchyGrant, error) {
+func (r *GrantRepository) ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]HierarchyGrant, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, team_id, created_at, created_by_user_id
-		FROM user_hierarchy_grants WHERE user_id = $1`, userID)
+		SELECT id, user_id, team_id, tenant_id, created_at, created_by_user_id
+		FROM user_hierarchy_grants WHERE user_id = $1 AND tenant_id = $2`, userID, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +39,7 @@ func (r *GrantRepository) ListUserGrants(ctx context.Context, userID int64) ([]H
 	var grants []HierarchyGrant
 	for rows.Next() {
 		var g HierarchyGrant
-		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
+		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.TenantID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
 			return nil, err
 		}
 		grants = append(grants, g)
@@ -44,24 +47,31 @@ func (r *GrantRepository) ListUserGrants(ctx context.Context, userID int64) ([]H
 	return grants, rows.Err()
 }
 
-func (r *GrantRepository) AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error {
+func (r *GrantRepository) AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO user_hierarchy_grants (user_id, team_id, created_by_user_id)
-		VALUES ($1, $2, $3)
+		INSERT INTO user_hierarchy_grants (user_id, team_id, tenant_id, created_by_user_id)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (user_id, team_id) DO NOTHING`,
-		userID, teamID, grantedByUserID)
+		userID, teamID, scope.TenantID, grantedByUserID)
 	return err
 }
 
-func (r *GrantRepository) RemoveUserGrant(ctx context.Context, userID, teamID int64) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM user_hierarchy_grants WHERE user_id = $1 AND team_id = $2`, userID, teamID)
+func (r *GrantRepository) RemoveUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM user_hierarchy_grants WHERE user_id = $1 AND team_id = $2 AND tenant_id = $3`, userID, teamID, scope.TenantID)
+	return err
+}
+
+// RemoveAllUserGrants deletes every hierarchy grant a user has within the tenant.
+func (r *GrantRepository) RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM user_hierarchy_grants WHERE user_id = $1 AND tenant_id = $2`, userID, scope.TenantID)
 	return err
 }
 
 // listAllGrants loads the full user_hierarchy_grants table as a map[userID][]HierarchyGrant.
+// Grants for all tenants are loaded; consumers filter by tenant via the grant's TenantID.
 func (r *GrantRepository) listAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, user_id, team_id, created_at, created_by_user_id
+		SELECT id, user_id, team_id, tenant_id, created_at, created_by_user_id
 		FROM user_hierarchy_grants`)
 	if err != nil {
 		return nil, err
@@ -70,7 +80,7 @@ func (r *GrantRepository) listAllGrants(ctx context.Context) (map[int64][]Hierar
 	result := make(map[int64][]HierarchyGrant)
 	for rows.Next() {
 		var g HierarchyGrant
-		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
+		if err := rows.Scan(&g.ID, &g.UserID, &g.TeamID, &g.TenantID, &g.CreatedAt, &g.CreatedByUserID); err != nil {
 			return nil, err
 		}
 		result[g.UserID] = append(result[g.UserID], g)
@@ -78,18 +88,19 @@ func (r *GrantRepository) listAllGrants(ctx context.Context) (map[int64][]Hierar
 	return result, rows.Err()
 }
 
-// ListDescendantTeamIDs returns the given root team IDs plus all their recursive children IDs.
-func (r *GrantRepository) ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error) {
+// ListDescendantTeamIDs returns the given root team IDs plus all their recursive children IDs,
+// restricted to the given tenant (teams of other tenants are never traversed).
+func (r *GrantRepository) ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error) {
 	if len(rootIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
 		WITH RECURSIVE tree AS (
-			SELECT id FROM teams WHERE id = ANY($1) AND deleted_at IS NULL
+			SELECT id FROM teams WHERE id = ANY($1) AND deleted_at IS NULL AND tenant_id = $2
 			UNION ALL
-			SELECT t.id FROM teams t JOIN tree p ON t.parent_id = p.id WHERE t.deleted_at IS NULL
+			SELECT t.id FROM teams t JOIN tree p ON t.parent_id = p.id WHERE t.deleted_at IS NULL AND t.tenant_id = $2
 		)
-		SELECT id FROM tree`, rootIDs)
+		SELECT id FROM tree`, rootIDs, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,9 +120,10 @@ func (r *GrantRepository) ListDescendantTeamIDs(ctx context.Context, rootIDs []i
 // *GrantRepository satisfies it; tests can inject a fake.
 type grantsBackend interface {
 	loadAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error)
-	addUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
-	removeUserGrant(ctx context.Context, userID, teamID int64) error
-	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
+	addUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
+	removeUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error
+	removeAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
+	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
 }
 
 // storeGrantsBackend adapts *GrantRepository to grantsBackend.
@@ -120,14 +132,17 @@ type storeGrantsBackend struct{ r *GrantRepository }
 func (b *storeGrantsBackend) loadAllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
 	return b.r.listAllGrants(ctx)
 }
-func (b *storeGrantsBackend) addUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error {
-	return b.r.AddUserGrant(ctx, userID, teamID, grantedByUserID)
+func (b *storeGrantsBackend) addUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error {
+	return b.r.AddUserGrant(ctx, scope, userID, teamID, grantedByUserID)
 }
-func (b *storeGrantsBackend) removeUserGrant(ctx context.Context, userID, teamID int64) error {
-	return b.r.RemoveUserGrant(ctx, userID, teamID)
+func (b *storeGrantsBackend) removeUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error {
+	return b.r.RemoveUserGrant(ctx, scope, userID, teamID)
 }
-func (b *storeGrantsBackend) ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error) {
-	return b.r.ListDescendantTeamIDs(ctx, rootIDs)
+func (b *storeGrantsBackend) removeAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	return b.r.RemoveAllUserGrants(ctx, scope, userID)
+}
+func (b *storeGrantsBackend) ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error) {
+	return b.r.ListDescendantTeamIDs(ctx, scope, rootIDs)
 }
 
 // GrantsCache is an in-memory read-through cache for the user_hierarchy_grants table.
@@ -159,18 +174,33 @@ func newGrantsCacheWithBackend(b grantsBackend, ttl time.Duration) *GrantsCache 
 	return &GrantsCache{backend: b, ttl: ttl}
 }
 
-// ListUserGrants returns the cached grants for userID.
-func (c *GrantsCache) ListUserGrants(ctx context.Context, userID int64) ([]HierarchyGrant, error) {
+// ListUserGrants returns the cached grants for userID within the given tenant scope.
+func (c *GrantsCache) ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]HierarchyGrant, error) {
 	data, err := c.ensureFresh(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return data[userID], nil
+	var scoped []HierarchyGrant
+	for _, g := range data[userID] {
+		if g.TenantID == scope.TenantID {
+			scoped = append(scoped, g)
+		}
+	}
+	return scoped, nil
 }
 
 // AddUserGrant writes to the backing store and invalidates the cache.
-func (c *GrantsCache) AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error {
-	if err := c.backend.addUserGrant(ctx, userID, teamID, grantedByUserID); err != nil {
+func (c *GrantsCache) AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error {
+	if err := c.backend.addUserGrant(ctx, scope, userID, teamID, grantedByUserID); err != nil {
+		return err
+	}
+	c.invalidate()
+	return nil
+}
+
+// RemoveAllUserGrants removes every grant a user has in the tenant and invalidates the cache.
+func (c *GrantsCache) RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	if err := c.backend.removeAllUserGrants(ctx, scope, userID); err != nil {
 		return err
 	}
 	c.invalidate()
@@ -178,8 +208,8 @@ func (c *GrantsCache) AddUserGrant(ctx context.Context, userID, teamID, grantedB
 }
 
 // RemoveUserGrant writes to the backing store and invalidates the cache.
-func (c *GrantsCache) RemoveUserGrant(ctx context.Context, userID, teamID int64) error {
-	if err := c.backend.removeUserGrant(ctx, userID, teamID); err != nil {
+func (c *GrantsCache) RemoveUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error {
+	if err := c.backend.removeUserGrant(ctx, scope, userID, teamID); err != nil {
 		return err
 	}
 	c.invalidate()
@@ -187,12 +217,13 @@ func (c *GrantsCache) RemoveUserGrant(ctx context.Context, userID, teamID int64)
 }
 
 // ListDescendantTeamIDs delegates to the backing store (queries the teams table, not grants).
-func (c *GrantsCache) ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error) {
-	return c.backend.ListDescendantTeamIDs(ctx, rootIDs)
+func (c *GrantsCache) ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error) {
+	return c.backend.ListDescendantTeamIDs(ctx, scope, rootIDs)
 }
 
 // AllGrants returns the full cached snapshot of user_hierarchy_grants as a map[userID][]HierarchyGrant.
-// The returned map is safe to read concurrently; do not write to it.
+// The returned map is safe to read concurrently; do not write to it. Entries span all tenants;
+// callers filter by the grant's TenantID.
 func (c *GrantsCache) AllGrants(ctx context.Context) (map[int64][]HierarchyGrant, error) {
 	return c.ensureFresh(ctx)
 }

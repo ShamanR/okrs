@@ -46,7 +46,12 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/teamOkrs", http.StatusSeeOther)
 		return
 	}
-	if err := h.deps.Service.AddGoalComment(ctx, goalID, text, auth.UserIDFromContext(ctx)); err != nil {
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if err := h.deps.Service.AddGoalComment(ctx, scope, goalID, text, auth.UserIDFromContext(ctx)); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -59,6 +64,11 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "403 Forbidden", http.StatusForbidden)
+		return
+	}
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -96,7 +106,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		meta.ProjectStages = stages
 	}
 
-	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, krs.KeyResultInput{
+	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, scope, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -125,11 +135,16 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	var requestingTeamID int64
 	if s := r.FormValue("team_id"); s != "" {
 		requestingTeamID, _ = common.ParseID(s)
 	}
-	teamID, periodID, err := h.deps.Service.DeleteGoal(ctx, goalID, requestingTeamID)
+	teamID, periodID, err := h.deps.Service.DeleteGoal(ctx, scope, goalID, requestingTeamID)
 	if err != nil {
 		if errors.Is(err, service.ErrPeriodClosed) {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Период закрыт, изменения недоступны"))
@@ -152,13 +167,18 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goal, err := h.deps.Service.GetGoal(ctx, goalID)
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	goal, err := h.deps.Service.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	teamID := parseOptionalTeamID(r.FormValue("team_id"), goal.TeamID)
-	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
+	status, err := h.deps.Service.GetTeamPeriodStatus(ctx, scope, teamID, goal.PeriodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -175,7 +195,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("%s", errMsg))
 		return
 	}
-	if err := h.deps.Service.UpdateGoalFields(ctx, goals.GoalFieldsUpdateInput{
+	if err := h.deps.Service.UpdateGoalFields(ctx, scope, goals.GoalFieldsUpdateInput{
 		ID:          goalID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -187,7 +207,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.UpdateGoalWeight(ctx, goalID, teamID, weight); err != nil {
+	if err := h.deps.Service.UpdateGoalWeight(ctx, scope, goalID, teamID, weight); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -242,6 +262,11 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	selected := r.Form["team_ids"]
 	if len(selected) == 0 {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
@@ -264,7 +289,7 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
 		return
 	}
-	ownerID, periodID, err := h.deps.Service.UpdateGoalOwnerAndShares(ctx, goalID, selectedIDs)
+	ownerID, periodID, err := h.deps.Service.UpdateGoalOwnerAndShares(ctx, scope, goalID, selectedIDs)
 	if err != nil {
 		if errors.Is(err, service.ErrCannotShareWithClosedPeriod) {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым периодом"))

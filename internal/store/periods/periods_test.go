@@ -5,9 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"okrs/internal/domain"
 	"okrs/internal/store/periods"
 	"okrs/internal/store/testutil"
 )
+
+// sc1 is the default-tenant scope used across the existing single-tenant period tests.
+var sc1 = domain.TenantScope{TenantID: 1}
 
 func TestPeriodsCRUD(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
@@ -15,7 +19,7 @@ func TestPeriodsCRUD(t *testing.T) {
 	ctx := context.Background()
 	r := periods.NewPeriodRepository(pool)
 
-	id, err := r.CreatePeriod(ctx, periods.PeriodInput{
+	id, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
 		Name:      "2025 Q1",
 		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:   time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC),
@@ -27,7 +31,7 @@ func TestPeriodsCRUD(t *testing.T) {
 		t.Fatal("expected non-zero ID")
 	}
 
-	p, err := r.GetPeriod(ctx, id)
+	p, err := r.GetPeriod(ctx, sc1, id)
 	if err != nil {
 		t.Fatalf("GetPeriod: %v", err)
 	}
@@ -35,19 +39,19 @@ func TestPeriodsCRUD(t *testing.T) {
 		t.Fatalf("expected name 2025 Q1, got %s", p.Name)
 	}
 
-	if err := r.UpdatePeriod(ctx, id, periods.PeriodInput{
+	if err := r.UpdatePeriod(ctx, sc1, id, periods.PeriodInput{
 		Name:      "2025 Q1 updated",
 		StartDate: p.StartDate,
 		EndDate:   p.EndDate,
 	}); err != nil {
 		t.Fatalf("UpdatePeriod: %v", err)
 	}
-	p2, _ := r.GetPeriod(ctx, id)
+	p2, _ := r.GetPeriod(ctx, sc1, id)
 	if p2.Name != "2025 Q1 updated" {
 		t.Fatalf("expected updated name, got %s", p2.Name)
 	}
 
-	list, err := r.ListPeriods(ctx)
+	list, err := r.ListPeriods(ctx, sc1)
 	if err != nil {
 		t.Fatalf("ListPeriods: %v", err)
 	}
@@ -55,10 +59,10 @@ func TestPeriodsCRUD(t *testing.T) {
 		t.Fatal("expected at least one period")
 	}
 
-	if err := r.DeletePeriod(ctx, id); err != nil {
+	if err := r.DeletePeriod(ctx, sc1, id); err != nil {
 		t.Fatalf("DeletePeriod: %v", err)
 	}
-	if _, err := r.GetPeriod(ctx, id); err == nil {
+	if _, err := r.GetPeriod(ctx, sc1, id); err == nil {
 		t.Fatal("expected error after deletion")
 	}
 }
@@ -69,7 +73,7 @@ func TestFindPeriodForDate(t *testing.T) {
 	ctx := context.Background()
 	r := periods.NewPeriodRepository(pool)
 
-	id, err := r.CreatePeriod(ctx, periods.PeriodInput{
+	id, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
 		Name:      "2025 Q2",
 		StartDate: time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:   time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC),
@@ -78,7 +82,7 @@ func TestFindPeriodForDate(t *testing.T) {
 		t.Fatalf("CreatePeriod: %v", err)
 	}
 
-	p, err := r.FindPeriodForDate(ctx, time.Date(2025, 5, 15, 0, 0, 0, 0, time.UTC))
+	p, err := r.FindPeriodForDate(ctx, sc1, time.Date(2025, 5, 15, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("FindPeriodForDate inside: %v", err)
 	}
@@ -86,7 +90,7 @@ func TestFindPeriodForDate(t *testing.T) {
 		t.Fatalf("expected period %d, got %d", id, p.ID)
 	}
 
-	_, err = r.FindPeriodForDate(ctx, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	_, err = r.FindPeriodForDate(ctx, sc1, time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
 	if err == nil {
 		t.Fatal("expected error for date outside all periods")
 	}
@@ -98,18 +102,18 @@ func TestMovePeriodSwapsSortOrder(t *testing.T) {
 	ctx := context.Background()
 	r := periods.NewPeriodRepository(pool)
 
-	id1, _ := r.CreatePeriod(ctx, periods.PeriodInput{
+	id1, _ := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
 		Name:      "P1",
 		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:   time.Date(2025, 3, 31, 0, 0, 0, 0, time.UTC),
 	})
-	id2, _ := r.CreatePeriod(ctx, periods.PeriodInput{
+	id2, _ := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
 		Name:      "P2",
 		StartDate: time.Date(2025, 4, 1, 0, 0, 0, 0, time.UTC),
 		EndDate:   time.Date(2025, 6, 30, 0, 0, 0, 0, time.UTC),
 	})
 
-	before, _ := r.ListPeriods(ctx)
+	before, _ := r.ListPeriods(ctx, sc1)
 	var idx1, idx2 int
 	for i, p := range before {
 		if p.ID == id1 {
@@ -124,11 +128,11 @@ func TestMovePeriodSwapsSortOrder(t *testing.T) {
 	}
 
 	// Move P1 down (direction > 0 means toward higher sort_order).
-	if err := r.MovePeriod(ctx, id1, 1); err != nil {
+	if err := r.MovePeriod(ctx, sc1, id1, 1); err != nil {
 		t.Fatalf("MovePeriod: %v", err)
 	}
 
-	after, _ := r.ListPeriods(ctx)
+	after, _ := r.ListPeriods(ctx, sc1)
 	var aidx1, aidx2 int
 	for i, p := range after {
 		if p.ID == id1 {

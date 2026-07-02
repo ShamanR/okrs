@@ -9,6 +9,31 @@
 BEGIN;
 
 -- ----------------------------------------------------------------
+-- Default tenant (created by migration 027). Seeded teams/periods/goals omit tenant_id
+-- and default to 1; ensure it exists for standalone seed runs.
+-- ----------------------------------------------------------------
+INSERT INTO tenants (id, slug, name) OVERRIDING SYSTEM VALUE
+VALUES (1, 'default', 'Default')
+ON CONFLICT (id) DO NOTHING;
+
+-- Per-tenant product settings (new_user_policy, documentation_url, feedback_*,
+-- health_checkin_config, etc.) now live in tenant_settings (tenant_id, key, value_json)
+-- since migration 033 — NOT in the global system_settings. The demo seed does not write
+-- product settings; any future seeded product key must target tenant_settings under
+-- tenant #1. system_settings is reserved for global keys (e.g. default_registration_tenant_id).
+
+-- This demo seed is single-tenant: all rows belong to the default tenant. Migration 032
+-- dropped the transitional tenant_id DEFAULT 1; restore it for the duration of the seed so
+-- the INSERTs below (which omit tenant_id) land in the default tenant.
+ALTER TABLE teams                  ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE periods                ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE goals                  ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE goal_shares            ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE team_period_statuses   ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE key_results            ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE goal_comments          ALTER COLUMN tenant_id SET DEFAULT 1;
+
+-- ----------------------------------------------------------------
 -- Clear all tables in FK-safe order
 -- ----------------------------------------------------------------
 TRUNCATE TABLE

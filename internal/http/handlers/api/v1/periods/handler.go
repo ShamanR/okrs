@@ -3,6 +3,7 @@ package periods
 import (
 	"net/http"
 
+	"okrs/internal/auth"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/service"
 )
@@ -17,7 +18,12 @@ func New(service *service.Service) *Handler {
 
 func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
 	v1.SetAPICacheControl(w)
-	periods, err := h.service.ListPeriods(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	periods, err := h.service.ListPeriods(r.Context(), scope)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load periods", nil)
 		return

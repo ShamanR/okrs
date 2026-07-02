@@ -28,79 +28,79 @@ type GrantsProvider interface {
 // Each interface is satisfied by the corresponding store.*Repository type.
 
 type TeamRepo interface {
-	ListTeams(ctx context.Context) ([]domain.Team, error)
-	ListDeletedTeams(ctx context.Context) ([]domain.Team, error)
-	ListAllTeams(ctx context.Context) ([]domain.Team, error)
-	GetTeam(ctx context.Context, id int64) (domain.Team, error)
-	CreateTeam(ctx context.Context, input teams.TeamInput) (int64, error)
-	UpdateTeam(ctx context.Context, input teams.TeamInput, id int64) error
-	TeamHasGoals(ctx context.Context, id int64) (bool, error)
-	TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (bool, error)
-	ListTeamIDsWithGoalsInPeriod(ctx context.Context, periodID int64) (map[int64]struct{}, error)
-	SoftDeleteTeam(ctx context.Context, id int64) error
-	RestoreTeam(ctx context.Context, id int64) error
-	HardDeleteTeam(ctx context.Context, id int64) error
+	ListTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error)
+	ListDeletedTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error)
+	ListAllTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error)
+	GetTeam(ctx context.Context, scope domain.TenantScope, id int64) (domain.Team, error)
+	CreateTeam(ctx context.Context, scope domain.TenantScope, input teams.TeamInput) (int64, error)
+	UpdateTeam(ctx context.Context, scope domain.TenantScope, input teams.TeamInput, id int64) error
+	TeamHasGoals(ctx context.Context, scope domain.TenantScope, id int64) (bool, error)
+	TeamHasGoalsInPeriod(ctx context.Context, scope domain.TenantScope, id, periodID int64) (bool, error)
+	ListTeamIDsWithGoalsInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (map[int64]struct{}, error)
+	SoftDeleteTeam(ctx context.Context, scope domain.TenantScope, id int64) error
+	RestoreTeam(ctx context.Context, scope domain.TenantScope, id int64) error
+	HardDeleteTeam(ctx context.Context, scope domain.TenantScope, id int64) error
 }
 
 type GoalRepo interface {
-	ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error)
-	ListGoalsByTeamsPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
-	GetGoal(ctx context.Context, id int64) (domain.Goal, error)
-	CreateGoal(ctx context.Context, input goals.GoalInput) (int64, error)
-	DeleteGoal(ctx context.Context, id int64) error
-	UpdateGoal(ctx context.Context, input goals.GoalUpdateInput) error
-	UpdateGoalFields(ctx context.Context, input goals.GoalFieldsUpdateInput) error
-	UpdateGoalOwner(ctx context.Context, goalID, teamID int64, weight int) error
-	MoveGoal(ctx context.Context, goalID int64, direction int) error
-	AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error
-	ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error)
-	ListTeamLastGoalUpdateInPeriod(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
+	ListGoalsByTeamPeriod(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error)
+	ListGoalsByTeamsPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
+	GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error)
+	CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error)
+	DeleteGoal(ctx context.Context, scope domain.TenantScope, id int64) error
+	UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error
+	UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error
+	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
+	MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error
+	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error
+	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
+	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
 
 type GoalShareRepo interface {
-	ListGoalShares(ctx context.Context, goalID int64) ([]shares.GoalShare, error)
-	ListGoalSharesByGoalIDs(ctx context.Context, goalIDs []int64) (map[int64][]shares.GoalShare, error)
-	GetGoalShare(ctx context.Context, goalID, teamID int64) (shares.GoalShare, error)
-	ReplaceGoalShares(ctx context.Context, goalID int64, shares []shares.GoalShareInput) error
-	DeleteGoalShare(ctx context.Context, goalID, teamID int64) error
-	UpdateGoalTeamWeight(ctx context.Context, goalID, teamID int64, weight int) error
+	ListGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64) ([]shares.GoalShare, error)
+	ListGoalSharesByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error)
+	GetGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) (shares.GoalShare, error)
+	ReplaceGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64, shares []shares.GoalShareInput) error
+	DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error
+	UpdateGoalTeamWeight(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
 }
 
 type PeriodRepo interface {
-	ListPeriods(ctx context.Context) ([]domain.Period, error)
-	GetPeriod(ctx context.Context, id int64) (domain.Period, error)
-	FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error)
-	CreatePeriod(ctx context.Context, input periods.PeriodInput) (int64, error)
-	UpdatePeriod(ctx context.Context, periodID int64, input periods.PeriodInput) error
-	DeletePeriod(ctx context.Context, periodID int64) error
-	MovePeriod(ctx context.Context, periodID int64, direction int) error
+	ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error)
+	GetPeriod(ctx context.Context, scope domain.TenantScope, id int64) (domain.Period, error)
+	FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error)
+	CreatePeriod(ctx context.Context, scope domain.TenantScope, input periods.PeriodInput) (int64, error)
+	UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input periods.PeriodInput) error
+	DeletePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error
+	MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error
 }
 
 type KRRepo interface {
-	GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error)
-	CreateKeyResult(ctx context.Context, input krs.KeyResultInput) (int64, error)
-	UpdateKeyResult(ctx context.Context, input krs.KeyResultUpdateInput) error
-	DeleteKeyResult(ctx context.Context, id int64) error
-	MoveKeyResult(ctx context.Context, krID int64, direction int) error
-	UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error
-	UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error
-	FindGoalIDByKR(ctx context.Context, krID int64) (int64, error)
-	FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error)
-	UpdateNumericalCurrent(ctx context.Context, krID int64, current float64) error
-	UpdateBoolean(ctx context.Context, krID int64, done bool) error
-	ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error)
-	UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error
-	BatchUpdateProjectStagesDone(ctx context.Context, krID int64, updates map[int64]bool) error
-	UpsertNumericalMeta(ctx context.Context, input krs.NumericalMetaInput) error
-	UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error
-	ReplaceProjectStages(ctx context.Context, krID int64, stages []krs.ProjectStageInput) error
+	GetKeyResult(ctx context.Context, scope domain.TenantScope, id int64) (domain.KeyResult, error)
+	CreateKeyResult(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput) (int64, error)
+	UpdateKeyResult(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput) error
+	DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error
+	MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error
+	UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error
+	UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error
+	FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error)
+	FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error)
+	UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error
+	UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error
+	ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error)
+	UpdateProjectStageDone(ctx context.Context, scope domain.TenantScope, stageID int64, done bool) error
+	BatchUpdateProjectStagesDone(ctx context.Context, scope domain.TenantScope, krID int64, updates map[int64]bool) error
+	UpsertNumericalMeta(ctx context.Context, scope domain.TenantScope, input krs.NumericalMetaInput) error
+	UpsertBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error
+	ReplaceProjectStages(ctx context.Context, scope domain.TenantScope, krID int64, stages []krs.ProjectStageInput) error
 }
 
 type TeamStatusRepo interface {
-	GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error)
-	GetTeamPeriodStatusWithTime(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error)
-	ListTeamPeriodStatuses(ctx context.Context, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
-	SetTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error
+	GetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, error)
+	GetTeamPeriodStatusWithTime(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error)
+	ListTeamPeriodStatuses(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
+	SetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus) error
 }
 
 type UserRepo interface {
@@ -142,6 +142,7 @@ var (
 	ErrTeamNotVisibleInPeriod      = errors.New("team not visible in period")
 	ErrPeriodClosed                = errors.New("period is closed")
 	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
+	ErrShareTargetNotInTenant      = errors.New("share target team is not in the active tenant")
 )
 
 // New constructs a Service from a Deps bundle.
@@ -241,18 +242,18 @@ type GoalDetails struct {
 	ShareTeams []TeamShareInfo
 }
 
-func (s *Service) GetHierarchy(ctx context.Context, periodID *int64) ([]TeamNode, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx)
+func (s *Service) GetHierarchy(ctx context.Context, scope domain.TenantScope, periodID *int64) ([]TeamNode, error) {
+	allTeams, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
-	return s.getHierarchyFromTeams(ctx, allTeams, periodID)
+	return s.getHierarchyFromTeams(ctx, scope, allTeams, periodID)
 }
 
-func (s *Service) getHierarchyFromTeams(ctx context.Context, allTeams []domain.Team, periodID *int64) ([]TeamNode, error) {
+func (s *Service) getHierarchyFromTeams(ctx context.Context, scope domain.TenantScope, allTeams []domain.Team, periodID *int64) ([]TeamNode, error) {
 	teamIDsWithGoals := map[int64]struct{}{}
 	if periodID != nil && *periodID > 0 {
-		ids, err := s.teams.ListTeamIDsWithGoalsInPeriod(ctx, *periodID)
+		ids, err := s.teams.ListTeamIDsWithGoalsInPeriod(ctx, scope, *periodID)
 		if err != nil {
 			return nil, err
 		}
@@ -281,24 +282,24 @@ func (s *Service) getHierarchyFromTeams(ctx context.Context, allTeams []domain.T
 	return nodes, nil
 }
 
-func (s *Service) GetTeam(ctx context.Context, teamID int64) (domain.Team, error) {
-	return s.teams.GetTeam(ctx, teamID)
+func (s *Service) GetTeam(ctx context.Context, scope domain.TenantScope, teamID int64) (domain.Team, error) {
+	return s.teams.GetTeam(ctx, scope, teamID)
 }
 
-func (s *Service) ListPeriods(ctx context.Context) ([]domain.Period, error) {
-	return s.periods.ListPeriods(ctx)
+func (s *Service) ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error) {
+	return s.periods.ListPeriods(ctx, scope)
 }
 
-func (s *Service) GetPeriod(ctx context.Context, periodID int64) (domain.Period, error) {
-	return s.periods.GetPeriod(ctx, periodID)
+func (s *Service) GetPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (domain.Period, error) {
+	return s.periods.GetPeriod(ctx, scope, periodID)
 }
 
-func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, periodID int64, orgID *int64) ([]TeamSummary, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx)
+func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, scope domain.TenantScope, periodID int64, orgID *int64) ([]TeamSummary, error) {
+	allTeams, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
-	return s.getTeamsWithPeriodSummaryFromTeams(ctx, allTeams, periodID, orgID)
+	return s.getTeamsWithPeriodSummaryFromTeams(ctx, scope, allTeams, periodID, orgID)
 }
 
 // teamSummaryBatch holds pre-loaded data for building TeamSummary without per-team DB queries.
@@ -309,7 +310,7 @@ type teamSummaryBatch struct {
 	sharesByGoal     map[int64][]shares.GoalShare
 }
 
-func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, allTeams []domain.Team, periodID int64, orgID *int64) ([]TeamSummary, error) {
+func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, scope domain.TenantScope, allTeams []domain.Team, periodID int64, orgID *int64) ([]TeamSummary, error) {
 	teamsByID, childrenMap, roots := buildTeamHierarchy(allTeams)
 
 	allTeamIDs := make([]int64, len(allTeams))
@@ -317,15 +318,15 @@ func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, allTea
 		allTeamIDs[i] = t.ID
 	}
 
-	teamIDsWithGoals, err := s.teams.ListTeamIDsWithGoalsInPeriod(ctx, periodID)
+	teamIDsWithGoals, err := s.teams.ListTeamIDsWithGoalsInPeriod(ctx, scope, periodID)
 	if err != nil {
 		return nil, err
 	}
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, periodID, allTeamIDs)
+	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, allTeamIDs)
 	if err != nil {
 		return nil, err
 	}
-	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, periodID, allTeamIDs)
+	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, scope, periodID, allTeamIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -336,7 +337,7 @@ func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, allTea
 			allGoalIDs = append(allGoalIDs, g.ID)
 		}
 	}
-	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, allGoalIDs)
+	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, scope, allGoalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -414,19 +415,19 @@ func (s *Service) appendTeamSummaryFromBatch(rows *[]TeamSummary, team domain.Te
 	}
 }
 
-func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period domain.Period) (TeamOKR, error) {
-	team, err := s.teams.GetTeam(ctx, teamID)
+func (s *Service) GetTeamOKR(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, period domain.Period) (TeamOKR, error) {
+	team, err := s.teams.GetTeam(ctx, scope, teamID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
-	visible, err := s.isTeamVisibleInPeriod(ctx, team, periodID)
+	visible, err := s.isTeamVisibleInPeriod(ctx, scope, team, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
 	if !visible {
 		return TeamOKR{}, ErrTeamNotVisibleInPeriod
 	}
-	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -435,11 +436,11 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 	for i, g := range goalsList {
 		goalIDs[i] = g.ID
 	}
-	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, goalIDs)
+	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, scope, goalIDs)
 	if err != nil {
 		return TeamOKR{}, err
 	}
-	allTeams, err := s.teams.ListAllTeams(ctx)
+	allTeams, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -461,7 +462,7 @@ func (s *Service) GetTeamOKR(ctx context.Context, teamID, periodID int64, period
 	}
 
 	periodProgress := okr.PeriodProgress(goalsList)
-	status, statusChangedAt, err := s.statuses.GetTeamPeriodStatusWithTime(ctx, teamID, periodID)
+	status, statusChangedAt, err := s.statuses.GetTeamPeriodStatusWithTime(ctx, scope, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
 	}
@@ -504,12 +505,12 @@ func buildShareInfosFromBatch(goal domain.Goal, shareList []shares.GoalShare, te
 	return teamInfos
 }
 
-func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID int64) ([]TeamChildSummary, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx)
+func (s *Service) GetDirectChildrenSummary(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]TeamChildSummary, error) {
+	allTeams, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
-	hierarchy, err := s.getHierarchyFromTeams(ctx, allTeams, &periodID)
+	hierarchy, err := s.getHierarchyFromTeams(ctx, scope, allTeams, &periodID)
 	if err != nil {
 		return nil, err
 	}
@@ -517,19 +518,19 @@ func (s *Service) GetDirectChildrenSummary(ctx context.Context, teamID, periodID
 	if len(children) == 0 {
 		return []TeamChildSummary{}, nil
 	}
-	return s.buildDirectChildrenSummary(ctx, periodID, children, nil)
+	return s.buildDirectChildrenSummary(ctx, scope, periodID, children, nil)
 }
 
-func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64, children []TeamNode, goalsByTeam map[int64][]domain.Goal) ([]TeamChildSummary, error) {
+func (s *Service) buildDirectChildrenSummary(ctx context.Context, scope domain.TenantScope, periodID int64, children []TeamNode, goalsByTeam map[int64][]domain.Goal) ([]TeamChildSummary, error) {
 	childIDs := make([]int64, 0, len(children))
 	for _, child := range children {
 		childIDs = append(childIDs, child.Team.ID)
 	}
-	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, periodID, childIDs)
+	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, scope, periodID, childIDs)
 	if err != nil {
 		return nil, err
 	}
-	lastUpdates, err := s.goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, childIDs)
+	lastUpdates, err := s.goals.ListTeamLastGoalUpdateInPeriod(ctx, scope, periodID, childIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -546,7 +547,7 @@ func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64
 		if goalsByTeam != nil {
 			goalsList = goalsByTeam[child.Team.ID]
 		} else {
-			goalsList, err = s.goals.ListGoalsByTeamPeriod(ctx, child.Team.ID, periodID)
+			goalsList, err = s.goals.ListGoalsByTeamPeriod(ctx, scope, child.Team.ID, periodID)
 			if err != nil {
 				return nil, err
 			}
@@ -573,18 +574,18 @@ func (s *Service) buildDirectChildrenSummary(ctx context.Context, periodID int64
 	return result, nil
 }
 
-func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (TeamOverview, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx)
+func (s *Service) GetTeamOverview(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (TeamOverview, error) {
+	allTeams, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return TeamOverview{}, err
 	}
-	hierarchy, err := s.getHierarchyFromTeams(ctx, allTeams, &periodID)
+	hierarchy, err := s.getHierarchyFromTeams(ctx, scope, allTeams, &periodID)
 	if err != nil {
 		return TeamOverview{}, err
 	}
 	children := findDirectChildren(teamID, hierarchy)
 	descendantIDs := collectDescendantIDs(teamID, hierarchy)
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, periodID, descendantIDs)
+	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, descendantIDs)
 	if err != nil {
 		return TeamOverview{}, err
 	}
@@ -605,7 +606,7 @@ func (s *Service) GetTeamOverview(ctx context.Context, teamID, periodID int64) (
 	}
 	childrenSummary := []TeamChildSummary{}
 	if len(children) > 0 {
-		childrenSummary, err = s.buildDirectChildrenSummary(ctx, periodID, children, goalsByTeam)
+		childrenSummary, err = s.buildDirectChildrenSummary(ctx, scope, periodID, children, goalsByTeam)
 		if err != nil {
 			return TeamOverview{}, err
 		}
@@ -672,26 +673,26 @@ func collectDescendantIDs(targetID int64, nodes []TeamNode) []int64 {
 	return descendants
 }
 
-func (s *Service) UpdateKRProgressNumerical(ctx context.Context, krID int64, current float64) error {
-	kr, err := s.krs.GetKeyResult(ctx, krID)
+func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
+	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
 	if kr.Kind != domain.KRKindNumerical {
 		return fmt.Errorf("unsupported kr kind for numerical update: %s", kr.Kind)
 	}
-	return s.krs.UpdateNumericalCurrent(ctx, krID, current)
+	return s.krs.UpdateNumericalCurrent(ctx, scope, krID, current)
 }
 
-func (s *Service) UpdateKRProgressBoolean(ctx context.Context, krID int64, done bool) error {
-	kr, err := s.krs.GetKeyResult(ctx, krID)
+func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
+	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
 	if kr.Kind != domain.KRKindBoolean {
 		return fmt.Errorf("unsupported kr kind for boolean update: %s", kr.Kind)
 	}
-	return s.krs.UpdateBoolean(ctx, krID, done)
+	return s.krs.UpdateBoolean(ctx, scope, krID, done)
 }
 
 type ProjectStageUpdate struct {
@@ -699,15 +700,15 @@ type ProjectStageUpdate struct {
 	IsDone bool
 }
 
-func (s *Service) UpdateKRProgressProject(ctx context.Context, krID int64, updates []ProjectStageUpdate) error {
-	kr, err := s.krs.GetKeyResult(ctx, krID)
+func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.TenantScope, krID int64, updates []ProjectStageUpdate) error {
+	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
 	if kr.Kind != domain.KRKindProject {
 		return fmt.Errorf("unsupported kr kind for project update: %s", kr.Kind)
 	}
-	stages, err := s.krs.ListProjectStages(ctx, krID)
+	stages, err := s.krs.ListProjectStages(ctx, scope, krID)
 	if err != nil {
 		return err
 	}
@@ -721,7 +722,7 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, krID int64, updat
 			validUpdates[stage.ID] = done
 		}
 	}
-	return s.krs.BatchUpdateProjectStagesDone(ctx, krID, validUpdates)
+	return s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, validUpdates)
 }
 
 type ShareTarget struct {
@@ -729,36 +730,54 @@ type ShareTarget struct {
 	Weight int
 }
 
-func (s *Service) ShareGoal(ctx context.Context, goalID int64, targets []ShareTarget) error {
+func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget) error {
+	// Validate every target team belongs to the active tenant before writing shares. The share
+	// repository only scopes the goal, so an unchecked target team_id could attach the goal to a
+	// team in another tenant. One scoped lookup builds the allow-set (no per-target query).
+	if len(targets) > 0 {
+		tenantTeams, err := s.teams.ListAllTeams(ctx, scope)
+		if err != nil {
+			return err
+		}
+		valid := make(map[int64]struct{}, len(tenantTeams))
+		for _, t := range tenantTeams {
+			valid[t.ID] = struct{}{}
+		}
+		for _, target := range targets {
+			if _, ok := valid[target.TeamID]; !ok {
+				return ErrShareTargetNotInTenant
+			}
+		}
+	}
 	shareInputs := make([]shares.GoalShareInput, 0, len(targets))
 	for _, target := range targets {
 		shareInputs = append(shareInputs, shares.GoalShareInput{TeamID: target.TeamID, Weight: target.Weight})
 	}
-	return s.shares.ReplaceGoalShares(ctx, goalID, shareInputs)
+	return s.shares.ReplaceGoalShares(ctx, scope, goalID, shareInputs)
 }
 
-func (s *Service) UpdateGoalWeight(ctx context.Context, goalID, teamID int64, weight int) error {
-	return s.shares.UpdateGoalTeamWeight(ctx, goalID, teamID, weight)
+func (s *Service) UpdateGoalWeight(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error {
+	return s.shares.UpdateGoalTeamWeight(ctx, scope, goalID, teamID, weight)
 }
 
-func (s *Service) AddGoalComment(ctx context.Context, goalID int64, text string, authorUserID int64) error {
-	return s.goals.AddGoalComment(ctx, goalID, text, authorUserID)
+func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
+	return s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
 }
 
-func (s *Service) UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error {
-	return s.krs.UpsertKeyResultNote(ctx, krID, text, authorUserID)
+func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	return s.krs.UpsertKeyResultNote(ctx, scope, krID, text, authorUserID)
 }
 
-func (s *Service) UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error {
-	return s.krs.UpdateKeyResultDescription(ctx, krID, description)
+func (s *Service) UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error {
+	return s.krs.UpdateKeyResultDescription(ctx, scope, krID, description)
 }
 
-func (s *Service) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
-	return s.krs.GetKeyResult(ctx, id)
+func (s *Service) GetKeyResult(ctx context.Context, scope domain.TenantScope, id int64) (domain.KeyResult, error) {
+	return s.krs.GetKeyResult(ctx, scope, id)
 }
 
-func (s *Service) GetGoal(ctx context.Context, id int64) (domain.Goal, error) {
-	goal, err := s.goals.GetGoal(ctx, id)
+func (s *Service) GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error) {
+	goal, err := s.goals.GetGoal(ctx, scope, id)
 	if err != nil {
 		return domain.Goal{}, err
 	}
@@ -777,40 +796,40 @@ type KeyResultMetaInput struct {
 	ProjectStages        []krs.ProjectStageInput
 }
 
-func (s *Service) UpdateGoal(ctx context.Context, input goals.GoalUpdateInput) error {
-	return s.goals.UpdateGoal(ctx, input)
+func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error {
+	return s.goals.UpdateGoal(ctx, scope, input)
 }
 
-func (s *Service) MoveGoal(ctx context.Context, goalID int64, direction int) error {
-	return s.goals.MoveGoal(ctx, goalID, direction)
+func (s *Service) MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error {
+	return s.goals.MoveGoal(ctx, scope, goalID, direction)
 }
 
-func (s *Service) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
-	return s.krs.MoveKeyResult(ctx, krID, direction)
+func (s *Service) MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error {
+	return s.krs.MoveKeyResult(ctx, scope, krID, direction)
 }
 
-func (s *Service) CreateKeyResultWithMeta(ctx context.Context, input krs.KeyResultInput, meta KeyResultMetaInput) (int64, error) {
-	krID, err := s.krs.CreateKeyResult(ctx, input)
+func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta KeyResultMetaInput) (int64, error) {
+	krID, err := s.krs.CreateKeyResult(ctx, scope, input)
 	if err != nil {
 		return 0, err
 	}
-	if err := s.applyKeyResultMeta(ctx, krID, input.Kind, meta); err != nil {
+	if err := s.applyKeyResultMeta(ctx, scope, krID, input.Kind, meta); err != nil {
 		return 0, err
 	}
 	return krID, nil
 }
 
-func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, input krs.KeyResultUpdateInput, meta KeyResultMetaInput) error {
-	if err := s.krs.UpdateKeyResult(ctx, input); err != nil {
+func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta KeyResultMetaInput) error {
+	if err := s.krs.UpdateKeyResult(ctx, scope, input); err != nil {
 		return err
 	}
-	return s.applyKeyResultMeta(ctx, input.ID, input.Kind, meta)
+	return s.applyKeyResultMeta(ctx, scope, input.ID, input.Kind, meta)
 }
 
-func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
+func (s *Service) applyKeyResultMeta(ctx context.Context, scope domain.TenantScope, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
 	switch kind {
 	case domain.KRKindNumerical:
-		return s.krs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{
+		return s.krs.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{
 			KeyResultID:     krID,
 			StartValue:      meta.NumericalStart,
 			TargetValue:     meta.NumericalTarget,
@@ -820,46 +839,46 @@ func (s *Service) applyKeyResultMeta(ctx context.Context, krID int64, kind domai
 			ZeroingCriteria: meta.ZeroingCriteria,
 		})
 	case domain.KRKindBoolean:
-		return s.krs.UpsertBooleanMeta(ctx, krID, meta.BooleanDone)
+		return s.krs.UpsertBooleanMeta(ctx, scope, krID, meta.BooleanDone)
 	case domain.KRKindProject:
-		return s.krs.ReplaceProjectStages(ctx, krID, meta.ProjectStages)
+		return s.krs.ReplaceProjectStages(ctx, scope, krID, meta.ProjectStages)
 	default:
 		return nil
 	}
 }
 
-func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, teamID, periodID int64, status domain.TeamPeriodStatus) error {
-	return s.statuses.SetTeamPeriodStatus(ctx, teamID, periodID, status)
+func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus) error {
+	return s.statuses.SetTeamPeriodStatus(ctx, scope, teamID, periodID, status)
 }
 
-func (s *Service) DeleteTeam(ctx context.Context, teamID int64) error {
-	hasGoals, err := s.teams.TeamHasGoals(ctx, teamID)
+func (s *Service) DeleteTeam(ctx context.Context, scope domain.TenantScope, teamID int64) error {
+	hasGoals, err := s.teams.TeamHasGoals(ctx, scope, teamID)
 	if err != nil {
 		return err
 	}
 	if hasGoals {
-		return s.teams.SoftDeleteTeam(ctx, teamID)
+		return s.teams.SoftDeleteTeam(ctx, scope, teamID)
 	}
-	return s.teams.HardDeleteTeam(ctx, teamID)
+	return s.teams.HardDeleteTeam(ctx, scope, teamID)
 }
 
-func (s *Service) RestoreTeam(ctx context.Context, teamID int64) error {
-	return s.teams.RestoreTeam(ctx, teamID)
+func (s *Service) RestoreTeam(ctx context.Context, scope domain.TenantScope, teamID int64) error {
+	return s.teams.RestoreTeam(ctx, scope, teamID)
 }
 
-func (s *Service) HardDeleteTeam(ctx context.Context, teamID int64) error {
-	hasGoals, err := s.teams.TeamHasGoals(ctx, teamID)
+func (s *Service) HardDeleteTeam(ctx context.Context, scope domain.TenantScope, teamID int64) error {
+	hasGoals, err := s.teams.TeamHasGoals(ctx, scope, teamID)
 	if err != nil {
 		return err
 	}
 	if hasGoals {
 		return ErrTeamHasGoals
 	}
-	return s.teams.HardDeleteTeam(ctx, teamID)
+	return s.teams.HardDeleteTeam(ctx, scope, teamID)
 }
 
-func (s *Service) isTeamVisibleInPeriod(ctx context.Context, team domain.Team, periodID int64) (bool, error) {
-	hasGoals, err := s.teams.TeamHasGoalsInPeriod(ctx, team.ID, periodID)
+func (s *Service) isTeamVisibleInPeriod(ctx context.Context, scope domain.TenantScope, team domain.Team, periodID int64) (bool, error) {
+	hasGoals, err := s.teams.TeamHasGoalsInPeriod(ctx, scope, team.ID, periodID)
 	if err != nil {
 		return false, err
 	}
@@ -901,46 +920,46 @@ func buildTeamNode(team domain.Team, childrenMap map[int64][]domain.Team) TeamNo
 
 // — Team passthroughs —
 
-func (s *Service) ListTeams(ctx context.Context) ([]domain.Team, error) {
-	return s.teams.ListTeams(ctx)
+func (s *Service) ListTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error) {
+	return s.teams.ListTeams(ctx, scope)
 }
 
-func (s *Service) ListDeletedTeams(ctx context.Context) ([]domain.Team, error) {
-	return s.teams.ListDeletedTeams(ctx)
+func (s *Service) ListDeletedTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error) {
+	return s.teams.ListDeletedTeams(ctx, scope)
 }
 
-func (s *Service) ListAllTeams(ctx context.Context) ([]domain.Team, error) {
-	return s.teams.ListAllTeams(ctx)
+func (s *Service) ListAllTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error) {
+	return s.teams.ListAllTeams(ctx, scope)
 }
 
-func (s *Service) CreateTeam(ctx context.Context, input teams.TeamInput) (int64, error) {
-	return s.teams.CreateTeam(ctx, input)
+func (s *Service) CreateTeam(ctx context.Context, scope domain.TenantScope, input teams.TeamInput) (int64, error) {
+	return s.teams.CreateTeam(ctx, scope, input)
 }
 
-func (s *Service) UpdateTeam(ctx context.Context, input teams.TeamInput, id int64) error {
-	return s.teams.UpdateTeam(ctx, input, id)
+func (s *Service) UpdateTeam(ctx context.Context, scope domain.TenantScope, input teams.TeamInput, id int64) error {
+	return s.teams.UpdateTeam(ctx, scope, input, id)
 }
 
 // — Period passthroughs —
 
-func (s *Service) FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error) {
-	return s.periods.FindPeriodForDate(ctx, date)
+func (s *Service) FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error) {
+	return s.periods.FindPeriodForDate(ctx, scope, date)
 }
 
-func (s *Service) CreatePeriod(ctx context.Context, input periods.PeriodInput) (int64, error) {
-	return s.periods.CreatePeriod(ctx, input)
+func (s *Service) CreatePeriod(ctx context.Context, scope domain.TenantScope, input periods.PeriodInput) (int64, error) {
+	return s.periods.CreatePeriod(ctx, scope, input)
 }
 
-func (s *Service) UpdatePeriod(ctx context.Context, periodID int64, input periods.PeriodInput) error {
-	return s.periods.UpdatePeriod(ctx, periodID, input)
+func (s *Service) UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input periods.PeriodInput) error {
+	return s.periods.UpdatePeriod(ctx, scope, periodID, input)
 }
 
-func (s *Service) DeletePeriod(ctx context.Context, periodID int64) error {
-	return s.periods.DeletePeriod(ctx, periodID)
+func (s *Service) DeletePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	return s.periods.DeletePeriod(ctx, scope, periodID)
 }
 
-func (s *Service) MovePeriod(ctx context.Context, periodID int64, direction int) error {
-	return s.periods.MovePeriod(ctx, periodID, direction)
+func (s *Service) MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error {
+	return s.periods.MovePeriod(ctx, scope, periodID, direction)
 }
 
 func (s *Service) GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {
@@ -965,7 +984,7 @@ func (s *Service) ValidateUserUDIDsExist(ctx context.Context, udids []string) ([
 //     ancestors (access from above), the nodes themselves, or descendants (access from below).
 //
 // Uses the GrantsProvider cache; falls back to empty result when cache is unavailable.
-func (s *Service) SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error) {
+func (s *Service) SearchUsersInScope(ctx context.Context, scope domain.TenantScope, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -976,7 +995,7 @@ func (s *Service) SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, 
 		return nil, nil
 	}
 
-	allTeams, err := s.teams.ListAllTeams(ctx)
+	allTeams, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -1050,66 +1069,66 @@ func (s *Service) SearchUsersInScope(ctx context.Context, scopeTeamIDs []int64, 
 
 // — Goal passthroughs —
 
-func (s *Service) ListGoalsByTeamPeriod(ctx context.Context, teamID, periodID int64) ([]domain.Goal, error) {
-	return s.goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+func (s *Service) ListGoalsByTeamPeriod(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error) {
+	return s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 }
 
-func (s *Service) UpdateGoalFields(ctx context.Context, input goals.GoalFieldsUpdateInput) error {
-	return s.goals.UpdateGoalFields(ctx, input)
+func (s *Service) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error {
+	return s.goals.UpdateGoalFields(ctx, scope, input)
 }
 
-func (s *Service) ListGoalComments(ctx context.Context, goalID int64) ([]domain.GoalComment, error) {
-	return s.goals.ListGoalComments(ctx, goalID)
+func (s *Service) ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error) {
+	return s.goals.ListGoalComments(ctx, scope, goalID)
 }
 
-func (s *Service) GetTeamPeriodStatus(ctx context.Context, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
-	return s.statuses.GetTeamPeriodStatus(ctx, teamID, periodID)
+func (s *Service) GetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
+	return s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, periodID)
 }
 
-func (s *Service) GetGoalShare(ctx context.Context, goalID, teamID int64) (shares.GoalShare, error) {
-	return s.shares.GetGoalShare(ctx, goalID, teamID)
+func (s *Service) GetGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) (shares.GoalShare, error) {
+	return s.shares.GetGoalShare(ctx, scope, goalID, teamID)
 }
 
-func (s *Service) DeleteGoalShare(ctx context.Context, goalID, teamID int64) error {
-	return s.shares.DeleteGoalShare(ctx, goalID, teamID)
+func (s *Service) DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error {
+	return s.shares.DeleteGoalShare(ctx, scope, goalID, teamID)
 }
 
-func (s *Service) ListGoalShares(ctx context.Context, goalID int64) ([]shares.GoalShare, error) {
-	return s.shares.ListGoalShares(ctx, goalID)
+func (s *Service) ListGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64) ([]shares.GoalShare, error) {
+	return s.shares.ListGoalShares(ctx, scope, goalID)
 }
 
 // — Key result passthroughs —
 
-func (s *Service) DeleteKeyResult(ctx context.Context, id int64) error {
-	return s.krs.DeleteKeyResult(ctx, id)
+func (s *Service) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error {
+	return s.krs.DeleteKeyResult(ctx, scope, id)
 }
 
-func (s *Service) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
-	return s.krs.FindGoalIDByKR(ctx, krID)
+func (s *Service) FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error) {
+	return s.krs.FindGoalIDByKR(ctx, scope, krID)
 }
 
-func (s *Service) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
-	return s.krs.FindGoalIDByStage(ctx, stageID)
+func (s *Service) FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error) {
+	return s.krs.FindGoalIDByStage(ctx, scope, stageID)
 }
 
 // — Business logic —
 
 // CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
 // Returns ErrPeriodClosed if the team's period status is InProgress or Closed.
-func (s *Service) CreateGoal(ctx context.Context, input goals.GoalInput) (int64, error) {
-	status, err := s.statuses.GetTeamPeriodStatus(ctx, input.TeamID, input.PeriodID)
+func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error) {
+	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, input.TeamID, input.PeriodID)
 	if err != nil {
 		return 0, err
 	}
 	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
 		return 0, ErrPeriodClosed
 	}
-	goalID, err := s.goals.CreateGoal(ctx, input)
+	goalID, err := s.goals.CreateGoal(ctx, scope, input)
 	if err != nil {
 		return 0, err
 	}
 	if status == domain.TeamPeriodStatusNoGoals {
-		if err := s.statuses.SetTeamPeriodStatus(ctx, input.TeamID, input.PeriodID, domain.TeamPeriodStatusForming); err != nil {
+		if err := s.statuses.SetTeamPeriodStatus(ctx, scope, input.TeamID, input.PeriodID, domain.TeamPeriodStatusForming); err != nil {
 			return 0, err
 		}
 	}
@@ -1119,8 +1138,8 @@ func (s *Service) CreateGoal(ctx context.Context, input goals.GoalInput) (int64,
 // DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.
 // Returns the effective requesting teamID and the goal's periodID for redirect.
 // Returns ErrPeriodClosed if the owner tries to delete in a closed period with no shares.
-func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64) (effectiveTeamID, periodID int64, err error) {
-	goal, err := s.goals.GetGoal(ctx, goalID)
+func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64) (effectiveTeamID, periodID int64, err error) {
+	goal, err := s.goals.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1128,61 +1147,61 @@ func (s *Service) DeleteGoal(ctx context.Context, goalID, requestingTeamID int64
 		requestingTeamID = goal.TeamID
 	}
 	if requestingTeamID != goal.TeamID {
-		if err := s.shares.DeleteGoalShare(ctx, goalID, requestingTeamID); err != nil {
+		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, requestingTeamID); err != nil {
 			return 0, 0, err
 		}
-		_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
-	shareList, err := s.shares.ListGoalShares(ctx, goalID)
+	shareList, err := s.shares.ListGoalShares(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
 	if len(shareList) > 0 {
 		newOwner := shareList[0]
-		if err := s.goals.UpdateGoalOwner(ctx, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
+		if err := s.goals.UpdateGoalOwner(ctx, scope, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
 			return 0, 0, err
 		}
-		if err := s.shares.DeleteGoalShare(ctx, goalID, newOwner.TeamID); err != nil {
+		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, newOwner.TeamID); err != nil {
 			return 0, 0, err
 		}
-		_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
-	status, err := s.statuses.GetTeamPeriodStatus(ctx, goal.TeamID, goal.PeriodID)
+	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, goal.TeamID, goal.PeriodID)
 	if err != nil {
 		return 0, 0, err
 	}
 	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
 		return 0, 0, ErrPeriodClosed
 	}
-	if err := s.goals.DeleteGoal(ctx, goalID); err != nil {
+	if err := s.goals.DeleteGoal(ctx, scope, goalID); err != nil {
 		return 0, 0, err
 	}
-	_ = s.resetStatusIfNoGoals(ctx, requestingTeamID, goal.PeriodID)
+	_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 	return requestingTeamID, goal.PeriodID, nil
 }
 
-func (s *Service) resetStatusIfNoGoals(ctx context.Context, teamID, periodID int64) error {
-	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+func (s *Service) resetStatusIfNoGoals(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) error {
+	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 	if err != nil || len(goalsList) > 0 {
 		return err
 	}
-	status, err := s.statuses.GetTeamPeriodStatus(ctx, teamID, periodID)
+	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, periodID)
 	if err != nil || status == domain.TeamPeriodStatusNoGoals {
 		return nil
 	}
-	return s.statuses.SetTeamPeriodStatus(ctx, teamID, periodID, domain.TeamPeriodStatusNoGoals)
+	return s.statuses.SetTeamPeriodStatus(ctx, scope, teamID, periodID, domain.TeamPeriodStatusNoGoals)
 }
 
 // UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
 // Returns ErrCannotShareWithClosedPeriod if any selected team has an in_progress or closed period.
-func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
-	goal, err := s.goals.GetGoal(ctx, goalID)
+func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
+	goal, err := s.goals.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
-	shareList, err := s.shares.ListGoalShares(ctx, goalID)
+	shareList, err := s.shares.ListGoalShares(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -1200,7 +1219,7 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, se
 	}
 	newShares := make([]shares.GoalShareInput, 0, len(selectedTeamIDs))
 	for _, teamID := range selectedTeamIDs {
-		status, err := s.statuses.GetTeamPeriodStatus(ctx, teamID, goal.PeriodID)
+		status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, goal.PeriodID)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -1216,7 +1235,7 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, se
 					ownerWeight = 0
 				}
 			}
-			if err := s.goals.UpdateGoalOwner(ctx, goalID, ownerID, ownerWeight); err != nil {
+			if err := s.goals.UpdateGoalOwner(ctx, scope, goalID, ownerID, ownerWeight); err != nil {
 				return 0, 0, err
 			}
 			continue
@@ -1227,7 +1246,7 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, goalID int64, se
 		}
 		newShares = append(newShares, shares.GoalShareInput{TeamID: teamID, Weight: weight})
 	}
-	if err := s.shares.ReplaceGoalShares(ctx, goalID, newShares); err != nil {
+	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, newShares); err != nil {
 		return 0, 0, err
 	}
 	return ownerID, goal.PeriodID, nil

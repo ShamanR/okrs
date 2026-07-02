@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
@@ -27,6 +28,11 @@ func NewServiceHandler(svc *service.Service) *ServiceHandler {
 
 // POST /api/v1/admin/periods
 func (h *ServiceHandler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	var req struct {
 		Name      string `json:"name"`
 		StartDate string `json:"start_date"`
@@ -54,7 +60,7 @@ func (h *ServiceHandler) HandleCreatePeriod(w http.ResponseWriter, r *http.Reque
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "end_date must be after start_date", nil)
 		return
 	}
-	id, err := h.service.CreatePeriod(r.Context(), periods.PeriodInput{Name: req.Name, StartDate: start, EndDate: end})
+	id, err := h.service.CreatePeriod(r.Context(), scope, periods.PeriodInput{Name: req.Name, StartDate: start, EndDate: end})
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create period", nil)
 		return
@@ -64,6 +70,11 @@ func (h *ServiceHandler) HandleCreatePeriod(w http.ResponseWriter, r *http.Reque
 
 // PATCH /api/v1/admin/periods/{periodID}
 func (h *ServiceHandler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
@@ -92,7 +103,7 @@ func (h *ServiceHandler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Reque
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "end_date must be after start_date", nil)
 		return
 	}
-	if err := h.service.UpdatePeriod(r.Context(), periodID, periods.PeriodInput{Name: req.Name, StartDate: start, EndDate: end}); err != nil {
+	if err := h.service.UpdatePeriod(r.Context(), scope, periodID, periods.PeriodInput{Name: req.Name, StartDate: start, EndDate: end}); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update period", nil)
 		return
 	}
@@ -101,12 +112,17 @@ func (h *ServiceHandler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Reque
 
 // DELETE /api/v1/admin/periods/{periodID}
 func (h *ServiceHandler) HandleDeletePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
 		return
 	}
-	if err := h.service.DeletePeriod(r.Context(), periodID); err != nil {
+	if err := h.service.DeletePeriod(r.Context(), scope, periodID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete period", nil)
 		return
 	}
@@ -124,12 +140,17 @@ func (h *ServiceHandler) HandleMovePeriodDown(w http.ResponseWriter, r *http.Req
 }
 
 func (h *ServiceHandler) handleMovePeriod(w http.ResponseWriter, r *http.Request, dir int) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
 		return
 	}
-	if err := h.service.MovePeriod(r.Context(), periodID, dir); err != nil {
+	if err := h.service.MovePeriod(r.Context(), scope, periodID, dir); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move period", nil)
 		return
 	}
@@ -171,12 +192,17 @@ func mapTeamRow(t domain.Team) teamRow {
 
 // GET /api/v1/admin/teams
 func (h *ServiceHandler) HandleListTeams(w http.ResponseWriter, r *http.Request) {
-	teams, err := h.service.ListTeams(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	teams, err := h.service.ListTeams(r.Context(), scope)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load teams", nil)
 		return
 	}
-	deleted, err := h.service.ListDeletedTeams(r.Context())
+	deleted, err := h.service.ListDeletedTeams(r.Context(), scope)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load deleted teams", nil)
 		return
@@ -193,6 +219,11 @@ func (h *ServiceHandler) HandleListTeams(w http.ResponseWriter, r *http.Request)
 
 // POST /api/v1/admin/teams
 func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	var req struct {
 		Name        string  `json:"name"`
 		Type        string  `json:"type"`
@@ -228,7 +259,7 @@ func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	id, err := h.service.CreateTeam(r.Context(), teams.TeamInput{
+	id, err := h.service.CreateTeam(r.Context(), scope, teams.TeamInput{
 		Name: req.Name, Type: teamType, ParentID: req.ParentID,
 		Lead: req.Lead, LeadUDID: req.LeadUDID, Description: req.Description,
 	})
@@ -241,6 +272,11 @@ func (h *ServiceHandler) HandleCreateTeam(w http.ResponseWriter, r *http.Request
 
 // PATCH /api/v1/admin/teams/{teamID}
 func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", nil)
@@ -281,7 +317,7 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 			return
 		}
 	}
-	if err := h.service.UpdateTeam(r.Context(), teams.TeamInput{
+	if err := h.service.UpdateTeam(r.Context(), scope, teams.TeamInput{
 		Name: req.Name, Type: teamType, ParentID: req.ParentID,
 		Lead: req.Lead, LeadUDID: req.LeadUDID, Description: req.Description,
 	}, teamID); err != nil {
@@ -293,12 +329,17 @@ func (h *ServiceHandler) HandleUpdateTeam(w http.ResponseWriter, r *http.Request
 
 // DELETE /api/v1/admin/teams/{teamID}  — soft delete
 func (h *ServiceHandler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", nil)
 		return
 	}
-	if err := h.service.DeleteTeam(r.Context(), teamID); err != nil {
+	if err := h.service.DeleteTeam(r.Context(), scope, teamID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete team", nil)
 		return
 	}
@@ -307,12 +348,17 @@ func (h *ServiceHandler) HandleDeleteTeam(w http.ResponseWriter, r *http.Request
 
 // POST /api/v1/admin/teams/{teamID}/restore
 func (h *ServiceHandler) HandleRestoreTeam(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", nil)
 		return
 	}
-	if err := h.service.RestoreTeam(r.Context(), teamID); err != nil {
+	if err := h.service.RestoreTeam(r.Context(), scope, teamID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to restore team", nil)
 		return
 	}
@@ -321,12 +367,17 @@ func (h *ServiceHandler) HandleRestoreTeam(w http.ResponseWriter, r *http.Reques
 
 // DELETE /api/v1/admin/teams/{teamID}/hard
 func (h *ServiceHandler) HandleHardDeleteTeam(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", nil)
 		return
 	}
-	if err := h.service.HardDeleteTeam(r.Context(), teamID); err != nil {
+	if err := h.service.HardDeleteTeam(r.Context(), scope, teamID); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
 		return
 	}

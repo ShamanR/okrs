@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -44,11 +45,13 @@ func RequireAuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireAdminMiddleware returns 403 for non-admin users.
-func RequireAdminMiddleware(next http.Handler) http.Handler {
+// RequireTenantAdminMiddleware gates the tenant-admin plane (/admin, /api/v1/admin/*).
+// It admits the request only when the active role in the resolved tenant is admin
+// (set by TenantResolveMiddleware). A plain member of the tenant gets 403.
+func RequireTenantAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user := UserFromContext(r.Context())
-		if user == nil || !user.IsAdmin {
+		role, ok := ActiveRoleFromContext(r.Context())
+		if !ok || role != domain.RoleAdmin {
 			if isAPIRequest(r) {
 				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
@@ -60,6 +63,35 @@ func RequireAdminMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// RequireSystemAdminMiddleware gates the system-admin plane (/system, /api/v1/system/*).
+// It admits the request when the session user is a system admin, OR when a non-empty
+// provisioning token is configured and the request carries "Authorization: Bearer <token>"
+// (machine/control-plane callers). Otherwise 403.
+func RequireSystemAdminMiddleware(provisioningToken string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if user := UserFromContext(r.Context()); user != nil && user.IsSystemAdmin {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if provisioningToken != "" {
+				const prefix = "Bearer "
+				h := r.Header.Get("Authorization")
+				if strings.HasPrefix(h, prefix) &&
+					subtle.ConstantTimeCompare([]byte(h[len(prefix):]), []byte(provisioningToken)) == 1 {
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+			if isAPIRequest(r) {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			http.Error(w, "403 Forbidden", http.StatusForbidden)
+		})
+	}
+}
+
 // ScopeMiddleware loads the user's allowed hierarchy into context.
 func ScopeMiddleware(policy *PolicyEvaluator, mgr *Manager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -69,10 +101,51 @@ func ScopeMiddleware(policy *PolicyEvaluator, mgr *Manager) func(http.Handler) h
 				next.ServeHTTP(w, r)
 				return
 			}
-			ctx, _ := policy.LoadScope(r.Context(), user, mgr.Config())
+			scope, _ := TenantScopeFromContext(r.Context())
+			ctx, _ := policy.LoadScope(r.Context(), scope, user, mgr.Config())
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+// TenantResolveMiddleware resolves the active tenant for the authenticated user and
+// injects it (plus the user's role in that tenant) into the request context.
+// On no membership / lookup error it leaves the tenant unset; RequireMembership decides.
+func TenantResolveMiddleware(resolver *TenantResolver) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			user := UserFromContext(r.Context())
+			if user == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			sess := SessionFromContext(r.Context())
+			tn, role, err := resolver.Resolve(r.Context(), user, sess)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			ctx := WithTenant(r.Context(), tn)
+			ctx = WithActiveRole(ctx, role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// RequireMembershipMiddleware blocks requests without an active, non-suspended tenant.
+func RequireMembershipMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tn := TenantFromContext(r.Context())
+		if tn == nil || tn.Status != domain.TenantActive {
+			if isAPIRequest(r) {
+				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				return
+			}
+			http.Redirect(w, r, "/no-access", http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // AccessLogMiddleware logs every request with auth fields.
@@ -144,8 +217,15 @@ func AnonymousUserMiddleware(next http.Handler) http.Handler {
 		DisplayName: "Anonymous",
 		IsAdmin:     true, // no-auth mode: everyone is admin
 	}
+	tenant := &domain.Tenant{
+		ID:     1,
+		Slug:   "default",
+		Status: domain.TenantActive,
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := withUser(r.Context(), anon)
+		ctx = WithTenant(ctx, tenant)
+		ctx = WithActiveRole(ctx, domain.RoleAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

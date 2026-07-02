@@ -25,11 +25,12 @@ type PeriodInput struct {
 	EndDate   time.Time
 }
 
-func (r *PeriodRepository) ListPeriods(ctx context.Context) ([]domain.Period, error) {
+func (r *PeriodRepository) ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
 		FROM periods
-		ORDER BY sort_order, start_date, id`)
+		WHERE tenant_id = $1
+		ORDER BY sort_order, start_date, id`, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,45 +47,45 @@ func (r *PeriodRepository) ListPeriods(ctx context.Context) ([]domain.Period, er
 	return periods, rows.Err()
 }
 
-func (r *PeriodRepository) GetPeriod(ctx context.Context, periodID int64) (domain.Period, error) {
+func (r *PeriodRepository) GetPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (domain.Period, error) {
 	var period domain.Period
 	row := r.db.QueryRow(ctx, `
 		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
 		FROM periods
-		WHERE id=$1`, periodID)
+		WHERE id=$1 AND tenant_id=$2`, periodID, scope.TenantID)
 	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.SortOrder, &period.CreatedAt, &period.UpdatedAt); err != nil {
 		return domain.Period{}, err
 	}
 	return period, nil
 }
 
-func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, date time.Time) (domain.Period, error) {
+func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error) {
 	var period domain.Period
 	row := r.db.QueryRow(ctx, `
 		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
 		FROM periods
-		WHERE $1::date BETWEEN start_date AND end_date
+		WHERE tenant_id=$2 AND $1::date BETWEEN start_date AND end_date
 		ORDER BY sort_order DESC, end_date DESC
-		LIMIT 1`, date)
+		LIMIT 1`, date, scope.TenantID)
 	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.SortOrder, &period.CreatedAt, &period.UpdatedAt); err != nil {
 		return domain.Period{}, err
 	}
 	return period, nil
 }
 
-func (r *PeriodRepository) CreatePeriod(ctx context.Context, input PeriodInput) (int64, error) {
+func (r *PeriodRepository) CreatePeriod(ctx context.Context, scope domain.TenantScope, input PeriodInput) (int64, error) {
 	var id int64
 	row := r.db.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ($1, $2, $3, COALESCE((SELECT MAX(sort_order) + 1 FROM periods), 1))
-		RETURNING id`, input.Name, input.StartDate, input.EndDate)
+		INSERT INTO periods (name, start_date, end_date, sort_order, tenant_id)
+		VALUES ($1, $2, $3, COALESCE((SELECT MAX(sort_order) + 1 FROM periods WHERE tenant_id=$4), 1), $4)
+		RETURNING id`, input.Name, input.StartDate, input.EndDate, scope.TenantID)
 	if err := row.Scan(&id); err != nil {
 		return 0, err
 	}
 	return id, nil
 }
 
-func (r *PeriodRepository) MovePeriod(ctx context.Context, periodID int64, direction int) error {
+func (r *PeriodRepository) MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -92,7 +93,7 @@ func (r *PeriodRepository) MovePeriod(ctx context.Context, periodID int64, direc
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var currentOrder int
-	if err := tx.QueryRow(ctx, `SELECT sort_order FROM periods WHERE id=$1 FOR UPDATE`, periodID).Scan(&currentOrder); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT sort_order FROM periods WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, periodID, scope.TenantID).Scan(&currentOrder); err != nil {
 		return err
 	}
 
@@ -109,33 +110,33 @@ func (r *PeriodRepository) MovePeriod(ctx context.Context, periodID int64, direc
 	query := `
 		SELECT id, sort_order
 		FROM periods
-		WHERE sort_order ` + comparator + ` $1
+		WHERE sort_order ` + comparator + ` $1 AND tenant_id = $2
 		ORDER BY sort_order ` + ordering + `
 		LIMIT 1
 		FOR UPDATE`
-	if err := tx.QueryRow(ctx, query, currentOrder).Scan(&swapID, &swapOrder); err != nil {
+	if err := tx.QueryRow(ctx, query, currentOrder, scope.TenantID).Scan(&swapID, &swapOrder); err != nil {
 		return tx.Commit(ctx)
 	}
 
-	if _, err := tx.Exec(ctx, `UPDATE periods SET sort_order=$1 WHERE id=$2`, currentOrder, swapID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE periods SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, currentOrder, swapID, scope.TenantID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE periods SET sort_order=$1 WHERE id=$2`, swapOrder, periodID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE periods SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, swapOrder, periodID, scope.TenantID); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
 }
 
-func (r *PeriodRepository) UpdatePeriod(ctx context.Context, periodID int64, input PeriodInput) error {
+func (r *PeriodRepository) UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input PeriodInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE periods
 		SET name=$1, start_date=$2, end_date=$3, updated_at=NOW()
-		WHERE id=$4`, input.Name, input.StartDate, input.EndDate, periodID)
+		WHERE id=$4 AND tenant_id=$5`, input.Name, input.StartDate, input.EndDate, periodID, scope.TenantID)
 	return err
 }
 
-func (r *PeriodRepository) DeletePeriod(ctx context.Context, periodID int64) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM periods WHERE id=$1`, periodID)
+func (r *PeriodRepository) DeletePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM periods WHERE id=$1 AND tenant_id=$2`, periodID, scope.TenantID)
 	return err
 }

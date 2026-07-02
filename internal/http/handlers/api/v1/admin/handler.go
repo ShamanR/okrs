@@ -11,6 +11,7 @@ import (
 	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/users"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -24,44 +25,61 @@ const (
 	settingKeyFeedbackPopupEnabled    = "feedback_popup_enabled"
 	settingKeyFeedbackMenuLinkEnabled = "feedback_menu_link_enabled"
 	settingKeyFeedbackFrequencyDays   = "feedback_frequency_days"
+	settingKeyEmptyHierarchyMessage   = "empty_hierarchy_message"
 )
 
 // userAdminStore covers user operations. *store.UserRepository satisfies it.
 type userAdminStore interface {
 	ListUsers(ctx context.Context) ([]*domain.User, error)
+	ListByTenant(ctx context.Context, scope domain.TenantScope) ([]users.TenantUser, error)
 	GetUser(ctx context.Context, id int64) (*domain.User, error)
-	SetUserAdmin(ctx context.Context, userID int64, isAdmin bool) error
 }
 
-// settingsStore covers system settings. *store.SettingsRepository satisfies it.
-type settingsStore interface {
-	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
-	SetSetting(ctx context.Context, key string, value any) error
+// memberRoleSetter toggles a user's tenant-scoped role (admin/user). *service.OnboardingService
+// satisfies it. Admin status is tenant-scoped, so the toggle writes memberships.role, not the
+// legacy global users.is_admin.
+type memberRoleSetter interface {
+	SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error
+}
+
+// tenantSettings covers per-tenant product settings. *service.SettingsService satisfies it.
+// Writes go through the product path, which rejects entitlement.* keys.
+type tenantSettings interface {
+	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
+	SetTenantProduct(ctx context.Context, scope domain.TenantScope, key string, value any) error
 }
 
 // grantsStore covers the user_hierarchy_grants operations. *store.GrantsCache satisfies it.
 type grantsStore interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
+	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
 	AllGrants(ctx context.Context) (map[int64][]grants.HierarchyGrant, error)
-	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
-	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
-	RemoveUserGrant(ctx context.Context, userID, teamID int64) error
+	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
+	AddUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID, grantedByUserID int64) error
+	RemoveUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error
 }
 
 type Handler struct {
 	users    userAdminStore
-	settings settingsStore
+	settings tenantSettings
 	mgr      *auth.Manager
 	grants   grantsStore
+	roles    memberRoleSetter
 }
 
-func New(users userAdminStore, settings settingsStore, mgr *auth.Manager, grants grantsStore) *Handler {
-	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants}
+func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore, roles memberRoleSetter) *Handler {
+	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants, roles: roles}
 }
 
 // GET /api/v1/admin/users
+// Tenant-scoped: only the active tenant's members and access requesters, each carrying its
+// membership Status/Role. Active members are augmented with their granted-node count.
 func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.users.ListUsers(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	tenantUsers, err := h.users.ListByTenant(r.Context(), scope)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -86,7 +104,7 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 	for id := range distinct {
 		roots = append(roots, id)
 	}
-	activeIDs, err := h.grants.ListDescendantTeamIDs(r.Context(), roots)
+	activeIDs, err := h.grants.ListDescendantTeamIDs(r.Context(), scope, roots)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -96,22 +114,26 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 		activeSet[id] = struct{}{}
 	}
 
-	// Augment each user with the number of hierarchy nodes granted to them, so
-	// the admin UI can filter "no access" users and show a node count without
-	// issuing a per-user grants request (the user list may hold thousands).
+	// Augment each user with the number of hierarchy nodes granted to them, plus the membership
+	// Status/Role so the admin UI can distinguish requesters (add/deny) from members.
 	type userListItem struct {
 		*domain.User
 		GrantedNodeCount int
+		Status           string
+		Role             string
 	}
-	items := make([]userListItem, 0, len(users))
-	for _, u := range users {
+	items := make([]userListItem, 0, len(tenantUsers))
+	for _, tu := range tenantUsers {
 		count := 0
-		for _, g := range allGrants[u.ID] {
+		for _, g := range allGrants[tu.User.ID] {
 			if _, ok := activeSet[g.TeamID]; ok {
 				count++
 			}
 		}
-		items = append(items, userListItem{User: u, GrantedNodeCount: count})
+		items = append(items, userListItem{
+			User: tu.User, GrantedNodeCount: count,
+			Status: string(tu.Status), Role: string(tu.Role),
+		})
 	}
 	writeJSON(w, items)
 }
@@ -131,28 +153,29 @@ func (h *Handler) HandleGetUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, user)
 }
 
-// POST /api/v1/admin/users/{userID}/admin  — grant admin
+// POST /api/v1/admin/users/{userID}/admin  — grant admin in the active tenant
 func (h *Handler) HandleGrantAdmin(w http.ResponseWriter, r *http.Request) {
-	userID, err := parseID(r, "userID")
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid user id")
-		return
-	}
-	if err := h.users.SetUserAdmin(r.Context(), userID, true); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	h.setMemberRole(w, r, domain.RoleAdmin)
 }
 
-// DELETE /api/v1/admin/users/{userID}/admin  — revoke admin
+// DELETE /api/v1/admin/users/{userID}/admin  — revoke admin in the active tenant
 func (h *Handler) HandleRevokeAdmin(w http.ResponseWriter, r *http.Request) {
+	h.setMemberRole(w, r, domain.RoleUser)
+}
+
+// setMemberRole applies a tenant-scoped role change to the target member.
+func (h *Handler) setMemberRole(w http.ResponseWriter, r *http.Request, role domain.Role) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	userID, err := parseID(r, "userID")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	if err := h.users.SetUserAdmin(r.Context(), userID, false); err != nil {
+	if err := h.roles.SetMemberRole(r.Context(), scope, userID, role); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -166,7 +189,12 @@ func (h *Handler) HandleListGrants(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid user id")
 		return
 	}
-	grants, err := h.grants.ListUserGrants(r.Context(), userID)
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	grants, err := h.grants.ListUserGrants(r.Context(), scope, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -188,8 +216,13 @@ func (h *Handler) HandleAddGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "team_id required")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	grantedBy := auth.UserIDFromContext(r.Context())
-	if err := h.grants.AddUserGrant(r.Context(), userID, body.TeamID, grantedBy); err != nil {
+	if err := h.grants.AddUserGrant(r.Context(), scope, userID, body.TeamID, grantedBy); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -208,7 +241,12 @@ func (h *Handler) HandleRemoveGrant(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid team id")
 		return
 	}
-	if err := h.grants.RemoveUserGrant(r.Context(), userID, teamID); err != nil {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	if err := h.grants.RemoveUserGrant(r.Context(), scope, userID, teamID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -217,8 +255,13 @@ func (h *Handler) HandleRemoveGrant(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v1/admin/settings/access
 func (h *Handler) HandleGetAccessSettings(w http.ResponseWriter, r *http.Request) {
-	policy, _ := h.settings.GetSetting(r.Context(), "new_user_policy")
-	nodeID, _ := h.settings.GetSetting(r.Context(), "default_hierarchy_node_id")
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	policy, _ := h.settings.GetTenant(r.Context(), scope, "new_user_policy")
+	nodeID, _ := h.settings.GetTenant(r.Context(), scope, "default_hierarchy_node_id")
 	writeJSON(w, map[string]any{
 		"new_user_policy":           json.RawMessage(policy),
 		"default_hierarchy_node_id": json.RawMessage(nodeID),
@@ -235,14 +278,19 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, "invalid body")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	if body.NewUserPolicy != "" {
-		if err := h.settings.SetSetting(r.Context(), "new_user_policy", body.NewUserPolicy); err != nil {
+		if err := h.settings.SetTenantProduct(r.Context(), scope, "new_user_policy", body.NewUserPolicy); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
 	}
 	if body.DefaultHierarchyNodeID != nil {
-		if err := h.settings.SetSetting(r.Context(), "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
+		if err := h.settings.SetTenantProduct(r.Context(), scope, "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -252,15 +300,22 @@ func (h *Handler) HandleUpdateAccessSettings(w http.ResponseWriter, r *http.Requ
 
 // GET /api/v1/admin/settings/general
 func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	writeJSON(w, map[string]any{
-		"documentation_url": h.documentationURL(r.Context()),
+		"documentation_url":       h.documentationURL(r.Context(), scope),
+		"empty_hierarchy_message": h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage),
 	})
 }
 
 // POST /api/v1/admin/settings/general  body: {"documentation_url":"https://..."}
 func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		DocumentationURL string `json:"documentation_url"`
+		DocumentationURL      string `json:"documentation_url"`
+		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -271,7 +326,16 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "documentation_url must be a valid http(s) URL")
 		return
 	}
-	if err := h.settings.SetSetting(r.Context(), settingKeyDocumentationURL, link); err != nil {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyDocumentationURL, link); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyEmptyHierarchyMessage, body.EmptyHierarchyMessage); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -279,18 +343,23 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 }
 
 // documentationURL reads the stored documentation link; empty string if unset.
-func (h *Handler) documentationURL(ctx context.Context) string {
-	return h.settingString(ctx, settingKeyDocumentationURL)
+func (h *Handler) documentationURL(ctx context.Context, scope domain.TenantScope) string {
+	return h.settingString(ctx, scope, settingKeyDocumentationURL)
 }
 
 // GET /api/v1/admin/settings/feedback
 func (h *Handler) HandleGetFeedbackSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	writeJSON(w, map[string]any{
-		"feedback_url":               h.settingString(ctx, settingKeyFeedbackURL),
-		"feedback_popup_enabled":     h.settingBool(ctx, settingKeyFeedbackPopupEnabled),
-		"feedback_menu_link_enabled": h.settingBool(ctx, settingKeyFeedbackMenuLinkEnabled),
-		"feedback_frequency_days":    h.settingInt(ctx, settingKeyFeedbackFrequencyDays, 30),
+		"feedback_url":               h.settingString(ctx, scope, settingKeyFeedbackURL),
+		"feedback_popup_enabled":     h.settingBool(ctx, scope, settingKeyFeedbackPopupEnabled),
+		"feedback_menu_link_enabled": h.settingBool(ctx, scope, settingKeyFeedbackMenuLinkEnabled),
+		"feedback_frequency_days":    h.settingInt(ctx, scope, settingKeyFeedbackFrequencyDays, 30),
 	})
 }
 
@@ -319,8 +388,13 @@ func (h *Handler) HandleUpdateFeedbackSettings(w http.ResponseWriter, r *http.Re
 		writeError(w, http.StatusBadRequest, "feedback_frequency_days must be >= 1")
 		return
 	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
 	set := func(key string, val any) bool {
-		if err := h.settings.SetSetting(r.Context(), key, val); err != nil {
+		if err := h.settings.SetTenantProduct(r.Context(), scope, key, val); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return false
 		}
@@ -336,8 +410,8 @@ func (h *Handler) HandleUpdateFeedbackSettings(w http.ResponseWriter, r *http.Re
 }
 
 // settingString reads a string setting; empty when unset or malformed.
-func (h *Handler) settingString(ctx context.Context, key string) string {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingString(ctx context.Context, scope domain.TenantScope, key string) string {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return ""
 	}
@@ -347,8 +421,8 @@ func (h *Handler) settingString(ctx context.Context, key string) string {
 }
 
 // settingBool reads a bool setting; false when unset or malformed.
-func (h *Handler) settingBool(ctx context.Context, key string) bool {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingBool(ctx context.Context, scope domain.TenantScope, key string) bool {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return false
 	}
@@ -358,8 +432,8 @@ func (h *Handler) settingBool(ctx context.Context, key string) bool {
 }
 
 // settingInt reads an int setting; returns def when unset, malformed, or < 1.
-func (h *Handler) settingInt(ctx context.Context, key string, def int) int {
-	raw, err := h.settings.GetSetting(ctx, key)
+func (h *Handler) settingInt(ctx context.Context, scope domain.TenantScope, key string, def int) int {
+	raw, err := h.settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
 		return def
 	}

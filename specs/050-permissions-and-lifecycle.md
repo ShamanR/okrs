@@ -28,7 +28,7 @@
 - статус можно сохранить для пары `(team_id, period_id)`;
 - **аутентификация** через OAuth2/OIDC провайдеры (Google, GitHub, Keycloak) или режим без авторизации;
 - **сессии** хранятся на сервере (PostgreSQL), клиент получает только session ID в cookie;
-- **роли**: `user` и `admin` (флаг `is_admin` на пользователе); admin-панель и admin API доступны только администраторам;
+- **роли**: per-tenant `user`/`admin` (`memberships.role`) — `/admin` гейтится активной ролью тенанта; плюс инстанс-уровневый `users.is_system_admin` для `/system`;
 - **scope доступа**: пользователь видит только команды, к которым ему выданы hierarchy grants и их потомков (рекурсивная CTE); scope вычисляется `PolicyEvaluator` на каждый запрос;
 - **no-auth mode**: при `AUTH_MODE=disabled` все маршруты доступны, операции выполняются от имени `anonymous-local` (IsAdmin=true).
 
@@ -77,21 +77,43 @@ Lifecycle ещё не является полноценной policy enforcement
 
 ## Текущие роли и права
 
-### Роли
+### Плоскости администрирования
 
-- `user` — любой авторизованный пользователь;
-- `admin` — пользователь с флагом `is_admin=true`.
+Три раздельные плоскости управления, каждая со своим гейтом:
 
-### Права admin
+1. **System admin** (`users.is_system_admin`) — `/system` + `/api/v1/system/*`. Над тенантами:
+   создание тенантов, прямое назначение membership, запись `entitlement.*`,
+   suspend/restore, глобальный список пользователей, `default_registration_tenant_id`.
+   Это не роль внутри тенанта. Гейт `RequireSystemAdmin` пропускает либо сессию
+   system-admin, либо машинный вызов с `Authorization: Bearer <PROVISIONING_TOKEN>`.
+   Bootstrap первого system-admin — env `BOOTSTRAP_SYSTEM_ADMIN` (provider:subject или email),
+   повышается при первом совпавшем логине, пока ни одного system-admin ещё нет.
+2. **Tenant admin** (`memberships.role = admin` в активном тенанте) — существующий `/admin` +
+   `/api/v1/admin/*`, теперь tenant-scoped. Гейт `RequireTenantAdmin` проверяет активную роль
+   из контекста (её ставит `TenantResolve`), а не глобальный `is_admin`. Внутри своего тенанта:
+   команды, периоды, пользователи/гранты, продуктовые ключи `tenant_settings`. **Не** может
+   писать `entitlement.*`.
+3. **User** (любой авторизованный) — `/settings`, личные `user_settings` + список своих memberships.
 
-- управление командами (`/admin/teams`);
-- управление периодами (`/admin/periods`);
-- управление пользователями и их grants (`/admin/access`, `/api/v1/admin/*`);
-- управление системными настройками (`/api/v1/admin/settings/*`), включая сбор обратной связи.
+### Роли тенанта
 
-#### Системные настройки сбора обратной связи
+- `user` — обычный член тенанта;
+- `admin` — tenant-admin (`memberships.role = admin`).
 
-Хранятся в `system_settings` (generic key/value, миграция не требуется), читаются админом через `GET/POST /api/v1/admin/settings/feedback` и любым авторизованным пользователем через `GET /api/v1/config`:
+> Легаси-флаг `is_admin` на пользователе расщеплён: суперадмин инстанса → `is_system_admin`
+> (плоскость 1), «админ организации» → `memberships.role = admin` (плоскость 2).
+
+### Write-authority настроек (проверяется в service-слое)
+
+- `tenant_settings` ключи без префикса `entitlement.` — продуктовые, пишет tenant-admin
+  (`SetTenantProduct`); попытка записать `entitlement.*` этим путём отклоняется.
+- `tenant_settings` ключи `entitlement.*` — пишет только system-admin/provisioning
+  (`SetTenantEntitlement`).
+- `system_settings` — глобальные ключи инстанса, пишет только system-admin.
+
+#### Настройки сбора обратной связи
+
+Хранятся в `tenant_settings` активного тенанта (per-tenant; с миграции 033, ранее — в глобальном `system_settings`), читаются tenant-admin через `GET/POST /api/v1/admin/settings/feedback` и любым авторизованным пользователем (для его тенанта) через `GET /api/v1/config`:
 
 - `feedback_url` (string, по умолчанию `""`) — ссылка на внешний опрос;
 - `feedback_popup_enabled` (bool, по умолчанию `false`) — показывать всплывающее окно;
@@ -105,6 +127,31 @@ Lifecycle ещё не является полноценной policy enforcement
 - просмотр OKR в пределах scope (hierarchy grants);
 - CRUD goal / KR / comment / progress в доступных командах;
 - обновление team period status.
+
+## Онбординг и членство
+
+Активным считается только membership со `status=active`; `RequireMembership` пропускает
+только его (`requested` — нет). Авторизованный пользователь без активного membership
+редиректится на `/no-access` (вне membership-gated группы, чтобы не было петли); страницу
+рендерит подключаемый `NoMembershipHandler` (OSS-дефолт «stub» — заглушка + форма
+join-request).
+
+Три примитива (детали — `040-api-contract.md`):
+
+1. **Новый пользователь.** После первого OAuth-логина (callback) без активного membership:
+   если задан глобальный `default_registration_tenant_id` → автосоздаётся `active`
+   membership (`role=user`) в этом тенанте и применяется его `new_user_policy`; иначе →
+   `/no-access`. Логику выполняет `OnboardingService.EnsureRegistration` из callback'а
+   (перенесена из `auth.Manager`, чтобы таргетить резолвнутый тенант, а не хардкод #1).
+2. **Приглашение (tenant-admin).** Админ создаёт `tenant_invitations` с одноразовым токеном;
+   приглашённый открывает `/invite/{token}` → токен в cookie → логинится любым OAuth →
+   callback гасит токен (атомарно, single-use) и привязывает `active` membership к **текущей
+   идентичности** (`provider:subject`). **Безопасность:** claim только по валидному токену;
+   email-match доступа не даёт; повтор/истёкший/чужой токен — отказ; один email через двух
+   провайдеров = две независимые учётки.
+3. **Запрос доступа (user).** С `/no-access` пользователь вводит slug → membership
+   `status=requested` → очередь в `/admin` (`access-requests`) → approve (`active`) / deny
+   (удаление). Публичного каталога тенантов нет.
 
 ## Target state
 

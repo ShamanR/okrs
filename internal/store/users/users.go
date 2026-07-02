@@ -39,7 +39,7 @@ func (r *UserRepository) UpsertUser(ctx context.Context, in UpsertUserInput) (*d
 			email         = EXCLUDED.email,
 			updated_at    = EXCLUDED.updated_at,
 			last_login_at = EXCLUDED.last_login_at
-		RETURNING id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at`,
+		RETURNING id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at`,
 		in.ProviderSubjectKey, in.Provider, in.Subject, in.DisplayName, in.AvatarURL, nullableString(in.Email),
 		now,
 	)
@@ -48,14 +48,14 @@ func (r *UserRepository) UpsertUser(ctx context.Context, in UpsertUserInput) (*d
 
 func (r *UserRepository) GetUser(ctx context.Context, id int64) (*domain.User, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at
 		FROM users WHERE id = $1`, id)
 	return scanUser(row)
 }
 
 func (r *UserRepository) ListUsers(ctx context.Context) ([]*domain.User, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at
 		FROM users WHERE provider NOT IN ('system') ORDER BY last_login_at DESC`)
 	if err != nil {
 		return nil, err
@@ -81,7 +81,7 @@ func (r *UserRepository) GetUsersByUDIDs(ctx context.Context, udids []string) ([
 		udids = udids[:100]
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at
 		FROM users WHERE udid = ANY($1) AND provider NOT IN ('system')`, udids)
 	if err != nil {
 		return nil, err
@@ -109,7 +109,7 @@ func (r *UserRepository) SearchUsersUnrestricted(ctx context.Context, q string, 
 
 func (r *UserRepository) searchUsersUnrestricted(ctx context.Context, q string, limit int) ([]*domain.User, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at
 		FROM users
 		WHERE provider NOT IN ('system')
 		AND ($1 = '' OR LOWER(display_name) LIKE '%' || LOWER($1) || '%' OR LOWER(COALESCE(email,'')) LIKE '%' || LOWER($1) || '%')
@@ -133,7 +133,7 @@ func (r *UserRepository) SearchUsersInSet(ctx context.Context, userIDs []int64, 
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at
 		FROM users
 		WHERE provider NOT IN ('system')
 		AND (id = ANY($1) OR udid = ANY($2))
@@ -169,7 +169,7 @@ func (r *UserRepository) GetUsersByDisplayNames(ctx context.Context, names []str
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, created_at, updated_at, last_login_at
+		SELECT id, udid, provider_subject_key, provider, subject, display_name, avatar_url, COALESCE(email,''), attributes_json, is_admin, is_system_admin, created_at, updated_at, last_login_at
 		FROM users WHERE display_name = ANY($1) AND provider NOT IN ('system')`, names)
 	if err != nil {
 		return nil, err
@@ -244,8 +244,63 @@ func (r *UserRepository) SetUserAdmin(ctx context.Context, userID int64, isAdmin
 	return err
 }
 
+// SetSystemAdmin sets the tenant-less instance superadmin flag.
+func (r *UserRepository) SetSystemAdmin(ctx context.Context, userID int64, v bool) error {
+	_, err := r.db.Exec(ctx, `UPDATE users SET is_system_admin = $1, updated_at = NOW() WHERE id = $2`, v, userID)
+	return err
+}
+
+// AnySystemAdmin reports whether at least one system admin exists (bootstrap guard).
+func (r *UserRepository) AnySystemAdmin(ctx context.Context) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE is_system_admin)`).Scan(&exists)
+	return exists, err
+}
+
 type scanner interface {
 	Scan(dest ...any) error
+}
+
+// TenantUser pairs a user with its membership in a specific tenant.
+type TenantUser struct {
+	User   *domain.User
+	Status domain.MembershipStatus
+	Role   domain.Role
+}
+
+// ListByTenant returns every user with a membership in the tenant (any status), with that
+// membership's status and role, ordered by display name.
+func (r *UserRepository) ListByTenant(ctx context.Context, scope domain.TenantScope) ([]TenantUser, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT u.id, u.udid, u.provider_subject_key, u.provider, u.subject, u.display_name,
+		       u.avatar_url, COALESCE(u.email,''), u.attributes_json, u.is_admin, u.is_system_admin,
+		       u.created_at, u.updated_at, u.last_login_at, m.status, m.role
+		FROM memberships m JOIN users u ON u.id = m.user_id
+		WHERE m.tenant_id = $1
+		ORDER BY u.display_name`, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TenantUser
+	for rows.Next() {
+		var u domain.User
+		var attrRaw []byte
+		var status domain.MembershipStatus
+		var role domain.Role
+		if err := rows.Scan(
+			&u.ID, &u.UDID, &u.ProviderSubjectKey, &u.Provider, &u.Subject, &u.DisplayName,
+			&u.AvatarURL, &u.Email, &attrRaw, &u.IsAdmin, &u.IsSystemAdmin,
+			&u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt, &status, &role,
+		); err != nil {
+			return nil, err
+		}
+		if len(attrRaw) > 0 {
+			_ = json.Unmarshal(attrRaw, &u.AttributesJSON)
+		}
+		out = append(out, TenantUser{User: &u, Status: status, Role: role})
+	}
+	return out, rows.Err()
 }
 
 func scanUser(row scanner) (*domain.User, error) {
@@ -254,7 +309,7 @@ func scanUser(row scanner) (*domain.User, error) {
 	err := row.Scan(
 		&u.ID, &u.UDID, &u.ProviderSubjectKey, &u.Provider, &u.Subject,
 		&u.DisplayName, &u.AvatarURL, &u.Email, &attrRaw,
-		&u.IsAdmin, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt,
+		&u.IsAdmin, &u.IsSystemAdmin, &u.CreatedAt, &u.UpdatedAt, &u.LastLoginAt,
 	)
 	if err != nil {
 		return nil, err

@@ -21,8 +21,8 @@ const allowedTeamsKey policyContextKey = 0
 // grantsReader is the minimal interface PolicyEvaluator needs for scope resolution.
 // Both *store.Store and *store.GrantsCache satisfy it.
 type grantsReader interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
-	ListDescendantTeamIDs(ctx context.Context, rootIDs []int64) ([]int64, error)
+	ListUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) ([]grants.HierarchyGrant, error)
+	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
 }
 
 // PolicyEvaluator resolves and caches per-request team access scope.
@@ -45,16 +45,19 @@ func (e *PolicyEvaluator) AllowedTeamIDs(ctx context.Context) ([]int64, bool) {
 }
 
 // LoadScope resolves and stores the user's allowed team IDs into the context.
-// Admin users get nil (unrestricted access). Non-admins get their explicit grant
-// expansion — an empty slice if they have no grants (no access).
+// Tenant admins get nil (unrestricted access) — admin status is tenant-scoped, read from the
+// active membership role in context (set by TenantResolveMiddleware), NOT the legacy global
+// users.is_admin flag, which would otherwise bypass every tenant's hierarchy grants. Non-admins
+// get their explicit grant expansion — an empty slice if they have no grants (no access).
 // The cfg param is kept for signature compatibility but default-node policy is
 // applied at registration time by Manager.applyNewUserPolicy, not per-request.
-func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg Config) (context.Context, error) {
-	if user == nil || user.IsAdmin {
+func (e *PolicyEvaluator) LoadScope(ctx context.Context, scope domain.TenantScope, user *domain.User, cfg Config) (context.Context, error) {
+	role, _ := ActiveRoleFromContext(ctx)
+	if user == nil || role == domain.RoleAdmin {
 		return context.WithValue(ctx, allowedTeamsKey, []int64(nil)), nil
 	}
 
-	grants, err := e.grants.ListUserGrants(ctx, user.ID)
+	grants, err := e.grants.ListUserGrants(ctx, scope, user.ID)
 	if err != nil {
 		return ctx, err
 	}
@@ -70,7 +73,7 @@ func (e *PolicyEvaluator) LoadScope(ctx context.Context, user *domain.User, cfg 
 		}
 	}
 
-	allIDs, err := e.grants.ListDescendantTeamIDs(ctx, rootIDs)
+	allIDs, err := e.grants.ListDescendantTeamIDs(ctx, scope, rootIDs)
 	if err != nil {
 		return ctx, err
 	}
@@ -112,9 +115,9 @@ func WithAllowedTeamIDs(ctx context.Context, ids []int64) context.Context {
 	return context.WithValue(ctx, allowedTeamsKey, ids)
 }
 
-// DefaultNodeID reads the configured default hierarchy node from system settings.
-func DefaultNodeIDFromSettings(ctx context.Context, st *store.Store) (int64, error) {
-	raw, err := st.GetSetting(ctx, "default_hierarchy_node_id")
+// DefaultNodeID reads the configured default hierarchy node from the tenant's settings.
+func DefaultNodeIDFromSettings(ctx context.Context, scope domain.TenantScope, st *store.Store) (int64, error) {
+	raw, err := st.GetTenantSetting(ctx, scope, "default_hierarchy_node_id")
 	if err != nil || raw == nil {
 		return 0, err
 	}

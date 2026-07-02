@@ -27,6 +27,24 @@ func (r *SettingsRepository) GetSetting(ctx context.Context, key string) (json.R
 	return raw, err
 }
 
+func (r *SettingsRepository) ListAll(ctx context.Context) (map[string]json.RawMessage, error) {
+	rows, err := r.db.Query(ctx, `SELECT key, value_json FROM system_settings`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]json.RawMessage)
+	for rows.Next() {
+		var k string
+		var v json.RawMessage
+		if err := rows.Scan(&k, &v); err != nil {
+			return nil, err
+		}
+		out[k] = v
+	}
+	return out, rows.Err()
+}
+
 func (r *SettingsRepository) SetSetting(ctx context.Context, key string, value any) error {
 	raw, err := json.Marshal(value)
 	if err != nil {

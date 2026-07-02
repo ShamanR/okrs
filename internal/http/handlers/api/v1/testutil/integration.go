@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
+	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
@@ -43,6 +44,7 @@ func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := auth.WithAllowedTeamIDs(r.Context(), allowedTeamIDs)
+			ctx = auth.WithTenant(ctx, &domain.Tenant{ID: 1})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
@@ -82,6 +84,17 @@ func RunMigrations(databaseURL string) error {
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
+	}
+	// Migration 032 drops the transitional tenant_id DEFAULT 1 so a forgotten tenant_id fails
+	// in production. Integration fixtures are single-tenant and insert rows with raw SQL that
+	// omits tenant_id; restore the default so those rows land in tenant 1.
+	for _, tbl := range []string{
+		"teams", "periods", "goals", "goal_shares", "team_period_statuses",
+		"user_hierarchy_grants", "key_results", "goal_comments", "key_result_notes",
+	} {
+		if _, err := db.ExecContext(ctx, "ALTER TABLE "+tbl+" ALTER COLUMN tenant_id SET DEFAULT 1"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -157,6 +157,27 @@ func TestCSRFMiddlewareRejectsAPIPostWithoutCookie(t *testing.T) {
 	}
 }
 
+// A request authenticated by a Bearer token (machine/provisioning caller) is not
+// cookie-ambient, so it cannot be CSRF-forged and must pass without a CSRF cookie/header.
+func TestCSRFMiddlewareAllowsBearerAuthWithoutCookie(t *testing.T) {
+	mw := NewCSRF()
+	called := false
+	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusCreated)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants", strings.NewReader(`{"name":"x","slug":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer secret-token")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if !called || rr.Code != http.StatusCreated {
+		t.Fatalf("bearer-authenticated POST must bypass CSRF; called=%v code=%d", called, rr.Code)
+	}
+}
+
 func TestCSRFMiddlewareReturnsJSONErrorForAPI(t *testing.T) {
 	mw := NewCSRF()
 	h := mw.Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

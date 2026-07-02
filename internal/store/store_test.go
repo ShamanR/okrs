@@ -23,6 +23,44 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 )
 
+func TestStoreExposesTenantRepos(t *testing.T) {
+	ctx := context.Background()
+	container, err := tcpostgres.RunContainer(ctx,
+		tcpostgres.WithDatabase("okrs"),
+		tcpostgres.WithUsername("postgres"),
+		tcpostgres.WithPassword("postgres"),
+		testcontainers.WithWaitStrategy(
+			wait.ForLog("database system is ready to accept connections").
+				WithOccurrence(2).WithStartupTimeout(10*time.Second),
+		),
+	)
+	if err != nil {
+		t.Skipf("docker unavailable: %v", err)
+	}
+	defer func() { _ = container.Terminate(ctx) }()
+	dbURL, err := container.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("conn string: %v", err)
+	}
+	if err := runMigrations(dbURL); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, dbURL)
+	if err != nil {
+		t.Fatalf("pool: %v", err)
+	}
+	defer pool.Close()
+
+	s := New(pool)
+	tn, err := s.Tenants.GetBySlug(ctx, "default")
+	if err != nil {
+		t.Fatalf("default tenant: %v", err)
+	}
+	if tn.ID != 1 {
+		t.Fatalf("default tenant id = %d, want 1", tn.ID)
+	}
+}
+
 func TestStoreCRUD(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
@@ -67,7 +105,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       "Ship something",
@@ -82,7 +120,7 @@ func TestStoreCRUD(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR 1",
 		Description: "",
@@ -92,11 +130,11 @@ func TestStoreCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := s.KRs.UpsertBooleanMeta(ctx, krID, true); err != nil {
+	if err := s.KRs.UpsertBooleanMeta(ctx, domain.TenantScope{TenantID: 1}, krID, true); err != nil {
 		t.Fatalf("update boolean: %v", err)
 	}
 
-	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, teamID, periodID)
+	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, domain.TenantScope{TenantID: 1}, teamID, periodID)
 	if err != nil {
 		t.Fatalf("list goals: %v", err)
 	}
@@ -154,7 +192,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      ownerID,
 		PeriodID:    periodID,
 		Title:       "Shared goal",
@@ -172,7 +210,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert goal share: %v", err)
 	}
 
-	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR bool",
 		Description: "",
@@ -182,11 +220,11 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create key result: %v", err)
 	}
-	if err := s.KRs.UpsertBooleanMeta(ctx, krID, true); err != nil {
+	if err := s.KRs.UpsertBooleanMeta(ctx, domain.TenantScope{TenantID: 1}, krID, true); err != nil {
 		t.Fatalf("upsert boolean meta: %v", err)
 	}
 
-	goalsByTeam, err := s.Goals.ListGoalsByTeamsPeriod(ctx, periodID, []int64{ownerID, sharedTeamID})
+	goalsByTeam, err := s.Goals.ListGoalsByTeamsPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedTeamID})
 	if err != nil {
 		t.Fatalf("list goals by teams period: %v", err)
 	}
@@ -256,7 +294,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
-	if _, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	if _, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      teamWithGoalsID,
 		PeriodID:    periodID,
 		Title:       "Historic goal",
@@ -270,31 +308,32 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	if hasGoals, err := s.Teams.TeamHasGoals(ctx, teamWithGoalsID); err != nil || !hasGoals {
+	scope := domain.TenantScope{TenantID: 1}
+	if hasGoals, err := s.Teams.TeamHasGoals(ctx, scope, teamWithGoalsID); err != nil || !hasGoals {
 		t.Fatalf("expected team with goals to be detected, got %v %v", hasGoals, err)
 	}
-	if hasGoals, err := s.Teams.TeamHasGoals(ctx, childNoGoalsID); err != nil || hasGoals {
+	if hasGoals, err := s.Teams.TeamHasGoals(ctx, scope, childNoGoalsID); err != nil || hasGoals {
 		t.Fatalf("expected team without goals to be clean, got %v %v", hasGoals, err)
 	}
 
-	if err := s.Teams.HardDeleteTeam(ctx, childNoGoalsID); err != nil {
+	if err := s.Teams.HardDeleteTeam(ctx, scope, childNoGoalsID); err != nil {
 		t.Fatalf("hard delete no goals: %v", err)
 	}
-	if _, err := s.Teams.GetTeam(ctx, childNoGoalsID); err == nil {
+	if _, err := s.Teams.GetTeam(ctx, scope, childNoGoalsID); err == nil {
 		t.Fatalf("expected hard-deleted team to be removed")
 	}
 
-	if err := s.Teams.SoftDeleteTeam(ctx, teamWithGoalsID); err != nil {
+	if err := s.Teams.SoftDeleteTeam(ctx, scope, teamWithGoalsID); err != nil {
 		t.Fatalf("soft delete team with goals: %v", err)
 	}
-	teamWithGoals, err := s.Teams.GetTeam(ctx, teamWithGoalsID)
+	teamWithGoals, err := s.Teams.GetTeam(ctx, scope, teamWithGoalsID)
 	if err != nil {
 		t.Fatalf("get soft-deleted team: %v", err)
 	}
 	if teamWithGoals.DeletedAt == nil {
 		t.Fatalf("expected deleted_at to be set")
 	}
-	childOfDeleted, err := s.Teams.GetTeam(ctx, childOfDeletedID)
+	childOfDeleted, err := s.Teams.GetTeam(ctx, scope, childOfDeletedID)
 	if err != nil {
 		t.Fatalf("get reparented child: %v", err)
 	}
@@ -302,7 +341,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("expected child to be reparented to original parent, got %+v", childOfDeleted.ParentID)
 	}
 
-	deletedTeams, err := s.Teams.ListDeletedTeams(ctx)
+	deletedTeams, err := s.Teams.ListDeletedTeams(ctx, scope)
 	if err != nil {
 		t.Fatalf("list deleted teams: %v", err)
 	}
@@ -310,10 +349,10 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("expected deleted team list to contain team with goals, got %+v", deletedTeams)
 	}
 
-	if err := s.Teams.RestoreTeam(ctx, teamWithGoalsID); err != nil {
+	if err := s.Teams.RestoreTeam(ctx, scope, teamWithGoalsID); err != nil {
 		t.Fatalf("restore team: %v", err)
 	}
-	restored, err := s.Teams.GetTeam(ctx, teamWithGoalsID)
+	restored, err := s.Teams.GetTeam(ctx, scope, teamWithGoalsID)
 	if err != nil {
 		t.Fatalf("get restored team: %v", err)
 	}
@@ -368,7 +407,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := s.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := s.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      ownerID,
 		PeriodID:    periodID,
 		Title:       "Goal with KR activity",
@@ -385,7 +424,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight) VALUES ($1, $2, 100)`, goalID, sharedID); err != nil {
 		t.Fatalf("insert goal share: %v", err)
 	}
-	krID, err := s.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR for timestamp aggregation",
 		Description: "desc",
@@ -408,7 +447,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert key result note: %v", err)
 	}
 
-	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, ownerID, periodID)
+	goalsList, err := s.Goals.ListGoalsByTeamPeriod(ctx, domain.TenantScope{TenantID: 1}, ownerID, periodID)
 	if err != nil {
 		t.Fatalf("list goals by team period: %v", err)
 	}
@@ -422,7 +461,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set metadata-only key result updated_at: %v", err)
 	}
-	updatesAfterMetadataEdit, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	updatesAfterMetadataEdit, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedID})
 	if err != nil {
 		t.Fatalf("list team last update after metadata edit: %v", err)
 	}
@@ -433,7 +472,7 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {
 		t.Fatalf("set newer key result progress_updated_at: %v", err)
 	}
-	updates, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, periodID, []int64{ownerID, sharedID})
+	updates, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedID})
 	if err != nil {
 		t.Fatalf("list team last update: %v", err)
 	}
@@ -470,6 +509,16 @@ func runMigrations(databaseURL string) error {
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
+	}
+	// Migration 032 drops the transitional tenant_id DEFAULT 1; these single-tenant fixtures
+	// insert with raw SQL that omits tenant_id, so restore the default for tests.
+	for _, tbl := range []string{
+		"teams", "periods", "goals", "goal_shares", "team_period_statuses",
+		"user_hierarchy_grants", "key_results", "goal_comments", "key_result_notes",
+	} {
+		if _, err := db.ExecContext(ctx, "ALTER TABLE "+tbl+" ALTER COLUMN tenant_id SET DEFAULT 1"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

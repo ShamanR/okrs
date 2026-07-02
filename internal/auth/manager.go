@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"okrs/internal/domain"
-	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
 )
 
@@ -23,13 +22,9 @@ type authStorage interface {
 	TouchSession(ctx context.Context, sessionID string) error
 	DeleteSession(ctx context.Context, sessionID string) error
 	GetSetting(ctx context.Context, key string) (json.RawMessage, error)
-}
-
-// userGranter is the minimal interface Manager needs for the new-user grant policy.
-// Both *store.Store and *store.GrantsCache satisfy it.
-type userGranter interface {
-	ListUserGrants(ctx context.Context, userID int64) ([]grants.HierarchyGrant, error)
-	AddUserGrant(ctx context.Context, userID, teamID, grantedByUserID int64) error
+	GetTenantSetting(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
+	AnySystemAdmin(ctx context.Context) (bool, error)
+	SetSystemAdmin(ctx context.Context, userID int64, v bool) error
 }
 
 // Manager handles provider selection, session creation, and user upsert.
@@ -37,15 +32,14 @@ type Manager struct {
 	cfg       Config
 	providers map[string]Provider
 	store     authStorage
-	grants    userGranter
 }
 
-func NewManager(cfg Config, st authStorage, grants userGranter) (*Manager, error) {
+func NewManager(cfg Config, st authStorage) (*Manager, error) {
 	providers, err := buildProviders(cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{cfg: cfg, providers: providers, store: st, grants: grants}, nil
+	return &Manager{cfg: cfg, providers: providers, store: st}, nil
 }
 
 func (m *Manager) Disabled() bool {
@@ -85,9 +79,12 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 		return nil, nil, fmt.Errorf("upsert user: %w", err)
 	}
 
-	if err := m.applyNewUserPolicy(ctx, user); err != nil {
+	if err := m.maybeBootstrapSystemAdmin(ctx, identity, user); err != nil {
 		return nil, nil, err
 	}
+
+	// New-user routing (membership in the registration tenant + new_user_policy) is handled
+	// post-login by service.OnboardingService.EnsureRegistration, invoked from the OAuth callback.
 
 	sessionID, err := generateSessionID()
 	if err != nil {
@@ -100,38 +97,31 @@ func (m *Manager) Login(ctx context.Context, identity *Identity, userAgent, ip s
 	return user, sess, nil
 }
 
-func (m *Manager) applyNewUserPolicy(ctx context.Context, user *domain.User) error {
-	// Read policy from DB settings; fall back to env-var cfg for backward compat.
-	policy := m.cfg.NewUserPolicy
-	if raw, _ := m.store.GetSetting(ctx, "new_user_policy"); raw != nil {
-		var p NewUserPolicy
-		if json.Unmarshal(raw, &p) == nil && p != "" {
-			policy = p
-		}
-	}
-	if policy != PolicyDefaultNode {
+// maybeBootstrapSystemAdmin promotes the configured bootstrap identity to system-admin
+// on first matching login, but only while no system-admin exists yet. The identity is
+// matched by provider:subject or by email (the operator may know only the email).
+func (m *Manager) maybeBootstrapSystemAdmin(ctx context.Context, identity *Identity, user *domain.User) error {
+	want := m.cfg.BootstrapSystemAdmin
+	if want == "" || user.IsSystemAdmin {
 		return nil
 	}
-
-	nodeID := m.cfg.DefaultNodeID
-	if raw, _ := m.store.GetSetting(ctx, "default_hierarchy_node_id"); raw != nil {
-		var id int64
-		if json.Unmarshal(raw, &id) == nil && id != 0 {
-			nodeID = id
-		}
-	}
-	if nodeID == 0 {
+	matches := want == ProviderSubjectKey(identity.Provider, identity.Subject) ||
+		(identity.Email != "" && want == identity.Email)
+	if !matches {
 		return nil
 	}
-
-	grants, err := m.grants.ListUserGrants(ctx, user.ID)
+	exists, err := m.store.AnySystemAdmin(ctx)
 	if err != nil {
 		return err
 	}
-	if len(grants) > 0 {
+	if exists {
 		return nil
 	}
-	return m.grants.AddUserGrant(ctx, user.ID, nodeID, domain.SystemUserAnonymous)
+	if err := m.store.SetSystemAdmin(ctx, user.ID, true); err != nil {
+		return err
+	}
+	user.IsSystemAdmin = true
+	return nil
 }
 
 // ResolveSession loads the session and user by session ID.

@@ -105,13 +105,13 @@ Response:
 }
 ```
 
-- `documentation_url` — ссылка на внешнюю документацию из `system_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
-- `stale_days` — порог «дней без обновления» из настроек Health Check-in (`system_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
+- `documentation_url` — ссылка на внешнюю документацию из `tenant_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
+- `stale_days` — порог «дней без обновления» из настроек Health Check-in (`tenant_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
 - `behind_margin` — допустимое отставание (п.п.) от ожидаемого темпа периода из категории «Отстающие» Health Check-in (`health_checkin_config.behind_margin`), по умолчанию `10`. SPA использует его для раскраски процента прогресса команды в sidebar, чтобы она совпадала с этой категорией.
-- `feedback_url` — ссылка на внешний опрос обратной связи из `system_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
-- `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`system_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
-- `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`system_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
-- `feedback_frequency_days` — минимальный интервал между показами всплывающего окна (дней) из `system_settings`, по умолчанию `30`. Логика показа на стороне SPA через cookies — см. `030-user-flows.md`.
+- `feedback_url` — ссылка на внешний опрос обратной связи из `tenant_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
+- `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`tenant_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
+- `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`tenant_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
+- `feedback_frequency_days` — минимальный интервал между показами всплывающего окна (дней) из `tenant_settings`, по умолчанию `30`. Логика показа на стороне SPA через cookies — см. `030-user-flows.md`.
 
 ## Admin API endpoints
 
@@ -119,7 +119,13 @@ Response:
 
 ### Пользователи
 
-- `GET /api/v1/admin/users` — список всех пользователей (id, display_name, avatar_url, provider, last_login_at, is_admin, а также `GrantedNodeCount` — число выданных пользователю узлов иерархии). `GrantedNodeCount` считается на сервере bulk-запросом по всем пользователям (`GrantsCache.AllGrants`), чтобы UI мог фильтровать «без доступов» и показывать счётчик узлов без per-user обращений (список может содержать тысячи пользователей).
+- `GET /api/v1/admin/users` — **только пользователи активного тенанта**: активные члены и
+  запросившие доступ (`memberships.status` = `active`/`requested`); пользователи без membership в
+  тенанте не возвращаются. Каждый элемент: поля пользователя (id, display_name, avatar_url,
+  provider, last_login_at, is_admin) + `GrantedNodeCount` (число выданных узлов иерархии, считается
+  только активным) + `Status` (`active`/`requested`) + `Role` (роль в тенанте). UI использует
+  `Status`, чтобы показывать запросившим кнопки «Добавить»/«Отклонить» (см. ниже), а членам —
+  управление доступом.
 - `GET /api/v1/admin/users/{userID}` — карточка пользователя с grants
 - `POST /api/v1/admin/users/{userID}/admin` — выдать права администратора
 - `DELETE /api/v1/admin/users/{userID}/admin` — снять права администратора
@@ -150,7 +156,7 @@ Response:
 - `empty` — новый пользователь не получает доступа (пустая иерархия)
 - `default_node` — новый пользователь получает грант на `default_hierarchy_node_id` при первом логине, если у него ещё нет ни одного гранта
 
-Политика хранится в `system_settings` и применяется без перезапуска. Изменение политики не влияет на уже выданные гранты.
+Политика хранится в `tenant_settings` активного тенанта (с миграции 033; ранее — в глобальном `system_settings`) и применяется без перезапуска. Изменение политики не влияет на уже выданные гранты. Все `/api/v1/admin/settings/*` читают и пишут ключи в `tenant_settings` тенанта вызывающего админа.
 
 ### Общие настройки
 
@@ -170,7 +176,9 @@ Validation:
 
 - `documentation_url` — пустая строка (очищает ссылку, скрывает пункт меню) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
 
-Значение хранится в `system_settings` (ключ `documentation_url`) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его всем авторизованным пользователям.
+Значение хранится в `tenant_settings` (ключ `documentation_url`, per-tenant) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его авторизованному пользователю для его активного тенанта.
+
+Общие настройки также включают `empty_hierarchy_message` (markdown, per-tenant ключ `tenant_settings`): текст, показываемый в трекере пользователю без доступных команд (пусто → дефолт). Редактируется в том же `GET/POST /api/v1/admin/settings/general` и возвращается в `GET /api/v1/config` (`empty_hierarchy_message`); рендерится как markdown.
 
 ### Настройки обратной связи
 
@@ -194,9 +202,54 @@ Validation:
 - `feedback_url` — любая ссылка (строгого требования http(s), в отличие от `documentation_url`, нет; допускаются ссылки без схемы). Пустая строка скрывает пункт меню и окно. Запрещены только потенциально опасные схемы (`javascript:`, `data:`, `vbscript:`), так как значение подставляется в `href` — иначе `400 VALIDATION_ERROR`.
 - `feedback_frequency_days` — целое число `>= 1`; иначе `400 VALIDATION_ERROR`.
 
-Значения хранятся в `system_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их всем авторизованным пользователям. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
+Значения хранятся в `tenant_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`, per-tenant) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их авторизованному пользователю для его активного тенанта. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
 
 Все admin API endpoints требуют CSRF token при вызове из браузера.
+
+## System API endpoints (system-admin плоскость)
+
+`/api/v1/system/*` — кросс-тенантная provisioning-плоскость, доступная только
+**system-admin** (флаг `users.is_system_admin`) ИЛИ машинному вызывающему с заголовком
+`Authorization: Bearer <PROVISIONING_TOKEN>` (instance-level токен в env). Эти endpoints
+берут `tenant_id` из URL и не читают тенант из контекста; гейт — `RequireSystemAdmin`.
+Не membership-gated (system-admin может не состоять ни в одном тенанте). UI — `/system`.
+
+- `POST /api/v1/system/tenants` — создать тенант; body: `{"name": "...", "slug": "...", "entitlements": {"sso": true}}` → `201` `{id, slug, name, status}`. `422` при невалидном slug, `409` если slug занят.
+- `GET /api/v1/system/tenants` — список тенантов.
+- `POST /api/v1/system/tenants/{id}/members` — прямое назначение membership существующему глобальному пользователю; body: `{"user_id": 1, "role": "admin"}` → `201`. (Самостоятельный онбординг — через пригласительные ссылки, ниже.)
+- `PUT /api/v1/system/tenants/{id}/entitlements` — записать ключи `entitlement.*`; body: `{"sso": true, "max_users": 50}` (bare-ключи неймспейсятся в `entitlement.*`) → `204`.
+- `POST /api/v1/system/tenants/{id}/suspend` / `POST /api/v1/system/tenants/{id}/restore` → `204`; `404` если тенант не найден.
+- `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
+- `GET /api/v1/system/tenants/{id}/members` — участники тенанта: `[{user_id, display_name, email, role, status}]` (все статусы, отсортировано по имени). UI показывает `requested` вверху с «Подключить» (= `POST …/members`) / «Отклонить» (deny ниже).
+- `POST /api/v1/system/tenants/{id}/members/{userID}/deny` — удалить заявку (`requested`-membership) пользователя в тенанте → `204`. На активного члена не действует.
+- `DELETE /api/v1/system/tenants/{id}/members/{userID}` — удалить участника из тенанта: убирает membership (любого статуса) **и** все его hierarchy-гранты в этом тенанте → `204`. Идемпотентно. (Кнопка «Удалить» на активных строках; `deny` выше — только для заявок.)
+- `GET /api/v1/system/settings` дополнительно возвращает `no_access_message` (markdown, глобально).
+- `PUT /api/v1/system/settings/no-access-message` — body `{"message": "<markdown>"}` → `204`. Текст страницы `/no-access` (пусто → дефолт); рендерится как markdown.
+- `GET /api/v1/system/tenants/{id}/entitlements` — текущие ключи `entitlement.*` со срезанным префиксом: `{ "sso": true, "max_users": 50 }`.
+- `GET /api/v1/system/settings` — глобальные system-настройки для UI: `{ "default_registration_tenant_id": <int|null> }`.
+- `PUT /api/v1/system/settings/default-registration-tenant` — глобальный ключ `default_registration_tenant_id` в `system_settings`; body: `{"tenant_id": 1}` или `{"tenant_id": null}` → `204`.
+
+Авторизация на `/api/v1/system/*` и `/system` обязательна **во всех режимах**, включая
+`AUTH_MODE=disabled` (там — только по `PROVISIONING_TOKEN`; `anonymous-local` не system-admin).
+UI плоскости — React-панель `/system` (тенанты / участники / регистрация / entitlements).
+
+## Onboarding endpoints
+
+**Tenant-admin** (`RequireTenantAdmin`, в активном тенанте):
+
+- `POST /api/v1/admin/invitations` — создать пригласительную **ссылку** (без email); body: `{"role"?: "user|admin", "max_uses"?: int, "expires_at"?: RFC3339}` → `201` `{token, url, role, max_uses}`. `max_uses` отсутствует/`null` → безлимитная; `1` → одноразовая; `N` → до N использований; `max_uses <= 0` → `400`. Токен хранится **хэшированным**; в OSS админ передаёт `url` приглашённому сам (SMTP нет).
+- `GET /api/v1/admin/invitations` — список pending-ссылок тенанта: `[{id, role, status, max_uses, use_count, created_at, expires_at}]` (без email).
+- `POST /api/v1/admin/invitations/{id}/revoke` — отозвать ссылку (`status='revoked'`); идемпотентно, tenant-scoped → `204`.
+- `GET /api/v1/admin/access-requests` — очередь join-request'ов (`status=requested`).
+- `POST /api/v1/admin/access-requests/{userID}/approve` → `204` (membership → `active`).
+- `POST /api/v1/admin/access-requests/{userID}/deny` → `204` (pending-membership удаляется).
+- `DELETE /api/v1/admin/members/{userID}` — отвязать пользователя от активного тенанта: удаляются все его гранты иерархии в этом тенанте и membership (любого статуса), кэш инвалидируется. Идемпотентно → `204`.
+
+**Любой авторизованный** (auth, но **не** membership-gated):
+
+- `POST /api/v1/onboarding/join-request` — запросить доступ по slug; body: `{"slug": "..."}` → `204`; `404` если slug не найден, `409` если уже активный член.
+
+**Invite-ссылка (web):** `GET /invite/{token}` — если посетитель **уже авторизован**, ссылка гасится сразу (`Consume`), его `active` membership привязывается к **текущей идентичности** (`provider:subject`), сессия переключается на тенант ссылки, и он редиректится в приложение (`/`). Если посетитель **не авторизован** — токен кладётся в короткоживущую cookie и ведёт на логин; OAuth-callback гасит токен и привязывает membership. Многоразовость определяется `max_uses`/`use_count` (атомарный `Consume`). Истёкший/отозванный/исчерпанный/неизвестный токен — мягкий редирект без ошибки; доступ по email не выдаётся.
 
 Ошибки возвращаются в нормализованном виде:
 

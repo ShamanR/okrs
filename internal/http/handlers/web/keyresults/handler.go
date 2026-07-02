@@ -26,6 +26,11 @@ func New(deps common.Dependencies) *Handler {
 
 func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "403 Forbidden", http.StatusForbidden)
+		return
+	}
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -67,7 +72,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		meta.ProjectStages = stages
 	}
 
-	if err := h.deps.Service.UpdateKeyResultWithMeta(ctx, krs.KeyResultUpdateInput{
+	if err := h.deps.Service.UpdateKeyResultWithMeta(ctx, scope, krs.KeyResultUpdateInput{
 		ID:          krID,
 		Title:       common.TrimmedFormValue(r, "title"),
 		Description: common.TrimmedFormValue(r, "description"),
@@ -82,7 +87,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, krID)
+	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, scope, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
@@ -96,6 +101,11 @@ func (h *Handler) HandleMoveKeyResultDown(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, direction int) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "403 Forbidden", http.StatusForbidden)
+		return
+	}
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -105,7 +115,7 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.MoveKeyResult(ctx, krID, direction); err != nil {
+	if err := h.deps.Service.MoveKeyResult(ctx, scope, krID, direction); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -113,12 +123,17 @@ func (h *Handler) handleMoveKeyResult(w http.ResponseWriter, r *http.Request, di
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, krID)
+	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, scope, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
 func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "403 Forbidden", http.StatusForbidden)
+		return
+	}
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -130,7 +145,7 @@ func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 	}
 	text := common.TrimmedFormValue(r, "text")
 	if text != "" {
-		if err := h.deps.Service.UpsertKeyResultNote(ctx, krID, text, auth.UserIDFromContext(ctx)); err != nil {
+		if err := h.deps.Service.UpsertKeyResultNote(ctx, scope, krID, text, auth.UserIDFromContext(ctx)); err != nil {
 			common.RenderError(w, h.deps.Logger, err)
 			return
 		}
@@ -139,23 +154,28 @@ func (h *Handler) HandleUpsertKRNote(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, returnURL, http.StatusSeeOther)
 		return
 	}
-	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, krID)
+	goalID, _ := h.deps.Service.FindGoalIDByKR(ctx, scope, krID)
 	http.Redirect(w, r, formatGoalRedirect(goalID), http.StatusSeeOther)
 }
 
 func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	scope, ok := auth.TenantScopeFromContext(ctx)
+	if !ok {
+		http.Error(w, "403 Forbidden", http.StatusForbidden)
+		return
+	}
 	krID, err := common.ParseID(chi.URLParam(r, "krID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	goalID, err := h.deps.Service.FindGoalIDByKR(ctx, krID)
+	goalID, err := h.deps.Service.FindGoalIDByKR(ctx, scope, krID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.DeleteKeyResult(ctx, krID); err != nil {
+	if err := h.deps.Service.DeleteKeyResult(ctx, scope, krID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

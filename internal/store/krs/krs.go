@@ -96,22 +96,22 @@ func scanNumerical(start, target, current *float64, unit, zeroing *string, check
 	return num, nil
 }
 
-func (r *KRRepository) CreateKeyResult(ctx context.Context, input KeyResultInput) (int64, error) {
+func (r *KRRepository) CreateKeyResult(ctx context.Context, scope domain.TenantScope, input KeyResultInput) (int64, error) {
 	var id int64
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO key_results (goal_id, title, description, weight, kind, sort_order)
-		VALUES ($1,$2,$3,$4,$5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1))
+		INSERT INTO key_results (goal_id, title, description, weight, kind, sort_order, tenant_id)
+		VALUES ($1,$2,$3,$4,$5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1 AND tenant_id=$6), $6)
 		RETURNING id`,
-		input.GoalID, input.Title, input.Description, input.Weight, input.Kind,
+		input.GoalID, input.Title, input.Description, input.Weight, input.Kind, scope.TenantID,
 	).Scan(&id)
 	return id, err
 }
 
-func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) ([]domain.KeyResult, error) {
+func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.KeyResult, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
 		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
-		FROM key_results WHERE goal_id=$1 ORDER BY sort_order, id`, goalID)
+		FROM key_results WHERE goal_id=$1 AND tenant_id=$2 ORDER BY sort_order, id`, goalID, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -143,13 +143,13 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) (
 		kr := &krs[i]
 		switch kr.Kind {
 		case domain.KRKindProject:
-			stages, err := r.ListProjectStages(ctx, kr.ID)
+			stages, err := r.ListProjectStages(ctx, scope, kr.ID)
 			if err != nil {
 				return nil, err
 			}
 			kr.Project = &domain.KRProject{Stages: stages}
 		case domain.KRKindBoolean:
-			meta, err := r.GetBooleanMeta(ctx, kr.ID)
+			meta, err := r.GetBooleanMeta(ctx, scope, kr.ID)
 			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 				return nil, err
 			}
@@ -164,7 +164,7 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) (
 	for i, kr := range krs {
 		krIDs[i] = kr.ID
 	}
-	notes, err := r.BatchLoadNotes(ctx, krIDs)
+	notes, err := r.BatchLoadNotes(ctx, scope, krIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -175,22 +175,22 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, goalID int64) (
 	return krs, nil
 }
 
-func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, krID int64, text string, authorUserID int64) error {
+func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at)
-		VALUES ($1, $2, $3, NOW())
+		INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at, tenant_id)
+		VALUES ($1, $2, $3, NOW(), $4)
 		ON CONFLICT (key_result_id) DO UPDATE
 		SET text = EXCLUDED.text,
 		    author_user_id = EXCLUDED.author_user_id,
 		    updated_at = NOW()`,
-		krID, text, authorUserID,
+		krID, text, authorUserID, scope.TenantID,
 	)
 	return err
 }
 
 // BatchLoadNotes returns a map from krID to *domain.KeyResultNote.
 // KRs without a note are absent from the map (not nil-keyed).
-func (r *KRRepository) BatchLoadNotes(ctx context.Context, krIDs []int64) (map[int64]*domain.KeyResultNote, error) {
+func (r *KRRepository) BatchLoadNotes(ctx context.Context, scope domain.TenantScope, krIDs []int64) (map[int64]*domain.KeyResultNote, error) {
 	if len(krIDs) == 0 {
 		return map[int64]*domain.KeyResultNote{}, nil
 	}
@@ -198,7 +198,7 @@ func (r *KRRepository) BatchLoadNotes(ctx context.Context, krIDs []int64) (map[i
 		SELECT krn.key_result_id, krn.text, u.display_name, u.udid, krn.updated_at
 		FROM key_result_notes krn
 		JOIN users u ON u.id = krn.author_user_id
-		WHERE krn.key_result_id = ANY($1)`, krIDs)
+		WHERE krn.key_result_id = ANY($1) AND krn.tenant_id = $2`, krIDs, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -215,33 +215,39 @@ func (r *KRRepository) BatchLoadNotes(ctx context.Context, krIDs []int64) (map[i
 	return result, rows.Err()
 }
 
-func (r *KRRepository) AddProjectStage(ctx context.Context, input ProjectStageInput) error {
+func (r *KRRepository) AddProjectStage(ctx context.Context, scope domain.TenantScope, input ProjectStageInput) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_project_stages (key_result_id, title, weight, is_done, sort_order)
-		VALUES ($1,$2,$3,$4,$5)`,
-		input.KeyResultID, input.Title, input.Weight, input.IsDone, input.SortOrder,
+		SELECT $1, $2, $3, $4, $5
+		WHERE EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $6)`,
+		input.KeyResultID, input.Title, input.Weight, input.IsDone, input.SortOrder, scope.TenantID,
 	)
 	if err != nil {
 		return err
 	}
-	return r.touchKeyResultUpdatedAt(ctx, input.KeyResultID)
+	return r.touchKeyResultUpdatedAt(ctx, scope, input.KeyResultID)
 }
 
-func (r *KRRepository) UpdateProjectStageDone(ctx context.Context, stageID int64, done bool) error {
-	_, err := r.db.Exec(ctx, `UPDATE kr_project_stages SET is_done=$1 WHERE id=$2`, done, stageID)
+func (r *KRRepository) UpdateProjectStageDone(ctx context.Context, scope domain.TenantScope, stageID int64, done bool) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE kr_project_stages SET is_done=$1
+		WHERE id=$2
+		  AND EXISTS (SELECT 1 FROM key_results k WHERE k.id = kr_project_stages.key_result_id AND k.tenant_id = $3)`,
+		done, stageID, scope.TenantID)
 	if err != nil {
 		return err
 	}
 	_, err = r.db.Exec(ctx, `
 		UPDATE key_results
 		SET updated_at=NOW(), progress_updated_at=NOW()
-		WHERE id=(SELECT key_result_id FROM kr_project_stages WHERE id=$1)`, stageID)
+		WHERE id=(SELECT key_result_id FROM kr_project_stages WHERE id=$1)
+		  AND tenant_id=$2`, stageID, scope.TenantID)
 	return err
 }
 
 // BatchUpdateProjectStagesDone updates is_done for multiple stages in two queries:
 // one batch UPDATE for stages, one touch on the parent key_result.
-func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, krID int64, updates map[int64]bool) error {
+func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, scope domain.TenantScope, krID int64, updates map[int64]bool) error {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -254,19 +260,24 @@ func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, krID in
 	_, err := r.db.Exec(ctx, `
 		UPDATE kr_project_stages SET is_done = u.done
 		FROM (SELECT unnest($1::bigint[]) AS id, unnest($2::boolean[]) AS done) u
-		WHERE kr_project_stages.id = u.id`, stageIDs, doneValues)
+		WHERE kr_project_stages.id = u.id
+		  AND EXISTS (SELECT 1 FROM key_results k WHERE k.id = kr_project_stages.key_result_id AND k.tenant_id = $3)`,
+		stageIDs, doneValues, scope.TenantID)
 	if err != nil {
 		return err
 	}
 	_, err = r.db.Exec(ctx, `
-		UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
+		UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
 	return err
 }
 
-func (r *KRRepository) ListProjectStages(ctx context.Context, krID int64) ([]domain.KRProjectStage, error) {
+func (r *KRRepository) ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, key_result_id, title, weight, is_done, sort_order
-		FROM kr_project_stages WHERE key_result_id=$1 ORDER BY sort_order`, krID)
+		FROM kr_project_stages
+		WHERE key_result_id=$1
+		  AND EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $2)
+		ORDER BY sort_order`, krID, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -282,54 +293,59 @@ func (r *KRRepository) ListProjectStages(ctx context.Context, krID int64) ([]dom
 	return stages, rows.Err()
 }
 
-func (r *KRRepository) ReplaceProjectStages(ctx context.Context, krID int64, stages []ProjectStageInput) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM kr_project_stages WHERE key_result_id=$1`, krID)
+func (r *KRRepository) ReplaceProjectStages(ctx context.Context, scope domain.TenantScope, krID int64, stages []ProjectStageInput) error {
+	_, err := r.db.Exec(ctx, `
+		DELETE FROM kr_project_stages
+		WHERE key_result_id=$1
+		  AND EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $2)`,
+		krID, scope.TenantID)
 	if err != nil {
 		return err
 	}
 	for _, stage := range stages {
 		if _, err := r.db.Exec(ctx, `
 			INSERT INTO kr_project_stages (key_result_id, title, weight, is_done, sort_order)
-			VALUES ($1,$2,$3,$4,$5)`,
-			krID, stage.Title, stage.Weight, stage.IsDone, stage.SortOrder,
+			SELECT $1, $2, $3, $4, $5
+			WHERE EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $6)`,
+			krID, stage.Title, stage.Weight, stage.IsDone, stage.SortOrder, scope.TenantID,
 		); err != nil {
 			return err
 		}
 	}
-	return r.touchKeyResultUpdatedAt(ctx, krID)
+	return r.touchKeyResultUpdatedAt(ctx, scope, krID)
 }
 
-func (r *KRRepository) UpdateKeyResult(ctx context.Context, input KeyResultUpdateInput) error {
+func (r *KRRepository) UpdateKeyResult(ctx context.Context, scope domain.TenantScope, input KeyResultUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET title=$1, description=$2, weight=$3, kind=$4, updated_at=NOW()
-		WHERE id=$5`,
-		input.Title, input.Description, input.Weight, input.Kind, input.ID,
+		WHERE id=$5 AND tenant_id=$6`,
+		input.Title, input.Description, input.Weight, input.Kind, input.ID, scope.TenantID,
 	)
 	return err
 }
 
-func (r *KRRepository) UpdateKeyResultWeight(ctx context.Context, krID int64, weight int) error {
+func (r *KRRepository) UpdateKeyResultWeight(ctx context.Context, scope domain.TenantScope, krID int64, weight int) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET weight=$1, updated_at=NOW()
-		WHERE id=$2`,
-		weight, krID,
+		WHERE id=$2 AND tenant_id=$3`,
+		weight, krID, scope.TenantID,
 	)
 	return err
 }
 
-func (r *KRRepository) UpdateKeyResultDescription(ctx context.Context, krID int64, description string) error {
+func (r *KRRepository) UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET description=$1, updated_at=NOW()
-		WHERE id=$2`,
-		description, krID,
+		WHERE id=$2 AND tenant_id=$3`,
+		description, krID, scope.TenantID,
 	)
 	return err
 }
 
-func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, input NumericalMetaInput) error {
+func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, scope domain.TenantScope, input NumericalMetaInput) error {
 	var checkpointsJSON []byte
 	if len(input.Checkpoints) > 0 {
 		b, err := json.Marshal(input.Checkpoints)
@@ -342,29 +358,29 @@ func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, input NumericalM
 		UPDATE key_results
 		SET start_value=$1, target_value=$2, current_value=$3, unit=$4,
 		    checkpoints=$5, zeroing_criteria=$6, updated_at=NOW()
-		WHERE id=$7`,
+		WHERE id=$7 AND tenant_id=$8`,
 		input.StartValue, input.TargetValue, input.CurrentValue, input.Unit,
-		checkpointsJSON, input.ZeroingCriteria, input.KeyResultID,
+		checkpointsJSON, input.ZeroingCriteria, input.KeyResultID, scope.TenantID,
 	)
 	return err
 }
 
-func (r *KRRepository) UpdateNumericalCurrent(ctx context.Context, krID int64, current float64) error {
+func (r *KRRepository) UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET current_value=$1, updated_at=NOW(), progress_updated_at=NOW()
-		WHERE id=$2`, current, krID)
+		WHERE id=$2 AND tenant_id=$3`, current, krID, scope.TenantID)
 	return err
 }
 
-func (r *KRRepository) UpdateBoolean(ctx context.Context, krID int64, done bool) error {
-	if err := r.UpsertBooleanMeta(ctx, krID, done); err != nil {
+func (r *KRRepository) UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
+	if err := r.UpsertBooleanMeta(ctx, scope, krID, done); err != nil {
 		return err
 	}
-	return r.touchKeyResultProgressUpdatedAt(ctx, krID)
+	return r.touchKeyResultProgressUpdatedAt(ctx, scope, krID)
 }
 
-func (r *KRRepository) GetKeyResult(ctx context.Context, id int64) (domain.KeyResult, error) {
+func (r *KRRepository) GetKeyResult(ctx context.Context, scope domain.TenantScope, id int64) (domain.KeyResult, error) {
 	var kr domain.KeyResult
 	var startValue, targetValue, currentValue *float64
 	var unit, zeroing *string
@@ -372,7 +388,7 @@ func (r *KRRepository) GetKeyResult(ctx context.Context, id int64) (domain.KeyRe
 	row := r.db.QueryRow(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
 		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
-		FROM key_results WHERE id=$1`, id)
+		FROM key_results WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	if err := row.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
 		&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 		return domain.KeyResult{}, err
@@ -387,34 +403,40 @@ func (r *KRRepository) GetKeyResult(ctx context.Context, id int64) (domain.KeyRe
 	return kr, nil
 }
 
-func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, krID int64, done bool) error {
+func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
 	_, err := r.db.Exec(ctx, `
 		INSERT INTO kr_boolean_meta (key_result_id, is_done)
-		VALUES ($1,$2)
+		SELECT $1, $2
+		WHERE EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $3)
 		ON CONFLICT (key_result_id) DO UPDATE SET is_done=EXCLUDED.is_done`,
-		krID, done,
+		krID, done, scope.TenantID,
 	)
 	if err != nil {
 		return err
 	}
-	return r.touchKeyResultUpdatedAt(ctx, krID)
+	return r.touchKeyResultUpdatedAt(ctx, scope, krID)
 }
 
-func (r *KRRepository) GetBooleanMeta(ctx context.Context, krID int64) (*domain.KRBoolean, error) {
+func (r *KRRepository) GetBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KRBoolean, error) {
 	var meta domain.KRBoolean
-	row := r.db.QueryRow(ctx, `SELECT is_done FROM kr_boolean_meta WHERE key_result_id=$1`, krID)
+	row := r.db.QueryRow(ctx, `
+		SELECT b.is_done
+		FROM kr_boolean_meta b
+		WHERE b.key_result_id=$1
+		  AND EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $2)`,
+		krID, scope.TenantID)
 	if err := row.Scan(&meta.IsDone); err != nil {
 		return nil, err
 	}
 	return &meta, nil
 }
 
-func (r *KRRepository) DeleteKeyResult(ctx context.Context, id int64) error {
-	_, err := r.db.Exec(ctx, `DELETE FROM key_results WHERE id=$1`, id)
+func (r *KRRepository) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error {
+	_, err := r.db.Exec(ctx, `DELETE FROM key_results WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	return err
 }
 
-func (r *KRRepository) MoveKeyResult(ctx context.Context, krID int64, direction int) error {
+func (r *KRRepository) MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -423,7 +445,7 @@ func (r *KRRepository) MoveKeyResult(ctx context.Context, krID int64, direction 
 
 	var goalID int64
 	var currentOrder int
-	row := tx.QueryRow(ctx, `SELECT goal_id, sort_order FROM key_results WHERE id=$1 FOR UPDATE`, krID)
+	row := tx.QueryRow(ctx, `SELECT goal_id, sort_order FROM key_results WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, krID, scope.TenantID)
 	if err := row.Scan(&goalID, &currentOrder); err != nil {
 		return err
 	}
@@ -433,15 +455,15 @@ func (r *KRRepository) MoveKeyResult(ctx context.Context, krID int64, direction 
 	if direction < 0 {
 		row = tx.QueryRow(ctx, `
 			SELECT id, sort_order FROM key_results
-			WHERE goal_id=$1 AND sort_order < $2
+			WHERE goal_id=$1 AND sort_order < $2 AND tenant_id=$3
 			ORDER BY sort_order DESC LIMIT 1
-			FOR UPDATE`, goalID, currentOrder)
+			FOR UPDATE`, goalID, currentOrder, scope.TenantID)
 	} else {
 		row = tx.QueryRow(ctx, `
 			SELECT id, sort_order FROM key_results
-			WHERE goal_id=$1 AND sort_order > $2
+			WHERE goal_id=$1 AND sort_order > $2 AND tenant_id=$3
 			ORDER BY sort_order ASC LIMIT 1
-			FOR UPDATE`, goalID, currentOrder)
+			FOR UPDATE`, goalID, currentOrder, scope.TenantID)
 	}
 	if err := row.Scan(&neighborID, &neighborOrder); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -450,38 +472,38 @@ func (r *KRRepository) MoveKeyResult(ctx context.Context, krID int64, direction 
 		return err
 	}
 
-	if _, err := tx.Exec(ctx, `UPDATE key_results SET sort_order=$1 WHERE id=$2`, neighborOrder, krID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE key_results SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, neighborOrder, krID, scope.TenantID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE key_results SET sort_order=$1 WHERE id=$2`, currentOrder, neighborID); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE key_results SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, currentOrder, neighborID, scope.TenantID); err != nil {
 		return err
 	}
 
 	return tx.Commit(ctx)
 }
 
-func (r *KRRepository) touchKeyResultUpdatedAt(ctx context.Context, krID int64) error {
-	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1`, krID)
+func (r *KRRepository) touchKeyResultUpdatedAt(ctx context.Context, scope domain.TenantScope, krID int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
 	return err
 }
 
-func (r *KRRepository) touchKeyResultProgressUpdatedAt(ctx context.Context, krID int64) error {
-	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1`, krID)
+func (r *KRRepository) touchKeyResultProgressUpdatedAt(ctx context.Context, scope domain.TenantScope, krID int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
 	return err
 }
 
-func (r *KRRepository) FindGoalIDByKR(ctx context.Context, krID int64) (int64, error) {
+func (r *KRRepository) FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error) {
 	var goalID int64
-	err := r.db.QueryRow(ctx, `SELECT goal_id FROM key_results WHERE id=$1`, krID).Scan(&goalID)
+	err := r.db.QueryRow(ctx, `SELECT goal_id FROM key_results WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID).Scan(&goalID)
 	return goalID, err
 }
 
-func (r *KRRepository) FindGoalIDByStage(ctx context.Context, stageID int64) (int64, error) {
+func (r *KRRepository) FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error) {
 	var goalID int64
 	err := r.db.QueryRow(ctx, `
 		SELECT kr.goal_id
 		FROM kr_project_stages s
 		JOIN key_results kr ON kr.id = s.key_result_id
-		WHERE s.id=$1`, stageID).Scan(&goalID)
+		WHERE s.id=$1 AND kr.tenant_id=$2`, stageID, scope.TenantID).Scan(&goalID)
 	return goalID, err
 }

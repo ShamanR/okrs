@@ -8,14 +8,19 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/invitations"
 	"okrs/internal/store/krs"
+	"okrs/internal/store/memberships"
 	"okrs/internal/store/periods"
 	"okrs/internal/store/sessions"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/shares"
 	"okrs/internal/store/statuses"
 	"okrs/internal/store/teams"
+	"okrs/internal/store/tenants"
+	"okrs/internal/store/tenantsettings"
 	"okrs/internal/store/users"
+	"okrs/internal/store/usersettings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -36,6 +41,12 @@ type Store struct {
 	Sessions *sessions.SessionRepository
 	Grants   *grants.GrantRepository
 	Settings *settings.SettingsRepository
+
+	Tenants        *tenants.TenantRepository
+	Memberships    *memberships.MembershipRepository
+	TenantSettings *tenantsettings.TenantSettingsRepository
+	UserSettings   *usersettings.UserSettingsRepository
+	Invitations    *invitations.InvitationRepository
 }
 
 // New constructs a Store and wires all repositories.
@@ -53,6 +64,12 @@ func New(db *pgxpool.Pool) *Store {
 		Sessions: sessions.NewSessionRepository(db),
 		Grants:   grants.NewGrantRepository(db),
 		Settings: settings.NewSettingsRepository(db),
+
+		Tenants:        tenants.NewTenantRepository(db),
+		Memberships:    memberships.NewMembershipRepository(db),
+		TenantSettings: tenantsettings.NewTenantSettingsRepository(db),
+		UserSettings:   usersettings.NewUserSettingsRepository(db),
+		Invitations:    invitations.NewInvitationRepository(db),
 	}
 }
 
@@ -91,6 +108,20 @@ func (s *Store) DeleteSession(ctx context.Context, sessionID string) error {
 
 func (s *Store) GetSetting(ctx context.Context, key string) (json.RawMessage, error) {
 	return s.Settings.GetSetting(ctx, key)
+}
+
+// GetTenantSetting forwards to the per-tenant settings store. Product keys live here
+// (since migration 033); the auth layer reads them through this forwarder.
+func (s *Store) GetTenantSetting(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error) {
+	return s.TenantSettings.Get(ctx, scope, key)
+}
+
+func (s *Store) AnySystemAdmin(ctx context.Context) (bool, error) {
+	return s.Users.AnySystemAdmin(ctx)
+}
+
+func (s *Store) SetSystemAdmin(ctx context.Context, userID int64, v bool) error {
+	return s.Users.SetSystemAdmin(ctx, userID, v)
 }
 
 // SeedDemo inserts demo data (used only by the --seed flag in main).

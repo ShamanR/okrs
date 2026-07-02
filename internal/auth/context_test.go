@@ -7,6 +7,32 @@ import (
 	"okrs/internal/domain"
 )
 
+func TestTenantContextRoundTrip(t *testing.T) {
+	tn := &domain.Tenant{ID: 7, Slug: "acme"}
+	ctx := WithTenant(context.Background(), tn)
+	if got := TenantFromContext(ctx); got == nil || got.ID != 7 {
+		t.Fatalf("TenantFromContext = %+v, want id 7", got)
+	}
+	sc, ok := TenantScopeFromContext(ctx)
+	if !ok || sc.TenantID != 7 {
+		t.Fatalf("TenantScopeFromContext = %+v ok=%v, want {7} true", sc, ok)
+	}
+
+	ctx = WithActiveRole(ctx, domain.RoleAdmin)
+	if role, ok := ActiveRoleFromContext(ctx); !ok || role != domain.RoleAdmin {
+		t.Fatalf("ActiveRoleFromContext = %v ok=%v, want admin true", role, ok)
+	}
+}
+
+func TestTenantFromContextNilWhenAbsent(t *testing.T) {
+	if got := TenantFromContext(context.Background()); got != nil {
+		t.Fatalf("expected nil tenant, got %+v", got)
+	}
+	if _, ok := TenantScopeFromContext(context.Background()); ok {
+		t.Fatalf("expected scope absent")
+	}
+}
+
 func TestUserFromContextNilWhenNotSet(t *testing.T) {
 	if got := UserFromContext(context.Background()); got != nil {
 		t.Fatalf("expected nil, got %+v", got)

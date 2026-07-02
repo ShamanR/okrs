@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/store/periods"
@@ -30,7 +31,12 @@ type periodsPage struct {
 }
 
 func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
-	periods, err := h.deps.Service.ListPeriods(r.Context())
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	periods, err := h.deps.Service.ListPeriods(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -44,12 +50,17 @@ func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleEditPeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	period, err := h.deps.Service.GetPeriod(r.Context(), periodID)
+	period, err := h.deps.Service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -68,6 +79,11 @@ func (h *Handler) HandleEditPeriod(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -76,24 +92,24 @@ func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
 	startDateRaw := common.TrimmedFormValue(r, "start_date")
 	endDateRaw := common.TrimmedFormValue(r, "end_date")
 	if name == "" || startDateRaw == "" || endDateRaw == "" {
-		h.renderPeriodsWithError(w, r, "Все поля обязательны")
+		h.renderPeriodsWithError(w, r, scope, "Все поля обязательны")
 		return
 	}
 	startDate, err := time.Parse("2006-01-02", startDateRaw)
 	if err != nil {
-		h.renderPeriodsWithError(w, r, "Некорректная дата начала")
+		h.renderPeriodsWithError(w, r, scope, "Некорректная дата начала")
 		return
 	}
 	endDate, err := time.Parse("2006-01-02", endDateRaw)
 	if err != nil {
-		h.renderPeriodsWithError(w, r, "Некорректная дата окончания")
+		h.renderPeriodsWithError(w, r, scope, "Некорректная дата окончания")
 		return
 	}
 	if endDate.Before(startDate) {
-		h.renderPeriodsWithError(w, r, "Дата окончания должна быть позже даты начала")
+		h.renderPeriodsWithError(w, r, scope, "Дата окончания должна быть позже даты начала")
 		return
 	}
-	if _, err := h.deps.Service.CreatePeriod(r.Context(), periods.PeriodInput{
+	if _, err := h.deps.Service.CreatePeriod(r.Context(), scope, periods.PeriodInput{
 		Name:      name,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -105,6 +121,11 @@ func (h *Handler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
@@ -118,24 +139,24 @@ func (h *Handler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
 	startDateRaw := common.TrimmedFormValue(r, "start_date")
 	endDateRaw := common.TrimmedFormValue(r, "end_date")
 	if name == "" || startDateRaw == "" || endDateRaw == "" {
-		h.renderPeriodEditWithError(w, r, periodID, "Все поля обязательны")
+		h.renderPeriodEditWithError(w, r, scope, periodID, "Все поля обязательны")
 		return
 	}
 	startDate, err := time.Parse("2006-01-02", startDateRaw)
 	if err != nil {
-		h.renderPeriodEditWithError(w, r, periodID, "Некорректная дата начала")
+		h.renderPeriodEditWithError(w, r, scope, periodID, "Некорректная дата начала")
 		return
 	}
 	endDate, err := time.Parse("2006-01-02", endDateRaw)
 	if err != nil {
-		h.renderPeriodEditWithError(w, r, periodID, "Некорректная дата окончания")
+		h.renderPeriodEditWithError(w, r, scope, periodID, "Некорректная дата окончания")
 		return
 	}
 	if endDate.Before(startDate) {
-		h.renderPeriodEditWithError(w, r, periodID, "Дата окончания должна быть позже даты начала")
+		h.renderPeriodEditWithError(w, r, scope, periodID, "Дата окончания должна быть позже даты начала")
 		return
 	}
-	if err := h.deps.Service.UpdatePeriod(r.Context(), periodID, periods.PeriodInput{
+	if err := h.deps.Service.UpdatePeriod(r.Context(), scope, periodID, periods.PeriodInput{
 		Name:      name,
 		StartDate: startDate,
 		EndDate:   endDate,
@@ -147,12 +168,17 @@ func (h *Handler) HandleUpdatePeriod(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) HandleDeletePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.DeletePeriod(r.Context(), periodID); err != nil {
+	if err := h.deps.Service.DeletePeriod(r.Context(), scope, periodID); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -168,20 +194,25 @@ func (h *Handler) HandleMovePeriodDown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleMove(w http.ResponseWriter, r *http.Request, direction int) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
 		return
 	}
-	if err := h.deps.Service.MovePeriod(r.Context(), periodID, direction); err != nil {
+	if err := h.deps.Service.MovePeriod(r.Context(), scope, periodID, direction); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
 	http.Redirect(w, r, "/periods", http.StatusSeeOther)
 }
 
-func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request, message string) {
-	periods, err := h.deps.Service.ListPeriods(r.Context())
+func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request, scope domain.TenantScope, message string) {
+	periods, err := h.deps.Service.ListPeriods(r.Context(), scope)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
@@ -195,8 +226,8 @@ func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request,
 	common.RenderTemplate(w, r, h.deps.Templates, "base", page, h.deps.Logger)
 }
 
-func (h *Handler) renderPeriodEditWithError(w http.ResponseWriter, r *http.Request, periodID int64, message string) {
-	period, err := h.deps.Service.GetPeriod(r.Context(), periodID)
+func (h *Handler) renderPeriodEditWithError(w http.ResponseWriter, r *http.Request, scope domain.TenantScope, periodID int64, message string) {
+	period, err := h.deps.Service.GetPeriod(r.Context(), scope, periodID)
 	if err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return

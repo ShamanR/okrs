@@ -25,6 +25,13 @@ type Config struct {
 	NewUserPolicy    NewUserPolicy
 	DefaultNodeID    int64
 
+	// ProvisioningToken, when set, authorizes machine callers of /api/v1/system/*
+	// via "Authorization: Bearer <token>" (instance-level, like the DSN).
+	ProvisioningToken string
+	// BootstrapSystemAdmin (provider:subject or email) is promoted to system-admin
+	// on first matching login when no system-admin exists yet.
+	BootstrapSystemAdmin string
+
 	Google   OAuthConfig
 	GitHub   OAuthConfig
 	Keycloak KeycloakConfig

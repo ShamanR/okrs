@@ -13,6 +13,7 @@ import (
 )
 
 func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs.KRRepository, periodID int64) error {
+	scope := domain.TenantScope{TenantID: 1} // TODO(tenancy): seed supports single-tenant only
 	teamNames := []string{"Platform", "Payments", "Growth"}
 	teamIDs := make([]int64, 0, len(teamNames))
 	for _, name := range teamNames {
@@ -21,10 +22,12 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		// team with this name and inserting only when none exists.
 		var id int64
 		err := goalsRepo.DB().QueryRow(ctx,
-			`SELECT id FROM teams WHERE name=$1 AND deleted_at IS NULL ORDER BY id LIMIT 1`, name).Scan(&id)
+			`SELECT id FROM teams WHERE name=$1 AND deleted_at IS NULL AND tenant_id=$2 ORDER BY id LIMIT 1`, name, scope.TenantID).Scan(&id)
 		if errors.Is(err, pgx.ErrNoRows) {
+			// tenant_id is explicit: migration 032 dropped the transitional DEFAULT 1, so the
+			// seed must set it (single-tenant seed → default tenant #1).
 			err = goalsRepo.DB().QueryRow(ctx,
-				`INSERT INTO teams (name, team_type) VALUES ($1,$2) RETURNING id`, name, domain.TeamTypeTeam).Scan(&id)
+				`INSERT INTO teams (name, team_type, tenant_id) VALUES ($1,$2,$3) RETURNING id`, name, domain.TeamTypeTeam, scope.TenantID).Scan(&id)
 		}
 		if err != nil {
 			return err
@@ -33,7 +36,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 	}
 
 	for _, teamID := range teamIDs {
-		goalID, err := goalsRepo.CreateGoal(ctx, goals.GoalInput{
+		goalID, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Improve reliability for team %d", teamID),
@@ -47,7 +50,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		krID, err := krsRepo.CreateKeyResult(ctx, krs.KeyResultInput{
+		krID, err := krsRepo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
 			GoalID:      goalID,
 			Title:       "Incident reduction project",
 			Description: "Deliver reliability initiatives.",
@@ -57,10 +60,10 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
-		_ = krsRepo.AddProjectStage(ctx, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
+		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
+		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
 
-		goalID2, err := goalsRepo.CreateGoal(ctx, goals.GoalInput{
+		goalID2, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
 			Title:       fmt.Sprintf("Grow adoption for team %d", teamID),
@@ -74,7 +77,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		krID2, err := krsRepo.CreateKeyResult(ctx, krs.KeyResultInput{
+		krID2, err := krsRepo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
 			GoalID:      goalID2,
 			Title:       "MAU growth",
 			Description: "Increase monthly active usage.",
@@ -84,7 +87,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		_ = krsRepo.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
+		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
 	}
 
 	return nil

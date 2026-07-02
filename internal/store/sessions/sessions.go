@@ -39,15 +39,22 @@ func (r *SessionRepository) CreateSession(ctx context.Context, sessionID string,
 func (r *SessionRepository) GetSession(ctx context.Context, sessionID string) (*domain.AuthSession, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT id, user_id, provider, created_at, expires_at, last_seen_at,
-		       COALESCE(user_agent,''), COALESCE(ip,'')
+		       COALESCE(user_agent,''), COALESCE(ip,''), active_tenant_id
 		FROM auth_sessions WHERE id = $1 AND expires_at > NOW()`, sessionID)
 	var sess domain.AuthSession
 	err := row.Scan(&sess.ID, &sess.UserID, &sess.Provider, &sess.CreatedAt,
-		&sess.ExpiresAt, &sess.LastSeenAt, &sess.UserAgent, &sess.IP)
+		&sess.ExpiresAt, &sess.LastSeenAt, &sess.UserAgent, &sess.IP, &sess.ActiveTenantID)
 	if err != nil {
 		return nil, err
 	}
 	return &sess, nil
+}
+
+// SetActiveTenant records which tenant the session is currently viewing.
+func (r *SessionRepository) SetActiveTenant(ctx context.Context, sessionID string, tenantID int64) error {
+	_, err := r.db.Exec(ctx,
+		`UPDATE auth_sessions SET active_tenant_id = $2 WHERE id = $1`, sessionID, tenantID)
+	return err
 }
 
 func (r *SessionRepository) TouchSession(ctx context.Context, sessionID string) error {

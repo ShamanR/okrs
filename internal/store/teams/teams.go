@@ -18,12 +18,12 @@ func NewTeamRepository(db *pgxpool.Pool) *TeamRepository {
 	return &TeamRepository{db: db}
 }
 
-func (r *TeamRepository) ListTeams(ctx context.Context) ([]domain.Team, error) {
+func (r *TeamRepository) ListTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
 		FROM teams
-		WHERE deleted_at IS NULL
-		ORDER BY name`)
+		WHERE deleted_at IS NULL AND tenant_id = $1
+		ORDER BY name`, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -31,12 +31,12 @@ func (r *TeamRepository) ListTeams(ctx context.Context) ([]domain.Team, error) {
 	return scanTeams(rows)
 }
 
-func (r *TeamRepository) ListDeletedTeams(ctx context.Context) ([]domain.Team, error) {
+func (r *TeamRepository) ListDeletedTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
 		FROM teams
-		WHERE deleted_at IS NOT NULL
-		ORDER BY deleted_at DESC, name`)
+		WHERE deleted_at IS NOT NULL AND tenant_id = $1
+		ORDER BY deleted_at DESC, name`, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -44,11 +44,12 @@ func (r *TeamRepository) ListDeletedTeams(ctx context.Context) ([]domain.Team, e
 	return scanTeams(rows)
 }
 
-func (r *TeamRepository) ListAllTeams(ctx context.Context) ([]domain.Team, error) {
+func (r *TeamRepository) ListAllTeams(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
 		FROM teams
-		ORDER BY name`)
+		WHERE tenant_id = $1
+		ORDER BY name`, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,14 +86,14 @@ func scanTeams(rows interface {
 	return teams, rows.Err()
 }
 
-func (r *TeamRepository) GetTeam(ctx context.Context, id int64) (domain.Team, error) {
+func (r *TeamRepository) GetTeam(ctx context.Context, scope domain.TenantScope, id int64) (domain.Team, error) {
 	var team domain.Team
 	var parentID sql.NullInt64
 	var leadUDID *string
 	var deletedAt sql.NullTime
 	row := r.db.QueryRow(ctx,
 		`SELECT id, name, team_type, parent_id, lead, lead_udid, description, deleted_at, created_at, updated_at
-		 FROM teams WHERE id=$1`, id)
+		 FROM teams WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	if err := row.Scan(&team.ID, &team.Name, &team.Type, &parentID, &team.Lead, &leadUDID, &team.Description, &deletedAt, &team.CreatedAt, &team.UpdatedAt); err != nil {
 		return domain.Team{}, err
 	}
@@ -118,65 +119,65 @@ type TeamInput struct {
 	Description string
 }
 
-func (r *TeamRepository) CreateTeam(ctx context.Context, input TeamInput) (int64, error) {
+func (r *TeamRepository) CreateTeam(ctx context.Context, scope domain.TenantScope, input TeamInput) (int64, error) {
 	var id int64
 	err := r.db.QueryRow(ctx,
-		`INSERT INTO teams (name, team_type, parent_id, lead, lead_udid, description) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-		input.Name, input.Type, input.ParentID, input.Lead, input.LeadUDID, input.Description).Scan(&id)
+		`INSERT INTO teams (name, team_type, parent_id, lead, lead_udid, description, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+		input.Name, input.Type, input.ParentID, input.Lead, input.LeadUDID, input.Description, scope.TenantID).Scan(&id)
 	return id, err
 }
 
-func (r *TeamRepository) UpdateTeam(ctx context.Context, input TeamInput, id int64) error {
+func (r *TeamRepository) UpdateTeam(ctx context.Context, scope domain.TenantScope, input TeamInput, id int64) error {
 	_, err := r.db.Exec(ctx,
-		`UPDATE teams SET name=$1, team_type=$2, parent_id=$3, lead=$4, lead_udid=$5, description=$6, updated_at=NOW() WHERE id=$7`,
-		input.Name, input.Type, input.ParentID, input.Lead, input.LeadUDID, input.Description, id)
+		`UPDATE teams SET name=$1, team_type=$2, parent_id=$3, lead=$4, lead_udid=$5, description=$6, updated_at=NOW() WHERE id=$7 AND tenant_id=$8`,
+		input.Name, input.Type, input.ParentID, input.Lead, input.LeadUDID, input.Description, id, scope.TenantID)
 	return err
 }
 
-func (r *TeamRepository) TeamHasGoals(ctx context.Context, id int64) (bool, error) {
+func (r *TeamRepository) TeamHasGoals(ctx context.Context, scope domain.TenantScope, id int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx, `
 		SELECT EXISTS (
-			SELECT 1 FROM goals WHERE team_id = $1
+			SELECT 1 FROM goals WHERE team_id = $1 AND tenant_id = $2
 			UNION ALL
 			SELECT 1
 			FROM goal_shares gs
-			WHERE gs.team_id = $1
+			WHERE gs.team_id = $1 AND gs.tenant_id = $2
 			LIMIT 1
-		)`, id).Scan(&exists)
+		)`, id, scope.TenantID).Scan(&exists)
 	return exists, err
 }
 
-func (r *TeamRepository) TeamHasGoalsInPeriod(ctx context.Context, id, periodID int64) (bool, error) {
+func (r *TeamRepository) TeamHasGoalsInPeriod(ctx context.Context, scope domain.TenantScope, id, periodID int64) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx, `
 		SELECT EXISTS (
 			SELECT 1
 			FROM goals g
-			WHERE g.team_id = $1 AND g.period_id = $2
+			WHERE g.team_id = $1 AND g.period_id = $2 AND g.tenant_id = $3
 			UNION ALL
 			SELECT 1
 			FROM goal_shares gs
 			JOIN goals g ON g.id = gs.goal_id
-			WHERE gs.team_id = $1 AND g.period_id = $2
+			WHERE gs.team_id = $1 AND g.period_id = $2 AND gs.tenant_id = $3
 			LIMIT 1
-		)`, id, periodID).Scan(&exists)
+		)`, id, periodID, scope.TenantID).Scan(&exists)
 	return exists, err
 }
 
-func (r *TeamRepository) ListTeamIDsWithGoalsInPeriod(ctx context.Context, periodID int64) (map[int64]struct{}, error) {
+func (r *TeamRepository) ListTeamIDsWithGoalsInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (map[int64]struct{}, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT DISTINCT team_id
 		FROM (
 			SELECT g.team_id AS team_id
 			FROM goals g
-			WHERE g.period_id = $1
+			WHERE g.period_id = $1 AND g.tenant_id = $2
 			UNION ALL
 			SELECT gs.team_id AS team_id
 			FROM goal_shares gs
 			JOIN goals g ON g.id = gs.goal_id
-			WHERE g.period_id = $1
-		) teams_with_goals`, periodID)
+			WHERE g.period_id = $1 AND gs.tenant_id = $2
+		) teams_with_goals`, periodID, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +193,7 @@ func (r *TeamRepository) ListTeamIDsWithGoalsInPeriod(ctx context.Context, perio
 	return ids, rows.Err()
 }
 
-func (r *TeamRepository) SoftDeleteTeam(ctx context.Context, id int64) error {
+func (r *TeamRepository) SoftDeleteTeam(ctx context.Context, scope domain.TenantScope, id int64) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -200,24 +201,24 @@ func (r *TeamRepository) SoftDeleteTeam(ctx context.Context, id int64) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var parentID sql.NullInt64
-	if err := tx.QueryRow(ctx, `SELECT parent_id FROM teams WHERE id=$1 FOR UPDATE`, id).Scan(&parentID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT parent_id FROM teams WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, id, scope.TenantID).Scan(&parentID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE teams SET parent_id=$1, updated_at=NOW() WHERE parent_id=$2`, nullableParent(parentID), id); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE teams SET parent_id=$1, updated_at=NOW() WHERE parent_id=$2 AND tenant_id=$3`, nullableParent(parentID), id, scope.TenantID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE teams SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE teams SET deleted_at=NOW(), updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
 }
 
-func (r *TeamRepository) RestoreTeam(ctx context.Context, id int64) error {
-	_, err := r.db.Exec(ctx, `UPDATE teams SET deleted_at=NULL, updated_at=NOW() WHERE id=$1`, id)
+func (r *TeamRepository) RestoreTeam(ctx context.Context, scope domain.TenantScope, id int64) error {
+	_, err := r.db.Exec(ctx, `UPDATE teams SET deleted_at=NULL, updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	return err
 }
 
-func (r *TeamRepository) HardDeleteTeam(ctx context.Context, id int64) error {
+func (r *TeamRepository) HardDeleteTeam(ctx context.Context, scope domain.TenantScope, id int64) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -225,13 +226,13 @@ func (r *TeamRepository) HardDeleteTeam(ctx context.Context, id int64) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var parentID sql.NullInt64
-	if err := tx.QueryRow(ctx, `SELECT parent_id FROM teams WHERE id=$1 FOR UPDATE`, id).Scan(&parentID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT parent_id FROM teams WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, id, scope.TenantID).Scan(&parentID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `UPDATE teams SET parent_id=$1, updated_at=NOW() WHERE parent_id=$2`, nullableParent(parentID), id); err != nil {
+	if _, err := tx.Exec(ctx, `UPDATE teams SET parent_id=$1, updated_at=NOW() WHERE parent_id=$2 AND tenant_id=$3`, nullableParent(parentID), id, scope.TenantID); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `DELETE FROM teams WHERE id=$1`, id); err != nil {
+	if _, err := tx.Exec(ctx, `DELETE FROM teams WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)

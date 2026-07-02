@@ -66,7 +66,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("insert period: %v", err)
 	}
 
-	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID:      teamID,
 		PeriodID:    periodID,
 		Title:       "API Goal",
@@ -81,7 +81,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
 		Title:       "KR",
 		Description: "",
@@ -91,7 +91,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertNumericalMeta(ctx, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
+	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
 		t.Fatalf("meta: %v", err)
 	}
 
@@ -174,7 +174,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 	var periodID int64
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q2', '2024-04-01', '2024-06-30', 2) RETURNING id`).Scan(&periodID)
 
-	goalID, err := repo.Goals.CreateGoal(ctx, goals.GoalInput{
+	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Note Goal",
 		Priority: domain.PriorityP1, Weight: 100,
 		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
@@ -182,7 +182,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
 	}
-	krID, err := repo.KRs.CreateKeyResult(ctx, krs.KeyResultInput{
+	krID, err := repo.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID: goalID, Title: "Note KR", Weight: 100, Kind: domain.KRKindBoolean,
 	})
 	if err != nil {

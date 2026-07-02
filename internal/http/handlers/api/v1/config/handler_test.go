@@ -6,13 +6,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"okrs/internal/domain"
 )
 
 type fakeSettings struct {
 	data map[string]json.RawMessage
 }
 
-func (f *fakeSettings) GetSetting(_ context.Context, key string) (json.RawMessage, error) {
+func (f *fakeSettings) GetTenant(_ context.Context, _ domain.TenantScope, key string) (json.RawMessage, error) {
 	return f.data[key], nil
 }
 
@@ -33,6 +35,21 @@ func TestHandleConfigReturnsDocumentationURL(t *testing.T) {
 	}
 	if got.DocumentationURL != "https://example.com/wiki" {
 		t.Errorf("documentation_url: want https://example.com/wiki, got %q", got.DocumentationURL)
+	}
+}
+
+func TestHandleConfigEmptyHierarchyMessage(t *testing.T) {
+	raw, _ := json.Marshal("ask ops")
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"empty_hierarchy_message": raw}})
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+	var got struct {
+		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.EmptyHierarchyMessage != "ask ops" {
+		t.Fatalf("empty_hierarchy_message = %q", got.EmptyHierarchyMessage)
 	}
 }
 
