@@ -3,12 +3,16 @@ package users
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	"okrs/internal/domain"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// ErrNotFound is returned when an update targets a user id that does not exist.
+var ErrNotFound = errors.New("users: not found")
 
 // UserRepository handles user persistence.
 type UserRepository struct {
@@ -244,10 +248,16 @@ func (r *UserRepository) SetUserAdmin(ctx context.Context, userID int64, isAdmin
 	return err
 }
 
-// SetSystemAdmin sets the tenant-less instance superadmin flag.
+// SetSystemAdmin sets the tenant-less instance superadmin flag. ErrNotFound if the user is missing.
 func (r *UserRepository) SetSystemAdmin(ctx context.Context, userID int64, v bool) error {
-	_, err := r.db.Exec(ctx, `UPDATE users SET is_system_admin = $1, updated_at = NOW() WHERE id = $2`, v, userID)
-	return err
+	ct, err := r.db.Exec(ctx, `UPDATE users SET is_system_admin = $1, updated_at = NOW() WHERE id = $2`, v, userID)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // AnySystemAdmin reports whether at least one system admin exists (bootstrap guard).
@@ -255,6 +265,13 @@ func (r *UserRepository) AnySystemAdmin(ctx context.Context) (bool, error) {
 	var exists bool
 	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE is_system_admin)`).Scan(&exists)
 	return exists, err
+}
+
+// CountSystemAdmins returns how many instance system-admins exist (last-admin guard input).
+func (r *UserRepository) CountSystemAdmins(ctx context.Context) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE is_system_admin`).Scan(&n)
+	return n, err
 }
 
 type scanner interface {

@@ -8,6 +8,61 @@ import (
 	"okrs/internal/store/testutil"
 )
 
+func TestListByUserWithTenant(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewMembershipRepository(pool)
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:m','github','m','M') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if _, err := repo.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipRequested}); err != nil {
+		t.Fatalf("seed membership: %v", err)
+	}
+
+	list, err := repo.ListByUserWithTenant(ctx, uid)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 || list[0].TenantID != 1 || list[0].Slug != "default" || list[0].Status != domain.MembershipRequested {
+		t.Fatalf("list = %+v, want one requested membership in tenant default", list)
+	}
+}
+
+func TestCountActiveAdmins(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewMembershipRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	seat := func(sub string, role domain.Role, status domain.MembershipStatus) {
+		var uid int64
+		if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+			VALUES ($1,'github',$2,$2) RETURNING id`, "github:"+sub, sub).Scan(&uid); err != nil {
+			t.Fatalf("seed user %s: %v", sub, err)
+		}
+		if _, err := repo.Upsert(ctx, domain.Membership{UserID: uid, TenantID: 1, Role: role, Status: status}); err != nil {
+			t.Fatalf("seat %s: %v", sub, err)
+		}
+	}
+	seat("a1", domain.RoleAdmin, domain.MembershipActive)
+	seat("a2", domain.RoleAdmin, domain.MembershipActive)
+	seat("u1", domain.RoleUser, domain.MembershipActive)
+	seat("r1", domain.RoleAdmin, domain.MembershipRequested) // requested admin doesn't count
+
+	n, err := repo.CountActiveAdmins(ctx, scope)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("count = %d, want 2", n)
+	}
+}
+
 func TestMembershipDeleteAnyStatusScoped(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

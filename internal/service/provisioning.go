@@ -2,11 +2,22 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"okrs/internal/domain"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
+)
+
+// ErrLastAdmin is returned when an operation would leave a tenant with zero active admins.
+var ErrLastAdmin = errors.New("service: cannot remove the tenant's last admin")
+
+var (
+	// ErrLastSystemAdmin is returned when revoking would leave the instance with no system-admin.
+	ErrLastSystemAdmin = errors.New("service: cannot revoke the last system admin")
+	// ErrSelfLockout is returned when a system-admin tries to revoke their own privilege.
+	ErrSelfLockout = errors.New("service: cannot revoke your own system-admin")
 )
 
 // ProvisioningService is the cross-tenant control surface used by the system-admin
@@ -17,27 +28,43 @@ type grantRemover interface {
 	RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
+// defaultAccessApplier applies a tenant's new-user policy to a member. *OnboardingService satisfies it.
+type defaultAccessApplier interface {
+	ApplyDefaultAccess(ctx context.Context, scope domain.TenantScope, userID int64) error
+}
+
+// systemAdminStore toggles/counts the instance system-admin flag. *users.UserRepository satisfies it.
+type systemAdminStore interface {
+	SetSystemAdmin(ctx context.Context, userID int64, v bool) error
+	CountSystemAdmins(ctx context.Context) (int, error)
+}
+
 type ProvisioningService struct {
-	tenants     *tenants.TenantRepository
-	tenantCache *tenants.TenantCache
-	members     *memberships.MembershipRepository
-	memberCache *memberships.MembershipCache
-	settings    *SettingsService
-	grants      grantRemover
+	tenants       *tenants.TenantRepository
+	tenantCache   *tenants.TenantCache
+	members       *memberships.MembershipRepository
+	memberCache   *memberships.MembershipCache
+	settings      *SettingsService
+	grants        grantRemover
+	defaultAccess defaultAccessApplier
+	users         systemAdminStore
 }
 
 func NewProvisioningService(
 	tnRepo *tenants.TenantRepository, tenantCache *tenants.TenantCache,
 	memRepo *memberships.MembershipRepository, memberCache *memberships.MembershipCache,
-	settings *SettingsService, grants grantRemover,
+	settings *SettingsService, grants grantRemover, defaultAccess defaultAccessApplier,
+	users systemAdminStore,
 ) *ProvisioningService {
 	return &ProvisioningService{
-		tenants:     tnRepo,
-		tenantCache: tenantCache,
-		members:     memRepo,
-		memberCache: memberCache,
-		settings:    settings,
-		grants:      grants,
+		tenants:       tnRepo,
+		tenantCache:   tenantCache,
+		members:       memRepo,
+		memberCache:   memberCache,
+		settings:      settings,
+		grants:        grants,
+		defaultAccess: defaultAccess,
+		users:         users,
 	}
 }
 
@@ -59,7 +86,53 @@ func (p *ProvisioningService) AttachMember(ctx context.Context, tenantID, userID
 		return nil, err
 	}
 	p.memberCache.InvalidateUser(userID)
+	if err := p.defaultAccess.ApplyDefaultAccess(ctx, domain.TenantScope{TenantID: tenantID}, userID); err != nil {
+		return nil, err
+	}
 	return m, nil
+}
+
+// SetMemberRole changes a member's tenant role. Refuses to demote the tenant's last active admin
+// (ErrLastAdmin) so a tenant never ends up with zero admins. Unknown membership → memberships.ErrNotFound.
+func (p *ProvisioningService) SetMemberRole(ctx context.Context, tenantID, userID int64, role domain.Role) error {
+	scope := domain.TenantScope{TenantID: tenantID}
+	cur, err := p.members.Get(ctx, userID, tenantID)
+	if err != nil {
+		return err // memberships.ErrNotFound bubbles up
+	}
+	if cur.Role == domain.RoleAdmin && role != domain.RoleAdmin && cur.Status == domain.MembershipActive {
+		n, err := p.members.CountActiveAdmins(ctx, scope)
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	if err := p.members.SetRole(ctx, scope, userID, role); err != nil {
+		return err
+	}
+	p.memberCache.InvalidateUser(userID)
+	return nil
+}
+
+// SetSystemAdmin grants/revokes the instance system-admin flag. Refuses to revoke the last remaining
+// system-admin (ErrLastSystemAdmin) or the caller's own flag (ErrSelfLockout). Missing user →
+// users.ErrNotFound. callerID may be 0 for a machine (provisioning-token) caller — never self.
+func (p *ProvisioningService) SetSystemAdmin(ctx context.Context, callerID, targetID int64, v bool) error {
+	if !v {
+		if callerID != 0 && callerID == targetID {
+			return ErrSelfLockout
+		}
+		n, err := p.users.CountSystemAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return ErrLastSystemAdmin
+		}
+	}
+	return p.users.SetSystemAdmin(ctx, targetID, v)
 }
 
 // SetEntitlements writes entitlement.* keys for a tenant (system/provisioning authority).

@@ -135,6 +135,47 @@ func (r *MembershipRepository) ListByTenant(ctx context.Context, scope domain.Te
 	return out, rows.Err()
 }
 
+// MembershipWithTenant is the read model for a user's own memberships (settings "Мои пространства").
+type MembershipWithTenant struct {
+	TenantID int64
+	Slug     string
+	Name     string
+	Role     domain.Role
+	Status   domain.MembershipStatus
+}
+
+// ListByUserWithTenant returns every membership of the user (all statuses) joined to its tenant,
+// excluding soft-deleted tenants, ordered by tenant name. Single query — no N+1.
+func (r *MembershipRepository) ListByUserWithTenant(ctx context.Context, userID int64) ([]MembershipWithTenant, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT m.tenant_id, t.slug, t.name, m.role, m.status
+		FROM memberships m JOIN tenants t ON t.id = m.tenant_id
+		WHERE m.user_id = $1 AND t.deleted_at IS NULL
+		ORDER BY t.name`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MembershipWithTenant
+	for rows.Next() {
+		var m MembershipWithTenant
+		if err := rows.Scan(&m.TenantID, &m.Slug, &m.Name, &m.Role, &m.Status); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// CountActiveAdmins returns how many active admins the tenant has (last-admin guard input).
+func (r *MembershipRepository) CountActiveAdmins(ctx context.Context, scope domain.TenantScope) (int, error) {
+	var n int
+	err := r.db.QueryRow(ctx,
+		`SELECT count(*) FROM memberships WHERE tenant_id = $1 AND role = 'admin' AND status = 'active'`,
+		scope.TenantID).Scan(&n)
+	return n, err
+}
+
 // SetRole updates a user's role within a tenant. Returns ErrNotFound if no membership exists.
 func (r *MembershipRepository) SetRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error {
 	ct, err := r.db.Exec(ctx, `UPDATE memberships SET role = $3 WHERE user_id = $1 AND tenant_id = $2`,

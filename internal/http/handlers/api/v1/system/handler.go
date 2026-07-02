@@ -10,9 +10,12 @@ import (
 	"net/http"
 	"strconv"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/service"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
+	"okrs/internal/store/users"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -26,6 +29,8 @@ type Provisioner interface {
 	Restore(ctx context.Context, tenantID int64) error
 	DenyMember(ctx context.Context, tenantID, userID int64) error
 	RemoveMember(ctx context.Context, tenantID, userID int64) error
+	SetMemberRole(ctx context.Context, tenantID, userID int64, role domain.Role) error
+	SetSystemAdmin(ctx context.Context, callerID, targetID int64, isSystemAdmin bool) error
 }
 
 // SystemSettings reads/writes instance + tenant settings; *service.SettingsService satisfies it.
@@ -153,6 +158,41 @@ func (h *Handler) HandleAttachMember(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// PUT /api/v1/system/tenants/{id}/members/{userID}/role  {role}
+func (h *Handler) HandleSetMemberRole(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	var body struct {
+		Role string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	role := domain.Role(body.Role)
+	if role != domain.RoleAdmin && role != domain.RoleUser {
+		writeError(w, http.StatusUnprocessableEntity, "invalid role")
+		return
+	}
+	switch err := h.prov.SetMemberRole(r.Context(), tenantID, userID, role); {
+	case errors.Is(err, memberships.ErrNotFound):
+		writeError(w, http.StatusNotFound, "membership not found")
+	case errors.Is(err, service.ErrLastAdmin):
+		writeError(w, http.StatusConflict, "cannot demote the last admin")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err.Error())
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // PUT /api/v1/system/tenants/{id}/entitlements  { "sso": true, "max_users": 50 }
 func (h *Handler) HandleSetEntitlements(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := pathID(w, r)
@@ -215,6 +255,38 @@ func (h *Handler) HandleListUsers(w http.ResponseWriter, r *http.Request) {
 		out = append(out, userDTO{ID: u.ID, DisplayName: u.DisplayName, Email: u.Email, IsSystemAdmin: u.IsSystemAdmin})
 	}
 	writeJSON(w, out)
+}
+
+// PUT /api/v1/system/users/{userID}/system-admin  {is_system_admin}
+func (h *Handler) HandleSetSystemAdmin(w http.ResponseWriter, r *http.Request) {
+	userID, err := strconv.ParseInt(chi.URLParam(r, "userID"), 10, 64)
+	if err != nil || userID <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+	var body struct {
+		IsSystemAdmin bool `json:"is_system_admin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	var callerID int64
+	if u := auth.UserFromContext(r.Context()); u != nil {
+		callerID = u.ID
+	}
+	switch err := h.prov.SetSystemAdmin(r.Context(), callerID, userID, body.IsSystemAdmin); {
+	case errors.Is(err, users.ErrNotFound):
+		writeError(w, http.StatusNotFound, "user not found")
+	case errors.Is(err, service.ErrLastSystemAdmin):
+		writeError(w, http.StatusConflict, "cannot revoke the last system admin")
+	case errors.Is(err, service.ErrSelfLockout):
+		writeError(w, http.StatusConflict, "cannot revoke your own system-admin")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, err.Error())
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 // PUT /api/v1/system/settings/default-registration-tenant  {tenant_id|null}

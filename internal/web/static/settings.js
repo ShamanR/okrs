@@ -38,6 +38,15 @@ async function apiGet(url) {
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }
+async function apiSend(url, method, body) {
+  return fetch(url, {
+    method, credentials: 'include',
+    headers: { 'X-CSRF-Token': readCSRF(), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+const apiPost = (url, body) => apiSend(url, 'POST', body);
+const apiDelete = (url) => apiSend(url, 'DELETE');
 
 // ── tree helpers ────────────────────────────────────────────────────────────
 function flatten(nodes, depth = 0, out = []) {
@@ -286,10 +295,60 @@ function SidebarSection({ me, hierarchy }) {
   );
 }
 
+// ── SECTION: MY SPACES ────────────────────────────────────────────────────────
+function SpacesSection() {
+  const [rows, setRows] = useState([]);
+  const [slug, setSlug] = useState('');
+  const [msg, setMsg] = useState('');
+  const reload = async () => { try { setRows(await apiGet('/api/v1/session/memberships')); } catch (_) { /* keep prior list */ } };
+  useEffect(() => { reload(); }, []);
+  async function readErr(res) { try { const j = await res.json(); return j.error || ('Ошибка ' + res.status); } catch { return 'Ошибка ' + res.status; } }
+  async function leave(tenantID) {
+    setMsg('');
+    const res = await apiDelete(`/api/v1/session/memberships/${tenantID}`);
+    if (res.status === 204) { reload(); return; }
+    setMsg(await readErr(res));
+  }
+  async function join(e) {
+    e.preventDefault();
+    setMsg('');
+    const res = await apiPost('/api/v1/onboarding/join-request', { slug: slug.trim() });
+    if (res.status === 204) { setSlug(''); setMsg('Заявка отправлена'); reload(); return; }
+    setMsg(await readErr(res));
+  }
+  return (
+    <div className="set-panel set-spaces">
+      {msg && <div className="set-intro" style={{ color: '#b45309' }}>{msg}</div>}
+      {rows.length === 0
+        ? <div className="set-empty"><div className="set-empty__icon">🏢</div><div className="set-empty__title">Вы пока не состоите ни в одном пространстве</div><div className="set-empty__text">Отправьте заявку по slug ниже.</div></div>
+        : <ul className="set-spaces__list" style={{ listStyle: 'none', padding: 0, margin: '0 0 20px' }}>
+            {rows.map(m => (
+              <li key={m.tenant_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #eee' }}>
+                <span style={{ fontWeight: 600, minWidth: 160 }}>{m.name}</span>
+                <span style={{ color: '#6b7280' }}>{m.slug}</span>
+                <span style={{ color: '#6b7280' }}>{m.role}</span>
+                <span style={{ marginLeft: 'auto', color: m.status === 'active' ? '#047857' : '#b45309' }}>
+                  {m.status === 'active' ? 'Активен' : 'Заявка отправлена'}
+                </span>
+                <button onClick={() => leave(m.tenant_id)}>
+                  {m.status === 'active' ? 'Выйти' : 'Отменить заявку'}
+                </button>
+              </li>
+            ))}
+          </ul>}
+      <form onSubmit={join} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <input value={slug} onChange={e => setSlug(e.target.value)} placeholder="slug пространства" />
+        <button type="submit" disabled={!slug.trim()}>Отправить заявку</button>
+      </form>
+    </div>
+  );
+}
+
 // ── APP SHELL ─────────────────────────────────────────────────────────────────
 const SECTION_META = {
   descriptions: { label: 'Описание команд', hint: 'Только команды, где вы лид', icon: '📝' },
   sidebar: { label: 'Мой сайдбар', hint: 'Какие узлы показывать', icon: '☰' },
+  spaces: { label: 'Мои пространства', hint: 'Тенанты и заявки', icon: '🏢' },
 };
 const SECTION_KEY = 'okr_settings_section';
 function readSectionFromURL() {
@@ -329,7 +388,7 @@ function App() {
   }, [me, hierarchy]);
 
   // Available sections — descriptions only when the user actually leads a team.
-  const sections = useMemo(() => (isLead ? ['descriptions', 'sidebar'] : ['sidebar']), [isLead]);
+  const sections = useMemo(() => [...(isLead ? ['descriptions'] : []), 'sidebar', 'spaces'], [isLead]);
   const active = sections.includes(section) ? section : sections[0];
 
   // Keep the URL (?section=) in sync and support browser back/forward.
@@ -394,7 +453,9 @@ function App() {
             ? <div className="set-panel"><div className="set-empty"><div className="set-empty__icon">⚠️</div><div className="set-empty__title">Не удалось загрузить данные</div><div className="set-empty__text">Попробуйте обновить страницу.</div></div></div>
             : active === 'descriptions'
               ? (<><p className="set-intro">Вы можете редактировать описание команд, в которых являетесь лидом, а также всех вложенных в них команд.</p><DescriptionsSection me={me} hierarchy={hierarchy} /></>)
-              : (<><p className="set-intro">Выберите узлы иерархии, которые будут видны в вашем сайдбаре. Можно отметить одну команду, целую ветвь или несколько команд из разных ветвей — родительские узлы показываются автоматически для навигации.</p><SidebarSection me={me} hierarchy={hierarchy} /></>)}
+              : active === 'spaces'
+                ? (<><p className="set-intro">Пространства (тенанты), в которых вы состоите. Можно выйти из пространства, отменить заявку или отправить новую заявку на вступление по slug.</p><SpacesSection /></>)
+                : (<><p className="set-intro">Выберите узлы иерархии, которые будут видны в вашем сайдбаре. Можно отметить одну команду, целую ветвь или несколько команд из разных ветвей — родительские узлы показываются автоматически для навигации.</p><SidebarSection me={me} hierarchy={hierarchy} /></>)}
         </main>
       </div>
     </div>

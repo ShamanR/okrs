@@ -135,13 +135,21 @@ func (s *OnboardingService) ListAccessRequests(ctx context.Context, scope domain
 	return s.mem.ListAccessRequests(ctx, scope)
 }
 
-// ApproveRequest activates a pending membership.
+// ApplyDefaultAccess applies the tenant's new-user policy (default-node grant) to a user if they
+// have no grant there yet. Exported so the system-admin plane (ProvisioningService) can reuse the
+// exact same rule when it activates/attaches a member.
+func (s *OnboardingService) ApplyDefaultAccess(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	return s.applyNewUserPolicy(ctx, scope, userID)
+}
+
+// ApproveRequest activates a pending membership and applies the tenant's default-access policy
+// (same baseline a user gets on auto-registration / invite), if they have no grant there yet.
 func (s *OnboardingService) ApproveRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	if err := s.mem.SetStatus(ctx, userID, scope.TenantID, domain.MembershipActive); err != nil {
 		return err
 	}
 	s.memCache.InvalidateUser(userID)
-	return nil
+	return s.applyNewUserPolicy(ctx, scope, userID)
 }
 
 // DenyRequest removes a pending membership.
@@ -176,6 +184,30 @@ func (s *OnboardingService) RemoveMember(ctx context.Context, scope domain.Tenan
 	}
 	s.memCache.InvalidateUser(userID)
 	return nil
+}
+
+// LeaveTenant removes the caller's own membership in a tenant (any status) plus their grants there.
+// Refuses if the caller is the tenant's last active admin (ErrLastAdmin, from provisioning.go).
+// Not a member → no-op (nil), so it doubles as "cancel my pending request".
+func (s *OnboardingService) LeaveTenant(ctx context.Context, tenantID, userID int64) error {
+	scope := domain.TenantScope{TenantID: tenantID}
+	cur, err := s.mem.Get(ctx, userID, tenantID)
+	if errors.Is(err, memberships.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if cur.Role == domain.RoleAdmin && cur.Status == domain.MembershipActive {
+		n, err := s.mem.CountActiveAdmins(ctx, scope)
+		if err != nil {
+			return err
+		}
+		if n <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	return s.RemoveMember(ctx, scope, userID)
 }
 
 // EnsureRegistration routes a logged-in user with no active membership into the

@@ -14,6 +14,7 @@ import (
 	apisystem "okrs/internal/http/handlers/api/v1/system"
 	"okrs/internal/service"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
@@ -40,10 +41,15 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
+	grantsCache := grants.NewGrantsCache(grants.NewGrantRepository(pool))
+	onboardingSvc := service.NewOnboardingService(
+		invitations.NewInvitationRepository(pool), memRepo, memberships.NewMembershipCache(memRepo),
+		tnRepo, settingsSvc, grantsCache,
+	)
 	prov := service.NewProvisioningService(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
-		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)),
+		settingsSvc, grantsCache, onboardingSvc, userRepo,
 	)
 	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo, memRepo)
 
@@ -62,11 +68,14 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	r.Post("/api/v1/system/tenants/{id}/members", h.HandleAttachMember)
 	r.Get("/api/v1/system/tenants/{id}/members", h.HandleListMembers)
 	r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", h.HandleDenyMember)
+	r.Put("/api/v1/system/tenants/{id}/members/{userID}/role", h.HandleSetMemberRole)
 	r.Delete("/api/v1/system/tenants/{id}/members/{userID}", h.HandleRemoveMember)
 	r.Put("/api/v1/system/tenants/{id}/entitlements", h.HandleSetEntitlements)
 	r.Get("/api/v1/system/tenants/{id}/entitlements", h.HandleGetEntitlements)
 	r.Post("/api/v1/system/tenants/{id}/suspend", h.HandleSuspend)
 	r.Get("/api/v1/system/settings", h.HandleGetSettings)
+	r.Get("/api/v1/system/users", h.HandleListUsers)
+	r.Put("/api/v1/system/users/{userID}/system-admin", h.HandleSetSystemAdmin)
 	r.Put("/api/v1/system/settings/default-registration-tenant", h.HandleSetDefaultRegistrationTenant)
 	r.Put("/api/v1/system/settings/no-access-message", h.HandleSetNoAccessMessage)
 	return r, tnRepo, userRepo
@@ -218,6 +227,90 @@ func TestSystemRemoveMember(t *testing.T) {
 		if m["user_id"].(float64) == 1 {
 			t.Fatalf("user 1 should be removed, still present: %v", members)
 		}
+	}
+}
+
+func TestSystemSetMemberRole(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+
+	// Attach user 1 as admin (sole admin of tenant 1).
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants/1/members",
+		strings.NewReader(`{"user_id":1,"role":"admin"}`)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("attach: %d (%s)", w.Code, w.Body.String())
+	}
+
+	// Invalid role → 422.
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/tenants/1/members/1/role",
+		strings.NewReader(`{"role":"boss"}`)))
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid role: %d", w.Code)
+	}
+
+	// Demoting the sole admin → 409.
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/tenants/1/members/1/role",
+		strings.NewReader(`{"role":"user"}`)))
+	if w.Code != http.StatusConflict {
+		t.Fatalf("last-admin demote: %d (%s)", w.Code, w.Body.String())
+	}
+
+	// Unknown membership → 404.
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/tenants/1/members/999/role",
+		strings.NewReader(`{"role":"user"}`)))
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("unknown member: %d", w.Code)
+	}
+
+	// Add a second admin, then promoting/demoting works → 204.
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/system/tenants/1/members",
+		strings.NewReader(`{"user_id":2,"role":"admin"}`)))
+	if w.Code != http.StatusCreated {
+		t.Fatalf("attach 2: %d (%s)", w.Code, w.Body.String())
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/tenants/1/members/1/role",
+		strings.NewReader(`{"role":"user"}`)))
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("demote with 2 admins: %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+func TestSystemSetSystemAdmin(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, _, _ := buildRouter(t, admin)
+
+	put := func(userID, v string) int {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPut, "/api/v1/system/users/"+userID+"/system-admin",
+			strings.NewReader(`{"is_system_admin":`+v+`}`)))
+		return w.Code
+	}
+
+	// Grant user 2 → 204.
+	if code := put("2", "true"); code != http.StatusNoContent {
+		t.Fatalf("grant user 2: %d", code)
+	}
+	// Revoke sole system-admin (user 2) → 409.
+	if code := put("2", "false"); code != http.StatusConflict {
+		t.Fatalf("revoke last admin: %d", code)
+	}
+	// Grant caller (user 1) too → 204.
+	if code := put("1", "true"); code != http.StatusNoContent {
+		t.Fatalf("grant user 1: %d", code)
+	}
+	// Caller revoking self → 409 (self-lockout).
+	if code := put("1", "false"); code != http.StatusConflict {
+		t.Fatalf("self revoke: %d", code)
+	}
+	// Unknown user → 404.
+	if code := put("999", "true"); code != http.StatusNotFound {
+		t.Fatalf("unknown user: %d", code)
 	}
 }
 

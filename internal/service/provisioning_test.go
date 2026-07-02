@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"okrs/internal/domain"
@@ -12,7 +13,148 @@ import (
 	"okrs/internal/store/tenants"
 	"okrs/internal/store/tenantsettings"
 	"okrs/internal/store/testutil"
+	"okrs/internal/store/users"
 )
+
+func TestAttachMemberAppliesDefaultAccess(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tnRepo := tenants.NewTenantRepository(pool)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	grantRepo := grants.NewGrantRepository(pool)
+	prov := service.NewProvisioningService(
+		tnRepo, tenants.NewTenantCache(tnRepo),
+		memRepo, memberships.NewMembershipCache(memRepo),
+		settingsSvc, grants.NewGrantsCache(grantRepo), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
+	)
+
+	var teamID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Root') RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("seed team: %v", err)
+	}
+	scope := domain.TenantScope{TenantID: 1}
+	_ = settingsSvc.SetTenantProduct(ctx, scope, "new_user_policy", "default_node")
+	_ = settingsSvc.SetTenantProduct(ctx, scope, "default_hierarchy_node_id", teamID)
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:b','github','b','B') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	if _, err := prov.AttachMember(ctx, 1, uid, domain.RoleUser); err != nil {
+		t.Fatalf("attach: %v", err)
+	}
+	gs, err := grantRepo.ListUserGrants(ctx, scope, uid)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(gs) != 1 || gs[0].TeamID != teamID {
+		t.Fatalf("grants = %+v, want one grant on team %d", gs, teamID)
+	}
+}
+
+func TestSetMemberRoleLastAdminGuard(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tnRepo := tenants.NewTenantRepository(pool)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	prov := service.NewProvisioningService(
+		tnRepo, tenants.NewTenantCache(tnRepo),
+		memRepo, memberships.NewMembershipCache(memRepo),
+		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
+	)
+
+	var admin int64
+	_ = pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:sole','github','sole','Sole') RETURNING id`).Scan(&admin)
+	_, _ = memRepo.Upsert(ctx, domain.Membership{UserID: admin, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive})
+
+	// Demoting the only admin must be refused.
+	if err := prov.SetMemberRole(ctx, 1, admin, domain.RoleUser); !errors.Is(err, service.ErrLastAdmin) {
+		t.Fatalf("err = %v, want ErrLastAdmin", err)
+	}
+
+	// With a second admin present, demotion is allowed.
+	var admin2 int64
+	_ = pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:two','github','two','Two') RETURNING id`).Scan(&admin2)
+	_, _ = memRepo.Upsert(ctx, domain.Membership{UserID: admin2, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive})
+	if err := prov.SetMemberRole(ctx, 1, admin, domain.RoleUser); err != nil {
+		t.Fatalf("demote with 2 admins: %v", err)
+	}
+	m, _ := memRepo.Get(ctx, admin, 1)
+	if m.Role != domain.RoleUser {
+		t.Fatalf("role = %q, want user", m.Role)
+	}
+
+	// Unknown membership → ErrNotFound.
+	if err := prov.SetMemberRole(ctx, 1, 999999, domain.RoleUser); !errors.Is(err, memberships.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestSetSystemAdminGuards(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tnRepo := tenants.NewTenantRepository(pool)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	prov := service.NewProvisioningService(
+		tnRepo, tenants.NewTenantCache(tnRepo),
+		memRepo, memberships.NewMembershipCache(memRepo),
+		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
+	)
+
+	mk := func(sub string) int64 {
+		var id int64
+		_ = pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+			VALUES ($1,'github',$2,$2) RETURNING id`, "github:"+sub, sub).Scan(&id)
+		return id
+	}
+	a := mk("a")
+	b := mk("b")
+
+	// Grant b: allowed.
+	if err := prov.SetSystemAdmin(ctx, a, b, true); err != nil {
+		t.Fatalf("grant b: %v", err)
+	}
+	// Revoke sole system-admin b (caller a) → last-admin guard.
+	if err := prov.SetSystemAdmin(ctx, a, b, false); !errors.Is(err, service.ErrLastSystemAdmin) {
+		t.Fatalf("err = %v, want ErrLastSystemAdmin", err)
+	}
+	// Grant a too, then a revoking self → self-lockout guard.
+	if err := prov.SetSystemAdmin(ctx, a, a, true); err != nil {
+		t.Fatalf("grant a: %v", err)
+	}
+	if err := prov.SetSystemAdmin(ctx, a, a, false); !errors.Is(err, service.ErrSelfLockout) {
+		t.Fatalf("err = %v, want ErrSelfLockout", err)
+	}
+	// Now a can revoke b (two admins, not self).
+	if err := prov.SetSystemAdmin(ctx, a, b, false); err != nil {
+		t.Fatalf("revoke b: %v", err)
+	}
+}
 
 func TestProvisioningRemoveMember(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
@@ -28,7 +170,7 @@ func TestProvisioningRemoveMember(t *testing.T) {
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grantsCache)
+	prov := service.NewProvisioningService(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grantsCache, newOnboardingForTest(t, pool), users.NewUserRepository(pool))
 
 	scope := domain.TenantScope{TenantID: 1}
 	var teamID int64
@@ -66,7 +208,7 @@ func TestProvisioningDenyMember(t *testing.T) {
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)))
+	prov := service.NewProvisioningService(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool))
 
 	if _, err := memRepo.Upsert(ctx, domain.Membership{UserID: 1, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipRequested}); err != nil {
 		t.Fatalf("seed requested: %v", err)
@@ -95,7 +237,7 @@ func TestProvisioningLifecycle(t *testing.T) {
 	prov := service.NewProvisioningService(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
-		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)),
+		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
 	)
 
 	// Create tenant.
