@@ -16,6 +16,10 @@
   const goalPriorityOptions = ['P0', 'P1', 'P2', 'P3'];
   const goalWorkOptions = ['Discovery', 'Delivery'];
   const goalFocusOptions = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
+  // focusLabel title-cases an UPPER_SNAKE focus enum for display (SPEED_EFFICIENCY →
+  // "Speed Efficiency"), matching the Title Case style of work-type labels.
+  const focusLabel = (f) => !f ? '' : String(f).split('_').filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
   const lockedPeriodStatuses = ['validated', 'closed'];
 
   const isPeriodLocked = () => lockedPeriodStatuses.includes(state.teamOKR?.period_status);
@@ -292,7 +296,7 @@
 
     const focusBadge = document.createElement('span');
     focusBadge.className = 'badge text-bg-light border';
-    focusBadge.textContent = goal.focus_type;
+    focusBadge.textContent = focusLabel(goal.focus_type);
 
     const goalUpdateMeta = getLastGoalUpdateMeta([goal]);
     const updated = document.createElement('span');
@@ -307,7 +311,7 @@
     }
 
     const owner = document.createElement('span');
-    owner.append('Владелец: ');
+    owner.append('Драйвер цели: ');
     const ownerValue = document.createElement('span');
     renderOwnerField(ownerValue, goal.owner_text || '');
     owner.appendChild(ownerValue);
@@ -1055,7 +1059,7 @@
             ${buildSelect('focus_type', goalFocusOptions, goal.focus_type)}
           </div>
           <div class="col-md-6">
-            <label class="form-label">Владелец</label>
+            <label class="form-label">Драйвер цели</label>
             <div data-user-picker-multi data-name="owner_text" data-value="${escapeHTML(goal.owner_text || '')}"></div>
           </div>
         </div>
@@ -1652,7 +1656,7 @@
           <td class="teams-goals-col-priority">Prio</td>
           <td class="text-center"></td>
           <td class="teams-goals-col-title">Название</td>
-          <td>Владелец</td>
+          <td>Драйвер</td>
           <td>Тип</td>
           <td class="teams-goals-col-progress">Прогресс</td>
           <td>Обновлено</td>

@@ -98,6 +98,10 @@ func (h *Handler) HandleUpdateHealthCheckInSettings(w http.ResponseWriter, r *ht
 		writeError(w, http.StatusBadRequest, "cache_ttl_minutes must be > 0")
 		return
 	}
+	if body.GreenThreshold < 1 || body.GreenThreshold > 100 {
+		writeError(w, http.StatusBadRequest, "green_threshold must be 1..100")
+		return
+	}
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusForbidden, "no active tenant")

@@ -12,11 +12,14 @@ import (
 // HealthCheckInConfig controls thresholds and counter membership for each category.
 // Loaded from system_settings key "health_checkin_config"; defaults apply when key is absent.
 type HealthCheckInConfig struct {
-	StaleDays       int             `json:"stale_days"`
-	BehindMargin    int             `json:"behind_margin"`
-	WeightTolerance int             `json:"weight_tolerance"`
-	CacheTTLMinutes int             `json:"cache_ttl_minutes"`
-	InCounter       map[string]bool `json:"in_counter"`
+	StaleDays       int `json:"stale_days"`
+	BehindMargin    int `json:"behind_margin"`
+	WeightTolerance int `json:"weight_tolerance"`
+	CacheTTLMinutes int `json:"cache_ttl_minutes"`
+	// GreenThreshold is the progress percent (1..100) at or above which a goal/team is
+	// considered "in plan" (green) regardless of the forecast-based pace check.
+	GreenThreshold int             `json:"green_threshold"`
+	InCounter      map[string]bool `json:"in_counter"`
 }
 
 var defaultHealthCheckInConfig = HealthCheckInConfig{
@@ -24,6 +27,7 @@ var defaultHealthCheckInConfig = HealthCheckInConfig{
 	BehindMargin:    10,
 	WeightTolerance: 0,
 	CacheTTLMinutes: 5,
+	GreenThreshold:  80,
 	InCounter: map[string]bool{
 		"stale":               true,
 		"no_goals":            true,
@@ -47,6 +51,9 @@ func LoadHealthCheckInConfig(ctx context.Context, scope domain.TenantScope, sr S
 	cfg := defaultHealthCheckInConfig
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return defaultHealthCheckInConfig, nil
+	}
+	if cfg.GreenThreshold < 1 || cfg.GreenThreshold > 100 {
+		cfg.GreenThreshold = defaultHealthCheckInConfig.GreenThreshold
 	}
 	for k, v := range defaultHealthCheckInConfig.InCounter {
 		if _, ok := cfg.InCounter[k]; !ok {

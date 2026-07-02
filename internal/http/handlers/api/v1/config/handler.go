@@ -43,6 +43,9 @@ type configResponse struct {
 	// BehindMargin is the lag tolerance (п.п.) from the Health Check-in "Отстающие"
 	// category; the sidebar colors team progress red when progress < forecast - behind_margin.
 	BehindMargin int `json:"behind_margin"`
+	// GreenThreshold is the progress percent (1..100) at or above which a goal/team is
+	// colored green ("в плане") regardless of the forecast-based pace check.
+	GreenThreshold int `json:"green_threshold"`
 	// Feedback collection config consumed by the shared header (menu item + nudge).
 	FeedbackURL             string `json:"feedback_url"`
 	FeedbackPopupEnabled    bool   `json:"feedback_popup_enabled"`
@@ -67,6 +70,7 @@ func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
 		DocumentationURL: h.documentationURL(r.Context(), scope),
 		StaleDays:        cfg.StaleDays,
 		BehindMargin:     cfg.BehindMargin,
+		GreenThreshold:   cfg.GreenThreshold,
 	}
 	resp.FeedbackURL = h.settingString(r.Context(), scope, settingKeyFeedbackURL)
 	resp.FeedbackPopupEnabled = h.settingBool(r.Context(), scope, settingKeyFeedbackPopupEnabled)

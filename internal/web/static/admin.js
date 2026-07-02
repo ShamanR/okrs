@@ -854,6 +854,20 @@ function HealthCheckInSettingsPanel() {
         ))}
 
         <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
+          <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>Цвет прогресса</div>
+          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+            <span style={labelStyle}>Порог «в плане» (%):</span>
+            <input
+              type="number" min={1} max={100}
+              value={cfg.green_threshold ?? 80}
+              onChange={e => update('green_threshold', Number(e.target.value))}
+              style={fieldStyle}
+            />
+          </div>
+          <div style={hintStyle}>Цель или команда с прогрессом не ниже порога считается «в плане» и подсвечивается зелёным (в сайдбаре и на странице целей), независимо от ожидаемого темпа периода.</div>
+        </div>
+
+        <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
           <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>Кеш</div>
           <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
             <span style={labelStyle}>Время жизни (мин):</span>
