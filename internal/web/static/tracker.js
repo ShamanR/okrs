@@ -1411,7 +1411,7 @@ function goalShareTargets(form, goal, teamId) {
   teamIds.delete(ownerId);
   return [...teamIds].map(id => ({
     team_id: id,
-    weight: id === teamId ? form.weight : (existingWeight[id] != null ? existingWeight[id] : 100),
+    weight: id === teamId ? (Number(form.weight) || 0) : (existingWeight[id] != null ? existingWeight[id] : 100),
   }));
 }
 
@@ -1876,6 +1876,7 @@ function App() {
   const [hciData, setHciData] = useState(null);
   const [hciOpen, setHciOpen] = useState(false);
   const [docUrl, setDocUrl] = useState('');
+  const [emptyHierMsg, setEmptyHierMsg] = useState('');
   const [staleDays, setStaleDays] = useState(7);
   const [behindMargin, setBehindMargin] = useState(10);
   const [greenThreshold, setGreenThreshold] = useState(80);
@@ -1901,7 +1902,7 @@ function App() {
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
-      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); if (cfg.green_threshold >= 1 && cfg.green_threshold <= 100) setGreenThreshold(cfg.green_threshold); }
+      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); if (cfg.green_threshold >= 1 && cfg.green_threshold <= 100) setGreenThreshold(cfg.green_threshold); setEmptyHierMsg(cfg.empty_hierarchy_message || ''); }
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -2061,8 +2062,12 @@ function App() {
             ? (
               <div className="no-access">
                 <div className="no-access__icon">🔒</div>
-                <div className="no-access__text">Нет доступа к командам</div>
-                <div className="no-access__hint">За доступом обратитесь к администратору</div>
+                {emptyHierMsg
+                  ? <div className="no-access__text"><Markdown text={emptyHierMsg} /></div>
+                  : <>
+                      <div className="no-access__text">Нет доступа к командам</div>
+                      <div className="no-access__hint">За доступом обратитесь к администратору</div>
+                    </>}
               </div>
             )
             : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} />)

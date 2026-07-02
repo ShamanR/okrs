@@ -313,8 +313,8 @@
 .goal-card--stale { border-color: #fde68a; }
 .goal-card--stale.goal-card--shared { border-left: 3px solid #0891b2; }
 
-.drag-handle { position: absolute; left: -14px; top: 50%; transform: translateY(-50%); width: 14px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #d1d5db; font-size: 13px; user-select: none; border-radius: 4px; }
-.drag-handle:hover { color: #6b7280; }
+.drag-handle { position: absolute; left: -26px; top: 50%; transform: translateY(-50%); width: 16px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #9ca3af; font-size: 17px; font-weight: 700; user-select: none; border-radius: 4px; }
+.drag-handle:hover { color: #4b5563; }
 
 .goal-card__body { padding: 16px 18px; }
 .goal-card__meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
