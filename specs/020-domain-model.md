@@ -257,7 +257,9 @@
 - продуктовые ключи (пишет tenant-admin): `new_user_policy` (`"empty"`/`"default_node"`),
   `default_hierarchy_node_id` (int64/null), `health_checkin_config` (object:
   `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`,
-  `in_counter` map[string]bool), `documentation_url` (абсолютный http(s) URL или пусто),
+  `green_threshold` (1..100, по умолчанию 80 — порог прогресса, при котором цель/команда
+  считается «в плане» и подсвечивается зелёным), `in_counter` map[string]bool),
+  `documentation_url` (абсолютный http(s) URL или пусто),
   `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`;
 - ключи `entitlement.*` (пишет только system-admin/provisioning): `entitlement.sso`,
   `entitlement.subdomains`, `entitlement.file_uploads`, `entitlement.max_users`, …

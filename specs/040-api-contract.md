@@ -98,6 +98,7 @@ Response:
   "documentation_url": "https://github.com/ShamanR/okrs/wiki",
   "stale_days": 7,
   "behind_margin": 10,
+  "green_threshold": 80,
   "feedback_url": "https://forms.gle/xxxx",
   "feedback_popup_enabled": true,
   "feedback_menu_link_enabled": true,
@@ -108,6 +109,7 @@ Response:
 - `documentation_url` — ссылка на внешнюю документацию из `tenant_settings`; пустая строка, если не задана. SPA показывает пункт «Документация» в меню пользователя только когда значение непустое.
 - `stale_days` — порог «дней без обновления» из настроек Health Check-in (`tenant_settings` ключ `health_checkin_config.stale_days`), по умолчанию `7`. SPA использует его для предупреждения «N дней без обновлений» на страницах целей, чтобы оно совпадало с настройкой Health Check-in.
 - `behind_margin` — допустимое отставание (п.п.) от ожидаемого темпа периода из категории «Отстающие» Health Check-in (`health_checkin_config.behind_margin`), по умолчанию `10`. SPA использует его для раскраски процента прогресса команды в sidebar, чтобы она совпадала с этой категорией.
+- `green_threshold` — порог прогресса (1..100) из `health_checkin_config.green_threshold`, по умолчанию `80`. Цель или команда с прогрессом не ниже порога считается «в плане» и красится зелёным (и в sidebar, и на странице целей: карточки целей, дочерние карточки, кластерный обзор, верхний прогресс-бар команды) независимо от forecast-проверки темпа.
 - `feedback_url` — ссылка на внешний опрос обратной связи из `tenant_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
 - `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`tenant_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
 - `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`tenant_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
@@ -334,7 +336,7 @@ Idempotency: read-only, нет side effects.
 
 Обновляет конфиг Health Check-in. Требует admin-роли и CSRF token.
 
-Body: JSON объект с полями `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `in_counter`.
+Body: JSON объект с полями `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `green_threshold`, `in_counter`. Валидация: `stale_days` и `cache_ttl_minutes` > 0, `green_threshold` в диапазоне 1..100.
 
 После сохранения сбрасывает in-memory кеш.
 

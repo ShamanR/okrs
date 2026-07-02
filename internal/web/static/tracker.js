@@ -63,7 +63,7 @@ function readTreeExpanded() {
   } catch { return {}; }
 }
 function writeTreeExpanded(expanded) {
-  try { localStorage.setItem(TREE_EXPANDED_KEY, JSON.stringify(expanded)); } catch {}
+  try { localStorage.setItem(TREE_EXPANDED_KEY, JSON.stringify(expanded)); } catch { }
 }
 
 // Personal settings persisted by the /settings page (per-user localStorage).
@@ -223,14 +223,90 @@ function fmtNum(n) {
   return parts.join('.');
 }
 function fmtVal(n, unit) { return unit ? `${fmtNum(n)} ${unit}` : fmtNum(n); }
+
+// groupDigits formats a RAW numeric string with space thousands separators while
+// preserving a trailing dot, fractional digits and a leading minus during typing
+// (unlike fmtNum, which normalizes through Number() and would drop "123." → "123").
+function groupDigits(raw) {
+  if (raw === null || raw === undefined || raw === '') return '';
+  let s = String(raw);
+  const neg = s.startsWith('-');
+  if (neg) s = s.slice(1);
+  const dot = s.indexOf('.');
+  const intPart = dot === -1 ? s : s.slice(0, dot);
+  const fracPart = dot === -1 ? '' : s.slice(dot + 1);
+  const groupedInt = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return (neg ? '-' : '') + groupedInt + (dot === -1 ? '' : '.' + fracPart);
+}
+// sanitizeNum keeps only digits, at most one dot and an optional single leading minus.
+function sanitizeNum(s) {
+  if (s === null || s === undefined) return '';
+  s = String(s);
+  const neg = s.trim().startsWith('-');
+  s = s.replace(/[^\d.]/g, '');
+  const firstDot = s.indexOf('.');
+  if (firstDot !== -1) s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, '');
+  return (neg ? '-' : '') + s;
+}
+// sigCountBefore counts non-space chars in str.slice(0, idx); caretForSig finds the
+// index right after `sig` non-space chars — together they keep the caret stable when
+// grouping spaces shift on input.
+function sigCountBefore(str, idx) {
+  let n = 0;
+  for (let i = 0; i < idx && i < str.length; i++) if (str[i] !== ' ') n++;
+  return n;
+}
+function caretForSig(formatted, sig) {
+  if (sig <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    if (formatted[i] !== ' ') seen++;
+    if (seen >= sig) return i + 1;
+  }
+  return formatted.length;
+}
+// NumInput displays large numeric values with space thousands separators
+// (250 000, 340 000 000 ₽) while emitting the raw unformatted numeric string via
+// onChange, preserving the caret across reformatting. Use for metric values only —
+// percents and weights (0–100) stay as plain number inputs.
+function NumInput({ value, onChange, className, placeholder, ...rest }) {
+  const ref = useRef(null);
+  const caretRef = useRef(null);
+  const display = groupDigits(value == null ? '' : value);
+  React.useLayoutEffect(() => {
+    if (caretRef.current != null && ref.current) {
+      const pos = caretForSig(ref.current.value, caretRef.current);
+      ref.current.setSelectionRange(pos, pos);
+      caretRef.current = null;
+    }
+  });
+  const handleChange = e => {
+    const el = e.target;
+    const caret = el.selectionStart == null ? el.value.length : el.selectionStart;
+    caretRef.current = sigCountBefore(el.value, caret);
+    onChange(sanitizeNum(el.value));
+  };
+  return <input type="text" inputMode="decimal" ref={ref} value={display} onChange={handleChange}
+    className={className} placeholder={placeholder} {...rest} />;
+}
 const FOCUS_OPTIONS = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
+// focusLabel title-cases an UPPER_SNAKE focus enum for display (SPEED_EFFICIENCY → "Speed
+// Efficiency"), matching the Title Case style of work-type labels (Delivery/Discovery).
+function focusLabel(f) {
+  if (!f) return '';
+  return String(f).split('_').filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+}
 const STATUS_STEPS = [{ k: 'forming', l: 'Черновик' }, { k: 'ready', l: 'К валидации' }, { k: 'in_progress', l: 'В работе' }, { k: 'closed', l: 'Закрыты' }];
 const TEAM_TYPE_LABEL = { department: 'Департамент', cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад', employee: 'Сотрудник' };
 const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
 
-function healthOf(p, stale, forecast) {
+// greenThreshold: progress at or above this percent is considered "in plan" (green)
+// regardless of the forecast-based pace check. Configurable via admin settings (default 80).
+function healthOf(p, stale, forecast, greenThreshold = 80) {
   if (p === null || p === undefined) return 'no_goals';
   if (stale) return 'stale';
+  if (p >= greenThreshold) return 'ahead';
   if (forecast == null) return 'on_track';
   const delta = forecast - p;
   if (delta < -10) return 'ahead';
@@ -239,12 +315,13 @@ function healthOf(p, stale, forecast) {
 }
 
 // sidebarProgressColor colors the team progress percent in the sidebar: green when the team
-// is up to date (or, for closed periods, has reached ≥80%), red when it lags behind the period
-// pace. The lag tolerance mirrors the Health Check-in "Отстающие" category (behind_margin):
-// red when progress < forecast - behindMargin.
-function sidebarProgressColor(prog, forecast, status, behindMargin = 10) {
+// has reached the green threshold or is keeping pace, red when it lags behind the period pace.
+// The lag tolerance mirrors the Health Check-in "Отстающие" category (behind_margin): red when
+// progress < forecast - behindMargin.
+function sidebarProgressColor(prog, forecast, status, behindMargin = 10, greenThreshold = 80) {
   if (prog == null) return HEALTH_COLOR.no_goals;
-  if (status === 'closed') return prog >= 80 ? HEALTH_COLOR.ahead : HEALTH_COLOR.below;
+  if (prog >= greenThreshold) return HEALTH_COLOR.ahead;
+  if (status === 'closed') return HEALTH_COLOR.below;
   if (forecast != null && forecast - prog > behindMargin) return HEALTH_COLOR.below;
   return HEALTH_COLOR.ahead;
 }
@@ -495,7 +572,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
           {form.krType === 'NUMERICAL' && (
             <div className="kr-progress-field">
               <div className="kr-progress-field__label">Текущее значение <span className="kr-progress-field__hint">({fmtVal(form.start, form.unit)} → {fmtVal(form.target, form.unit)})</span></div>
-              <input type="number" value={form.current} onChange={e => set('current', e.target.value)} className="form-input" />
+              <NumInput value={form.current} onChange={v => set('current', v)} className="form-input" />
               {(() => {
                 const guide = numericalGuide(form);
                 if (!guide) return null;
@@ -608,13 +685,13 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
       fd.append('kind', form.krType);
       if (form.krType === 'NUMERICAL') {
         fd.append('numerical_unit', form.unit || '%');
-        fd.append('numerical_start', String(form.start || 0));
-        fd.append('numerical_target', String(form.target || 0));
-        fd.append('numerical_current', String(form.current || 0));
+        fd.append('numerical_start', String(Number(form.start) || 0));
+        fd.append('numerical_target', String(Number(form.target) || 0));
+        fd.append('numerical_current', String(Number(form.current) || 0));
         fd.append('numerical_zeroing', form.zeroing || '');
         (form.checkpoints || []).forEach(c => {
           if (c.value === '' || c.value === null || c.value === undefined) return;
-          fd.append('checkpoint_value[]', String(c.value));
+          fd.append('checkpoint_value[]', String(Number(c.value) || 0));
           fd.append('checkpoint_percent[]', String(c.progress_percent || 0));
         });
       }
@@ -665,7 +742,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 <div className="form-col">
                   <div className="kr-num-field__label">Стартовое значение</div>
                   <div className="kr-num-input-suffix">
-                    <input type="number" value={form.start} onChange={e => set('start', e.target.value)} className="form-input form-input--sm" />
+                    <NumInput value={form.start} onChange={v => set('start', v)} className="form-input form-input--sm" />
                     <span className="kr-num-input-suffix__unit">{form.unit}</span>
                   </div>
                 </div>
@@ -680,14 +757,14 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 <div className="form-col">
                   <div className="kr-num-field__label">Цель</div>
                   <div className="kr-num-input-suffix">
-                    <input type="number" value={form.target} onChange={e => set('target', e.target.value)} className="form-input form-input--sm" />
+                    <NumInput value={form.target} onChange={v => set('target', v)} className="form-input form-input--sm" />
                     <span className="kr-num-input-suffix__unit">{form.unit}</span>
                   </div>
                 </div>
                 <div className="form-col">
                   <div className="kr-num-field__label">Текущее значение</div>
                   <div className="kr-num-input-suffix">
-                    <input type="number" value={form.current} onChange={e => set('current', e.target.value)} className="form-input form-input--sm" />
+                    <NumInput value={form.current} onChange={v => set('current', v)} className="form-input form-input--sm" />
                     <span className="kr-num-input-suffix__unit">{form.unit}</span>
                   </div>
                 </div>
@@ -707,7 +784,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 )}
                 {(form.checkpoints || []).map((c, i) => (
                   <div key={i} className="kr-cp-row">
-                    <input type="number" placeholder="напр. 150" value={c.value} onChange={e => setCp(i, 'value', e.target.value)} className="form-input form-input--sm" />
+                    <NumInput placeholder="напр. 150" value={c.value} onChange={v => setCp(i, 'value', v)} className="form-input form-input--sm" />
                     <input type="number" placeholder="0–100" min={0} max={100} value={c.progress_percent} onChange={e => setCp(i, 'progress_percent', e.target.value)} className="form-input form-input--sm" />
                     <button onClick={() => remCp(i)} className="kr-step-delete">×</button>
                   </div>
@@ -908,7 +985,7 @@ function CommentsPanel({ comments, onAdd, me }) {
 }
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80 }) {
   const [showKR, setShowKR] = useState(false);
   const [showCom, setShowCom] = useState(false);
   const [newKR, setNewKR] = useState(false);
@@ -921,8 +998,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const staleTracked = periodStatus !== 'forming' && periodStatus !== 'ready';
   const isStale = staleTracked && goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;
-  const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast)];
-  const health = healthOf(prog, isStale, forecast);
+  const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast, greenThreshold)];
+  const health = healthOf(prog, isStale, forecast, greenThreshold);
   const canEdit = editMode === 'full';
   const canReorderGoal = canEdit && !!dragProps;
   const { isDragging, ...rootDrag } = dragProps || {};
@@ -964,7 +1041,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
           {isStale && <Badge label={`⚠ ${goal.updatedDaysAgo}д без обновлений`} color="#d97706" bg="#fffbeb" />}
           {goal.owners.length > 0 && (
             <div className="goal-card__owner">
-              <span className="goal-card__owner-label">Владелец</span>
+              <span className="goal-card__owner-label">Драйвер цели</span>
               {goal.owners.map(u => (
                 <UserInfo key={u.udid || u.display_name} userRef={u} size={18} />
               ))}
@@ -1011,7 +1088,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         </div>
         <div className="goal-card__tags">
           <Badge label={goal.type === 'delivery' ? 'Delivery' : 'Discovery'} color={goal.type === 'delivery' ? '#374151' : '#7c3aed'} />
-          {goal.focus && <Badge label={goal.focus} color={FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT} />}
+          {goal.focus && <Badge label={focusLabel(goal.focus)} color={FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT} />}
         </div>
       </div>
       <div className="goal-card__footer">
@@ -1169,7 +1246,7 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
           data.forEach(u => _cacheUserRef(u));
           setFetchedUsers(data);
         }
-      }).catch(() => {});
+      }).catch(() => { });
     }, q ? 200 : 0);
     return () => clearTimeout(fetchTimer.current);
   }, [q, open, fetchFn]);
@@ -1249,7 +1326,7 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
 function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
   const initName = userRef?.display_name ?? nameProp ?? '';
   const initUdid = userRef?.udid || udidProp || '';
-  const initAv   = userRef?.avatar_url || null;
+  const initAv = userRef?.avatar_url || null;
 
   if (userRef) _cacheUserRef(userRef);
 
@@ -1311,7 +1388,7 @@ function goalFormData(form, teamId) {
   fd.append('title', form.title.trim());
   fd.append('description', form.desc || '');
   fd.append('priority', form.priority);
-  fd.append('weight', String(form.weight));
+  fd.append('weight', String(Number(form.weight) || 0));
   fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
   fd.append('focus_type', form.focus);
   (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
@@ -1355,7 +1432,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   const wasShared = isEdit && (goal.shareTeams || []).filter(t => t.id !== teamId).length > 0;
   const [form, setForm] = useState(goal
     ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean) }
-    : { title: '', desc: '', priority: 'P1', weight: Math.min(20, 100 - usedWeight), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [] });
+    : { title: '', desc: '', priority: 'P1', weight: Math.max(0, Math.min(20, 100 - usedWeight)), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [] });
   const [saving, setSaving] = useState(false);
   const [confirmUnshare, setConfirmUnshare] = useState(false);
   // Remembers the goal created in this modal session so that, if the optional
@@ -1363,9 +1440,14 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   // the share instead of creating a duplicate goal.
   const createdGoalIdRef = useRef(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const totalAfter = usedWeight + (isEdit ? form.weight - (goal?.weight || 0) : form.weight);
+  // Weight may be blank while editing; coerce to a number for arithmetic/save. A zero (or blank)
+  // weight is a valid draft state, so it never gates the save.
+  const weightNum = Number(form.weight) || 0;
+  const totalAfter = usedWeight + (isEdit ? weightNum - (goal?.weight || 0) : weightNum);
+  // Sum over 100% is allowed (draft in progress) — it only surfaces a non-blocking warning,
+  // never gates the save.
   const overWeight = totalAfter > 100;
-  const valid = form.title.trim() && !overWeight && form.weight > 0 && (!form.shared || (form.shareTeamIds || []).length > 0);
+  const valid = form.title.trim() && (!form.shared || (form.shareTeamIds || []).length > 0);
   // Turning the "Общая цель" toggle off on an already-shared goal removes the goal from THIS
   // team's list (leaves the share), so it needs explicit confirmation before saving.
   const leavingShare = isEdit && wasShared && !form.shared;
@@ -1387,7 +1469,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
         if (!newGoalId) {
           const created = await apiPost(`/api/v1/teams/${teamId}/goals`, {
             period_id: periodId, title: form.title.trim(), description: form.desc || '',
-            priority: form.priority, weight: form.weight,
+            priority: form.priority, weight: Number(form.weight) || 0,
             work_type: form.type === 'delivery' ? 'Delivery' : 'Discovery',
             focus_type: form.focus, owner_udids: form.ownerUDIDs || [],
           });
@@ -1449,15 +1531,15 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             </div>
             <div className="form-col--w140">
               <FieldLabel hint="Доля цели в общем результате команды. Сумма весов = 100%.">
-                <span>Вес <span style={{ fontWeight: 400, color: overWeight ? '#ef4444' : '#9ca3af', fontSize: 12 }}>({totalAfter}/100)</span></span>
+                <span>Вес <span style={{ fontWeight: 400, color: overWeight ? '#d97706' : '#9ca3af', fontSize: 12 }}>({totalAfter}/100)</span></span>
               </FieldLabel>
               <div className="form-weight-wrap">
-                <input type="number" min={1} max={100} value={form.weight}
-                  onChange={e => set('weight', Math.max(1, Math.min(100, Number(e.target.value))))}
-                  className={`form-input form-input--weight${overWeight ? ' form-input--error' : ''}`} />
+                <input type="number" min={0} max={100} value={form.weight}
+                  onChange={e => { const v = e.target.value; set('weight', v === '' ? '' : Math.max(0, Math.min(100, Number(v)))); }}
+                  className="form-input form-input--weight" />
                 <span className="form-weight-pct">%</span>
               </div>
-              {overWeight && <div className="form-error-msg">Превышает 100%</div>}
+              {overWeight && <div className="form-error-msg" style={{ color: '#d97706' }}>Сумма весов больше 100% — сохранить можно</div>}
             </div>
           </div>
           <div className="form-row">
@@ -1476,17 +1558,17 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             <div className="form-col">
               <FieldLabel>Фокус</FieldLabel>
               <select value={form.focus} onChange={e => set('focus', e.target.value)} className="form-select">
-                {FOCUS_OPTIONS.map(f => <option key={f} value={f}>{f}</option>)}
+                {FOCUS_OPTIONS.map(f => <option key={f} value={f}>{focusLabel(f)}</option>)}
               </select>
             </div>
           </div>
           <div className="form-group">
-            <FieldLabel>Владелец</FieldLabel>
+            <FieldLabel>Драйвер цели</FieldLabel>
             <UserSelector multiple
               value={form.ownerUDIDs}
               onChange={arr => set('ownerUDIDs', arr)}
               fetchFn={q => apiGet(`/api/v1/users?q=${encodeURIComponent(q)}&scope_team_id=${teamId}`)}
-              placeholder="Добавить владельца" />
+              placeholder="Добавить драйвера цели" />
           </div>
           <div className="toggle-box">
             <label className="toggle-row">
@@ -1527,13 +1609,13 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
 }
 
 // ── SIDEBAR NODE ──────────────────────────────────────────────────────────────
-function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, accent, behindMargin }) {
+function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, accent, behindMargin, greenThreshold }) {
   const ch = node.children || [];
   const isExp = expanded[node.id] !== false;
   const isSel = selectedId === node.id;
   const prog = node.progress;
   const dotC = TEAM_TYPE_COLOR[node.type] || HEALTH_COLOR.no_goals;
-  const pctC = sidebarProgressColor(prog, node.forecast, node.status, behindMargin);
+  const pctC = sidebarProgressColor(prog, node.forecast, node.status, behindMargin, greenThreshold);
   const pad = 14 + depth * 13;
   const nameClass = ['sidebar-node__name',
     depth === 0 ? 'sidebar-node__name--d0' : depth === 1 ? 'sidebar-node__name--d1' : 'sidebar-node__name--dx',
@@ -1551,16 +1633,16 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
         <span className={nameClass}>{node.name}</span>
         {prog != null && <span className="sidebar-node__progress" style={{ color: isSel ? '#c4b5fd' : pctC }}>{prog}%</span>}
       </div>
-      {isExp && ch.map(c => <SidebarNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} />)}
+      {isExp && ch.map(c => <SidebarNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} />)}
     </div>
   );
 }
 
 // ── CHILD CARD ────────────────────────────────────────────────────────────────
-function ChildCard({ item, onSelect }) {
+function ChildCard({ item, onSelect, greenThreshold = 80 }) {
   const prog = item.progress_meta ? item.progress_meta.actual : null;
   const forecast = item.progress_meta ? item.progress_meta.forecast : null;
-  const health = healthOf(prog, false, forecast);
+  const health = healthOf(prog, false, forecast, greenThreshold);
   const hC = HEALTH_COLOR[health];
   const goalsCount = item.goals_count || 0;
   const highPri = item.high_priority_count || 0;
@@ -1596,11 +1678,11 @@ function ChildCard({ item, onSelect }) {
 }
 
 // ── CLUSTER VIEW ──────────────────────────────────────────────────────────────
-function ClusterView({ overview, onSelect }) {
+function ClusterView({ overview, onSelect, greenThreshold = 80 }) {
   if (!overview) return <div className="cluster-loading">Загрузка…</div>;
   const avg = overview.average_progress || 0;
   const avgForecast = overview.progress_meta?.forecast ?? null;
-  const hC = HEALTH_COLOR[healthOf(avg, false, avgForecast)];
+  const hC = HEALTH_COLOR[healthOf(avg, false, avgForecast, greenThreshold)];
   const items = overview.children_summary?.items || [];
   return (
     <div>
@@ -1612,7 +1694,7 @@ function ClusterView({ overview, onSelect }) {
         <div className="cluster-overview__right">
           <div className="cluster-overview__bar-header">
             <span className="cluster-overview__teams-label">{overview.teams_with_goals} из {items.length} с целями</span>
-            <span className="cluster-overview__health-label" style={{ color: hC }}>{HEALTH_LABEL[healthOf(avg, false, avgForecast)]}</span>
+            <span className="cluster-overview__health-label" style={{ color: hC }}>{HEALTH_LABEL[healthOf(avg, false, avgForecast, greenThreshold)]}</span>
           </div>
           {overview.progress_meta && (
             <>
@@ -1623,7 +1705,7 @@ function ClusterView({ overview, onSelect }) {
         </div>
       </div>
       <div className="cluster-grid">
-        {items.map(item => <ChildCard key={item.team.id} item={item} onSelect={onSelect} />)}
+        {items.map(item => <ChildCard key={item.team.id} item={item} onSelect={onSelect} greenThreshold={greenThreshold} />)}
       </div>
     </div>
   );
@@ -1631,19 +1713,19 @@ function ClusterView({ overview, onSelect }) {
 
 // ── HEALTH CHECK-IN ───────────────────────────────────────────────────────────
 const HCI_CAT_META = {
-  stale:               { icon: '🕐', label: 'Нет обновлений',      color: '#f59e0b' },
-  no_goals:            { icon: '○',  label: 'Нет целей',           color: '#6b7280' },
-  awaiting_validation: { icon: '○',  label: 'Ожидают валидации',   color: '#6b7280' },
-  formation_errors:    { icon: '⚠',  label: 'Ошибки формирования', color: '#ef4444' },
-  lagging:             { icon: '▼',  label: 'Отстающие',           color: '#3b82f6' },
+  stale: { icon: '🕐', label: 'Нет обновлений', color: '#f59e0b' },
+  no_goals: { icon: '○', label: 'Нет целей', color: '#6b7280' },
+  awaiting_validation: { icon: '○', label: 'Ожидают валидации', color: '#6b7280' },
+  formation_errors: { icon: '⚠', label: 'Ошибки формирования', color: '#ef4444' },
+  lagging: { icon: '▼', label: 'Отстающие', color: '#3b82f6' },
 };
 const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging'];
 const HCI_ACTION_LABEL = {
-  stale:               '→ Обновить прогресс',
-  no_goals:            '→ Перейти к команде',
+  stale: '→ Обновить прогресс',
+  no_goals: '→ Перейти к команде',
   awaiting_validation: '→ Перейти к команде',
-  formation_errors:    '→ Исправить',
-  lagging:             '→ Перейти к цели',
+  formation_errors: '→ Исправить',
+  lagging: '→ Перейти к цели',
 };
 
 function HealthCheckInButton({ data, onClick }) {
@@ -1687,10 +1769,10 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
 
   return (
     <>
-      {open && <div className="hci-backdrop" onClick={onClose}/>}
+      {open && <div className="hci-backdrop" onClick={onClose} />}
       <div className={`hci-panel${open ? ' hci-panel--open' : ''}`}>
         <div className="hci-panel__header">
-          <div style={{flex:1}}>
+          <div style={{ flex: 1 }}>
             <p className="hci-panel__title">⚡ Health Check-in</p>
             <p className="hci-panel__subtitle">{subtitle}</p>
           </div>
@@ -1741,7 +1823,7 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
               }
               return (
                 <div key={k} className="hci-section">
-                  <div className="hci-section__header" style={{color: meta.color}}>
+                  <div className="hci-section__header" style={{ color: meta.color }}>
                     <span>{meta.icon}</span>
                     <span>{meta.label}</span>
                     <span className="hci-section__count">{cat.count}</span>
@@ -1796,7 +1878,7 @@ function App() {
   const [docUrl, setDocUrl] = useState('');
   const [staleDays, setStaleDays] = useState(7);
   const [behindMargin, setBehindMargin] = useState(10);
-  const [emptyHierMsg, setEmptyHierMsg] = useState('');
+  const [greenThreshold, setGreenThreshold] = useState(80);
 
   const loadHCI = useCallback((pid) => {
     if (!pid) return;
@@ -1819,7 +1901,7 @@ function App() {
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
-      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); setEmptyHierMsg(cfg.empty_hierarchy_message || ''); }
+      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); if (cfg.green_threshold >= 1 && cfg.green_threshold <= 100) setGreenThreshold(cfg.green_threshold); }
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -1858,7 +1940,7 @@ function App() {
     apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } }).catch(() => setTeamOKR(null));
     const node = findNodeById(hierarchy, selId);
     if (node && (node.children || []).length > 0) {
-      apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(data => { if (data) setOverview(data); }).catch(() => {});
+      apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(data => { if (data) setOverview(data); }).catch(() => { });
     }
   }, [periodId, selId]);
 
@@ -1919,7 +2001,7 @@ function App() {
       setHierarchy(data.items || []);
       const node = findNodeById(data.items || [], selId);
       if (node && (node.children || []).length > 0) {
-        apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(d => { if (d) setOverview(d); }).catch(() => {});
+        apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(d => { if (d) setOverview(d); }).catch(() => { });
       } else {
         setOverview(null);
       }
@@ -1979,19 +2061,15 @@ function App() {
             ? (
               <div className="no-access">
                 <div className="no-access__icon">🔒</div>
-                {emptyHierMsg
-                  ? <div className="no-access__text"><Markdown text={emptyHierMsg}/></div>
-                  : <>
-                      <div className="no-access__text">Нет доступа к командам</div>
-                      <div className="no-access__hint">За доступом обратитесь к администратору</div>
-                    </>}
+                <div className="no-access__text">Нет доступа к командам</div>
+                <div className="no-access__hint">За доступом обратитесь к администратору</div>
               </div>
             )
-            : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} />)
+            : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} />)
           }
         </div>
-        <div style={{padding: '8px 8px 0'}}>
-          <HealthCheckInButton data={hciData} onClick={() => setHciOpen(true)}/>
+        <div style={{ padding: '8px 8px 0' }}>
+          <HealthCheckInButton data={hciData} onClick={() => setHciOpen(true)} />
         </div>
       </div>
 
@@ -2011,7 +2089,7 @@ function App() {
               <div className="topbar__progress">
                 <div style={{ width: 140 }}>
                   <ProgressBar value={teamOKR.period_progress || 0} forecast={teamOKR.progress_meta.forecast} h={6}
-                    color={HEALTH_COLOR[teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
+                    color={HEALTH_COLOR[(teamOKR.period_progress || 0) >= greenThreshold ? 'ahead' : teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
                 </div>
                 <span className="topbar__progress-pct">{teamOKR.period_progress || 0}%</span>
               </div>
@@ -2028,7 +2106,7 @@ function App() {
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />
 
         <div className="content">
-          {overview && (overview.children_summary?.items?.length > 0) && <ClusterView overview={overview} onSelect={selectTeam} />}
+          {overview && (overview.children_summary?.items?.length > 0) && <ClusterView overview={overview} onSelect={selectTeam} greenThreshold={greenThreshold} />}
           {goals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
             <div className="empty-state">
               <div className="empty-state__icon">🔒</div>
@@ -2045,7 +2123,7 @@ function App() {
             </div>
           )}
           {overview && (overview.children_summary?.items?.length > 0) && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
