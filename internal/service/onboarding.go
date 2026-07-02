@@ -144,12 +144,18 @@ func (s *OnboardingService) ApplyDefaultAccess(ctx context.Context, scope domain
 
 // ApproveRequest activates a pending membership and applies the tenant's default-access policy
 // (same baseline a user gets on auto-registration / invite), if they have no grant there yet.
+// The default grant is applied BEFORE activation so a failing grant (e.g. a stale
+// default_hierarchy_node_id whose team was hard-deleted) leaves the request pending and retryable,
+// rather than committing an active membership without the intended access.
 func (s *OnboardingService) ApproveRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
+	if err := s.applyNewUserPolicy(ctx, scope, userID); err != nil {
+		return err
+	}
 	if err := s.mem.SetStatus(ctx, userID, scope.TenantID, domain.MembershipActive); err != nil {
 		return err
 	}
 	s.memCache.InvalidateUser(userID)
-	return s.applyNewUserPolicy(ctx, scope, userID)
+	return nil
 }
 
 // DenyRequest removes a pending membership.

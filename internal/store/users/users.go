@@ -8,6 +8,7 @@ import (
 
 	"okrs/internal/domain"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -272,6 +273,16 @@ func (r *UserRepository) CountSystemAdmins(ctx context.Context) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx, `SELECT count(*) FROM users WHERE is_system_admin`).Scan(&n)
 	return n, err
+}
+
+// IsSystemAdmin reports a single user's current system-admin flag. ErrNotFound if the user is missing.
+func (r *UserRepository) IsSystemAdmin(ctx context.Context, userID int64) (bool, error) {
+	var v bool
+	err := r.db.QueryRow(ctx, `SELECT is_system_admin FROM users WHERE id = $1`, userID).Scan(&v)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, ErrNotFound
+	}
+	return v, err
 }
 
 type scanner interface {

@@ -33,10 +33,11 @@ type defaultAccessApplier interface {
 	ApplyDefaultAccess(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
-// systemAdminStore toggles/counts the instance system-admin flag. *users.UserRepository satisfies it.
+// systemAdminStore toggles/counts/reads the instance system-admin flag. *users.UserRepository satisfies it.
 type systemAdminStore interface {
 	SetSystemAdmin(ctx context.Context, userID int64, v bool) error
 	CountSystemAdmins(ctx context.Context) (int, error)
+	IsSystemAdmin(ctx context.Context, userID int64) (bool, error)
 }
 
 type ProvisioningService struct {
@@ -76,6 +77,11 @@ func (p *ProvisioningService) CreateTenant(ctx context.Context, name, slug strin
 // AttachMember gives an existing global user an active membership in a tenant.
 // Email→invitation onboarding is Plan 4; here the caller supplies a concrete user id.
 func (p *ProvisioningService) AttachMember(ctx context.Context, tenantID, userID int64, role domain.Role) (*domain.Membership, error) {
+	// Apply the default-access grant before creating the active membership so a failing grant
+	// (e.g. a stale default_hierarchy_node_id) does not leave an active membership without access.
+	if err := p.defaultAccess.ApplyDefaultAccess(ctx, domain.TenantScope{TenantID: tenantID}, userID); err != nil {
+		return nil, err
+	}
 	m, err := p.members.Upsert(ctx, domain.Membership{
 		UserID:   userID,
 		TenantID: tenantID,
@@ -86,9 +92,6 @@ func (p *ProvisioningService) AttachMember(ctx context.Context, tenantID, userID
 		return nil, err
 	}
 	p.memberCache.InvalidateUser(userID)
-	if err := p.defaultAccess.ApplyDefaultAccess(ctx, domain.TenantScope{TenantID: tenantID}, userID); err != nil {
-		return nil, err
-	}
 	return m, nil
 }
 
@@ -116,11 +119,20 @@ func (p *ProvisioningService) SetMemberRole(ctx context.Context, tenantID, userI
 	return nil
 }
 
-// SetSystemAdmin grants/revokes the instance system-admin flag. Refuses to revoke the last remaining
-// system-admin (ErrLastSystemAdmin) or the caller's own flag (ErrSelfLockout). Missing user →
-// users.ErrNotFound. callerID may be 0 for a machine (provisioning-token) caller — never self.
+// SetSystemAdmin grants/revokes the instance system-admin flag. Missing user → users.ErrNotFound.
+// The guards apply only to a real state change that removes an admin: setting the flag to its
+// current value is an idempotent no-op, and revoking a user who is not an admin never triggers the
+// last-admin guard. Refuses to revoke the last remaining system-admin (ErrLastSystemAdmin) or the
+// caller's own flag (ErrSelfLockout). callerID may be 0 for a machine (provisioning-token) caller.
 func (p *ProvisioningService) SetSystemAdmin(ctx context.Context, callerID, targetID int64, v bool) error {
-	if !v {
+	cur, err := p.users.IsSystemAdmin(ctx, targetID)
+	if err != nil {
+		return err // users.ErrNotFound bubbles up (404)
+	}
+	if cur == v {
+		return nil // already in the desired state — idempotent no-op
+	}
+	if !v { // revoking a real admin
 		if callerID != 0 && callerID == targetID {
 			return ErrSelfLockout
 		}

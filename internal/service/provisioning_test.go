@@ -154,6 +154,17 @@ func TestSetSystemAdminGuards(t *testing.T) {
 	if err := prov.SetSystemAdmin(ctx, a, b, false); err != nil {
 		t.Fatalf("revoke b: %v", err)
 	}
+
+	// Revoking a non-admin must be a no-op even when only one real admin remains — the
+	// last-admin guard must not fire because no admin is actually removed.
+	c := mk("c") // never granted
+	if err := prov.SetSystemAdmin(ctx, a, c, false); err != nil {
+		t.Fatalf("revoke non-admin should be a no-op, got %v", err)
+	}
+	// Stale/unknown target → users.ErrNotFound (404), not a spurious last-admin conflict.
+	if err := prov.SetSystemAdmin(ctx, a, 999999, false); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
 }
 
 func TestProvisioningRemoveMember(t *testing.T) {
