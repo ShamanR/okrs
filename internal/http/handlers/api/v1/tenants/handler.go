@@ -3,15 +3,27 @@ package tenants
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/service"
+	"okrs/internal/store/memberships"
+
+	"github.com/go-chi/chi/v5"
 )
 
-// MembershipLookup lists a user's active memberships.
+// MembershipLookup lists a user's memberships.
 type MembershipLookup interface {
 	ListByUser(ctx context.Context, userID int64) ([]domain.Membership, error)
+	ListByUserWithTenant(ctx context.Context, userID int64) ([]memberships.MembershipWithTenant, error)
+}
+
+// MembershipLeaver removes the caller's own membership. *service.OnboardingService satisfies it.
+type MembershipLeaver interface {
+	LeaveTenant(ctx context.Context, tenantID, userID int64) error
 }
 
 // TenantLookup loads tenants by slug or id.
@@ -29,10 +41,11 @@ type Handler struct {
 	members  MembershipLookup
 	tenants  TenantLookup
 	sessions SessionWriter
+	leaver   MembershipLeaver
 }
 
-func New(m MembershipLookup, t TenantLookup, s SessionWriter) *Handler {
-	return &Handler{members: m, tenants: t, sessions: s}
+func New(m MembershipLookup, t TenantLookup, s SessionWriter, l MembershipLeaver) *Handler {
+	return &Handler{members: m, tenants: t, sessions: s, leaver: l}
 }
 
 type switchRequest struct {
@@ -114,6 +127,56 @@ func (h *Handler) ListMyTenants(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+type membershipDTO struct {
+	TenantID int64  `json:"tenant_id"`
+	Slug     string `json:"slug"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Status   string `json:"status"`
+}
+
+// ListMyMemberships returns the caller's memberships (all statuses) for /settings.
+func (h *Handler) ListMyMemberships(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	list, err := h.members.ListByUserWithTenant(r.Context(), user.ID)
+	if err != nil {
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
+	out := make([]membershipDTO, 0, len(list))
+	for _, m := range list {
+		out = append(out, membershipDTO{TenantID: m.TenantID, Slug: m.Slug, Name: m.Name, Role: string(m.Role), Status: string(m.Status)})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// LeaveTenant lets the caller leave a tenant / cancel their pending request.
+func (h *Handler) LeaveTenant(w http.ResponseWriter, r *http.Request) {
+	user := auth.UserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+	tenantID, err := strconv.ParseInt(chi.URLParam(r, "tenantID"), 10, 64)
+	if err != nil || tenantID <= 0 {
+		http.Error(w, `{"error":"bad request"}`, http.StatusBadRequest)
+		return
+	}
+	switch err := h.leaver.LeaveTenant(r.Context(), tenantID, user.ID); {
+	case errors.Is(err, service.ErrLastAdmin):
+		http.Error(w, `{"error":"last admin cannot leave"}`, http.StatusConflict)
+	case err != nil:
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+	default:
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func (h *Handler) isActiveMember(ctx context.Context, userID, tenantID int64) bool {

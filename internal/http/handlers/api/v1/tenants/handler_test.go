@@ -10,16 +10,33 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/service"
+	"okrs/internal/store/memberships"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type stubDeps struct {
 	memberships []domain.Membership
+	withTenant  []memberships.MembershipWithTenant
 	tenants     map[int64]*domain.Tenant
 	setCalled   int64
+	leftTenant  int64
+	leaveErr    error
 }
 
 func (s *stubDeps) ListByUser(_ context.Context, _ int64) ([]domain.Membership, error) {
 	return s.memberships, nil
+}
+func (s *stubDeps) ListByUserWithTenant(_ context.Context, _ int64) ([]memberships.MembershipWithTenant, error) {
+	return s.withTenant, nil
+}
+func (s *stubDeps) LeaveTenant(_ context.Context, tenantID, _ int64) error {
+	if s.leaveErr != nil {
+		return s.leaveErr
+	}
+	s.leftTenant = tenantID
+	return nil
 }
 func (s *stubDeps) GetBySlug(_ context.Context, slug string) (*domain.Tenant, error) {
 	for _, t := range s.tenants {
@@ -49,7 +66,7 @@ func authedReq(method, body string) *http.Request {
 
 func TestSwitchTenantRejectsNonMember(t *testing.T) {
 	deps := &stubDeps{tenants: map[int64]*domain.Tenant{2: {ID: 2, Slug: "acme", Status: domain.TenantActive}}}
-	h := New(deps, deps, deps)
+	h := New(deps, deps, deps, deps)
 
 	rw := httptest.NewRecorder()
 	h.SwitchTenant(rw, authedReq(http.MethodPost, `{"slug":"acme"}`))
@@ -67,7 +84,7 @@ func TestSwitchTenantUpdatesSession(t *testing.T) {
 		memberships: []domain.Membership{{UserID: 10, TenantID: 2, Role: domain.RoleUser}},
 		tenants:     map[int64]*domain.Tenant{2: {ID: 2, Slug: "acme", Status: domain.TenantActive}},
 	}
-	h := New(deps, deps, deps)
+	h := New(deps, deps, deps, deps)
 
 	rw := httptest.NewRecorder()
 	h.SwitchTenant(rw, authedReq(http.MethodPost, `{"slug":"acme"}`))
@@ -91,7 +108,7 @@ func TestListMyTenants(t *testing.T) {
 			2: {ID: 2, Slug: "acme", Name: "Acme", Status: domain.TenantActive},
 		},
 	}
-	h := New(deps, deps, deps)
+	h := New(deps, deps, deps, deps)
 
 	rw := httptest.NewRecorder()
 	h.ListMyTenants(rw, authedReq(http.MethodGet, ""))
@@ -105,5 +122,59 @@ func TestListMyTenants(t *testing.T) {
 	}
 	if len(got) != 2 || got[0].Slug != "default" || got[1].Slug != "acme" {
 		t.Fatalf("unexpected list: %+v", got)
+	}
+}
+
+func TestListMyMemberships(t *testing.T) {
+	deps := &stubDeps{withTenant: []memberships.MembershipWithTenant{
+		{TenantID: 1, Slug: "default", Name: "Default", Role: domain.RoleUser, Status: domain.MembershipActive},
+		{TenantID: 2, Slug: "acme", Name: "Acme", Role: domain.RoleAdmin, Status: domain.MembershipRequested},
+	}}
+	h := New(deps, deps, deps, deps)
+
+	rw := httptest.NewRecorder()
+	h.ListMyMemberships(rw, authedReq(http.MethodGet, ""))
+
+	if rw.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rw.Code)
+	}
+	var got []membershipDTO
+	if err := json.Unmarshal(rw.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(got) != 2 || got[0].Slug != "default" || got[1].Status != "requested" {
+		t.Fatalf("unexpected list: %+v", got)
+	}
+}
+
+func TestLeaveTenant(t *testing.T) {
+	// Success → 204 and the leaver is called with the path tenant id.
+	deps := &stubDeps{}
+	h := New(deps, deps, deps, deps)
+	r := chi.NewRouter()
+	r.Delete("/api/v1/session/memberships/{tenantID}", h.LeaveTenant)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/session/memberships/2", nil)
+	req = req.WithContext(auth.WithUser(req.Context(), &domain.User{ID: 10}))
+	rw := httptest.NewRecorder()
+	r.ServeHTTP(rw, req)
+	if rw.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rw.Code)
+	}
+	if deps.leftTenant != 2 {
+		t.Fatalf("LeaveTenant called with %d, want 2", deps.leftTenant)
+	}
+
+	// Last-admin → 409.
+	deps2 := &stubDeps{leaveErr: service.ErrLastAdmin}
+	h2 := New(deps2, deps2, deps2, deps2)
+	r2 := chi.NewRouter()
+	r2.Delete("/api/v1/session/memberships/{tenantID}", h2.LeaveTenant)
+	req2 := httptest.NewRequest(http.MethodDelete, "/api/v1/session/memberships/1", nil)
+	req2 = req2.WithContext(auth.WithUser(req2.Context(), &domain.User{ID: 10}))
+	rw2 := httptest.NewRecorder()
+	r2.ServeHTTP(rw2, req2)
+	if rw2.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", rw2.Code)
 	}
 }

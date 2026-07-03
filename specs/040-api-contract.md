@@ -224,6 +224,8 @@ Validation:
 - `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
 - `GET /api/v1/system/tenants/{id}/members` — участники тенанта: `[{user_id, display_name, email, role, status}]` (все статусы, отсортировано по имени). UI показывает `requested` вверху с «Подключить» (= `POST …/members`) / «Отклонить» (deny ниже).
 - `POST /api/v1/system/tenants/{id}/members/{userID}/deny` — удалить заявку (`requested`-membership) пользователя в тенанте → `204`. На активного члена не действует.
+- `PUT /api/v1/system/tenants/{id}/members/{userID}/role` — сменить роль участника; body `{"role": "user"|"admin"}` → `204`. `422` невалидная роль, `404` если у пары `(tenant, user)` нет membership, `409` при попытке понизить последнего активного админа тенанта (тенант всегда сохраняет ≥1 админа). Инвалидирует membership-кэш пользователя. Идемпотентно при установке текущей роли.
+- `PUT /api/v1/system/users/{userID}/system-admin` — выдать/снять инстанс-привилегию system-admin (`users.is_system_admin`); body `{"is_system_admin": bool}` → `204`. `404` если пользователь не найден, `409` при снятии последнего system-admin инстанса или при снятии привилегии с собственного аккаунта (защита от self-lockout). Идемпотентно при установке текущего значения. Прямой инстанс-уровневый аналог bootstrap `BOOTSTRAP_SYSTEM_ADMIN` (см. `050-permissions-and-lifecycle.md`).
 - `DELETE /api/v1/system/tenants/{id}/members/{userID}` — удалить участника из тенанта: убирает membership (любого статуса) **и** все его hierarchy-гранты в этом тенанте → `204`. Идемпотентно. (Кнопка «Удалить» на активных строках; `deny` выше — только для заявок.)
 - `GET /api/v1/system/settings` дополнительно возвращает `no_access_message` (markdown, глобально).
 - `PUT /api/v1/system/settings/no-access-message` — body `{"message": "<markdown>"}` → `204`. Текст страницы `/no-access` (пусто → дефолт); рендерится как markdown.
@@ -233,7 +235,7 @@ Validation:
 
 Авторизация на `/api/v1/system/*` и `/system` обязательна **во всех режимах**, включая
 `AUTH_MODE=disabled` (там — только по `PROVISIONING_TOKEN`; `anonymous-local` не system-admin).
-UI плоскости — React-панель `/system` (тенанты / участники / регистрация / entitlements).
+UI плоскости — React-панель `/system` (тенанты / участники / пользователи / регистрация / entitlements / сообщения). Вкладка «Участники» даёт смену роли участника (`PUT …/members/{id}/role`); вкладка «Пользователи» — тумблер system-admin (`PUT …/users/{id}/system-admin`), собственная строка задизейблена.
 
 ## Onboarding endpoints
 
@@ -249,7 +251,9 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 
 **Любой авторизованный** (auth, но **не** membership-gated):
 
-- `POST /api/v1/onboarding/join-request` — запросить доступ по slug; body: `{"slug": "..."}` → `204`; `404` если slug не найден, `409` если уже активный член.
+- `POST /api/v1/onboarding/join-request` — запросить доступ по slug; body: `{"slug": "..."}` → `204`; `404` если slug не найден, `409` если уже активный член. Переиспользуется формой «Мои пространства» на `/settings`.
+- `GET /api/v1/session/memberships` — свои membership текущего пользователя (**все статусы**, active + requested) для раздела «Мои пространства» на `/settings`: `[{tenant_id, slug, name, role, status}]`, отсортировано по имени тенанта, soft-deleted тенанты исключены. Один join-запрос `memberships ⋈ tenants` (без N+1). Read-only. Держится отдельно от `GET /api/v1/session/tenants`, который остаётся active-only для tenant switcher.
+- `DELETE /api/v1/session/memberships/{tenantID}` — выйти из тенанта / отменить свою заявку: удаляет собственный membership вызывающего (любого статуса) и все его hierarchy-гранты в этом тенанте, инвалидирует кэши. Идемпотентно (не-член → `204`) → `204`. `409` если вызывающий — последний активный админ тенанта (иначе тенант осиротеет). Одним эндпоинтом покрывает и «выход» (active), и «отмену заявки» (requested).
 
 **Invite-ссылка (web):** `GET /invite/{token}` — если посетитель **уже авторизован**, ссылка гасится сразу (`Consume`), его `active` membership привязывается к **текущей идентичности** (`provider:subject`), сессия переключается на тенант ссылки, и он редиректится в приложение (`/`). Если посетитель **не авторизован** — токен кладётся в короткоживущую cookie и ведёт на логин; OAuth-callback гасит токен и привязывает membership. Многоразовость определяется `max_uses`/`use_count` (атомарный `Consume`). Истёкший/отозванный/исчерпанный/неизвестный токен — мягкий редирект без ошибки; доступ по email не выдаётся.
 

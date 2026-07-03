@@ -175,13 +175,13 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		tenantsettings.NewTenantSettingsCache(st.TenantSettings), st.TenantSettings,
 		settings.NewSystemSettingsCache(st.Settings), st.Settings,
 	)
+	onboardingSvc := service.NewOnboardingService(
+		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
+	)
 	provisioning := service.NewProvisioningService(
 		st.Tenants, tenantCache,
 		st.Memberships, membershipCache,
-		settingsSvc, grantsCache,
-	)
-	onboardingSvc := service.NewOnboardingService(
-		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
+		settingsSvc, grantsCache, onboardingSvc, st.Users,
 	)
 
 	resolver := opts.Resolver
@@ -330,9 +330,11 @@ func (s *Server) Routes() http.Handler {
 			// and switch to one they're active in — otherwise RequireMembership would lock them
 			// out before they could recover. These handlers key off the user + explicit target,
 			// not the resolved active tenant.
-			tenantH := apitenants.New(s.store.Memberships, s.store.Tenants, s.store.Sessions)
+			tenantH := apitenants.New(s.store.Memberships, s.store.Tenants, s.store.Sessions, s.onboarding)
 			r.Get("/api/v1/session/tenants", tenantH.ListMyTenants)
 			r.Post("/api/v1/session/tenant", tenantH.SwitchTenant)
+			r.Get("/api/v1/session/memberships", tenantH.ListMyMemberships)
+			r.Delete("/api/v1/session/memberships/{tenantID}", tenantH.LeaveTenant)
 
 			// Authed control-plane mounts (SaaS): authed but not membership-gated
 			// (e.g. self-service "create organization"). nil in OSS.
@@ -510,12 +512,14 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		r.Post("/api/v1/system/tenants/{id}/members", sysH.HandleAttachMember)
 		r.Get("/api/v1/system/tenants/{id}/members", sysH.HandleListMembers)
 		r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", sysH.HandleDenyMember)
+		r.Put("/api/v1/system/tenants/{id}/members/{userID}/role", sysH.HandleSetMemberRole)
 		r.Delete("/api/v1/system/tenants/{id}/members/{userID}", sysH.HandleRemoveMember)
 		r.Put("/api/v1/system/tenants/{id}/entitlements", sysH.HandleSetEntitlements)
 		r.Get("/api/v1/system/tenants/{id}/entitlements", sysH.HandleGetEntitlements)
 		r.Post("/api/v1/system/tenants/{id}/suspend", sysH.HandleSuspend)
 		r.Post("/api/v1/system/tenants/{id}/restore", sysH.HandleRestore)
 		r.Get("/api/v1/system/users", sysH.HandleListUsers)
+		r.Put("/api/v1/system/users/{userID}/system-admin", sysH.HandleSetSystemAdmin)
 		r.Get("/api/v1/system/settings", sysH.HandleGetSettings)
 		r.Put("/api/v1/system/settings/default-registration-tenant", sysH.HandleSetDefaultRegistrationTenant)
 		r.Put("/api/v1/system/settings/no-access-message", sysH.HandleSetNoAccessMessage)

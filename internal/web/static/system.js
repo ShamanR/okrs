@@ -68,6 +68,7 @@ function MembersSection({tenants, users}) {
   const connect = async (m)=>{ setErr(''); const res=await post(`/api/v1/system/tenants/${tid}/members`, {user_id:m.user_id, role:m.role||'user'}); if(res.status===201) loadMembers(tid); else setErr(await errMsg(res)); };
   const deny = async (m)=>{ setErr(''); const res=await post(`/api/v1/system/tenants/${tid}/members/${m.user_id}/deny`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
   const remove = async (m)=>{ if(!confirm(`Удалить ${m.display_name||m.email||('пользователя #'+m.user_id)} из пространства?`)) return; setErr(''); const res=await del(`/api/v1/system/tenants/${tid}/members/${m.user_id}`); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
+  const changeRole = async (m, newRole)=>{ setErr(''); const res=await put(`/api/v1/system/tenants/${tid}/members/${m.user_id}/role`, {role:newRole}); if(res.status===204) loadMembers(tid); else setErr(await errMsg(res)); };
   return <div style={box}>
     <h2 style={{fontSize:15,marginBottom:10}}>Участники</h2>
     <select style={inp} value={tid} onChange={e=>setTid(e.target.value)}>
@@ -78,7 +79,10 @@ function MembersSection({tenants, users}) {
       <thead><tr>{['Имя','Email','Роль','Статус',''].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
       <tbody>{ordered.map(m=><tr key={m.user_id} style={m.status==='requested'?{background:'#fffbeb'}:null}>
         <td style={{padding:'6px 8px'}}>{m.display_name}</td><td style={{padding:'6px 8px'}}>{m.email}</td>
-        <td style={{padding:'6px 8px'}}>{m.role}</td><td style={{padding:'6px 8px',color:m.status==='requested'?C.muted:C.ok}}>{m.status}</td>
+        <td style={{padding:'6px 8px'}}>{m.status==='requested'
+          ? m.role
+          : <select style={inp} value={m.role} onChange={e=>changeRole(m, e.target.value)}><option value="user">user</option><option value="admin">admin</option></select>}</td>
+        <td style={{padding:'6px 8px',color:m.status==='requested'?C.muted:C.ok}}>{m.status}</td>
         <td style={{padding:'6px 8px',textAlign:'right'}}>{m.status==='requested'
           ? <span>
               <button style={{...btn,background:C.ok,marginRight:6}} onClick={()=>connect(m)}>Подключить</button>
@@ -171,18 +175,41 @@ function MessagesSection() {
   </div>;
 }
 
+function UsersSection({users, reload}) {
+  const [meId,setMeId]=useState(0); const [err,setErr]=useState('');
+  useEffect(()=>{ (async()=>{ const res=await get('/api/v1/me'); if(res&&res.ok){ const me=await res.json(); setMeId(me.id); } })(); },[]);
+  const toggle = async (u)=>{ setErr(''); const res=await put(`/api/v1/system/users/${u.id}/system-admin`, {is_system_admin: !u.is_system_admin}); if(res.status===204) reload(); else setErr(await errMsg(res)); };
+  return <div style={box}>
+    <h2 style={{fontSize:15,marginBottom:10}}>Пользователи</h2>
+    {err && <div style={{color:C.danger,marginBottom:8}}>{err}</div>}
+    <table style={{width:'100%',borderCollapse:'collapse'}}>
+      <thead><tr>{['Имя','Email','System-admin'].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
+      <tbody>{(users||[]).map(u=><tr key={u.id}>
+        <td style={{padding:'6px 8px'}}>{u.display_name}</td>
+        <td style={{padding:'6px 8px'}}>{u.email}</td>
+        <td style={{padding:'6px 8px'}}>
+          <input type="checkbox" checked={!!u.is_system_admin} disabled={u.id===meId} onChange={()=>toggle(u)}/>
+          {u.id===meId && <span style={{color:C.muted,marginLeft:6}}>(вы)</span>}
+        </td>
+      </tr>)}</tbody>
+    </table>
+  </div>;
+}
+
 function App() {
   const [tenants,setTenants]=useState([]); const [users,setUsers]=useState([]); const [tab,setTab]=useState('tenants');
   const reloadTenants = useCallback(async()=>{ const res=await get('/api/v1/system/tenants'); if(res&&res.ok) setTenants(await res.json()||[]); },[]);
-  useEffect(()=>{ reloadTenants(); (async()=>{ const res=await get('/api/v1/system/users'); if(res&&res.ok) setUsers(await res.json()||[]); })(); },[reloadTenants]);
+  const reloadUsers = useCallback(async()=>{ const res=await get('/api/v1/system/users'); if(res&&res.ok) setUsers(await res.json()||[]); },[]);
+  useEffect(()=>{ reloadTenants(); reloadUsers(); },[reloadTenants,reloadUsers]);
   const tabBtn = (id,label)=><button onClick={()=>setTab(id)} style={{...btn,background:tab===id?C.accent:'#94a3b8'}}>{label}</button>;
   return <div style={{maxWidth:920,margin:'0 auto',padding:'24px 16px'}}>
     <h1 style={{fontSize:20,marginBottom:16}}>Система · Управление</h1>
     <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-      {tabBtn('tenants','Пространства')}{tabBtn('members','Участники')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}{tabBtn('messages','Сообщения')}
+      {tabBtn('tenants','Пространства')}{tabBtn('members','Участники')}{tabBtn('users','Пользователи')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}{tabBtn('messages','Сообщения')}
     </div>
     {tab==='tenants' && <TenantsSection tenants={tenants} reload={reloadTenants}/>}
     {tab==='members' && <MembersSection tenants={tenants} users={users}/>}
+    {tab==='users' && <UsersSection users={users} reload={reloadUsers}/>}
     {tab==='registration' && <RegistrationSection tenants={tenants}/>}
     {tab==='entitlements' && <EntitlementsSection tenants={tenants}/>}
     {tab==='messages' && <MessagesSection/>}

@@ -2,12 +2,39 @@ package users_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"okrs/internal/domain"
 	"okrs/internal/store/testutil"
 	"okrs/internal/store/users"
 )
+
+func TestSystemAdminCountAndSet(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	repo := users.NewUserRepository(pool)
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:sa','github','sa','SA') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+
+	if n, _ := repo.CountSystemAdmins(ctx); n != 0 {
+		t.Fatalf("count = %d, want 0", n)
+	}
+	if err := repo.SetSystemAdmin(ctx, uid, true); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if n, _ := repo.CountSystemAdmins(ctx); n != 1 {
+		t.Fatalf("count = %d, want 1", n)
+	}
+	if err := repo.SetSystemAdmin(ctx, 999999, true); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
 
 func TestUserListByTenantScopedWithStatus(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)

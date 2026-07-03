@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"okrs/internal/domain"
@@ -30,6 +31,127 @@ func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *service.OnboardingS
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
 	return service.NewOnboardingService(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
+}
+
+func newSettingsForTest(t *testing.T, pool *pgxpool.Pool) *service.SettingsService {
+	t.Helper()
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	return service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+}
+
+func TestApproveRequestAppliesDefaultAccess(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc := newOnboardingForTest(t, pool)
+	settingsSvc := newSettingsForTest(t, pool)
+	grantRepo := grants.NewGrantRepository(pool)
+
+	// Configure tenant 1 default-node policy pointing at a seeded team.
+	var teamID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Root') RETURNING id`).Scan(&teamID); err != nil {
+		t.Fatalf("seed team: %v", err)
+	}
+	scope := domain.TenantScope{TenantID: 1}
+	if err := settingsSvc.SetTenantProduct(ctx, scope, "new_user_policy", "default_node"); err != nil {
+		t.Fatalf("set policy: %v", err)
+	}
+	if err := settingsSvc.SetTenantProduct(ctx, scope, "default_hierarchy_node_id", teamID); err != nil {
+		t.Fatalf("set node: %v", err)
+	}
+
+	var uid int64
+	if err := pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:a','github','a','A') RETURNING id`).Scan(&uid); err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	if err := svc.RequestAccess(ctx, "default", uid); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if err := svc.ApproveRequest(ctx, scope, uid); err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+
+	gs, err := grantRepo.ListUserGrants(ctx, scope, uid)
+	if err != nil {
+		t.Fatalf("list grants: %v", err)
+	}
+	if len(gs) != 1 || gs[0].TeamID != teamID {
+		t.Fatalf("grants = %+v, want one grant on team %d", gs, teamID)
+	}
+}
+
+func TestApproveRequestStaleNodeKeepsPending(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc := newOnboardingForTest(t, pool)
+	settingsSvc := newSettingsForTest(t, pool)
+	mem := memberships.NewMembershipRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	// Policy points at a non-existent hierarchy node → AddUserGrant will fail (FK to teams).
+	_ = settingsSvc.SetTenantProduct(ctx, scope, "new_user_policy", "default_node")
+	_ = settingsSvc.SetTenantProduct(ctx, scope, "default_hierarchy_node_id", int64(999999))
+
+	var uid int64
+	_ = pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:stale','github','stale','Stale') RETURNING id`).Scan(&uid)
+	if err := svc.RequestAccess(ctx, "default", uid); err != nil {
+		t.Fatalf("request: %v", err)
+	}
+
+	// Approval must fail because the grant fails...
+	if err := svc.ApproveRequest(ctx, scope, uid); err == nil {
+		t.Fatalf("approve with stale node should fail, got nil")
+	}
+	// ...and the membership must remain requested (not silently activated).
+	m, err := mem.Get(ctx, uid, 1)
+	if err != nil {
+		t.Fatalf("get membership: %v", err)
+	}
+	if m.Status != domain.MembershipRequested {
+		t.Fatalf("status = %q, want requested (approval must not activate on grant failure)", m.Status)
+	}
+}
+
+func TestLeaveTenantLastAdminGuard(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	svc := newOnboardingForTest(t, pool)
+	mem := memberships.NewMembershipRepository(pool)
+
+	var admin int64
+	_ = pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:la','github','la','LA') RETURNING id`).Scan(&admin)
+	_, _ = mem.Upsert(ctx, domain.Membership{UserID: admin, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive})
+
+	// Sole admin cannot leave.
+	if err := svc.LeaveTenant(ctx, 1, admin); !errors.Is(err, service.ErrLastAdmin) {
+		t.Fatalf("err = %v, want ErrLastAdmin", err)
+	}
+
+	// A plain user can leave (and it removes the membership).
+	var user int64
+	_ = pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name)
+		VALUES ('github:pu','github','pu','PU') RETURNING id`).Scan(&user)
+	_, _ = mem.Upsert(ctx, domain.Membership{UserID: user, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipActive})
+	if err := svc.LeaveTenant(ctx, 1, user); err != nil {
+		t.Fatalf("leave: %v", err)
+	}
+	if _, err := mem.Get(ctx, user, 1); !errors.Is(err, memberships.ErrNotFound) {
+		t.Fatalf("membership still present: %v", err)
+	}
+
+	// Leaving a tenant you're not in is a no-op.
+	if err := svc.LeaveTenant(ctx, 1, 999999); err != nil {
+		t.Fatalf("non-member leave: %v", err)
+	}
 }
 
 func TestJoinRequestApproveDeny(t *testing.T) {

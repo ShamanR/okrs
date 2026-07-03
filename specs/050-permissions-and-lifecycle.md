@@ -82,12 +82,19 @@ Lifecycle ещё не является полноценной policy enforcement
 Три раздельные плоскости управления, каждая со своим гейтом:
 
 1. **System admin** (`users.is_system_admin`) — `/system` + `/api/v1/system/*`. Над тенантами:
-   создание тенантов, прямое назначение membership, запись `entitlement.*`,
-   suspend/restore, глобальный список пользователей, `default_registration_tenant_id`.
+   создание тенантов, прямое назначение membership, **смена роли участника**
+   (`PUT …/members/{id}/role`), запись `entitlement.*`, suspend/restore, глобальный список
+   пользователей, **выдача/снятие system-привилегий** другим пользователям
+   (`PUT /api/v1/system/users/{id}/system-admin`), `default_registration_tenant_id`.
    Это не роль внутри тенанта. Гейт `RequireSystemAdmin` пропускает либо сессию
    system-admin, либо машинный вызов с `Authorization: Bearer <PROVISIONING_TOKEN>`.
    Bootstrap первого system-admin — env `BOOTSTRAP_SYSTEM_ADMIN` (provider:subject или email),
-   повышается при первом совпавшем логине, пока ни одного system-admin ещё нет.
+   повышается при первом совпавшем логине, пока ни одного system-admin ещё нет; после bootstrap
+   привилегию можно выдавать/снимать через API (см. выше).
+   **Guardrails:** тенант всегда сохраняет ≥1 активного админа (проверяется при смене роли и при
+   выходе пользователя из тенанта → `409 ErrLastAdmin`); инстанс всегда сохраняет ≥1 system-admin
+   (`409` при снятии последнего); system-admin не может снять привилегию с собственного аккаунта
+   (`409`, защита от self-lockout).
 2. **Tenant admin** (`memberships.role = admin` в активном тенанте) — существующий `/admin` +
    `/api/v1/admin/*`, теперь tenant-scoped. Гейт `RequireTenantAdmin` проверяет активную роль
    из контекста (её ставит `TenantResolve`), а не глобальный `is_admin`. Внутри своего тенанта:
@@ -149,9 +156,18 @@ join-request).
    идентичности** (`provider:subject`). **Безопасность:** claim только по валидному токену;
    email-match доступа не даёт; повтор/истёкший/чужой токен — отказ; один email через двух
    провайдеров = две независимые учётки.
-3. **Запрос доступа (user).** С `/no-access` пользователь вводит slug → membership
-   `status=requested` → очередь в `/admin` (`access-requests`) → approve (`active`) / deny
-   (удаление). Публичного каталога тенантов нет.
+3. **Запрос доступа (user).** С `/no-access` (или из раздела «Мои пространства» на `/settings`)
+   пользователь вводит slug → membership `status=requested` → очередь в `/admin`
+   (`access-requests`) → approve (`active`) / deny (удаление). Публичного каталога тенантов нет.
+   При **approve** применяется `new_user_policy` тенанта (default-node grant), если у пользователя
+   ещё нет ни одного гранта в этом тенанте — тот же baseline, что при авторегистрации и инвайте.
+   Это же применение выполняет system-admin при «Подключить» (`POST …/members`).
+
+Раздел «Мои пространства» на `/settings` (любой авторизованный) даёт пользователю: список своих
+пространств всех статусов (`GET /api/v1/session/memberships`), выход / отмену заявки
+(`DELETE /api/v1/session/memberships/{tenantID}` — удаляет собственный membership и гранты; `409`,
+если он последний активный админ тенанта) и отправку заявки по slug (переиспользует
+`POST /api/v1/onboarding/join-request`).
 
 ## Target state
 
