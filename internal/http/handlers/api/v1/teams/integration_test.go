@@ -61,14 +61,14 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("insert active team: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('History', '2025-01-01', '2025-03-31', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('History', '2025-01-01', '2025-03-31')
 		RETURNING id`).Scan(&historyPeriodID); err != nil {
 		t.Fatalf("insert history period: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('Current', CURRENT_DATE - INTERVAL '5 day', CURRENT_DATE + INTERVAL '5 day', 2)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('Current', CURRENT_DATE - INTERVAL '5 day', CURRENT_DATE + INTERVAL '5 day')
 		RETURNING id`).Scan(&currentPeriodID); err != nil {
 		t.Fatalf("insert current period: %v", err)
 	}
@@ -268,8 +268,8 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	}
 	var periodID int64
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30')
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}

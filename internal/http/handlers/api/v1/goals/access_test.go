@@ -66,7 +66,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 	}
 	var periodID int64
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q1', '2024-01-01', '2024-03-31', 1) RETURNING id`).
+		INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`).
 		Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}

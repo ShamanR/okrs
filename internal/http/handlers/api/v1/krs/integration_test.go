@@ -60,8 +60,8 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	}
 	var periodID int64
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30')
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 	var teamID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('NoteIntegTeam') RETURNING id`).Scan(&teamID)
 	var periodID int64
-	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q2', '2024-04-01', '2024-06-30', 2) RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q2', '2024-04-01', '2024-06-30') RETURNING id`).Scan(&periodID)
 
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Note Goal",

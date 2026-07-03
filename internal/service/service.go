@@ -73,7 +73,8 @@ type PeriodRepo interface {
 	CreatePeriod(ctx context.Context, scope domain.TenantScope, input periods.PeriodInput) (int64, error)
 	UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input periods.PeriodInput) error
 	DeletePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error
-	MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error
+	ArchivePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error
+	UnarchivePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error
 }
 
 type KRRepo interface {
@@ -143,6 +144,7 @@ var (
 	ErrPeriodClosed                = errors.New("period is closed")
 	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
 	ErrShareTargetNotInTenant      = errors.New("share target team is not in the active tenant")
+	ErrPeriodNotClosed             = errors.New("period must be closed to archive")
 )
 
 // New constructs a Service from a Deps bundle.
@@ -288,6 +290,26 @@ func (s *Service) GetTeam(ctx context.Context, scope domain.TenantScope, teamID 
 
 func (s *Service) ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error) {
 	return s.periods.ListPeriods(ctx, scope)
+}
+
+// ListPeriodViews returns periods enriched with parent/depth/status via domain.BuildPeriodViews.
+// When includeArchived is false, archived periods are filtered out before building the views, so
+// a visible period's ParentID never points at a period the caller can't see.
+func (s *Service) ListPeriodViews(ctx context.Context, scope domain.TenantScope, includeArchived bool) ([]domain.PeriodView, error) {
+	all, err := s.periods.ListPeriods(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	src := all
+	if !includeArchived {
+		src = make([]domain.Period, 0, len(all))
+		for _, p := range all {
+			if p.ArchivedAt == nil {
+				src = append(src, p)
+			}
+		}
+	}
+	return domain.BuildPeriodViews(src, time.Now()), nil
 }
 
 func (s *Service) GetPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (domain.Period, error) {
@@ -958,8 +980,21 @@ func (s *Service) DeletePeriod(ctx context.Context, scope domain.TenantScope, pe
 	return s.periods.DeletePeriod(ctx, scope, periodID)
 }
 
-func (s *Service) MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error {
-	return s.periods.MovePeriod(ctx, scope, periodID, direction)
+// ArchivePeriod archives a period, but only once it is closed — archiving an active or future
+// period would hide it from the tree while it's still in use.
+func (s *Service) ArchivePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	p, err := s.periods.GetPeriod(ctx, scope, periodID)
+	if err != nil {
+		return err
+	}
+	if domain.PeriodStatusFor(p, time.Now()) != domain.PeriodStatusClosed {
+		return ErrPeriodNotClosed
+	}
+	return s.periods.ArchivePeriod(ctx, scope, periodID)
+}
+
+func (s *Service) UnarchivePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	return s.periods.UnarchivePeriod(ctx, scope, periodID)
 }
 
 func (s *Service) GetUsersByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {

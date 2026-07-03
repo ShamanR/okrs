@@ -23,10 +23,10 @@ func (h *Handler) HandlePeriods(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return
 	}
-	periods, err := h.service.ListPeriods(r.Context(), scope)
+	views, err := h.service.ListPeriodViews(r.Context(), scope, false)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load periods", nil)
 		return
 	}
-	v1.WriteJSON(w, http.StatusOK, newPeriodsResponse(periods))
+	v1.WriteJSON(w, http.StatusOK, newPeriodsResponse(views))
 }

@@ -185,7 +185,10 @@ func (f *goalFakeStore) UpdatePeriod(_ context.Context, _ domain.TenantScope, _ 
 func (f *goalFakeStore) DeletePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
 	return nil
 }
-func (f *goalFakeStore) MovePeriod(_ context.Context, _ domain.TenantScope, _ int64, _ int) error {
+func (f *goalFakeStore) ArchivePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
+	return nil
+}
+func (f *goalFakeStore) UnarchivePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
 	return nil
 }
 func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64][]domain.Goal, error) {

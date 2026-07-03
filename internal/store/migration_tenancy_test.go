@@ -157,13 +157,13 @@ func TestMigration031InvitationsAndPeriodUniqueness(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO tenants (id, slug, name) OVERRIDING SYSTEM VALUE VALUES (2, 'two', 'Two')`); err != nil {
 		t.Fatalf("second tenant: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO periods (name, start_date, end_date, sort_order, tenant_id) VALUES ('Q1', '2026-01-01','2026-03-31',1,1)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO periods (name, start_date, end_date, tenant_id) VALUES ('Q1', '2026-01-01', '2026-03-31', 1)`); err != nil {
 		t.Fatalf("period t1: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO periods (name, start_date, end_date, sort_order, tenant_id) VALUES ('Q1', '2026-01-01','2026-03-31',1,2)`); err != nil {
+	if _, err := db.Exec(`INSERT INTO periods (name, start_date, end_date, tenant_id) VALUES ('Q1', '2026-01-01', '2026-03-31', 2)`); err != nil {
 		t.Fatalf("period t2 (same name, other tenant) should be allowed: %v", err)
 	}
-	if _, err := db.Exec(`INSERT INTO periods (name, start_date, end_date, sort_order, tenant_id) VALUES ('Q1', '2026-01-01','2026-03-31',2,1)`); err == nil {
+	if _, err := db.Exec(`INSERT INTO periods (name, start_date, end_date, tenant_id) VALUES ('Q1', '2026-01-01', '2026-03-31', 1)`); err == nil {
 		t.Fatalf("duplicate period name within tenant 1 should be rejected")
 	}
 }

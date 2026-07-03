@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -235,19 +236,33 @@ func (f *fakeStore) BatchUpdateProjectStagesDone(_ context.Context, _ domain.Ten
 func (f *fakeStore) ReplaceGoalShares(context.Context, domain.TenantScope, int64, []shares.GoalShareInput) error {
 	return nil
 }
-func (f *fakeStore) UpdateGoalTeamWeight(context.Context, domain.TenantScope, int64, int64, int) error { return nil }
+func (f *fakeStore) UpdateGoalTeamWeight(context.Context, domain.TenantScope, int64, int64, int) error {
+	return nil
+}
 func (f *fakeStore) GetKeyResult(_ context.Context, _ domain.TenantScope, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
-func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) error      { return nil }
-func (f *fakeStore) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error { return nil }
-func (f *fakeStore) UpdateKeyResultDescription(context.Context, domain.TenantScope, int64, string) error { return nil }
-func (f *fakeStore) GetGoal(context.Context, domain.TenantScope, int64) (domain.Goal, error)             { return domain.Goal{}, nil }
-func (f *fakeStore) UpdateGoal(context.Context, domain.TenantScope, goals.GoalUpdateInput) error         { return nil }
+func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) error {
+	return nil
+}
+func (f *fakeStore) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error {
+	return nil
+}
+func (f *fakeStore) UpdateKeyResultDescription(context.Context, domain.TenantScope, int64, string) error {
+	return nil
+}
+func (f *fakeStore) GetGoal(context.Context, domain.TenantScope, int64) (domain.Goal, error) {
+	return domain.Goal{}, nil
+}
+func (f *fakeStore) UpdateGoal(context.Context, domain.TenantScope, goals.GoalUpdateInput) error {
+	return nil
+}
 func (f *fakeStore) CreateKeyResult(context.Context, domain.TenantScope, krs.KeyResultInput) (int64, error) {
 	return 0, nil
 }
-func (f *fakeStore) UpdateKeyResult(context.Context, domain.TenantScope, krs.KeyResultUpdateInput) error { return nil }
+func (f *fakeStore) UpdateKeyResult(context.Context, domain.TenantScope, krs.KeyResultUpdateInput) error {
+	return nil
+}
 func (f *fakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, goalID int64, direction int) error {
 	f.movedGoals[goalID] = direction
 	return nil
@@ -256,8 +271,12 @@ func (f *fakeStore) MoveKeyResult(_ context.Context, _ domain.TenantScope, krID 
 	f.movedKRs[krID] = direction
 	return nil
 }
-func (f *fakeStore) UpsertNumericalMeta(context.Context, domain.TenantScope, krs.NumericalMetaInput) error { return nil }
-func (f *fakeStore) UpsertBooleanMeta(context.Context, domain.TenantScope, int64, bool) error              { return nil }
+func (f *fakeStore) UpsertNumericalMeta(context.Context, domain.TenantScope, krs.NumericalMetaInput) error {
+	return nil
+}
+func (f *fakeStore) UpsertBooleanMeta(context.Context, domain.TenantScope, int64, bool) error {
+	return nil
+}
 func (f *fakeStore) ReplaceProjectStages(context.Context, domain.TenantScope, int64, []krs.ProjectStageInput) error {
 	return nil
 }
@@ -279,21 +298,32 @@ func (f *fakeStore) UpdatePeriod(_ context.Context, _ domain.TenantScope, _ int6
 func (f *fakeStore) DeletePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
 	return nil
 }
-func (f *fakeStore) MovePeriod(_ context.Context, _ domain.TenantScope, _ int64, _ int) error {
+func (f *fakeStore) ArchivePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
 	return nil
 }
-func (f *fakeStore) CreateGoal(context.Context, domain.TenantScope, goals.GoalInput) (int64, error)          { return 0, nil }
-func (f *fakeStore) DeleteGoal(context.Context, domain.TenantScope, int64) error                             { return nil }
-func (f *fakeStore) UpdateGoalFields(context.Context, domain.TenantScope, goals.GoalFieldsUpdateInput) error { return nil }
-func (f *fakeStore) UpdateGoalOwner(context.Context, domain.TenantScope, int64, int64, int) error            { return nil }
+func (f *fakeStore) UnarchivePeriod(_ context.Context, _ domain.TenantScope, _ int64) error {
+	return nil
+}
+func (f *fakeStore) CreateGoal(context.Context, domain.TenantScope, goals.GoalInput) (int64, error) {
+	return 0, nil
+}
+func (f *fakeStore) DeleteGoal(context.Context, domain.TenantScope, int64) error { return nil }
+func (f *fakeStore) UpdateGoalFields(context.Context, domain.TenantScope, goals.GoalFieldsUpdateInput) error {
+	return nil
+}
+func (f *fakeStore) UpdateGoalOwner(context.Context, domain.TenantScope, int64, int64, int) error {
+	return nil
+}
 func (f *fakeStore) ListGoalComments(context.Context, domain.TenantScope, int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }
 func (f *fakeStore) GetGoalShare(context.Context, domain.TenantScope, int64, int64) (shares.GoalShare, error) {
 	return shares.GoalShare{}, nil
 }
-func (f *fakeStore) DeleteGoalShare(context.Context, domain.TenantScope, int64, int64) error { return nil }
-func (f *fakeStore) DeleteKeyResult(context.Context, domain.TenantScope, int64) error        { return nil }
+func (f *fakeStore) DeleteGoalShare(context.Context, domain.TenantScope, int64, int64) error {
+	return nil
+}
+func (f *fakeStore) DeleteKeyResult(context.Context, domain.TenantScope, int64) error { return nil }
 func (f *fakeStore) FindGoalIDByKR(context.Context, domain.TenantScope, int64) (int64, error) {
 	return 0, nil
 }
@@ -341,6 +371,36 @@ func TestShareGoalRejectsForeignTeamTarget(t *testing.T) {
 	}
 }
 
+// ListPeriodViews must filter out archived periods for the public caller (includeArchived=false)
+// before building parent/depth views, so a public parent_id never points at a hidden period,
+// while the admin caller (includeArchived=true) sees everything.
+func TestListPeriodViews_ExcludesArchivedForPublic(t *testing.T) {
+	now := time.Now()
+	arch := now.AddDate(0, 0, -2)
+	store := newFakeStore()
+	store.periods = []domain.Period{
+		{ID: 1, StartDate: now.AddDate(0, 0, -30), EndDate: now.AddDate(0, 0, -1)},                    // closed
+		{ID: 2, StartDate: now.AddDate(0, 0, -30), EndDate: now.AddDate(0, 0, -1), ArchivedAt: &arch}, // archived
+	}
+	svc := newTestService(store, nil)
+
+	pub, err := svc.ListPeriodViews(context.Background(), domain.TenantScope{TenantID: 1}, false)
+	if err != nil {
+		t.Fatalf("list period views (public): %v", err)
+	}
+	if len(pub) != 1 || pub[0].ID != 1 {
+		t.Fatalf("public must exclude archived, got %+v", pub)
+	}
+
+	all, err := svc.ListPeriodViews(context.Background(), domain.TenantScope{TenantID: 1}, true)
+	if err != nil {
+		t.Fatalf("list period views (admin): %v", err)
+	}
+	if len(all) != 2 {
+		t.Fatalf("admin must include archived, got %d", len(all))
+	}
+}
+
 func TestUpdateKRProgressNumerical(t *testing.T) {
 	store := newFakeStore()
 	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindNumerical}
@@ -351,6 +411,39 @@ func TestUpdateKRProgressNumerical(t *testing.T) {
 	}
 	if store.numericalUpdates[1] != 42 {
 		t.Fatalf("expected numerical update")
+	}
+}
+
+// ArchivePeriod must only allow archiving a closed period, so an active/future period can't be
+// hidden from the tree via archive.
+func TestArchivePeriod_RejectsNonClosed(t *testing.T) {
+	now := time.Now()
+	store := newFakeStore()
+	store.periods = []domain.Period{{
+		ID:        1,
+		StartDate: now.AddDate(0, 0, -1),
+		EndDate:   now.AddDate(0, 0, 10), // active
+	}}
+	svc := newTestService(store, nil)
+
+	err := svc.ArchivePeriod(context.Background(), domain.TenantScope{TenantID: 1}, 1)
+	if !errors.Is(err, ErrPeriodNotClosed) {
+		t.Fatalf("expected ErrPeriodNotClosed, got %v", err)
+	}
+}
+
+func TestArchivePeriod_AllowsClosed(t *testing.T) {
+	now := time.Now()
+	store := newFakeStore()
+	store.periods = []domain.Period{{
+		ID:        1,
+		StartDate: now.AddDate(0, 0, -30),
+		EndDate:   now.AddDate(0, 0, -1), // closed
+	}}
+	svc := newTestService(store, nil)
+
+	if err := svc.ArchivePeriod(context.Background(), domain.TenantScope{TenantID: 1}, 1); err != nil {
+		t.Fatalf("expected nil, got %v", err)
 	}
 }
 

@@ -22,7 +22,7 @@ func prepareGoal(t *testing.T, pool *pgxpool.Pool, ctx context.Context, suffix s
 	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ($1) RETURNING id`, "ShareTeam_"+suffix).Scan(&teamID); err != nil {
 		t.Fatalf("insert team %s: %v", suffix, err)
 	}
-	if err := pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ($1,'2025-01-01','2025-03-31',1) RETURNING id`, "SP_"+suffix).Scan(&periodID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ($1,'2025-01-01','2025-03-31') RETURNING id`, "SP_"+suffix).Scan(&periodID); err != nil {
 		t.Fatalf("insert period %s: %v", suffix, err)
 	}
 	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))

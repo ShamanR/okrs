@@ -99,7 +99,19 @@ func MapPeriodInfo(period domain.Period) dto.PeriodInfo {
 		Name:      period.Name,
 		StartDate: period.StartDate,
 		EndDate:   period.EndDate,
-		SortOrder: period.SortOrder,
+		Status:    string(domain.PeriodStatusFor(period, time.Now())),
+	}
+}
+
+func MapPeriodView(v domain.PeriodView) dto.PeriodInfo {
+	return dto.PeriodInfo{
+		ID:        v.ID,
+		Name:      v.Name,
+		StartDate: v.StartDate,
+		EndDate:   v.EndDate,
+		ParentID:  v.ParentID,
+		Depth:     v.Depth,
+		Status:    string(v.Status),
 	}
 }
 

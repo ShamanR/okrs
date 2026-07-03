@@ -99,8 +99,8 @@ func TestStoreCRUD(t *testing.T) {
 	}
 	var periodID int64
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2024 Q3', '2024-07-01', '2024-09-30', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('2024 Q3', '2024-07-01', '2024-09-30')
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
@@ -186,8 +186,8 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		t.Fatalf("insert shared team: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2025 Q2', '2025-04-01', '2025-06-30', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('2025 Q2', '2025-04-01', '2025-06-30')
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
@@ -289,8 +289,8 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		t.Fatalf("insert child of deleted: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2024 Q4', '2024-10-01', '2024-12-31', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('2024 Q4', '2024-10-01', '2024-12-31')
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
@@ -401,8 +401,8 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("insert shared team: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order)
-		VALUES ('2026 Q2 last update', '2026-04-01', '2026-06-30', 1)
+		INSERT INTO periods (name, start_date, end_date)
+		VALUES ('2026 Q2 last update', '2026-04-01', '2026-06-30')
 		RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
