@@ -32,3 +32,24 @@ func TestPeriodStatusFor(t *testing.T) {
 		})
 	}
 }
+
+// TestPeriodStatusFor_LocalCalendarDayBoundary проверяет, что статус считается по
+// календарному дню в зоне now, а не по UTC-округлению абсолютного момента: в +07 в
+// 00:30 период, стартующий сегодня, должен быть active, а не future.
+func TestPeriodStatusFor_LocalCalendarDayBoundary(t *testing.T) {
+	loc := time.FixedZone("UTC+7", 7*60*60)
+	// 03 июля 00:30 по локальной зоне (= 02 июля 17:30 UTC).
+	now := time.Date(2026, time.July, 3, 0, 30, 0, 0, loc)
+
+	start := time.Date(2026, time.July, 3, 0, 0, 0, 0, time.UTC) // период стартует сегодня
+	end := time.Date(2026, time.September, 30, 0, 0, 0, 0, time.UTC)
+	if got := PeriodStatusFor(Period{StartDate: start, EndDate: end}, now); got != PeriodStatusActive {
+		t.Fatalf("period starting today must be active at 00:30 local, got %q", got)
+	}
+
+	// Период, закончившийся вчера (02 июля), в те же локальные сутки → closed.
+	endedYesterday := time.Date(2026, time.July, 2, 0, 0, 0, 0, time.UTC)
+	if got := PeriodStatusFor(Period{StartDate: time.Date(2026, time.April, 1, 0, 0, 0, 0, time.UTC), EndDate: endedYesterday}, now); got != PeriodStatusClosed {
+		t.Fatalf("period ended yesterday must be closed, got %q", got)
+	}
+}

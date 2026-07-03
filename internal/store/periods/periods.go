@@ -64,7 +64,7 @@ func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, scope domain.T
 	row := r.db.QueryRow(ctx, `
 		SELECT id, name, start_date, end_date, archived_at, created_at, updated_at
 		FROM periods
-		WHERE tenant_id=$2 AND $1::date BETWEEN start_date AND end_date
+		WHERE tenant_id=$2 AND archived_at IS NULL AND $1::date BETWEEN start_date AND end_date
 		ORDER BY (end_date - start_date) ASC, end_date DESC
 		LIMIT 1`, date, scope.TenantID)
 	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.ArchivedAt, &period.CreatedAt, &period.UpdatedAt); err != nil {

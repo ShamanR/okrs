@@ -158,3 +158,48 @@ func TestFindPeriodForDate_ReturnsNarrowest(t *testing.T) {
 		t.Fatalf("expected year period %d, got %d", yearID, p2.ID)
 	}
 }
+
+// TestFindPeriodForDate_SkipsArchived проверяет, что архивные периоды не выбираются
+// как текущий/дефолтный период (консистентно с /api/v1/periods, который их скрывает).
+func TestFindPeriodForDate_SkipsArchived(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := periods.NewPeriodRepository(pool)
+
+	date := time.Date(2025, 8, 15, 0, 0, 0, 0, time.UTC)
+
+	archivedID, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
+		Name:      "2025 Q3 archived",
+		StartDate: time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2025, 9, 30, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreatePeriod archived: %v", err)
+	}
+	if err := r.ArchivePeriod(ctx, sc1, archivedID); err != nil {
+		t.Fatalf("ArchivePeriod: %v", err)
+	}
+
+	// Only an archived period covers the date → no current period resolves.
+	if _, err := r.FindPeriodForDate(ctx, sc1, date); err == nil {
+		t.Fatal("expected no row (archived period must be skipped), got a period")
+	}
+
+	// Add a non-archived period covering the same date → it wins over the archived one.
+	liveID, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
+		Name:      "2025",
+		StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC),
+		EndDate:   time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreatePeriod live: %v", err)
+	}
+	p, err := r.FindPeriodForDate(ctx, sc1, date)
+	if err != nil {
+		t.Fatalf("FindPeriodForDate with live period: %v", err)
+	}
+	if p.ID != liveID {
+		t.Fatalf("expected live period %d, got %d (archived must never be returned)", liveID, p.ID)
+	}
+}
