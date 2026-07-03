@@ -185,32 +185,6 @@ func (h *Handler) HandleDeletePeriod(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/periods", http.StatusSeeOther)
 }
 
-func (h *Handler) HandleMovePeriodUp(w http.ResponseWriter, r *http.Request) {
-	h.handleMove(w, r, -1)
-}
-
-func (h *Handler) HandleMovePeriodDown(w http.ResponseWriter, r *http.Request) {
-	h.handleMove(w, r, 1)
-}
-
-func (h *Handler) handleMove(w http.ResponseWriter, r *http.Request, direction int) {
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
-	}
-	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
-	if err != nil {
-		common.RenderError(w, h.deps.Logger, fmt.Errorf("invalid period id"))
-		return
-	}
-	if err := h.deps.Service.MovePeriod(r.Context(), scope, periodID, direction); err != nil {
-		common.RenderError(w, h.deps.Logger, err)
-		return
-	}
-	http.Redirect(w, r, "/periods", http.StatusSeeOther)
-}
-
 func (h *Handler) renderPeriodsWithError(w http.ResponseWriter, r *http.Request, scope domain.TenantScope, message string) {
 	periods, err := h.deps.Service.ListPeriods(r.Context(), scope)
 	if err != nil {

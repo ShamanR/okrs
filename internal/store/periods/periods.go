@@ -27,10 +27,10 @@ type PeriodInput struct {
 
 func (r *PeriodRepository) ListPeriods(ctx context.Context, scope domain.TenantScope) ([]domain.Period, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
+		SELECT id, name, start_date, end_date, archived_at, created_at, updated_at
 		FROM periods
 		WHERE tenant_id = $1
-		ORDER BY sort_order, start_date, id`, scope.TenantID)
+		ORDER BY start_date, id`, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (r *PeriodRepository) ListPeriods(ctx context.Context, scope domain.TenantS
 	periods := make([]domain.Period, 0)
 	for rows.Next() {
 		var period domain.Period
-		if err := rows.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.SortOrder, &period.CreatedAt, &period.UpdatedAt); err != nil {
+		if err := rows.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.ArchivedAt, &period.CreatedAt, &period.UpdatedAt); err != nil {
 			return nil, err
 		}
 		periods = append(periods, period)
@@ -50,10 +50,10 @@ func (r *PeriodRepository) ListPeriods(ctx context.Context, scope domain.TenantS
 func (r *PeriodRepository) GetPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (domain.Period, error) {
 	var period domain.Period
 	row := r.db.QueryRow(ctx, `
-		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
+		SELECT id, name, start_date, end_date, archived_at, created_at, updated_at
 		FROM periods
 		WHERE id=$1 AND tenant_id=$2`, periodID, scope.TenantID)
-	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.SortOrder, &period.CreatedAt, &period.UpdatedAt); err != nil {
+	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.ArchivedAt, &period.CreatedAt, &period.UpdatedAt); err != nil {
 		return domain.Period{}, err
 	}
 	return period, nil
@@ -62,12 +62,12 @@ func (r *PeriodRepository) GetPeriod(ctx context.Context, scope domain.TenantSco
 func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error) {
 	var period domain.Period
 	row := r.db.QueryRow(ctx, `
-		SELECT id, name, start_date, end_date, sort_order, created_at, updated_at
+		SELECT id, name, start_date, end_date, archived_at, created_at, updated_at
 		FROM periods
-		WHERE tenant_id=$2 AND $1::date BETWEEN start_date AND end_date
-		ORDER BY sort_order DESC, end_date DESC
+		WHERE tenant_id=$2 AND archived_at IS NULL AND $1::date BETWEEN start_date AND end_date
+		ORDER BY (end_date - start_date) ASC, end_date DESC
 		LIMIT 1`, date, scope.TenantID)
-	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.SortOrder, &period.CreatedAt, &period.UpdatedAt); err != nil {
+	if err := row.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.ArchivedAt, &period.CreatedAt, &period.UpdatedAt); err != nil {
 		return domain.Period{}, err
 	}
 	return period, nil
@@ -76,8 +76,8 @@ func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, scope domain.T
 func (r *PeriodRepository) CreatePeriod(ctx context.Context, scope domain.TenantScope, input PeriodInput) (int64, error) {
 	var id int64
 	row := r.db.QueryRow(ctx, `
-		INSERT INTO periods (name, start_date, end_date, sort_order, tenant_id)
-		VALUES ($1, $2, $3, COALESCE((SELECT MAX(sort_order) + 1 FROM periods WHERE tenant_id=$4), 1), $4)
+		INSERT INTO periods (name, start_date, end_date, tenant_id)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id`, input.Name, input.StartDate, input.EndDate, scope.TenantID)
 	if err := row.Scan(&id); err != nil {
 		return 0, err
@@ -85,47 +85,18 @@ func (r *PeriodRepository) CreatePeriod(ctx context.Context, scope domain.Tenant
 	return id, nil
 }
 
-func (r *PeriodRepository) MovePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, direction int) error {
-	tx, err := r.db.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
+func (r *PeriodRepository) ArchivePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE periods SET archived_at=NOW(), updated_at=NOW()
+		WHERE id=$1 AND tenant_id=$2`, periodID, scope.TenantID)
+	return err
+}
 
-	var currentOrder int
-	if err := tx.QueryRow(ctx, `SELECT sort_order FROM periods WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, periodID, scope.TenantID).Scan(&currentOrder); err != nil {
-		return err
-	}
-
-	var swapID int64
-	var swapOrder int
-	var comparator, ordering string
-	if direction < 0 {
-		comparator = "<"
-		ordering = "DESC"
-	} else {
-		comparator = ">"
-		ordering = "ASC"
-	}
-	query := `
-		SELECT id, sort_order
-		FROM periods
-		WHERE sort_order ` + comparator + ` $1 AND tenant_id = $2
-		ORDER BY sort_order ` + ordering + `
-		LIMIT 1
-		FOR UPDATE`
-	if err := tx.QueryRow(ctx, query, currentOrder, scope.TenantID).Scan(&swapID, &swapOrder); err != nil {
-		return tx.Commit(ctx)
-	}
-
-	if _, err := tx.Exec(ctx, `UPDATE periods SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, currentOrder, swapID, scope.TenantID); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(ctx, `UPDATE periods SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, swapOrder, periodID, scope.TenantID); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+func (r *PeriodRepository) UnarchivePeriod(ctx context.Context, scope domain.TenantScope, periodID int64) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE periods SET archived_at=NULL, updated_at=NOW()
+		WHERE id=$1 AND tenant_id=$2`, periodID, scope.TenantID)
+	return err
 }
 
 func (r *PeriodRepository) UpdatePeriod(ctx context.Context, scope domain.TenantScope, periodID int64, input PeriodInput) error {

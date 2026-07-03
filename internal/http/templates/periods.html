@@ -20,7 +20,6 @@
                 <th>Название</th>
                 <th>Начало</th>
                 <th>Окончание</th>
-                <th>Порядок</th>
                 <th></th>
               </tr>
             </thead>
@@ -30,21 +29,12 @@
                   <td>{{.Name}}</td>
                   <td>{{.StartDate.Format "2006-01-02"}}</td>
                   <td>{{.EndDate.Format "2006-01-02"}}</td>
-                  <td>{{.SortOrder}}</td>
                   <td class="text-end">
                     <div class="d-flex justify-content-end gap-2 flex-wrap">
                       <a class="btn btn-outline-primary btn-sm" href="/admin/periods/{{.ID}}/edit">Редактировать</a>
                       <form method="post" action="/admin/periods/{{.ID}}/delete" onsubmit="return confirm('Удалить период?');">
                         <button class="btn btn-outline-danger btn-sm" type="submit">Удалить</button>
                       </form>
-                      <div class="btn-group">
-                        <form method="post" action="/admin/periods/{{.ID}}/move-up">
-                          <button class="btn btn-outline-secondary btn-sm" type="submit">↑</button>
-                        </form>
-                        <form method="post" action="/admin/periods/{{.ID}}/move-down">
-                          <button class="btn btn-outline-secondary btn-sm" type="submit">↓</button>
-                        </form>
-                      </div>
                     </div>
                   </td>
                 </tr>

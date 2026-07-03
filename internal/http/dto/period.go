@@ -7,7 +7,9 @@ type PeriodInfo struct {
 	Name      string    `json:"name"`
 	StartDate time.Time `json:"start_date"`
 	EndDate   time.Time `json:"end_date"`
-	SortOrder int       `json:"sort_order"`
+	ParentID  *int64    `json:"parent_id"`
+	Depth     int       `json:"depth"`
+	Status    string    `json:"status"`
 }
 
 type PeriodsResponse struct {

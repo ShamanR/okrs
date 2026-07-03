@@ -352,26 +352,40 @@ function Shell({section, setSection, currentUser, children}) {
 }
 
 // ── PERIODS SECTION ──────────────────────────────────────────────────────────
+const PERIOD_STATUS = {
+  future:   {label:'Планируется', dot:'#3b82f6', bg:'#dbeafe', fg:'#1e40af'},
+  active:   {label:'В работе',     dot:'#22c55e', bg:'#dcfce7', fg:'#166534'},
+  closed:   {label:'Закрыто',      dot:'#9ca3af', bg:'#f3f4f6', fg:'#4b5563'},
+  archived: {label:'Архив',        dot:'#9ca3af', bg:'#f3f4f6', fg:'#6b7280'},
+};
+function PeriodBadge({status}) {
+  const s = PERIOD_STATUS[status] || PERIOD_STATUS.closed;
+  return <span style={{display:'inline-flex',alignItems:'center',gap:6,padding:'2px 8px',borderRadius:999,background:s.bg,color:s.fg,fontSize:11,fontWeight:600}}>
+    <span style={{width:7,height:7,borderRadius:999,background:s.dot}}/>{s.label}
+  </span>;
+}
 function PeriodsSection({periods, reload}) {
   const [q, setQ] = useState('');
   const [selId, setSelId] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [createParent, setCreateParent] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const sorted = [...periods].sort((a,b)=>a.sort_order-b.sort_order);
-  const filtered = sorted.filter(p=>!q||p.name.toLowerCase().includes(q.toLowerCase()));
+  const filtered = periods.filter(p=>!q||p.name.toLowerCase().includes(q.toLowerCase()));
   const selected = creating ? null : periods.find(p=>p.id===selId);
 
-  async function move(id, dir) {
-    const ep = dir<0 ? 'move-up' : 'move-down';
-    await apiPost(`/api/v1/admin/periods/${id}/${ep}`, {});
-    reload();
-  }
   async function remove(id, name) {
     if (!confirm(`Удалить период «${name}»? Цели внутри останутся, но не будут отображаться.`)) return;
     const res = await apiDel(`/api/v1/admin/periods/${id}`);
     if (res && res.ok) { if(selId===id)setSelId(null); reload(); }
     else alert('Ошибка удаления периода');
+  }
+  async function toggleArchive(p) {
+    const ep = p.status==='archived' ? 'unarchive' : 'archive';
+    const res = await apiPost(`/api/v1/admin/periods/${p.id}/${ep}`, {});
+    if (res && res.ok) reload();
+    else if (res && res.status===409 && ep==='archive') alert('Архивировать можно только закрытый период.');
+    else alert('Ошибка изменения статуса');
   }
   async function save(f) {
     setSaving(true);
@@ -381,48 +395,49 @@ function PeriodsSection({periods, reload}) {
       if (f.id) res = await apiPatch(`/api/v1/admin/periods/${f.id}`, body);
       else        res = await apiPost('/api/v1/admin/periods', body);
       if (!res || !res.ok) { alert('Ошибка сохранения'); return; }
-      if (!f.id) {
-        const data = await res.json();
-        setSelId(data.id);
-      } else setSelId(f.id);
-      setCreating(false);
+      if (!f.id) { const data = await res.json(); setSelId(data.id); }
+      else setSelId(f.id);
+      setCreating(false); setCreateParent(null);
       reload();
     } finally { setSaving(false); }
   }
 
+  const createInitial = createParent
+    ? {name:'', start_date: fmtDate(createParent.start_date), end_date: fmtDate(createParent.end_date)}
+    : {name:'', start_date:'', end_date:''};
+
   return <MasterDetail
     toolbar={<div style={{display:'flex',gap:8,alignItems:'center'}}>
       <ListSearch value={q} onChange={setQ} placeholder="Поиск периода…"/>
-      <Btn variant="primary" size="sm" onClick={()=>{setCreating(true);setSelId(null);}}>+ Новый</Btn>
+      <Btn variant="primary" size="sm" onClick={()=>{setCreating(true);setCreateParent(null);setSelId(null);}}>+ Период</Btn>
     </div>}
-    listHeader={`Всего · ${sorted.length}`}
-    list={filtered.map((p,i)=>{
+    listHeader={`Всего · ${periods.length}`}
+    list={filtered.map((p)=>{
       const sel=p.id===selId&&!creating;
       return <ListRow key={p.id} selected={sel} onClick={()=>{setSelId(p.id);setCreating(false);}}>
-        <div style={{width:32,height:32,borderRadius:8,background:sel?'#ede9fe':'#f3f4f6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:sel?T.accent:T.mutedFg,flexShrink:0}}>{p.sort_order}</div>
+        <div style={{width: 12 + p.depth*18}}/>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontSize:13.5,fontWeight:600,color:T.headingFg}}>{p.name}</div>
           <div style={{fontSize:11,color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace',marginTop:2}}>{fmtDate(p.start_date)} → {fmtDate(p.end_date)}</div>
         </div>
-        <div style={{display:'flex',flexDirection:'column',gap:2}}>
-          <button onClick={e=>{e.stopPropagation();move(p.id,-1);}} disabled={i===0} title="Выше"
-            style={{width:22,height:18,borderRadius:4,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:i===0?'not-allowed':'pointer',opacity:i===0?.35:1,fontSize:9,padding:0,lineHeight:1}}>▲</button>
-          <button onClick={e=>{e.stopPropagation();move(p.id,1);}} disabled={i===filtered.length-1} title="Ниже"
-            style={{width:22,height:18,borderRadius:4,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:i===filtered.length-1?'not-allowed':'pointer',opacity:i===filtered.length-1?.35:1,fontSize:9,padding:0,lineHeight:1}}>▼</button>
-        </div>
+        <PeriodBadge status={p.status}/>
+        <button onClick={e=>{e.stopPropagation();setCreating(true);setCreateParent(p);setSelId(null);}} title="Вложенный период"
+          style={{marginLeft:8,fontSize:11,color:T.accent,background:'none',border:'none',cursor:'pointer'}}>+ вложенный</button>
       </ListRow>;
     })}
     detail={
       creating
-        ? <PeriodEditor value={{name:'',start_date:'',end_date:''}} onSave={save} onCancel={()=>setCreating(false)} saving={saving}/>
+        ? <PeriodEditor key={'new-' + (createParent ? createParent.id : 'root')} value={createInitial} onSave={save} onCancel={()=>{setCreating(false);setCreateParent(null);}} saving={saving}/>
         : selected
-          ? <PeriodEditor value={selected} onSave={save} onDelete={()=>remove(selected.id,selected.name)} saving={saving}/>
-          : <EmptyDetail icon="📅" title="Выберите период" hint="Кликните по периоду в списке слева или создайте новый."/>
+          ? <PeriodEditor key={'edit-' + selected.id} value={selected} onSave={save}
+              onDelete={()=>remove(selected.id,selected.name)}
+              onArchive={()=>toggleArchive(selected)} saving={saving}/>
+          : <EmptyDetail icon="📅" title="Выберите период" hint="Кликните по периоду слева или создайте новый."/>
     }
   />;
 }
 
-function PeriodEditor({value, onSave, onCancel, onDelete, saving}) {
+function PeriodEditor({value, onSave, onCancel, onDelete, onArchive, saving}) {
   const [f, setF] = useState({name:'',start_date:'',end_date:'', ...value, start_date: fmtDate(value.start_date||''), end_date: fmtDate(value.end_date||'')});
   useEffect(()=>{setF({...value, start_date:fmtDate(value.start_date||''), end_date:fmtDate(value.end_date||'')});},[value.id]);
   const canSave = f.name.trim() && f.start_date && f.end_date;
@@ -433,6 +448,8 @@ function PeriodEditor({value, onSave, onCancel, onDelete, saving}) {
       title={isNew?'Новый период':value.name}
       subtitle={isNew?'Заполните название и даты.':`${fmtDate(value.start_date)} → ${fmtDate(value.end_date)}`}
       actions={<>
+        {!isNew && onArchive && (value.status==='closed' || value.status==='archived') &&
+          <Btn onClick={onArchive} disabled={saving}>{value.status==='archived'?'Разархивировать':'Архивировать'}</Btn>}
         {!isNew&&<Btn danger onClick={onDelete} disabled={saving}>Удалить</Btn>}
         {isNew&&<Btn onClick={onCancel} disabled={saving}>Отмена</Btn>}
         <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving?'Сохранение…':isNew?'Создать':'Сохранить'}</Btn>
@@ -1450,7 +1467,7 @@ function App() {
     try {
       const [meR, periodsR, teamsR, usersR] = await Promise.all([
         apiGet('/api/v1/me'),
-        apiGet('/api/v1/periods'),
+        apiGet('/api/v1/admin/periods'),
         apiGet('/api/v1/admin/teams'),
         apiGet('/api/v1/admin/users'),
       ]);

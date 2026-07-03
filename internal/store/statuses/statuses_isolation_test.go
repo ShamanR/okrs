@@ -19,7 +19,7 @@ func TestTeamPeriodStatusScopedByTenant(t *testing.T) {
 	}
 	var teamID, periodID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('S') RETURNING id`).Scan(&teamID)
-	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('P','2025-01-01','2025-03-31',1) RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ('P','2025-01-01','2025-03-31') RETURNING id`).Scan(&periodID)
 
 	r := statuses.NewTeamStatusRepository(pool)
 	if err := r.SetTeamPeriodStatus(ctx, sc1, teamID, periodID, domain.TeamPeriodStatusInProgress); err != nil {

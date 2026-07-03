@@ -72,7 +72,7 @@ func TestMigration023ConvertsLegacyKindsToNumerical(t *testing.T) {
 
 	var teamID, periodID, goalID int64
 	mustScan(t, pool, `INSERT INTO teams (name) VALUES ('T') RETURNING id`, &teamID)
-	mustScan(t, pool, `INSERT INTO periods (name, start_date, end_date, sort_order) VALUES ('Q1','2024-01-01','2024-03-31',1) RETURNING id`, &periodID)
+	mustScan(t, pool, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`, &periodID)
 	mustScanArgs(t, pool, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, &goalID, teamID, periodID)
 
 	var linearKR, percentKR, boolKR, noMetaKR int64

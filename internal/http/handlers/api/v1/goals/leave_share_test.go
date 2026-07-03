@@ -35,7 +35,7 @@ func TestLeaveGoalShareRemovesGoalFromTeamOnly(t *testing.T) {
 	teamB := mustTeam("TeamB")
 	teamC := mustTeam("TeamC")
 	var periodID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('Q1','2026-01-01','2026-03-31',1) RETURNING id`).Scan(&periodID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2026-01-01', '2026-03-31') RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatal(err)
 	}
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
@@ -126,7 +126,7 @@ func TestLeaveGoalShareUnattachedTeamReturns404(t *testing.T) {
 	teamB := mustTeam("TeamB")
 	unattached := mustTeam("Unattached")
 	var periodID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('Q1','2026-01-01','2026-03-31',1) RETURNING id`).Scan(&periodID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2026-01-01', '2026-03-31') RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatal(err)
 	}
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
@@ -194,7 +194,7 @@ func TestDetachOwnerFromSharedGoalKeepsItForOthers(t *testing.T) {
 	teamB := mustTeam("TeamB")
 	teamC := mustTeam("TeamC")
 	var periodID int64
-	if err := pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('Q1','2026-01-01','2026-03-31',1) RETURNING id`).Scan(&periodID); err != nil {
+	if err := pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2026-01-01', '2026-03-31') RETURNING id`).Scan(&periodID); err != nil {
 		t.Fatal(err)
 	}
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{

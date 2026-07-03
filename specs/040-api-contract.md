@@ -206,6 +206,18 @@ Validation:
 
 Значения хранятся в `tenant_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`, per-tenant) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их авторизованному пользователю для его активного тенанта. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
 
+### Периоды
+
+- `GET /api/v1/admin/periods` — список **всех** периодов тенанта, включая архивные (в отличие от публичного `GET /api/v1/periods`). Та же форма ответа (`PeriodInfo`: `id`, `name`, `start_date`, `end_date`, `parent_id`, `depth`, `status`) и тот же DFS-порядок, что и у публичного endpoint'а — архивные периоды располагаются в своей зоне после `closed` (см. `020-domain-model.md`).
+- `POST /api/v1/admin/periods` — создать период; body: `{"name": "...", "start_date": "2026-01-01", "end_date": "2026-03-31"}`. Полей `parent_id`/`sort_order` нет — вложенность выводится сервером из пересечения дат с уже существующими периодами. `400 VALIDATION_ERROR` при `end_date < start_date` или неуникальном имени в тенанте.
+- `PATCH /api/v1/admin/periods/{periodID}` — обновить период; то же тело `{"name", "start_date", "end_date"}`; изменение дат может изменить вычисляемые `parent_id`/`depth` у этого и у других периодов на следующем чтении.
+- `DELETE /api/v1/admin/periods/{periodID}` — удалить период.
+- `POST /api/v1/admin/periods/{periodID}/archive` — архивировать период (ставит `archived_at = now()`). `200` при успехе; `409 CONFLICT`, если текущий (date-based) статус периода не `closed` — архивировать можно только уже закрытый период, чтобы не прятать из дерева период, который ещё используется.
+- `POST /api/v1/admin/periods/{periodID}/unarchive` — разархивировать период (`archived_at = null`), без ограничений по текущему статусу.
+- `move-up`/`move-down` для периодов **не существуют** — ручного порядка нет (см. `020-domain-model.md`).
+
+Все mutating endpoints выше доступны только tenant-admin (или всем при `AUTH_MODE=disabled`) и требуют CSRF token.
+
 Все admin API endpoints требуют CSRF token при вызове из браузера.
 
 ## System API endpoints (system-admin плоскость)
@@ -285,6 +297,29 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
 - `GET /api/v1/goals/{goalID}`
+
+### `GET /api/v1/periods`
+
+Назначение: список периодов текущего тенанта для селекторов на странице целей, в админке и в Health Check-in.
+
+Доступен: любому авторизованному пользователю (при `AUTH_MODE=disabled` — всем). Read-only, без параметров.
+
+Success response (`200`, массив `PeriodInfo`):
+
+```json
+[
+  { "id": 12, "name": "2026", "start_date": "2026-01-01", "end_date": "2026-12-31", "parent_id": null, "depth": 0, "status": "active" },
+  { "id": 13, "name": "Q1 2026", "start_date": "2026-01-01", "end_date": "2026-03-31", "parent_id": 12, "depth": 1, "status": "closed" }
+]
+```
+
+- `parent_id` / `depth` / `status` — вычисляемые поля, правила см. в `020-domain-model.md` («Производные вычисления»); `sort_order` в ответе нет.
+- **Архивные периоды (`status="archived"`) не возвращаются** этим endpoint'ом; чтобы увидеть их, нужен `GET /api/v1/admin/periods`.
+- Элементы уже отсортированы сервером по DFS-правилу вложенности/статуса (см. `020-domain-model.md`) — клиент не должен пересортировывать список, а может использовать `depth` только для визуального отступа.
+
+Idempotency: read-only, без side effects.
+
+---
 
 ### `GET /api/v1/health-checkin?period_id=<int64>`
 
@@ -561,7 +596,7 @@ Success response (`200`):
 - `work_balance`:
   - `discovery`, `delivery` — счётчики целей по типу работы.
 - `children_summary`:
-  - `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `sort_order`);
+  - `period` — информация о периоде (`id`, `name`, `start_date`, `end_date`, `status`); объект использует ту же форму `PeriodInfo`, что и `GET /api/v1/periods` (включая поля `parent_id`/`depth`), но для этого endpoint'а они не заполняются (`parent_id: null`, `depth: 0`) — реальная вложенность периода берётся из `GET /api/v1/periods`; `status` вычисляется так же, как описано в `020-domain-model.md`;
   - `items[]`:
     - `team` (`id`, `name`, `type`, `type_label`, `description`, `parent_id`);
     - `status`, `status_label`;

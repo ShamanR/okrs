@@ -453,11 +453,12 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Post("/api/v1/admin/settings/feedback", adminAPI.HandleUpdateFeedbackSettings)
 
 		// Admin periods API.
+		r.Get("/api/v1/admin/periods", serviceH.HandleListPeriods)
 		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)
 		r.Patch("/api/v1/admin/periods/{periodID}", serviceH.HandleUpdatePeriod)
 		r.Delete("/api/v1/admin/periods/{periodID}", serviceH.HandleDeletePeriod)
-		r.Post("/api/v1/admin/periods/{periodID}/move-up", serviceH.HandleMovePeriodUp)
-		r.Post("/api/v1/admin/periods/{periodID}/move-down", serviceH.HandleMovePeriodDown)
+		r.Post("/api/v1/admin/periods/{periodID}/archive", serviceH.HandleArchivePeriod)
+		r.Post("/api/v1/admin/periods/{periodID}/unarchive", serviceH.HandleUnarchivePeriod)
 
 		// Admin teams API.
 		r.Get("/api/v1/admin/teams", serviceH.HandleListTeams)

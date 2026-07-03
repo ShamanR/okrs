@@ -31,6 +31,7 @@ ALTER TABLE goals                  ALTER COLUMN tenant_id SET DEFAULT 1;
 ALTER TABLE goal_shares            ALTER COLUMN tenant_id SET DEFAULT 1;
 ALTER TABLE team_period_statuses   ALTER COLUMN tenant_id SET DEFAULT 1;
 ALTER TABLE key_results            ALTER COLUMN tenant_id SET DEFAULT 1;
+ALTER TABLE key_result_notes       ALTER COLUMN tenant_id SET DEFAULT 1;
 ALTER TABLE goal_comments          ALTER COLUMN tenant_id SET DEFAULT 1;
 
 -- ----------------------------------------------------------------
@@ -82,35 +83,40 @@ INSERT INTO teams (id, name, team_type, parent_id, lead, description, created_at
 -- ----------------------------------------------------------------
 -- Periods
 -- ----------------------------------------------------------------
-INSERT INTO periods (id, name, start_date, end_date, sort_order, created_at, updated_at) VALUES
-  (2, 'Y26',    '2026-01-01', '2026-12-31', 1, NOW(), NOW()),
-  (1, 'Y26-Q1', '2026-01-01', '2026-05-31', 2, NOW(), NOW()),
-  (3, 'Y26-Q2', '2026-04-01', '2026-06-30', 3, NOW(), NOW()),
-  (4, 'Y26-Q3', '2026-07-01', '2026-09-30', 4, NOW(), NOW());
+INSERT INTO periods (id, name, start_date, end_date, archived_at, created_at, updated_at) VALUES
+  (2, 'Y2026',       '2026-01-01', '2026-12-31', NULL, NOW(), NOW()),
+  (1, 'Q1 · 2026',   '2026-01-01', '2026-03-31', NULL, NOW(), NOW()),
+  (3, 'Q2 · 2026',   '2026-04-01', '2026-06-30', NULL, NOW(), NOW()),
+  (4, 'Q3 · 2026',   '2026-07-01', '2026-09-30', NULL, NOW(), NOW()),
+  (5, 'Q4 · 2026',   '2026-10-01', '2026-12-31', NULL, NOW(), NOW()),
+  (6, 'Y2025',       '2025-01-01', '2025-12-31', NULL, NOW(), NOW()),
+  (7, 'Q3 · 2025',   '2025-07-01', '2025-09-30', NULL, NOW(), NOW()),
+  (8, 'Q4 · 2025',   '2025-10-01', '2025-12-31', NULL, NOW(), NOW()),
+  (9, 'Q2 · 2025',   '2025-04-01', '2025-06-30', NOW(), NOW(), NOW());
 
 -- ----------------------------------------------------------------
 -- Goals
 -- ----------------------------------------------------------------
 INSERT INTO goals (id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, sort_order, created_at, updated_at) VALUES
-  -- Платформа (team 2), Y26-Q1
-  (32, 2, 1, 'Снизить P95 latency до 200ms',        '', 'P1', 35, 'Delivery',  'EFFICIENCY',   '...', 1, NOW(), NOW()),
-  (33, 2, 1, 'Покрыть 80% кода тестами',            '', 'P1', 30, 'Delivery',  'QUALITY',      '...', 2, NOW(), NOW()),
-  (34, 2, 1, 'Запустить портал документации',       '', 'P2', 20, 'Discovery', 'QUALITY',      '...', 3, NOW(), NOW()),
-  -- DWH (team 3), Y26-Q1
+  -- Платформа (team 2) → Q3 · 2026 (текущий квартал)
+  (32, 2, 4, 'Снизить P95 latency до 200ms',        '', 'P1', 35, 'Delivery',  'EFFICIENCY',   '...', 1, NOW(), NOW()),
+  (33, 2, 4, 'Покрыть 80% кода тестами',            '', 'P1', 30, 'Delivery',  'QUALITY',      '...', 2, NOW(), NOW()),
+  (34, 2, 4, 'Запустить портал документации',       '', 'P2', 20, 'Discovery', 'QUALITY',      '...', 3, NOW(), NOW()),
+  -- DWH (team 3) → Q1 · 2026 (закрытый квартал, история)
   (35, 3, 1, 'Обеспечить 99.9% uptime DWH пайплайнов', '', 'P0', 40, 'Discovery', 'PROFITABILITY', 'Гоша', 1, NOW(), NOW()),
   (36, 3, 1, 'Перевести DWH на ClickHouse 24',      '', 'P0', 25, 'Discovery', 'PROFITABILITY', 'Гоша', 2, NOW(), NOW()),
-  -- SRE (team 4), Y26-Q1
-  (9,  4, 1, 'Система мониторинга как основной источник информации о инцидентах', '', 'P0', 25, 'Discovery', 'PROFITABILITY', '...', 1, NOW(), NOW()),
-  (10, 4, 1, 'Аналитика и исследование инцидентов на регулярной основе',         '', 'P1', 35, 'Delivery',  'STABILITY',     '...', 2, NOW(), NOW()),
-  (8,  4, 1, 'Запуск и обеспечение функционирования режима оперативного дежурства 24/7', '', 'P0', 20, 'Discovery', 'PROFITABILITY', '...', 3, NOW(), NOW()),
-  (37, 4, 1, 'Внедрить IaC для всей инфраструктуры', '', 'P1', 50, 'Delivery',  'EFFICIENCY',   '...', 4, NOW(), NOW()),
-  (38, 4, 1, 'Сократить MTTR до 30 минут',          '', 'P1', 35, 'Delivery',  'RELIABILITY',  '...', 5, NOW(), NOW()),
-  -- PaaS\Infra (team 21), Y26-Q1
-  (26, 21, 1, 'цель 1', '', 'P0', 25, 'Discovery', 'PROFITABILITY', '', 1, NOW(), NOW()),
-  (27, 21, 1, 'цель 2', '', 'P0', 75, 'Discovery', 'PROFITABILITY', '', 2, NOW(), NOW()),
-  -- Media (team 23), Y26-Q1
-  (29, 23, 1, 'цель2',                                                            '', 'P0', 100, 'Discovery', 'PROFITABILITY', 'Гоша', 1, NOW(), NOW()),
-  (30, 23, 1, 'Подключить funsun к сетке для опробирования полного цикла сетки', '', 'P0', 20,  'Discovery', 'PROFITABILITY', 'Гоша', 2, NOW(), NOW());
+  -- SRE (team 4) → Q3 · 2026 (текущий квартал)
+  (9,  4, 4, 'Система мониторинга как основной источник информации о инцидентах', '', 'P0', 25, 'Discovery', 'PROFITABILITY', '...', 1, NOW(), NOW()),
+  (10, 4, 4, 'Аналитика и исследование инцидентов на регулярной основе',         '', 'P1', 35, 'Delivery',  'STABILITY',     '...', 2, NOW(), NOW()),
+  (8,  4, 4, 'Запуск и обеспечение функционирования режима оперативного дежурства 24/7', '', 'P0', 20, 'Discovery', 'PROFITABILITY', '...', 3, NOW(), NOW()),
+  (37, 4, 4, 'Внедрить IaC для всей инфраструктуры', '', 'P1', 50, 'Delivery',  'EFFICIENCY',   '...', 4, NOW(), NOW()),
+  (38, 4, 4, 'Сократить MTTR до 30 минут',          '', 'P1', 35, 'Delivery',  'RELIABILITY',  '...', 5, NOW(), NOW()),
+  -- PaaS\Infra (team 21) → Q3 · 2026 (текущий квартал)
+  (26, 21, 4, 'цель 1', '', 'P0', 25, 'Discovery', 'PROFITABILITY', '', 1, NOW(), NOW()),
+  (27, 21, 4, 'цель 2', '', 'P0', 75, 'Discovery', 'PROFITABILITY', '', 2, NOW(), NOW()),
+  -- Media (team 23) → Q4 · 2026 (будущий квартал, планирование)
+  (29, 23, 5, 'цель2',                                                            '', 'P0', 100, 'Discovery', 'PROFITABILITY', 'Гоша', 1, NOW(), NOW()),
+  (30, 23, 5, 'Подключить funsun к сетке для опробирования полного цикла сетки', '', 'P0', 20,  'Discovery', 'PROFITABILITY', 'Гоша', 2, NOW(), NOW());
 
 -- ----------------------------------------------------------------
 -- Goal shares
@@ -125,12 +131,12 @@ INSERT INTO goal_shares (goal_id, team_id, weight, sort_order, created_at, updat
 -- Team-period statuses
 -- ----------------------------------------------------------------
 INSERT INTO team_period_statuses (team_id, period_id, status) VALUES
-  (2,  1, 'forming'),
-  (3,  1, 'forming'),
-  (4,  1, 'forming'),
-  (5,  1, 'forming'),
-  (21, 1, 'forming'),
-  (23, 1, 'forming');
+  (2,  4, 'in_progress'),
+  (3,  1, 'closed'),
+  (4,  4, 'in_progress'),
+  (5,  4, 'forming'),
+  (21, 4, 'ready'),
+  (23, 5, 'forming');
 
 -- ----------------------------------------------------------------
 -- Key Results
@@ -257,7 +263,7 @@ INSERT INTO goal_comments (id, goal_id, text, author_user_id, created_at) VALUES
   (7, 37, 'Обновление по задаче выполнено.', 1, NOW());
 
 -- ================================================================
--- OKR Catalog — департамент «Реклама» (Y26-Q1)
+-- OKR Catalog — департамент «Реклама» (Y2026)
 -- Отдельный корневой узел (id 100), полностью отделимый от данных
 -- выше: teams 100-112, goals 100-116, key_results 100-132.
 -- ================================================================
@@ -278,46 +284,46 @@ INSERT INTO teams (id, name, team_type, parent_id, lead, description, created_at
   (111, 'Продвижение',       'unit',       101,  '',                '', NOW(), NOW()),
   (112, 'Перформанс',        'team',       111,  'Роман Белов',     '', NOW(), NOW());
 
--- Goals (period 1 = Y26-Q1)
+-- Goals → Y2026 (годовые цели департамента «Реклама»)
 INSERT INTO goals (id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, sort_order, created_at, updated_at) VALUES
   -- Платформа (102)
-  (100, 102, 1, 'Снизить P95 latency до 200ms',          'Оптимизировать критические пути запросов',                'P1', 35, 'Delivery',  'EFFICIENCY',    'Алексей Иванов',   1, NOW(), NOW()),
-  (101, 102, 1, 'Покрыть 80% кода тестами',              'Повысить надёжность через автоматизацию',                 'P1', 30, 'Delivery',  'QUALITY',       'Елена Смирнова',   2, NOW(), NOW()),
-  (102, 102, 1, 'Запустить портал документации',         'Единое место для архитектурных решений',                  'P2', 20, 'Discovery', 'RELIABILITY',   'Михаил Козлов',    3, NOW(), NOW()),
-  (103, 102, 1, 'Снизить Time-to-Deploy до 15 мин',      'Ускорить CI/CD пайплайн',                                 'P2', 15, 'Delivery',  'EFFICIENCY',    'Андрей Николаев',  4, NOW(), NOW()),
+  (100, 102, 2, 'Снизить P95 latency до 200ms',          'Оптимизировать критические пути запросов',                'P1', 35, 'Delivery',  'EFFICIENCY',    'Алексей Иванов',   1, NOW(), NOW()),
+  (101, 102, 2, 'Покрыть 80% кода тестами',              'Повысить надёжность через автоматизацию',                 'P1', 30, 'Delivery',  'QUALITY',       'Елена Смирнова',   2, NOW(), NOW()),
+  (102, 102, 2, 'Запустить портал документации',         'Единое место для архитектурных решений',                  'P2', 20, 'Discovery', 'RELIABILITY',   'Михаил Козлов',    3, NOW(), NOW()),
+  (103, 102, 2, 'Снизить Time-to-Deploy до 15 мин',      'Ускорить CI/CD пайплайн',                                 'P2', 15, 'Delivery',  'EFFICIENCY',    'Андрей Николаев',  4, NOW(), NOW()),
   -- Backend & Quality (103)
-  (104, 103, 1, 'Единая культура инженерного качества',  'Стандарты кода и процессов для Backend и QA команд',      'P1', 100,'Discovery', 'QUALITY',       'Дмитрий Петров',   1, NOW(), NOW()),
+  (104, 103, 2, 'Единая культура инженерного качества',  'Стандарты кода и процессов для Backend и QA команд',      'P1', 100,'Discovery', 'QUALITY',       'Дмитрий Петров',   1, NOW(), NOW()),
   -- CoreDEV (104)
-  (105, 104, 1, 'Migrate to Go 1.22',                    'Обновить все сервисы, использовать новые возможности языка','P1',50, 'Delivery',  'RELIABILITY',   'Сергей Лебедев',   1, NOW(), NOW()),
-  (106, 104, 1, 'Рефакторинг auth модуля',               'Выделить в отдельный сервис',                             'P2', 50, 'Delivery',  'QUALITY',       'Ольга Фёдорова',   2, NOW(), NOW()),
+  (105, 104, 2, 'Migrate to Go 1.22',                    'Обновить все сервисы, использовать новые возможности языка','P1',50, 'Delivery',  'RELIABILITY',   'Сергей Лебедев',   1, NOW(), NOW()),
+  (106, 104, 2, 'Рефакторинг auth модуля',               'Выделить в отдельный сервис',                             'P2', 50, 'Delivery',  'QUALITY',       'Ольга Фёдорова',   2, NOW(), NOW()),
   -- API Platform (105)
-  (107, 105, 1, 'Запустить новую версию API Gateway v2', 'Рефакторинг маршрутизации, поддержка gRPC',               'P1', 70, 'Delivery',  'RELIABILITY',   'Сергей Лебедев',   1, NOW(), NOW()),
-  (108, 105, 1, 'Документация API для партнёров',        '',                                                        'P2', 30, 'Discovery', 'GROWTH',        'Михаил Козлов',    2, NOW(), NOW()),
+  (107, 105, 2, 'Запустить новую версию API Gateway v2', 'Рефакторинг маршрутизации, поддержка gRPC',               'P1', 70, 'Delivery',  'RELIABILITY',   'Сергей Лебедев',   1, NOW(), NOW()),
+  (108, 105, 2, 'Документация API для партнёров',        '',                                                        'P2', 30, 'Discovery', 'GROWTH',        'Михаил Козлов',    2, NOW(), NOW()),
   -- CoreQA (106)
-  (109, 106, 1, 'Автоматизировать регрессионное тестирование','Покрыть 200 ключевых user flows',                    'P1', 100,'Delivery',  'QUALITY',       'Елена Смирнова',   1, NOW(), NOW()),
+  (109, 106, 2, 'Автоматизировать регрессионное тестирование','Покрыть 200 ключевых user flows',                    'P1', 100,'Delivery',  'QUALITY',       'Елена Смирнова',   1, NOW(), NOW()),
   -- PaaS \ Infra (108)
-  (110, 108, 1, 'Перевести 80% сервисов на k8s',         '',                                                        'P1', 70, 'Delivery',  'EFFICIENCY',    'Андрей Николаев',  1, NOW(), NOW()),
-  (111, 108, 1, 'SLA платформ 99.5%',                    '',                                                        'P2', 30, 'Delivery',  'RELIABILITY',   'Андрей Николаев',  2, NOW(), NOW()),
+  (110, 108, 2, 'Перевести 80% сервисов на k8s',         '',                                                        'P1', 70, 'Delivery',  'EFFICIENCY',    'Андрей Николаев',  1, NOW(), NOW()),
+  (111, 108, 2, 'SLA платформ 99.5%',                    '',                                                        'P2', 30, 'Delivery',  'RELIABILITY',   'Андрей Николаев',  2, NOW(), NOW()),
   -- SRE (109)
-  (112, 109, 1, '99.9% uptime всех production сервисов',  'Обеспечить надёжность инфраструктуры',                    'P0', 60, 'Delivery',  'RELIABILITY',   'Кирилл Воронов',   1, NOW(), NOW()),
-  (113, 109, 1, 'MTTR < 10 мин для P0 инцидентов',        'Ускорить реакцию на критические сбои',                    'P1', 40, 'Delivery',  'RELIABILITY',   'Кирилл Воронов',   2, NOW(), NOW()),
+  (112, 109, 2, '99.9% uptime всех production сервисов',  'Обеспечить надёжность инфраструктуры',                    'P0', 60, 'Delivery',  'RELIABILITY',   'Кирилл Воронов',   1, NOW(), NOW()),
+  (113, 109, 2, 'MTTR < 10 мин для P0 инцидентов',        'Ускорить реакцию на критические сбои',                    'P1', 40, 'Delivery',  'RELIABILITY',   'Кирилл Воронов',   2, NOW(), NOW()),
   -- DWH (110)
-  (114, 110, 1, 'DWH для рекламных метрик',               'Централизованное хранилище',                             'P1', 100,'Discovery', 'GROWTH',        'Михаил Козлов',    1, NOW(), NOW()),
+  (114, 110, 2, 'DWH для рекламных метрик',               'Централизованное хранилище',                             'P1', 100,'Discovery', 'GROWTH',        'Михаил Козлов',    1, NOW(), NOW()),
   -- Перформанс (112)
-  (115, 112, 1, 'Снизить CPA на 15%',                     'ML-биддинг',                                             'P0', 60, 'Delivery',  'PROFITABILITY', 'Роман Белов',      1, NOW(), NOW()),
-  (116, 112, 1, 'ML-биддинг для топ-10 клиентов',         '',                                                        'P1', 30, 'Discovery', 'GROWTH',        'Роман Белов',      2, NOW(), NOW());
+  (115, 112, 2, 'Снизить CPA на 15%',                     'ML-биддинг',                                             'P0', 60, 'Delivery',  'PROFITABILITY', 'Роман Белов',      1, NOW(), NOW()),
+  (116, 112, 2, 'ML-биддинг для топ-10 клиентов',         '',                                                        'P1', 30, 'Discovery', 'GROWTH',        'Роман Белов',      2, NOW(), NOW());
 
--- Team-period statuses for the Реклама catalog (period 1)
+-- Team-period statuses for the Реклама catalog (period 2 = Y2026)
 INSERT INTO team_period_statuses (team_id, period_id, status) VALUES
-  (102, 1, 'in_progress'),
-  (103, 1, 'in_progress'),
-  (104, 1, 'in_progress'),
-  (105, 1, 'forming'),
-  (106, 1, 'in_progress'),
-  (108, 1, 'in_progress'),
-  (109, 1, 'in_progress'),
-  (110, 1, 'forming'),
-  (112, 1, 'in_progress');
+  (102, 2, 'in_progress'),
+  (103, 2, 'in_progress'),
+  (104, 2, 'in_progress'),
+  (105, 2, 'forming'),
+  (106, 2, 'in_progress'),
+  (108, 2, 'in_progress'),
+  (109, 2, 'in_progress'),
+  (110, 2, 'forming'),
+  (112, 2, 'in_progress');
 
 -- Key Results
 INSERT INTO key_results (id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at) VALUES

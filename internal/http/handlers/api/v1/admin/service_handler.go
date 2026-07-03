@@ -2,11 +2,13 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/http/dto"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
@@ -25,6 +27,26 @@ func NewServiceHandler(svc *service.Service) *ServiceHandler {
 }
 
 // ── PERIODS ───────────────────────────────────────────────────────────────────
+
+// GET /api/v1/admin/periods
+// Unlike the public periods endpoint, this includes archived periods so admins can manage them.
+func (h *ServiceHandler) HandleListPeriods(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	views, err := h.service.ListPeriodViews(r.Context(), scope, true)
+	if err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load periods", nil)
+		return
+	}
+	items := make([]dto.PeriodInfo, 0, len(views))
+	for _, v := range views {
+		items = append(items, v1.MapPeriodView(v))
+	}
+	v1.WriteJSON(w, http.StatusOK, dto.PeriodsResponse{Items: items})
+}
 
 // POST /api/v1/admin/periods
 func (h *ServiceHandler) HandleCreatePeriod(w http.ResponseWriter, r *http.Request) {
@@ -129,17 +151,8 @@ func (h *ServiceHandler) HandleDeletePeriod(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// POST /api/v1/admin/periods/{periodID}/move-up
-func (h *ServiceHandler) HandleMovePeriodUp(w http.ResponseWriter, r *http.Request) {
-	h.handleMovePeriod(w, r, -1)
-}
-
-// POST /api/v1/admin/periods/{periodID}/move-down
-func (h *ServiceHandler) HandleMovePeriodDown(w http.ResponseWriter, r *http.Request) {
-	h.handleMovePeriod(w, r, 1)
-}
-
-func (h *ServiceHandler) handleMovePeriod(w http.ResponseWriter, r *http.Request, dir int) {
+// POST /api/v1/admin/periods/{periodID}/archive
+func (h *ServiceHandler) HandleArchivePeriod(w http.ResponseWriter, r *http.Request) {
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
@@ -150,8 +163,31 @@ func (h *ServiceHandler) handleMovePeriod(w http.ResponseWriter, r *http.Request
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
 		return
 	}
-	if err := h.service.MovePeriod(r.Context(), scope, periodID, dir); err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move period", nil)
+	if err := h.service.ArchivePeriod(r.Context(), scope, periodID); err != nil {
+		if errors.Is(err, service.ErrPeriodNotClosed) {
+			v1.WriteError(w, http.StatusConflict, "CONFLICT", "only a closed period can be archived", nil)
+			return
+		}
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to archive period", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// POST /api/v1/admin/periods/{periodID}/unarchive
+func (h *ServiceHandler) HandleUnarchivePeriod(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+		return
+	}
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
+		return
+	}
+	if err := h.service.UnarchivePeriod(r.Context(), scope, periodID); err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to unarchive period", nil)
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})

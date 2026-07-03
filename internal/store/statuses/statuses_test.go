@@ -20,7 +20,7 @@ func TestTeamPeriodStatusRoundTrip(t *testing.T) {
 
 	var teamID, periodID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('StatusTeam') RETURNING id`).Scan(&teamID)
-	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('StatusPeriod','2025-01-01','2025-03-31',1) RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ('StatusPeriod','2025-01-01','2025-03-31') RETURNING id`).Scan(&periodID)
 
 	// Missing entry returns TeamPeriodStatusNoGoals.
 	status, err := r.GetTeamPeriodStatus(ctx, sc1, teamID, periodID)
@@ -60,7 +60,7 @@ func TestListTeamPeriodStatuses(t *testing.T) {
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T1') RETURNING id`).Scan(&t1)
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T2') RETURNING id`).Scan(&t2)
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T3') RETURNING id`).Scan(&t3)
-	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('LP','2025-04-01','2025-06-30',1) RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ('LP','2025-04-01','2025-06-30') RETURNING id`).Scan(&periodID)
 
 	r.SetTeamPeriodStatus(ctx, sc1, t1, periodID, domain.TeamPeriodStatusInProgress)
 	r.SetTeamPeriodStatus(ctx, sc1, t2, periodID, domain.TeamPeriodStatusClosed)
@@ -89,7 +89,7 @@ func TestGetTeamPeriodStatusWithTime(t *testing.T) {
 
 	var teamID, periodID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('TWTeam') RETURNING id`).Scan(&teamID)
-	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date,sort_order) VALUES ('TWPeriod','2025-07-01','2025-09-30',1) RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ('TWPeriod','2025-07-01','2025-09-30') RETURNING id`).Scan(&periodID)
 
 	// Missing → NoGoals, nil time.
 	status, ts, err := r.GetTeamPeriodStatusWithTime(ctx, sc1, teamID, periodID)

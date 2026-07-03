@@ -41,7 +41,7 @@ func TestKRsScopedByTenant(t *testing.T) {
 
 	var periodID int64
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO periods (name, start_date, end_date, sort_order, tenant_id) VALUES ('Q1','2025-01-01','2025-03-31',1,1) RETURNING id`,
+		`INSERT INTO periods (name, start_date, end_date, tenant_id) VALUES ('Q1', '2025-01-01', '2025-03-31', 1) RETURNING id`,
 	).Scan(&periodID); err != nil {
 		t.Fatalf("insert period: %v", err)
 	}
