@@ -364,20 +364,101 @@ function PeriodBadge({status}) {
     <span style={{width:7,height:7,borderRadius:999,background:s.dot}}/>{s.label}
   </span>;
 }
+// Парсит 'YYYY-MM-DD' в локальную дату без сдвига по таймзоне.
+function parseYMD(s) {
+  if (!s) return null;
+  const [y,m,d] = String(s).slice(0,10).split('-').map(Number);
+  if (!y) return null;
+  return new Date(y, (m||1)-1, d||1);
+}
+// Короткий формат для списка: 01.01.26
+function fmtDateShort(iso) {
+  const d = parseYMD(iso);
+  if (!d) return '';
+  const p = n=>String(n).padStart(2,'0');
+  return `${p(d.getDate())}.${p(d.getMonth()+1)}.${String(d.getFullYear()).slice(2)}`;
+}
+// Предпросмотр статуса по датам — та же логика, что и на сервере
+// (domain/period_status.go): archived — ручной флаг, остальное считается по датам
+// с включёнными границами.
+function periodStatusPreview(start, end, archived) {
+  if (archived) return 'archived';
+  const s = parseYMD(start), e = parseYMD(end);
+  if (!s || !e) return null;
+  const now = new Date();
+  const t = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (t < s) return 'future';
+  if (t > e) return 'closed';
+  return 'active';
+}
+// Кнопка-действие в строке таблицы периодов (текстовая, как в макете).
+function PeriodAction({onClick, accent, danger, title, big, children}) {
+  const [hover, setHover] = useState(false);
+  const color = accent ? T.accent : danger ? T.danger : T.mutedFg;
+  return <button onClick={e=>{e.stopPropagation();onClick();}} title={title}
+    onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+    style={{background:'none',border:'none',cursor:'pointer',fontSize:big?16:12.5,fontWeight:accent?600:500,color,opacity:hover?0.65:1,padding:big?'0 2px':'2px 3px',lineHeight:1,whiteSpace:'nowrap',transition:'opacity .12s'}}>{children}</button>;
+}
+
+// Пояснение статус-флоу над таблицей (req: описание статусов в формате флоу).
+function StatusFlowGuide() {
+  const step = (k, note) => {
+    const s = PERIOD_STATUS[k];
+    return <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-start'}}>
+      <PeriodBadge status={k}/>
+      <span style={{fontSize:11.5,color:T.mutedFg}}>{note}</span>
+    </div>;
+  };
+  const arrow = <span style={{color:T.dimFg,fontSize:15,alignSelf:'flex-start',marginTop:2}}>→</span>;
+  return <div style={{background:'white',border:'1px solid '+T.cardBorder,borderRadius:12,padding:'16px 20px',marginBottom:18,boxShadow:'0 1px 3px rgba(15,23,42,0.04)'}}>
+    <div style={{fontSize:13,fontWeight:700,color:T.headingFg}}>
+      Как работают статусы <span style={{fontWeight:500,color:T.dimFg}}>— вычисляются по датам, кроме «Архива»</span>
+    </div>
+    <div style={{display:'flex',gap:18,alignItems:'flex-start',marginTop:14,flexWrap:'wrap'}}>
+      {step('future','до даты начала')}{arrow}
+      {step('active','между началом и концом')}{arrow}
+      {step('closed','после даты окончания')}
+    </div>
+    <div style={{borderTop:'1px dashed '+T.cardBorder,margin:'14px 0'}}/>
+    <div style={{display:'flex',gap:10,alignItems:'flex-start'}}>
+      <span style={{display:'inline-flex',alignItems:'center',padding:'2px 8px',borderRadius:999,background:'#efe9df',color:'#8a6d3b',fontSize:11,fontWeight:600,flexShrink:0}}>Архив</span>
+      <span style={{fontSize:11.5,color:T.mutedFg,lineHeight:1.5}}>
+        <span style={{color:T.dimFg}}>↳ </span>
+        вручную из статуса «Закрыто» — прячет период из активных списков. Возврат обратно возможен.
+      </span>
+    </div>
+  </div>;
+}
+
+// Строка таблицы периодов.
+function PeriodRow({p, cols, first, onOpen, actions}) {
+  const [hover, setHover] = useState(false);
+  const s = PERIOD_STATUS[p.status] || PERIOD_STATUS.closed;
+  const root = p.depth === 0;
+  return <div onClick={onOpen}
+    onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
+    style={{display:'grid',gridTemplateColumns:cols,alignItems:'center',gap:12,padding:'13px 20px',borderTop:first?'none':'1px solid '+T.hairline,cursor:'pointer',background:hover?'#faf9ff':'white',transition:'background .12s'}}>
+    <div style={{display:'flex',alignItems:'center',gap:10,minWidth:0,paddingLeft:p.depth*22}}>
+      <span style={{width:8,height:8,borderRadius:999,background:s.dot,flexShrink:0}}/>
+      <span style={{fontSize:root?14.5:13.5,fontWeight:root?700:500,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</span>
+    </div>
+    <div style={{fontSize:12.5,color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace'}}>{fmtDateShort(p.start_date)} – {fmtDateShort(p.end_date)}</div>
+    <div><PeriodBadge status={p.status}/></div>
+    <div style={{display:'flex',gap:14,alignItems:'center',justifyContent:'flex-end'}}>{actions}</div>
+  </div>;
+}
+
 function PeriodsSection({periods, reload}) {
-  const [q, setQ] = useState('');
-  const [selId, setSelId] = useState(null);
-  const [creating, setCreating] = useState(false);
-  const [createParent, setCreateParent] = useState(null);
+  const [modal, setModal] = useState(null); // {mode:'new', parent} | {mode:'edit', period}
   const [saving, setSaving] = useState(false);
 
-  const filtered = periods.filter(p=>!q||p.name.toLowerCase().includes(q.toLowerCase()));
-  const selected = creating ? null : periods.find(p=>p.id===selId);
+  const openNew = parent => setModal({mode:'new', parent: parent||null});
+  const openEdit = period => setModal({mode:'edit', period});
 
-  async function remove(id, name) {
-    if (!confirm(`Удалить период «${name}»? Цели внутри останутся, но не будут отображаться.`)) return;
-    const res = await apiDel(`/api/v1/admin/periods/${id}`);
-    if (res && res.ok) { if(selId===id)setSelId(null); reload(); }
+  async function remove(p) {
+    if (!confirm(`Удалить период «${p.name}»? Цели внутри останутся, но не будут отображаться.`)) return;
+    const res = await apiDel(`/api/v1/admin/periods/${p.id}`);
+    if (res && res.ok) { setModal(null); reload(); }
     else alert('Ошибка удаления периода');
   }
   async function toggleArchive(p) {
@@ -395,74 +476,105 @@ function PeriodsSection({periods, reload}) {
       if (f.id) res = await apiPatch(`/api/v1/admin/periods/${f.id}`, body);
       else        res = await apiPost('/api/v1/admin/periods', body);
       if (!res || !res.ok) { alert('Ошибка сохранения'); return; }
-      if (!f.id) { const data = await res.json(); setSelId(data.id); }
-      else setSelId(f.id);
-      setCreating(false); setCreateParent(null);
+      setModal(null);
       reload();
     } finally { setSaving(false); }
   }
 
-  const createInitial = createParent
-    ? {name:'', start_date: fmtDate(createParent.start_date), end_date: fmtDate(createParent.end_date)}
-    : {name:'', start_date:'', end_date:''};
+  // Последняя колонка — фиксированной ширины: набор действий у строк разный
+  // (у «Закрыто» есть «В архив»), и `auto` заставлял бы колонки ДАТЫ/СТАТУС
+  // разъезжаться между строками и относительно заголовка.
+  const cols = 'minmax(0,1fr) 210px 150px 280px';
+  const hdrCell = {fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5};
 
-  return <MasterDetail
-    toolbar={<div style={{display:'flex',gap:8,alignItems:'center'}}>
-      <ListSearch value={q} onChange={setQ} placeholder="Поиск периода…"/>
-      <Btn variant="primary" size="sm" onClick={()=>{setCreating(true);setCreateParent(null);setSelId(null);}}>+ Период</Btn>
-    </div>}
-    listHeader={`Всего · ${periods.length}`}
-    list={filtered.map((p)=>{
-      const sel=p.id===selId&&!creating;
-      return <ListRow key={p.id} selected={sel} onClick={()=>{setSelId(p.id);setCreating(false);}}>
-        <div style={{width: 12 + p.depth*18}}/>
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13.5,fontWeight:600,color:T.headingFg}}>{p.name}</div>
-          <div style={{fontSize:11,color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace',marginTop:2}}>{fmtDate(p.start_date)} → {fmtDate(p.end_date)}</div>
-        </div>
-        <PeriodBadge status={p.status}/>
-        <button onClick={e=>{e.stopPropagation();setCreating(true);setCreateParent(p);setSelId(null);}} title="Вложенный период"
-          style={{marginLeft:8,fontSize:11,color:T.accent,background:'none',border:'none',cursor:'pointer'}}>+ вложенный</button>
-      </ListRow>;
-    })}
-    detail={
-      creating
-        ? <PeriodEditor key={'new-' + (createParent ? createParent.id : 'root')} value={createInitial} onSave={save} onCancel={()=>{setCreating(false);setCreateParent(null);}} saving={saving}/>
-        : selected
-          ? <PeriodEditor key={'edit-' + selected.id} value={selected} onSave={save}
-              onDelete={()=>remove(selected.id,selected.name)}
-              onArchive={()=>toggleArchive(selected)} saving={saving}/>
-          : <EmptyDetail icon="📅" title="Выберите период" hint="Кликните по периоду слева или создайте новый."/>
-    }
-  />;
+  return <div style={{padding:'20px 24px 24px'}}>
+    <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:16,marginBottom:18}}>
+      <div>
+        <div style={{fontSize:24,fontWeight:800,color:T.headingFg,letterSpacing:'-.4px'}}>Периоды целеполагания</div>
+        <div style={{fontSize:13,color:T.mutedFg,marginTop:5}}>Актуальные и будущие — выше. Вложенность: год → кварталы.</div>
+      </div>
+      <Btn variant="primary" onClick={()=>openNew(null)} style={{flexShrink:0}}>+ Период</Btn>
+    </div>
+
+    <StatusFlowGuide/>
+
+    <div style={{background:'white',border:'1px solid '+T.cardBorder,borderRadius:12,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}>
+      <div style={{display:'grid',gridTemplateColumns:cols,gap:12,padding:'11px 20px',background:'#f8fafc',borderBottom:'1px solid '+T.cardBorder}}>
+        <span style={hdrCell}>Период</span>
+        <span style={hdrCell}>Даты</span>
+        <span style={hdrCell}>Статус</span>
+        <span/>
+      </div>
+      {periods.length === 0
+        ? <div style={{padding:'40px 20px',textAlign:'center',color:T.mutedFg,fontSize:13}}>
+            Периодов пока нет. Создайте первый — кнопка «+ Период» справа вверху.
+          </div>
+        : periods.map((p, i) => {
+            const actions = [
+              <PeriodAction key="add" accent title="Создать вложенный период" onClick={()=>openNew(p)}>+ вложенный</PeriodAction>,
+            ];
+            if (p.status === 'closed')   actions.push(<PeriodAction key="arch" title="Скрыть из активных списков" onClick={()=>toggleArchive(p)}>В архив</PeriodAction>);
+            if (p.status === 'archived') actions.push(<PeriodAction key="unarch" title="Вернуть в активные списки" onClick={()=>toggleArchive(p)}>Из архива</PeriodAction>);
+            actions.push(<PeriodAction key="edit" title="Редактировать период" onClick={()=>openEdit(p)}>Изм.</PeriodAction>);
+            actions.push(<PeriodAction key="del" danger big title="Удалить период" onClick={()=>remove(p)}>×</PeriodAction>);
+            return <PeriodRow key={p.id} p={p} cols={cols} first={i===0} onOpen={()=>openEdit(p)} actions={actions}/>;
+          })}
+    </div>
+
+    <Modal open={!!modal}
+      title={modal && modal.mode==='new' ? 'Новый период' : 'Редактировать период'}
+      subtitle={modal && modal.mode==='new'
+        ? 'Заполните название и даты. Статус вычисляется по датам.'
+        : 'Измените название и даты. Статус вычисляется по датам.'}
+      onClose={()=>setModal(null)} width={560}>
+      {modal && <PeriodModalBody
+        key={modal.mode==='edit' ? 'edit-'+modal.period.id : 'new-'+(modal.parent?modal.parent.id:'root')}
+        modal={modal} saving={saving}
+        onSave={save} onClose={()=>setModal(null)}
+        onDelete={modal.mode==='edit' ? ()=>remove(modal.period) : null}/>}
+    </Modal>
+  </div>;
 }
 
-function PeriodEditor({value, onSave, onCancel, onDelete, onArchive, saving}) {
-  const [f, setF] = useState({name:'',start_date:'',end_date:'', ...value, start_date: fmtDate(value.start_date||''), end_date: fmtDate(value.end_date||'')});
-  useEffect(()=>{setF({...value, start_date:fmtDate(value.start_date||''), end_date:fmtDate(value.end_date||'')});},[value.id]);
+function PeriodModalBody({modal, saving, onSave, onClose, onDelete}) {
+  const isNew = modal.mode === 'new';
+  const period = modal.period;
+  const parent = modal.parent;
+  const initial = isNew
+    ? {name:'', start_date: parent ? fmtDate(parent.start_date) : '', end_date: parent ? fmtDate(parent.end_date) : ''}
+    : {id: period.id, name: period.name, start_date: fmtDate(period.start_date), end_date: fmtDate(period.end_date)};
+  const isArchived = !isNew && period.status === 'archived';
+
+  const [f, setF] = useState(initial);
   const canSave = f.name.trim() && f.start_date && f.end_date;
-  const isNew = !value.id;
+  const preview = periodStatusPreview(f.start_date, f.end_date, isArchived);
+
   return <div>
-    <DetailHeader
-      breadcrumb={isNew?'Периоды / новый':`Периоды · ${value.name}`}
-      title={isNew?'Новый период':value.name}
-      subtitle={isNew?'Заполните название и даты.':`${fmtDate(value.start_date)} → ${fmtDate(value.end_date)}`}
-      actions={<>
-        {!isNew && onArchive && (value.status==='closed' || value.status==='archived') &&
-          <Btn onClick={onArchive} disabled={saving}>{value.status==='archived'?'Разархивировать':'Архивировать'}</Btn>}
-        {!isNew&&<Btn danger onClick={onDelete} disabled={saving}>Удалить</Btn>}
-        {isNew&&<Btn onClick={onCancel} disabled={saving}>Отмена</Btn>}
-        <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving?'Сохранение…':isNew?'Создать':'Сохранить'}</Btn>
-      </>}
-    />
-    <DetailSection title="Параметры">
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
-        <Field label="Название" required><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="Y26 · Y26-Q1 · …" style={inpStyle}/></Field>
-        <div/>
-        <Field label="Дата начала" required><input type="date" value={f.start_date} onChange={e=>setF({...f,start_date:e.target.value})} style={inpStyle}/></Field>
-        <Field label="Дата окончания" required><input type="date" value={f.end_date} onChange={e=>setF({...f,end_date:e.target.value})} style={inpStyle}/></Field>
+    <div style={{padding:'18px 22px 4px'}}>
+      <Field label="Название" required>
+        <input value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="Y26 · Y26-Q1 · …" style={inpStyle} autoFocus/>
+      </Field>
+      <div style={{display:'flex',gap:9,padding:'10px 13px',background:'#f8fafc',border:'1px solid '+T.hairline,borderRadius:9,marginBottom:16}}>
+        <span style={{color:T.info,fontSize:13,lineHeight:1.5,flexShrink:0}}>ⓘ</span>
+        <span style={{fontSize:12,color:T.mutedFg,lineHeight:1.5}}>Вложенность определяется автоматически по датам: период попадёт внутрь любого, чей диапазон его охватывает.</span>
       </div>
-    </DetailSection>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:16}}>
+        <Field label="Начало" required><input type="date" value={f.start_date} onChange={e=>setF({...f,start_date:e.target.value})} style={inpStyle}/></Field>
+        <Field label="Конец" required><input type="date" value={f.end_date} onChange={e=>setF({...f,end_date:e.target.value})} style={inpStyle}/></Field>
+      </div>
+      <Field label="Статус">
+        <div style={{display:'flex',alignItems:'center',gap:10,padding:'9px 13px',background:'#f8fafc',border:'1px solid '+T.hairline,borderRadius:9}}>
+          {preview ? <PeriodBadge status={preview}/> : <span style={{fontSize:13,color:T.dimFg}}>—</span>}
+          <span style={{fontSize:12,color:T.dimFg}}>определяется автоматически по датам</span>
+        </div>
+      </Field>
+    </div>
+    <div style={{display:'flex',alignItems:'center',gap:8,padding:'14px 22px',borderTop:'1px solid '+T.hairline,background:'#fafbfc'}}>
+      {onDelete && <Btn danger onClick={onDelete} disabled={saving}>Удалить</Btn>}
+      <div style={{flex:1}}/>
+      <Btn onClick={onClose} disabled={saving}>Отмена</Btn>
+      <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving ? 'Сохранение…' : isNew ? 'Создать' : 'Сохранить'}</Btn>
+    </div>
   </div>;
 }
 
