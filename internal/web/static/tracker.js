@@ -2100,6 +2100,20 @@ function App() {
   const goalWeightSum = goals.reduce((s, g) => s + (g.weight || 0), 0);
   const goalWeightOff = goals.length > 0 && goalWeightSum !== 100;
   const goalWeightDelta = 100 - goalWeightSum;
+  const hasChildren = overview && (overview.children_summary?.items?.length > 0);
+  const goalWeightWarn = goalWeightOff ? (
+    <div className="goal-weight-warn">
+      <span className="goal-weight-warn__icon">⚠</span>
+      <div className="goal-weight-warn__body">
+        <div className="goal-weight-warn__title">Сумма весов целей = {goalWeightSum}%, ожидается 100%</div>
+        <div className="goal-weight-warn__hint">
+          {goalWeightDelta > 0
+            ? `Не распределено ${goalWeightDelta}% — расширьте важность одной из целей или добавьте новую.`
+            : `Превышено на ${-goalWeightDelta}% — уменьшите важность одной из целей.`}
+        </div>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="app">
@@ -2166,20 +2180,8 @@ function App() {
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />
 
         <div className="content">
-          {goalWeightOff && (
-            <div className="goal-weight-warn">
-              <span className="goal-weight-warn__icon">⚠</span>
-              <div className="goal-weight-warn__body">
-                <div className="goal-weight-warn__title">Сумма весов целей = {goalWeightSum}%, ожидается 100%</div>
-                <div className="goal-weight-warn__hint">
-                  {goalWeightDelta > 0
-                    ? `Не распределено ${goalWeightDelta}% — расширьте важность одной из целей или добавьте новую.`
-                    : `Превышено на ${-goalWeightDelta}% — уменьшите важность одной из целей.`}
-                </div>
-              </div>
-            </div>
-          )}
-          {overview && (overview.children_summary?.items?.length > 0) && <ClusterView overview={overview} onSelect={selectTeam} greenThreshold={greenThreshold} />}
+          {!hasChildren && goalWeightWarn}
+          {hasChildren && <ClusterView overview={overview} onSelect={selectTeam} greenThreshold={greenThreshold} />}
           {goals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
             <div className="empty-state">
               <div className="empty-state__icon">🔒</div>
@@ -2195,7 +2197,8 @@ function App() {
               {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="empty-state__btn">+ Создать первую цель</button>}
             </div>
           )}
-          {overview && (overview.children_summary?.items?.length > 0) && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
+          {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
+          {hasChildren && goalWeightWarn}
           {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
