@@ -986,7 +986,9 @@ function CommentsPanel({ comments, onAdd, me }) {
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
 function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80 }) {
-  const [showKR, setShowKR] = useState(false);
+  // Goals without key results start expanded so the author's attention is drawn
+  // to filling them in; goals that already have KRs start collapsed.
+  const [showKR, setShowKR] = useState((goal.krs || []).length === 0);
   const [showCom, setShowCom] = useState(false);
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
@@ -2093,6 +2095,12 @@ function App() {
   const hasGoals = (teamOKR?.goals_count || 0) > 0;
   const editMode = status === 'forming' || status === 'ready' || status === 'no_goals' ? 'full' : status === 'in_progress' ? 'progress_only' : 'comments_only';
 
+  // A team's goal weights are expected to sum to 100%. When they don't, surface a
+  // warning so the author can redistribute weight or add a goal.
+  const goalWeightSum = goals.reduce((s, g) => s + (g.weight || 0), 0);
+  const goalWeightOff = goals.length > 0 && goalWeightSum !== 100;
+  const goalWeightDelta = 100 - goalWeightSum;
+
   return (
     <div className="app">
       <div className="sidebar">
@@ -2158,6 +2166,19 @@ function App() {
         <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />
 
         <div className="content">
+          {goalWeightOff && (
+            <div className="goal-weight-warn">
+              <span className="goal-weight-warn__icon">⚠</span>
+              <div className="goal-weight-warn__body">
+                <div className="goal-weight-warn__title">Сумма весов целей = {goalWeightSum}%, ожидается 100%</div>
+                <div className="goal-weight-warn__hint">
+                  {goalWeightDelta > 0
+                    ? `Не распределено ${goalWeightDelta}% — расширьте важность одной из целей или добавьте новую.`
+                    : `Превышено на ${-goalWeightDelta}% — уменьшите важность одной из целей.`}
+                </div>
+              </div>
+            </div>
+          )}
           {overview && (overview.children_summary?.items?.length > 0) && <ClusterView overview={overview} onSelect={selectTeam} greenThreshold={greenThreshold} />}
           {goals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
             <div className="empty-state">
