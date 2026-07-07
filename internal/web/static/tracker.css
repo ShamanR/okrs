@@ -326,12 +326,14 @@
 /* ── GOAL CARD ───────────────────────────────────────────────────────────────── */
 .goal-card { background: white; border-radius: 12px; margin-bottom: 12px; border: 1px solid #f0f1f3; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.15s, opacity 0.15s; position: relative; }
 .goal-card--dragging { box-shadow: 0 8px 24px rgba(0,0,0,0.15); opacity: 0.5; }
-.goal-card--reorderable { margin-left: 14px; }
+/* The drag handle is absolutely positioned inside the content's left padding, so
+   reorderable cards keep the same left offset as read-only statuses — content
+   alignment stays identical whether or not the handle is shown. */
 .goal-card--shared { border-left: 3px solid #0891b2; }
 .goal-card--stale { border-color: #fde68a; }
 .goal-card--stale.goal-card--shared { border-left: 3px solid #0891b2; }
 
-.drag-handle { position: absolute; left: -26px; top: 50%; transform: translateY(-50%); width: 16px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #9ca3af; font-size: 17px; font-weight: 700; user-select: none; border-radius: 4px; }
+.drag-handle { position: absolute; left: -20px; top: 50%; transform: translateY(-50%); width: 16px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #9ca3af; font-size: 17px; font-weight: 700; user-select: none; border-radius: 4px; }
 .drag-handle:hover { color: #4b5563; }
 
 .goal-card__body { padding: 16px 18px; }
@@ -372,6 +374,11 @@
 .kr-section { padding: 4px 18px 14px; border-top: 1px solid #f3f4f6; }
 .kr-weight-warn { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; padding: 9px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
 .kr-weight-warn__icon { flex-shrink: 0; font-size: 13px; }
+.goal-weight-warn { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 16px; padding: 14px 20px; border-radius: 10px; background: #fffbeb; border: 1px solid #fde68a; }
+.goal-weight-warn__icon { flex-shrink: 0; font-size: 18px; line-height: 1.35; color: #b45309; }
+.goal-weight-warn__body { display: flex; flex-direction: column; gap: 4px; }
+.goal-weight-warn__title { font-size: 15px; font-weight: 700; color: #b45309; }
+.goal-weight-warn__hint { font-size: 13px; color: #b98a3e; }
 .kr-item { position: relative; transition: opacity 0.15s; }
 .kr-item--dragging { opacity: 0.45; }
 .kr-item--reorderable { margin-left: 14px; }
