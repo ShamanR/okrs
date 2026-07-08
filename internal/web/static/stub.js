@@ -14,6 +14,7 @@ function StubApp() {
       .catch(() => {});
   }, []);
   const meta = STUB_SECTIONS[location.pathname] || { id: null, title: 'Раздел', icon: '•' };
+  React.useEffect(() => { document.title = meta.title; }, [meta.title]);
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
       <div style={{ width: 252, background: '#0c1220', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>

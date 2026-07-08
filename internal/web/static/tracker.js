@@ -2070,6 +2070,13 @@ function App() {
 
   useEffect(() => { loadHCI(periodId); }, [periodId]);
 
+  // Заголовок вкладки: «Цели {команда}» для выбранного узла.
+  useEffect(() => {
+    const node = findNodeById(hierarchy, selId);
+    const name = teamOKR?.team?.name || node?.name;
+    document.title = name ? `Цели ${name}` : 'Цели команд';
+  }, [teamOKR, hierarchy, selId]);
+
   const findFirstNode = nodes => {
     for (const n of nodes) { if (!n.children || n.children.length === 0) return n; const c = findFirstNode(n.children || []); if (c) return c; }
     return nodes[0] || null;

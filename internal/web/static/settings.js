@@ -391,6 +391,12 @@ function App() {
   const sections = useMemo(() => [...(isLead ? ['descriptions'] : []), 'sidebar', 'spaces'], [isLead]);
   const active = sections.includes(section) ? section : sections[0];
 
+  // Заголовок вкладки: «Профиль {раздел}».
+  useEffect(() => {
+    const label = SECTION_META[active]?.label;
+    document.title = label ? `Профиль ${label}` : 'Профиль';
+  }, [active]);
+
   // Keep the URL (?section=) in sync and support browser back/forward.
   useEffect(() => { localStorage.setItem(SECTION_KEY, active); }, [active]);
   useEffect(() => {
