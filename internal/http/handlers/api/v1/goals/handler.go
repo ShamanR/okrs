@@ -260,6 +260,24 @@ func (h *Handler) HandleMoveGoalDown(w http.ResponseWriter, r *http.Request) {
 	h.handleMoveGoal(w, r, 1)
 }
 
+// parseTeamID extracts team_id from either a JSON body (tracker SPA via apiPost)
+// or a form field (legacy multipart page). Returns 0 when absent/invalid.
+func parseTeamID(r *http.Request) int64 {
+	if raw := strings.TrimSpace(r.FormValue("team_id")); raw != "" {
+		if id, err := common.ParseID(raw); err == nil {
+			return id
+		}
+		return 0
+	}
+	var req struct {
+		TeamID int64 `json:"team_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		return 0
+	}
+	return req.TeamID
+}
+
 func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, direction int) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {
@@ -271,11 +289,31 @@ func (h *Handler) handleMoveGoal(w http.ResponseWriter, r *http.Request, directi
 		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
 		return
 	}
-	if goal, err := h.service.GetGoal(r.Context(), scope, goalID); err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+	// The move is scoped to the team whose period is being viewed: a shared goal
+	// has an independent order per team, so reordering must target that team's list.
+	// The tracker SPA sends team_id as a JSON body; the legacy page as a form field.
+	teamID := parseTeamID(r)
+	if teamID == 0 {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "access denied", nil)
+		return
+	}
+	// The goal must actually belong to teamID's view — either owned by it or shared into it.
+	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
+	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	if err := h.service.MoveGoal(r.Context(), scope, goalID, direction); err != nil {
+	if goal.TeamID != teamID {
+		if _, err := h.service.GetGoalShare(r.Context(), scope, goalID, teamID); err != nil {
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+			return
+		}
+	}
+	if err := h.service.MoveGoal(r.Context(), scope, teamID, goalID, direction); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to move goal", nil)
 		return
 	}

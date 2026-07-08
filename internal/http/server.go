@@ -257,7 +257,15 @@ func (s *Server) Routes() http.Handler {
 
 	csrf := middleware.NewCSRF()
 
-	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static"))))
+	// Force the browser to revalidate static assets (app.js) on every load instead of
+	// applying heuristic caching. FileServer answers with a cheap 304 when the file is
+	// unchanged and fresh content once it changes, so clients never run a stale app.js.
+	// no-cache is deploy-safe across K8s instances: it needs no server-side state.
+	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static")))
+	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache")
+		staticFiles.ServeHTTP(w, req)
+	}))
 
 	r.Group(func(r chi.Router) {
 		r.Use(auth.AccessLogMiddleware(s.logger))

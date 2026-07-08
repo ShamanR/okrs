@@ -51,7 +51,7 @@ type GoalRepo interface {
 	UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error
 	UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error
 	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
-	MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error
+	MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error
 	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
@@ -822,8 +822,8 @@ func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, inpu
 	return s.goals.UpdateGoal(ctx, scope, input)
 }
 
-func (s *Service) MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error {
-	return s.goals.MoveGoal(ctx, scope, goalID, direction)
+func (s *Service) MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error {
+	return s.goals.MoveGoal(ctx, scope, teamID, goalID, direction)
 }
 
 func (s *Service) MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error {

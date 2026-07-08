@@ -71,8 +71,8 @@
 
 - goal всегда принадлежит owner team и одному периоду;
 - weight в диапазоне 0..100;
-- порядок goals внутри (team_id, period_id) управляется sort_order;
-- shared goal не меняет identity goal, а лишь добавляет видимость/вес для других команд.
+- порядок goals внутри (team_id, period_id) управляется sort_order; для команды-владельца используется `goals.sort_order`, для команды, куда goal расшарена, — `GoalShare.sort_order` (см. GoalShare);
+- shared goal не меняет identity goal, а лишь добавляет видимость/вес/порядок для других команд.
 
 ### KeyResult
 
@@ -158,7 +158,7 @@
 **Инварианты:**
 
 - одна и та же goal может быть расшарена на много команд;
-- для каждой shared team хранится собственный weight;
+- для каждой shared team хранится собственный weight и собственный sort_order — порядок общей цели можно менять в каждой команде независимо; при шаринге sort_order инициализируется значением `goals.sort_order` владельца;
 - pair (goal_id, team_id) уникален.
 
 ### TeamPeriodStatus
