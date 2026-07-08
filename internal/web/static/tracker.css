@@ -17,6 +17,9 @@
 .sidebar__period-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
 .sidebar__period-select { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: #e5e7eb; border-radius: 6px; padding: 6px 8px; font-size: 13px; outline: none; cursor: pointer; }
 .sidebar__tree { flex: 1; overflow: auto; padding: 6px 0; }
+.sidebar__section-label { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 4px 14px 2px; }
+.sidebar__subsection-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 14px 2px; display: flex; align-items: center; gap: 5px; }
+.sidebar__subsection-star { color: #fbbf24; font-size: 11px; }
 
 /* ── PERIOD SELECT ──────────────────────────────────────────────────────────── */
 .period-select__trigger { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 8px; background: #111827; color: #e5e7eb; border: 1px solid #374151; cursor: pointer; font-size: 14px; }
@@ -53,6 +56,10 @@
 .sidebar-node__name--dx { font-size: 12px; font-weight: 400; color: #94a3b8; }
 .sidebar-node__name--selected { color: #c4b5fd; }
 .sidebar-node__progress { font-size: 10px; flex-shrink: 0; font-weight: 600; }
+.sidebar-node__star { flex-shrink: 0; font-size: 13px; line-height: 1; color: #475569; cursor: pointer; padding: 0 2px; }
+.sidebar-node__row:hover .sidebar-node__star { color: #64748b; }
+.sidebar-node__star:hover { color: #fbbf24; }
+.sidebar-node__star--on { color: #fbbf24; }
 
 /* ── TOPBAR ─────────────────────────────────────────────────────────────────── */
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #edf0f4; }

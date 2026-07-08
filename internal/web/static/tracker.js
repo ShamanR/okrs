@@ -93,6 +93,37 @@ function filterTreeForSidebar(nodes, sel, currentId) {
   return nodes.map(keep).filter(Boolean);
 }
 
+// ── FAVORITE TEAMS PERSISTENCE ────────────────────────────────────────────────
+// Per-user list of favorited team ids, in add-order. Client-only (no backend).
+// Unknown ids are ignored at render time but kept in storage, so a favorite that
+// temporarily drops out of the hierarchy (other period / lost access) returns
+// when it reappears — same resilience contract as TREE_EXPANDED_KEY.
+const FAV_KEY = uid => `okr_fav_teams:${uid}`;
+function readFavorites(uid) {
+  try {
+    const v = localStorage.getItem(FAV_KEY(uid));
+    if (v == null) return [];
+    const a = JSON.parse(v);
+    // Team ids may be numbers or strings depending on the API; keep both.
+    return Array.isArray(a) ? a.filter(x => typeof x === 'string' || typeof x === 'number') : [];
+  } catch { return []; }
+}
+function writeFavorites(uid, ids) {
+  try { localStorage.setItem(FAV_KEY(uid), JSON.stringify(ids)); } catch { }
+}
+// Immutable toggle: remove if present, else append (keeps add-order).
+function toggleFavorite(ids, id) {
+  return ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id];
+}
+// Flatten the tree into an id->node map, then return nodes for favIds in favIds
+// order. Missing ids are skipped (not rendered), never throw.
+function collectFavNodes(nodes, favIds) {
+  const byId = new Map();
+  const walk = list => (list || []).forEach(n => { byId.set(n.id, n); walk(n.children); });
+  walk(nodes);
+  return favIds.map(id => byId.get(id)).filter(Boolean);
+}
+
 // ── DATE HELPERS ──────────────────────────────────────────────────────────────
 function daysAgo(iso) {
   if (!iso) return 0;
@@ -1660,7 +1691,7 @@ function PeriodSelect({ periods, periodId, onChange }) {
 }
 
 // ── SIDEBAR NODE ──────────────────────────────────────────────────────────────
-function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, accent, behindMargin, greenThreshold }) {
+function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, accent, behindMargin, greenThreshold, favSet, onToggleFav }) {
   const ch = node.children || [];
   const isExp = expanded[node.id] !== false;
   const isSel = selectedId === node.id;
@@ -1668,6 +1699,7 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
   const dotC = TEAM_TYPE_COLOR[node.type] || HEALTH_COLOR.no_goals;
   const pctC = sidebarProgressColor(prog, node.forecast, node.status, behindMargin, greenThreshold);
   const pad = 14 + depth * 13;
+  const isFav = favSet && favSet.has(node.id);
   const nameClass = ['sidebar-node__name',
     depth === 0 ? 'sidebar-node__name--d0' : depth === 1 ? 'sidebar-node__name--d1' : 'sidebar-node__name--dx',
     isSel ? 'sidebar-node__name--selected' : '',
@@ -1682,9 +1714,13 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
           : <span className="sidebar-node__spacer" />}
         <span className="sidebar-node__dot" style={{ background: dotC }} />
         <span className={nameClass}>{node.name}</span>
+        {onToggleFav && <span
+          onClick={e => { e.stopPropagation(); onToggleFav(node.id); }}
+          className={`sidebar-node__star${isFav ? ' sidebar-node__star--on' : ''}`}
+          title={isFav ? 'Убрать из избранного' : 'В избранное'}>{isFav ? '★' : '☆'}</span>}
         {prog != null && <span className="sidebar-node__progress" style={{ color: isSel ? '#c4b5fd' : pctC }}>{prog}%</span>}
       </div>
-      {isExp && ch.map(c => <SidebarNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} />)}
+      {isExp && ch.map(c => <SidebarNode key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} favSet={favSet} onToggleFav={onToggleFav} />)}
     </div>
   );
 }
@@ -1922,6 +1958,7 @@ function App() {
   const [teamOKR, setTeamOKR] = useState(null);
   const [overview, setOverview] = useState(null);
   const [expanded, setExpanded] = useState(readTreeExpanded);
+  const [favorites, setFavorites] = useState(null); // null = not loaded from storage yet
   const [goalModal, setGoalModal] = useState(null);
   const [accent] = useState(ACCENT);
   const [hciData, setHciData] = useState(null);
@@ -2041,6 +2078,13 @@ function App() {
   // `m[id] !== false`. Toggling stores the negation: collapse → false, expand → true.
   const toggle = useCallback(id => setExpanded(m => ({ ...m, [id]: m[id] === false })), []);
   useEffect(() => { writeTreeExpanded(expanded); }, [expanded]);
+
+  // Load favorites once the user id is known (favorites === null → not loaded),
+  // then persist on every change. Guarding the write on the `null` sentinel (not a
+  // ref) avoids a same-commit race that could clobber stored favorites with [].
+  useEffect(() => { if (me && favorites === null) setFavorites(readFavorites(me.id)); }, [me, favorites]);
+  useEffect(() => { if (me && favorites !== null) writeFavorites(me.id, favorites); }, [favorites, me]);
+  const onToggleFav = useCallback(id => setFavorites(f => toggleFavorite(f || [], id)), []);
   const selectTeam = useCallback(id => setSelId(id), []);
   const handlePeriodChange = id => { setPeriodId(Number(id)); };
 
@@ -2115,6 +2159,11 @@ function App() {
     </div>
   ) : null;
 
+  const favArr = favorites || [];
+  const favSet = new Set(favArr);
+  const favNodes = collectFavNodes(hierarchy, favArr);
+  const visibleTree = filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId);
+
   return (
     <div className="app">
       <div className="sidebar">
@@ -2139,7 +2188,15 @@ function App() {
                     </>}
               </div>
             )
-            : filterTreeForSidebar(hierarchy, readSidebarSelection(me?.id), selId).map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} />)
+            : <>
+                <div className="sidebar__section-label">Команды</div>
+                {favNodes.length > 0 && <>
+                  <div className="sidebar__subsection-label"><span className="sidebar__subsection-star">★</span> Избранное · {favNodes.length}</div>
+                  {favNodes.map(n => <SidebarNode key={`fav-${n.id}`} node={{ ...n, children: [] }} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} favSet={favSet} onToggleFav={onToggleFav} />)}
+                  <div className="sidebar__subsection-label">Все команды</div>
+                </>}
+                {visibleTree.map(n => <SidebarNode key={n.id} node={n} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} favSet={favSet} onToggleFav={onToggleFav} />)}
+              </>
           }
         </div>
         <div style={{ padding: '8px 8px 0' }}>
