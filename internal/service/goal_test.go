@@ -198,7 +198,9 @@ func (f *goalFakeStore) UpdateGoal(_ context.Context, _ domain.TenantScope, _ go
 func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ domain.TenantScope, _ goals.GoalFieldsUpdateInput) error {
 	return nil
 }
-func (f *goalFakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, _ int64, _ int) error { return nil }
+func (f *goalFakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, _ int64, _ int64, _ int) error {
+	return nil
+}
 func (f *goalFakeStore) AddGoalComment(_ context.Context, _ domain.TenantScope, _ int64, _ string, _ int64) error {
 	return nil
 }

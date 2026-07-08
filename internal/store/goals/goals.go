@@ -2,13 +2,11 @@ package goals
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/store/krs"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -632,48 +630,92 @@ func (r *GoalRepository) listGoalLastKRActivity(ctx context.Context, goalIDs []i
 	return result, rows.Err()
 }
 
-func (r *GoalRepository) MoveGoal(ctx context.Context, scope domain.TenantScope, goalID int64, direction int) error {
+// MoveGoal shifts goalID one position up (direction < 0) or down (direction >= 0)
+// within teamID's ordered view of its period.
+//
+// A team's view mixes its own goals (ordered by goals.sort_order) with goals
+// shared into it (ordered by goal_shares.sort_order for that team), matching
+// ListGoalsByTeamPeriod's `COALESCE(gs.sort_order, g.sort_order)` ordering.
+// Because shared goals inherit the owner's sort_order on share, effective order
+// values can collide across the two sources, so a plain value swap is unstable.
+// Instead we renumber the whole visible list after swapping the two neighbours,
+// writing goals.sort_order for owned goals and goal_shares.sort_order for shared
+// goals — never touching another team's ordering.
+func (r *GoalRepository) MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	var teamID int64
+	// Resolve the period from the goal itself; it is the same period the team views.
 	var periodID int64
-	var currentOrder int
-	row := tx.QueryRow(ctx, `SELECT team_id, period_id, sort_order FROM goals WHERE id=$1 AND tenant_id=$2 FOR UPDATE`, goalID, scope.TenantID)
-	if err := row.Scan(&teamID, &periodID, &currentOrder); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT period_id FROM goals WHERE id=$1 AND tenant_id=$2`, goalID, scope.TenantID).Scan(&periodID); err != nil {
 		return err
 	}
 
-	var neighborID int64
-	var neighborOrder int
-	if direction < 0 {
-		row = tx.QueryRow(ctx, `
-			SELECT id, sort_order FROM goals
-			WHERE team_id=$1 AND period_id=$2 AND sort_order < $3 AND tenant_id=$4
-			ORDER BY sort_order DESC LIMIT 1
-			FOR UPDATE`, teamID, periodID, currentOrder, scope.TenantID)
-	} else {
-		row = tx.QueryRow(ctx, `
-			SELECT id, sort_order FROM goals
-			WHERE team_id=$1 AND period_id=$2 AND sort_order > $3 AND tenant_id=$4
-			ORDER BY sort_order ASC LIMIT 1
-			FOR UPDATE`, teamID, periodID, currentOrder, scope.TenantID)
+	// Load the team's visible goals in display order, locking the underlying rows.
+	rows, err := tx.Query(ctx, `
+		SELECT g.id, gs.team_id IS NOT NULL AS is_shared
+		FROM goals g
+		LEFT JOIN goal_shares gs ON gs.goal_id = g.id AND gs.team_id = $1 AND gs.tenant_id = $3
+		WHERE g.period_id = $2 AND g.tenant_id = $3 AND (g.team_id = $1 OR gs.team_id IS NOT NULL)
+		ORDER BY COALESCE(gs.sort_order, g.sort_order), g.id
+		FOR UPDATE OF g`, teamID, periodID, scope.TenantID)
+	if err != nil {
+		return err
 	}
-	if err := row.Scan(&neighborID, &neighborOrder); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return tx.Commit(ctx)
+
+	type visibleGoal struct {
+		id       int64
+		isShared bool
+	}
+	ordered := make([]visibleGoal, 0)
+	index := -1
+	for rows.Next() {
+		var vg visibleGoal
+		if err := rows.Scan(&vg.id, &vg.isShared); err != nil {
+			rows.Close()
+			return err
 		}
+		if vg.id == goalID {
+			index = len(ordered)
+		}
+		ordered = append(ordered, vg)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
 		return err
 	}
 
-	if _, err := tx.Exec(ctx, `UPDATE goals SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, neighborOrder, goalID, scope.TenantID); err != nil {
-		return err
+	// Goal is not part of this team's view: nothing to move.
+	if index < 0 {
+		return tx.Commit(ctx)
 	}
-	if _, err := tx.Exec(ctx, `UPDATE goals SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, currentOrder, neighborID, scope.TenantID); err != nil {
-		return err
+
+	target := index - 1
+	if direction >= 0 {
+		target = index + 1
+	}
+	// Already at an edge: no-op.
+	if target < 0 || target >= len(ordered) {
+		return tx.Commit(ctx)
+	}
+
+	ordered[index], ordered[target] = ordered[target], ordered[index]
+
+	// Renumber the whole list to contiguous sort_order values, writing to the
+	// column that backs each goal's position for this team.
+	for pos, vg := range ordered {
+		if vg.isShared {
+			if _, err := tx.Exec(ctx, `UPDATE goal_shares SET sort_order=$1 WHERE goal_id=$2 AND team_id=$3 AND tenant_id=$4`, pos, vg.id, teamID, scope.TenantID); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE goals SET sort_order=$1 WHERE id=$2 AND tenant_id=$3`, pos, vg.id, scope.TenantID); err != nil {
+			return err
+		}
 	}
 
 	return tx.Commit(ctx)

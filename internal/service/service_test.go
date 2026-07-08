@@ -263,7 +263,7 @@ func (f *fakeStore) CreateKeyResult(context.Context, domain.TenantScope, krs.Key
 func (f *fakeStore) UpdateKeyResult(context.Context, domain.TenantScope, krs.KeyResultUpdateInput) error {
 	return nil
 }
-func (f *fakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, goalID int64, direction int) error {
+func (f *fakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, _ int64, goalID int64, direction int) error {
 	f.movedGoals[goalID] = direction
 	return nil
 }
@@ -479,7 +479,7 @@ func TestMoveGoal(t *testing.T) {
 	store := newFakeStore()
 	service := newTestService(store, nil)
 
-	if err := service.MoveGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10, -1); err != nil {
+	if err := service.MoveGoal(context.Background(), domain.TenantScope{TenantID: 1}, 5, 10, -1); err != nil {
 		t.Fatalf("move goal: %v", err)
 	}
 	if store.movedGoals[10] != -1 {

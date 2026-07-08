@@ -401,7 +401,7 @@ CSRF token должен быть ротационным (не постоянны
 - add goal comment — `POST /api/v1/goals/{goalID}/comments`
 - update goal
 - create KR — `POST /api/v1/goals/{goalID}/key-results`
-- move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`
+- move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`; форма содержит `team_id` — команду, в чьём представлении периода меняется порядок. Перемещение действует на упорядоченный список этой команды (её собственные цели по `goals.sort_order` вперемешку с общими целями по `goal_shares.sort_order`), поэтому порядок общих целей можно менять в каждой команде независимо, не затрагивая порядок в других командах. Требует доступ к `team_id`; цель должна принадлежать команде (как владелец) или быть в неё расшарена.
 - update KR progress — `POST /api/v1/krs/{krID}/progress/numerical|boolean|project`
 - upsert KR note — `POST /api/v1/krs/{krID}/note`
 - update KR description — `POST /api/v1/krs/{krID}/description` body `{ "description": <string> }`; обновляет только описание KR. Доступен при тех же условиях, что и заметка (проверка доступа к команде-владельцу), поэтому описание можно добавить из модалки обновления прогресса, когда полное редактирование KR заблокировано статусом.

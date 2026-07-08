@@ -2123,7 +2123,9 @@ function App() {
     const fi = cur.findIndex(g => g.id === fromId), ti = cur.findIndex(g => g.id === toId);
     if (fi < 0 || ti < 0) return;
     const dir = fi > ti ? 'move-up' : 'move-down';
-    for (let i = 0; i < Math.abs(fi - ti); i++) await apiPost(`/api/v1/goals/${fromId}/${dir}`, {});
+    const teamId = teamOKR?.team?.id;
+    if (!teamId) return;
+    for (let i = 0; i < Math.abs(fi - ti); i++) await apiPost(`/api/v1/goals/${fromId}/${dir}`, { team_id: teamId });
     reload();
   }, [teamOKR, reload]);
 

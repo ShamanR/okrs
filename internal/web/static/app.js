@@ -933,8 +933,10 @@
   };
 
   const moveGoal = async (goalID, direction) => {
+    const teamID = state.teamOKR?.team?.id;
+    if (!teamID) return;
     try {
-      await postFormData(`/api/v1/goals/${goalID}/${direction}`, {});
+      await postFormData(`/api/v1/goals/${goalID}/${direction}`, { team_id: teamID });
       await reloadTeamOKR();
     } catch (error) {
       // noop
