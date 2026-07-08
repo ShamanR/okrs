@@ -57,29 +57,34 @@
 // temporarily drops out of the hierarchy (other period / lost access) returns
 // when it reappears — same resilience contract as TREE_EXPANDED_KEY.
 const FAV_KEY = uid => `okr_fav_teams:${uid}`;
+// Team ids may arrive from the API as numbers or strings; favorites normalize
+// every id to a string so storage lookups stay consistent even if a stored id's
+// type differs from the current hierarchy's (e.g. after an id-type migration).
+const favId = x => String(x);
 function readFavorites(uid) {
   try {
     const v = localStorage.getItem(FAV_KEY(uid));
     if (v == null) return [];
     const a = JSON.parse(v);
-    // Team ids may be numbers or strings depending on the API; keep both.
-    return Array.isArray(a) ? a.filter(x => typeof x === 'string' || typeof x === 'number') : [];
+    return Array.isArray(a) ? a.filter(x => x != null).map(favId) : [];
   } catch { return []; }
 }
 function writeFavorites(uid, ids) {
   try { localStorage.setItem(FAV_KEY(uid), JSON.stringify(ids)); } catch { }
 }
-// Immutable toggle: remove if present, else append (keeps add-order).
+// Immutable toggle: remove if present, else append (keeps add-order). Ids are
+// compared as strings so a numeric click matches a stored string id and back.
 function toggleFavorite(ids, id) {
-  return ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id];
+  const key = favId(id);
+  return ids.includes(key) ? ids.filter(x => x !== key) : [...ids, key];
 }
 // Flatten the tree into an id->node map, then return nodes for favIds in favIds
 // order. Missing ids are skipped (not rendered), never throw.
 function collectFavNodes(nodes, favIds) {
   const byId = new Map();
-  const walk = list => (list || []).forEach(n => { byId.set(n.id, n); walk(n.children); });
+  const walk = list => (list || []).forEach(n => { byId.set(favId(n.id), n); walk(n.children); });
   walk(nodes);
-  return favIds.map(id => byId.get(id)).filter(Boolean);
+  return favIds.map(id => byId.get(favId(id))).filter(Boolean);
 }
 ```
 
@@ -135,7 +140,7 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
   const dotC = TEAM_TYPE_COLOR[node.type] || HEALTH_COLOR.no_goals;
   const pctC = sidebarProgressColor(prog, node.forecast, node.status, behindMargin, greenThreshold);
   const pad = 14 + depth * 13;
-  const isFav = favSet && favSet.has(node.id);
+  const isFav = favSet && favSet.has(favId(node.id));
   const nameClass = ['sidebar-node__name',
     depth === 0 ? 'sidebar-node__name--d0' : depth === 1 ? 'sidebar-node__name--d1' : 'sidebar-node__name--dx',
     isSel ? 'sidebar-node__name--selected' : '',
