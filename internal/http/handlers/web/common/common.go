@@ -232,8 +232,8 @@ func KRKindLabel(k domain.KRKind) string {
 	}
 }
 
-// ParseNumericalMeta parses NUMERICAL meta fields (unit, values, optional checkpoints,
-// optional zeroing criteria) from a form. Shared by the API and web KR handlers.
+// ParseNumericalMeta parses NUMERICAL meta fields (unit, values, optional checkpoints)
+// from a form. Shared by the API and web KR handlers.
 func ParseNumericalMeta(r *http.Request) (service.KeyResultMetaInput, error) {
 	unit := strings.TrimSpace(r.FormValue("numerical_unit"))
 	if !domain.IsValidKRUnit(unit) {
@@ -249,7 +249,6 @@ func ParseNumericalMeta(r *http.Request) (service.KeyResultMetaInput, error) {
 		NumericalCurrent:     ParseFloatField(r.FormValue("numerical_current")),
 		NumericalUnit:        unit,
 		NumericalCheckpoints: checkpoints,
-		ZeroingCriteria:      strings.TrimSpace(r.FormValue("numerical_zeroing")),
 	}, nil
 }
 

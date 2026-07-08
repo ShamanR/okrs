@@ -813,7 +813,6 @@ type KeyResultMetaInput struct {
 	NumericalCurrent     float64
 	NumericalUnit        string
 	NumericalCheckpoints []domain.KRNumericalCheckpoint
-	ZeroingCriteria      string
 	BooleanDone          bool
 	ProjectStages        []krs.ProjectStageInput
 }
@@ -852,13 +851,12 @@ func (s *Service) applyKeyResultMeta(ctx context.Context, scope domain.TenantSco
 	switch kind {
 	case domain.KRKindNumerical:
 		return s.krs.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{
-			KeyResultID:     krID,
-			StartValue:      meta.NumericalStart,
-			TargetValue:     meta.NumericalTarget,
-			CurrentValue:    meta.NumericalCurrent,
-			Unit:            meta.NumericalUnit,
-			Checkpoints:     meta.NumericalCheckpoints,
-			ZeroingCriteria: meta.ZeroingCriteria,
+			KeyResultID:  krID,
+			StartValue:   meta.NumericalStart,
+			TargetValue:  meta.NumericalTarget,
+			CurrentValue: meta.NumericalCurrent,
+			Unit:         meta.NumericalUnit,
+			Checkpoints:  meta.NumericalCheckpoints,
 		})
 	case domain.KRKindBoolean:
 		return s.krs.UpsertBooleanMeta(ctx, scope, krID, meta.BooleanDone)

@@ -419,8 +419,9 @@ WHERE key_results.id = v.kr_id;
 UPDATE key_results SET checkpoints = '[{"value":100,"progress_percent":0},{"value":150,"progress_percent":50},{"value":180,"progress_percent":100}]'::jsonb WHERE id = 117;
 UPDATE key_results SET checkpoints = '[{"value":50,"progress_percent":25},{"value":100,"progress_percent":50},{"value":150,"progress_percent":75},{"value":200,"progress_percent":100}]'::jsonb WHERE id = 119;
 
--- KR meta — zeroing criteria
+-- KR meta — zeroing criteria (доступно для любого типа KR)
 UPDATE key_results SET zeroing_criteria = 'Если латентность достигнута только за счёт отключения проверок безопасности на edge — результат не засчитывается.' WHERE id = 100;
+UPDATE key_results SET zeroing_criteria = 'Если хотя бы один внешний эндпоинт откатили обратно на HTTP/1.1 из-за инцидента в проде — результат не засчитывается.' WHERE id = 102;
 
 -- KR meta — PROJECT stages
 INSERT INTO kr_project_stages (id, key_result_id, title, weight, is_done, sort_order) VALUES

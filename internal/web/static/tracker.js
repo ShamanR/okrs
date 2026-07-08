@@ -144,12 +144,12 @@ function fmtDate(iso) {
 function mapKR(kr) {
   const m = kr.measure || {};
   let start = 0, target = 100, current = 0, done = false, stages = [];
-  let unit = '%', checkpoints = [], zeroing = '';
+  let unit = '%', checkpoints = [];
+  const zeroing = kr.zeroing_criteria || '';
   if (m.numerical) {
     start = m.numerical.start_value; target = m.numerical.target_value; current = m.numerical.current_value;
     unit = m.numerical.unit || '%';
     checkpoints = (m.numerical.checkpoints || []).map(c => ({ value: c.value, progress_percent: c.progress_percent }));
-    zeroing = m.numerical.zeroing_criteria || '';
   }
   if (m.boolean) { done = m.boolean.is_done; }
   if (m.project) { stages = (m.project.stages || []).map(s => ({ id: s.id, name: s.title, weight: s.weight, done: s.is_done })); }
@@ -575,6 +575,11 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     } catch (e) { alert('Ошибка сохранения: ' + e.message); }
     finally { setSaving(false); }
   };
+  const zeroingNote = form.zeroing ? (
+    <div className="kr-zeroing-note kr-zeroing-note--md">
+      <span className="kr-zeroing-note__icon">⊘</span>Критерий обнуления: {form.zeroing}
+    </div>
+  ) : null;
   return (
     <div className="modal-overlay modal-overlay--z300" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w480">
@@ -633,22 +638,25 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
                   </div>
                 );
               })()}
+              {zeroingNote}
               <div style={{ marginTop: 10 }}>
                 <div className="kr-progress-row">
                   <span className="kr-progress-row__label">Прогресс</span>
                   <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{progress}%</span>
                 </div>
                 <ProgressBar value={progress} h={6} color={accent} />
-                {form.zeroing && <div className="kr-progress-row" style={{ marginTop: 6 }}><span className="kr-progress-row__label">Критерий обнуления: {form.zeroing}</span></div>}
               </div>
             </div>
           )}
           {form.krType === 'BOOLEAN' && (
-            <label className="kr-boolean-label">
-              <input type="checkbox" checked={!!form.done} onChange={e => set('done', e.target.checked)} style={{ width: 18, height: 18, accentColor: accent }} />
-              <span className="kr-boolean-text">Выполнено</span>
-              <span className="kr-boolean-pct" style={{ color: form.done ? '#16a34a' : '#9ca3af' }}>{form.done ? '100%' : '0%'}</span>
-            </label>
+            <>
+              <label className="kr-boolean-label">
+                <input type="checkbox" checked={!!form.done} onChange={e => set('done', e.target.checked)} style={{ width: 18, height: 18, accentColor: accent }} />
+                <span className="kr-boolean-text">Выполнено</span>
+                <span className="kr-boolean-pct" style={{ color: form.done ? '#16a34a' : '#9ca3af' }}>{form.done ? '100%' : '0%'}</span>
+              </label>
+              {zeroingNote}
+            </>
           )}
           {form.krType === 'PROJECT' && (
             <div className="kr-progress-field">
@@ -661,6 +669,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
                   <span className="kr-stage-weight">вес {s.weight}</span>
                 </label>
               ))}
+              {zeroingNote}
               <div style={{ marginTop: 10 }}>
                 <div className="kr-progress-row">
                   <span className="kr-progress-row__label">Прогресс</span>
@@ -719,12 +728,12 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
       fd.append('description', form.desc || '');
       fd.append('weight', String(Number(form.weight) || 0));
       fd.append('kind', form.krType);
+      fd.append('zeroing_criteria', form.zeroing || '');
       if (form.krType === 'NUMERICAL') {
         fd.append('numerical_unit', form.unit || '%');
         fd.append('numerical_start', String(Number(form.start) || 0));
         fd.append('numerical_target', String(Number(form.target) || 0));
         fd.append('numerical_current', String(Number(form.current) || 0));
-        fd.append('numerical_zeroing', form.zeroing || '');
         (form.checkpoints || []).forEach(c => {
           if (c.value === '' || c.value === null || c.value === undefined) return;
           fd.append('checkpoint_value[]', String(Number(c.value) || 0));
@@ -827,18 +836,6 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 ))}
                 <button type="button" onClick={addCp} className="kr-dashed-btn">+ Добавить промежуточное значение</button>
               </div>
-              <div className="kr-section-sep" />
-              {showZeroing ? (
-                <div className="kr-num-field">
-                  <div className="kr-section-head"><span className="kr-section-head__title">Критерий обнуления</span></div>
-                  <textarea value={form.zeroing || ''} onChange={e => set('zeroing', e.target.value)} rows={2}
-                    className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} autoFocus />
-                </div>
-              ) : (
-                <button type="button" onClick={() => setShowZeroing(true)} className="kr-zeroing-btn">
-                  <span className="kr-zeroing-btn__icon">⊘</span> Критерий обнуления
-                </button>
-              )}
               <div className="kr-progress-row" style={{ marginTop: 10 }}>
                 <span className="kr-progress-row__label">Прогресс</span>
                 <span style={{ fontSize: 12, fontWeight: 700, color: accent }}>{prev}%</span>
@@ -879,6 +876,18 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
               ))}
               <button onClick={addSt} className="kr-step-add">+ Добавить шаг</button>
             </div>
+          )}
+          <div className="kr-section-sep" />
+          {showZeroing ? (
+            <div className="kr-num-field">
+              <div className="kr-section-head"><span className="kr-section-head__title">Критерий обнуления</span></div>
+              <textarea value={form.zeroing || ''} onChange={e => set('zeroing', e.target.value)} rows={2}
+                className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} autoFocus />
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShowZeroing(true)} className="kr-zeroing-btn">
+              <span className="kr-zeroing-btn__icon">⊘</span> Критерий обнуления
+            </button>
           )}
         </div>
         <div className="modal-footer modal-footer--sticky">
@@ -939,6 +948,11 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7 }) {
               <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
               {detail}
             </div>
+            {kr.zeroing && (
+              <div className="kr-zeroing-note kr-zeroing-note--clamp" title={kr.zeroing}>
+                <span className="kr-zeroing-note__icon">⊘</span>Критерий обнуления: {kr.zeroing}
+              </div>
+            )}
           </div>
           <Badge label={KR_TYPE_LABEL[kr.krType] || kr.krType} color={KR_TYPE_C[kr.krType]} />
           <span className="kr-updated" style={{ color: staleC }}>{kr.updatedDaysAgo === 0 ? 'сегодня' : `${kr.updatedDaysAgo}д назад`}</span>

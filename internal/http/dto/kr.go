@@ -15,12 +15,11 @@ type NumericalCheckpoint struct {
 }
 
 type NumericalMeasure struct {
-	StartValue      float64               `json:"start_value"`
-	TargetValue     float64               `json:"target_value"`
-	CurrentValue    float64               `json:"current_value"`
-	Unit            string                `json:"unit"`
-	Checkpoints     []NumericalCheckpoint `json:"checkpoints,omitempty"`
-	ZeroingCriteria string                `json:"zeroing_criteria,omitempty"`
+	StartValue   float64               `json:"start_value"`
+	TargetValue  float64               `json:"target_value"`
+	CurrentValue float64               `json:"current_value"`
+	Unit         string                `json:"unit"`
+	Checkpoints  []NumericalCheckpoint `json:"checkpoints,omitempty"`
 }
 
 type BooleanMeasure struct {
@@ -46,15 +45,16 @@ type Measure struct {
 }
 
 type KeyResult struct {
-	ID          int64     `json:"id"`
-	GoalID      int64     `json:"goal_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Weight      int       `json:"weight"`
-	Kind        string    `json:"kind"`
-	Progress    int       `json:"progress"`
-	Measure     Measure   `json:"measure"`
-	Note        *KRNote   `json:"note"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID              int64     `json:"id"`
+	GoalID          int64     `json:"goal_id"`
+	Title           string    `json:"title"`
+	Description     string    `json:"description"`
+	ZeroingCriteria string    `json:"zeroing_criteria,omitempty"`
+	Weight          int       `json:"weight"`
+	Kind            string    `json:"kind"`
+	Progress        int       `json:"progress"`
+	Measure         Measure   `json:"measure"`
+	Note            *KRNote   `json:"note"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
