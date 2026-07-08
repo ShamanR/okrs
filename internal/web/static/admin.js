@@ -294,14 +294,16 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder, single, exclud
 // HeaderNavMenu lives in the shared header.js module (loaded before this script).
 
 // ── SHELL ────────────────────────────────────────────────────────────────────
+const ADMIN_SECTIONS = [
+  {id:'periods',  label:'Периоды',     hint:'Квартальные окна',        icon:'📅'},
+  {id:'teams',    label:'Команды',     hint:'Иерархия и руководители', icon:'👥'},
+  {id:'users',    label:'Пользователи',hint:'Админы и доступ',         icon:'🔑'},
+  {id:'settings', label:'Настройки',   hint:'Доступ и политики',       icon:'⚙'},
+  {id:'health-checkin', label:'Health Check-in', hint:'Настройки проверок', icon:'⚡'},
+];
+
 function Shell({section, setSection, currentUser, children}) {
-  const sections = [
-    {id:'periods',  label:'Периоды',     hint:'Квартальные окна',        icon:'📅'},
-    {id:'teams',    label:'Команды',     hint:'Иерархия и руководители', icon:'👥'},
-    {id:'users',    label:'Пользователи',hint:'Админы и доступ',         icon:'🔑'},
-    {id:'settings', label:'Настройки',   hint:'Доступ и политики',       icon:'⚙'},
-    {id:'health-checkin', label:'Health Check-in', hint:'Настройки проверок', icon:'⚡'},
-  ];
+  const sections = ADMIN_SECTIONS;
   const cur = sections.find(s=>s.id===section);
   return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
     <div style={{width:252,background:T.sidebarBg,display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden'}}>
@@ -1532,7 +1534,7 @@ function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSav
 }
 
 // ── APP ───────────────────────────────────────────────────────────────────────
-const ADMIN_SECTION_IDS = ['periods','teams','users','settings','health-checkin'];
+const ADMIN_SECTION_IDS = ADMIN_SECTIONS.map(s=>s.id);
 // Legacy server path routes (/admin/teams, …) fall back to their section.
 const ADMIN_PATH_SECTION = {'/admin/teams':'teams','/admin/periods':'periods','/admin/access':'settings'};
 function readSectionFromURL() {
@@ -1551,6 +1553,12 @@ function App() {
   const [err, setErr] = useState(null);
 
   useEffect(()=>{localStorage.setItem('okr_admin_section',section);},[section]);
+
+  // Заголовок вкладки: «Администрирование {раздел}».
+  useEffect(()=>{
+    const label = (ADMIN_SECTIONS.find(s=>s.id===section)||{}).label;
+    document.title = label ? `Администрирование ${label}` : 'Администрирование';
+  },[section]);
 
   // Reflect the current section in the URL (?section=) and support browser back/forward.
   useEffect(()=>{
