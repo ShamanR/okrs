@@ -79,11 +79,12 @@ func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	krID, err := h.service.CreateKeyResultWithMeta(r.Context(), scope, krs.KeyResultInput{
-		GoalID:      goalID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        kind,
+		GoalID:          goalID,
+		Title:           common.TrimmedFormValue(r, "title"),
+		Description:     common.TrimmedFormValue(r, "description"),
+		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
+		Weight:          weight,
+		Kind:            kind,
 	}, meta)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create key result", nil)
@@ -127,11 +128,12 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := h.service.UpdateKeyResultWithMeta(r.Context(), scope, krs.KeyResultUpdateInput{
-		ID:          krID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        kind,
+		ID:              krID,
+		Title:           common.TrimmedFormValue(r, "title"),
+		Description:     common.TrimmedFormValue(r, "description"),
+		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
+		Weight:          weight,
+		Kind:            kind,
 	}, meta); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update key result", nil)
 		return

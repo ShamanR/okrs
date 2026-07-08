@@ -128,6 +128,7 @@ type KeyResult struct {
 	GoalID            int64
 	Title             string
 	Description       string
+	ZeroingCriteria   string
 	Weight            int
 	Kind              KRKind
 	Progress          int
@@ -155,12 +156,11 @@ type KRProjectStage struct {
 }
 
 type KRNumerical struct {
-	StartValue      float64
-	TargetValue     float64
-	CurrentValue    float64
-	Unit            string
-	Checkpoints     []KRNumericalCheckpoint
-	ZeroingCriteria string
+	StartValue   float64
+	TargetValue  float64
+	CurrentValue float64
+	Unit         string
+	Checkpoints  []KRNumericalCheckpoint
 }
 
 type KRNumericalCheckpoint struct {

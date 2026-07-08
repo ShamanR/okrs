@@ -132,12 +132,11 @@ func TestUpsertAndLoadNumericalMeta(t *testing.T) {
 	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'KR',100,'NUMERICAL',1) RETURNING id`, goalID).Scan(&krID)
 
 	in := krs.NumericalMetaInput{
-		KeyResultID:     krID,
-		StartValue:      100,
-		TargetValue:     180,
-		CurrentValue:    150,
-		Unit:            "RPS",
-		ZeroingCriteria: "сервис падает = 0%",
+		KeyResultID:  krID,
+		StartValue:   100,
+		TargetValue:  180,
+		CurrentValue: 150,
+		Unit:         "RPS",
 		Checkpoints: []domain.KRNumericalCheckpoint{
 			{Value: 100, ProgressPercent: 0},
 			{Value: 150, ProgressPercent: 50},
@@ -160,8 +159,8 @@ func TestUpsertAndLoadNumericalMeta(t *testing.T) {
 	if num.StartValue != 100 || num.TargetValue != 180 || num.CurrentValue != 150 {
 		t.Fatalf("unexpected values: %+v", num)
 	}
-	if num.Unit != "RPS" || num.ZeroingCriteria != "сервис падает = 0%" {
-		t.Fatalf("unexpected unit/zeroing: %+v", num)
+	if num.Unit != "RPS" {
+		t.Fatalf("unexpected unit: %+v", num)
 	}
 	if len(num.Checkpoints) != 3 || num.Checkpoints[1].Value != 150 || num.Checkpoints[1].ProgressPercent != 50 {
 		t.Fatalf("unexpected checkpoints: %+v", num.Checkpoints)
@@ -181,5 +180,48 @@ func TestUpsertAndLoadNumericalMeta(t *testing.T) {
 	}
 	if progressUpdated == nil {
 		t.Fatalf("expected progress_updated_at to be set")
+	}
+}
+
+func TestZeroingCriteriaAllKinds(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := krs.NewKRRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	var teamID, periodID, goalID int64
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1','2024-01-01','2024-03-31') RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+
+	for _, kind := range []domain.KRKind{domain.KRKindBoolean, domain.KRKindProject} {
+		krID, err := repo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
+			GoalID:          goalID,
+			Title:           "KR " + string(kind),
+			ZeroingCriteria: "инцидент P1 = 0%",
+			Weight:          10,
+			Kind:            kind,
+		})
+		if err != nil {
+			t.Fatalf("create %s: %v", kind, err)
+		}
+		got, err := repo.GetKeyResult(ctx, scope, krID)
+		if err != nil {
+			t.Fatalf("get %s: %v", kind, err)
+		}
+		if got.ZeroingCriteria != "инцидент P1 = 0%" {
+			t.Fatalf("kind %s: expected zeroing round-trip, got %q", kind, got.ZeroingCriteria)
+		}
+	}
+
+	// Update path also persists zeroing.
+	krID, _ := repo.CreateKeyResult(ctx, scope, krs.KeyResultInput{GoalID: goalID, Title: "U", Weight: 10, Kind: domain.KRKindBoolean})
+	if err := repo.UpdateKeyResult(ctx, scope, krs.KeyResultUpdateInput{ID: krID, Title: "U", ZeroingCriteria: "новый критерий", Weight: 10, Kind: domain.KRKindBoolean}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, _ := repo.GetKeyResult(ctx, scope, krID)
+	if got.ZeroingCriteria != "новый критерий" {
+		t.Fatalf("expected updated zeroing, got %q", got.ZeroingCriteria)
 	}
 }

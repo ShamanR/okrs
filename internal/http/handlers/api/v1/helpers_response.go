@@ -204,17 +204,18 @@ func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 		}
 	}
 	return dto.KeyResult{
-		ID:          kr.ID,
-		GoalID:      kr.GoalID,
-		Title:       kr.Title,
-		Description: kr.Description,
-		Weight:      kr.Weight,
-		Kind:        string(kr.Kind),
-		Progress:    kr.Progress,
-		Measure:     buildMeasure(kr),
-		Note:        note,
-		CreatedAt:   kr.CreatedAt,
-		UpdatedAt:   kr.UpdatedAt,
+		ID:              kr.ID,
+		GoalID:          kr.GoalID,
+		Title:           kr.Title,
+		Description:     kr.Description,
+		ZeroingCriteria: kr.ZeroingCriteria,
+		Weight:          kr.Weight,
+		Kind:            string(kr.Kind),
+		Progress:        kr.Progress,
+		Measure:         buildMeasure(kr),
+		Note:            note,
+		CreatedAt:       kr.CreatedAt,
+		UpdatedAt:       kr.UpdatedAt,
 	}
 }
 
@@ -231,12 +232,11 @@ func buildMeasure(kr domain.KeyResult) dto.Measure {
 		return dto.Measure{
 			Kind: string(kr.Kind),
 			Numerical: &dto.NumericalMeasure{
-				StartValue:      kr.Numerical.StartValue,
-				TargetValue:     kr.Numerical.TargetValue,
-				CurrentValue:    kr.Numerical.CurrentValue,
-				Unit:            kr.Numerical.Unit,
-				Checkpoints:     cps,
-				ZeroingCriteria: kr.Numerical.ZeroingCriteria,
+				StartValue:   kr.Numerical.StartValue,
+				TargetValue:  kr.Numerical.TargetValue,
+				CurrentValue: kr.Numerical.CurrentValue,
+				Unit:         kr.Numerical.Unit,
+				Checkpoints:  cps,
 			},
 		}
 	case domain.KRKindBoolean:

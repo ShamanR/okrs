@@ -22,20 +22,22 @@ func NewKRRepository(db *pgxpool.Pool) *KRRepository {
 
 // KeyResultInput is used by CreateKeyResult.
 type KeyResultInput struct {
-	GoalID      int64
-	Title       string
-	Description string
-	Weight      int
-	Kind        domain.KRKind
+	GoalID          int64
+	Title           string
+	Description     string
+	ZeroingCriteria string
+	Weight          int
+	Kind            domain.KRKind
 }
 
 // KeyResultUpdateInput is used by UpdateKeyResult.
 type KeyResultUpdateInput struct {
-	ID          int64
-	Title       string
-	Description string
-	Weight      int
-	Kind        domain.KRKind
+	ID              int64
+	Title           string
+	Description     string
+	ZeroingCriteria string
+	Weight          int
+	Kind            domain.KRKind
 }
 
 // ProjectStageInput is used by ReplaceProjectStages.
@@ -49,13 +51,12 @@ type ProjectStageInput struct {
 
 // NumericalMetaInput is used by UpsertNumericalMeta.
 type NumericalMetaInput struct {
-	KeyResultID     int64
-	StartValue      float64
-	TargetValue     float64
-	CurrentValue    float64
-	Unit            string
-	Checkpoints     []domain.KRNumericalCheckpoint
-	ZeroingCriteria string
+	KeyResultID  int64
+	StartValue   float64
+	TargetValue  float64
+	CurrentValue float64
+	Unit         string
+	Checkpoints  []domain.KRNumericalCheckpoint
 }
 
 // ParseCheckpoints decodes the key_results.checkpoints JSONB payload.
@@ -71,7 +72,7 @@ func ParseCheckpoints(raw []byte) ([]domain.KRNumericalCheckpoint, error) {
 }
 
 // scanNumerical builds a *domain.KRNumerical from nullable column holders.
-func scanNumerical(start, target, current *float64, unit, zeroing *string, checkpointsRaw []byte) (*domain.KRNumerical, error) {
+func scanNumerical(start, target, current *float64, unit *string, checkpointsRaw []byte) (*domain.KRNumerical, error) {
 	num := &domain.KRNumerical{}
 	if start != nil {
 		num.StartValue = *start
@@ -85,9 +86,6 @@ func scanNumerical(start, target, current *float64, unit, zeroing *string, check
 	if unit != nil {
 		num.Unit = *unit
 	}
-	if zeroing != nil {
-		num.ZeroingCriteria = *zeroing
-	}
 	cps, err := ParseCheckpoints(checkpointsRaw)
 	if err != nil {
 		return nil, err
@@ -99,10 +97,10 @@ func scanNumerical(start, target, current *float64, unit, zeroing *string, check
 func (r *KRRepository) CreateKeyResult(ctx context.Context, scope domain.TenantScope, input KeyResultInput) (int64, error) {
 	var id int64
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO key_results (goal_id, title, description, weight, kind, sort_order, tenant_id)
-		VALUES ($1,$2,$3,$4,$5, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1 AND tenant_id=$6), $6)
+		INSERT INTO key_results (goal_id, title, description, zeroing_criteria, weight, kind, sort_order, tenant_id)
+		VALUES ($1,$2,$3,$4,$5,$6, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM key_results WHERE goal_id=$1 AND tenant_id=$7), $7)
 		RETURNING id`,
-		input.GoalID, input.Title, input.Description, input.Weight, input.Kind, scope.TenantID,
+		input.GoalID, input.Title, input.Description, input.ZeroingCriteria, input.Weight, input.Kind, scope.TenantID,
 	).Scan(&id)
 	return id, err
 }
@@ -126,8 +124,11 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, scope domain.Te
 			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 			return nil, err
 		}
+		if zeroing != nil {
+			kr.ZeroingCriteria = *zeroing
+		}
 		if kr.Kind == domain.KRKindNumerical {
-			num, err := scanNumerical(startValue, targetValue, currentValue, unit, zeroing, checkpointsRaw)
+			num, err := scanNumerical(startValue, targetValue, currentValue, unit, checkpointsRaw)
 			if err != nil {
 				return nil, err
 			}
@@ -318,9 +319,9 @@ func (r *KRRepository) ReplaceProjectStages(ctx context.Context, scope domain.Te
 func (r *KRRepository) UpdateKeyResult(ctx context.Context, scope domain.TenantScope, input KeyResultUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
-		SET title=$1, description=$2, weight=$3, kind=$4, updated_at=NOW()
-		WHERE id=$5 AND tenant_id=$6`,
-		input.Title, input.Description, input.Weight, input.Kind, input.ID, scope.TenantID,
+		SET title=$1, description=$2, zeroing_criteria=$3, weight=$4, kind=$5, updated_at=NOW()
+		WHERE id=$6 AND tenant_id=$7`,
+		input.Title, input.Description, input.ZeroingCriteria, input.Weight, input.Kind, input.ID, scope.TenantID,
 	)
 	return err
 }
@@ -357,10 +358,10 @@ func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, scope domain.Ten
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
 		SET start_value=$1, target_value=$2, current_value=$3, unit=$4,
-		    checkpoints=$5, zeroing_criteria=$6, updated_at=NOW()
-		WHERE id=$7 AND tenant_id=$8`,
+		    checkpoints=$5, updated_at=NOW()
+		WHERE id=$6 AND tenant_id=$7`,
 		input.StartValue, input.TargetValue, input.CurrentValue, input.Unit,
-		checkpointsJSON, input.ZeroingCriteria, input.KeyResultID, scope.TenantID,
+		checkpointsJSON, input.KeyResultID, scope.TenantID,
 	)
 	return err
 }
@@ -393,8 +394,11 @@ func (r *KRRepository) GetKeyResult(ctx context.Context, scope domain.TenantScop
 		&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
 		return domain.KeyResult{}, err
 	}
+	if zeroing != nil {
+		kr.ZeroingCriteria = *zeroing
+	}
 	if kr.Kind == domain.KRKindNumerical {
-		num, err := scanNumerical(startValue, targetValue, currentValue, unit, zeroing, checkpointsRaw)
+		num, err := scanNumerical(startValue, targetValue, currentValue, unit, checkpointsRaw)
 		if err != nil {
 			return domain.KeyResult{}, err
 		}

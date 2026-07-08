@@ -12,11 +12,10 @@ func TestBuildMeasureNumerical(t *testing.T) {
 	kr := domain.KeyResult{
 		Kind: domain.KRKindNumerical,
 		Numerical: &domain.KRNumerical{
-			StartValue:      0,
-			TargetValue:     100,
-			CurrentValue:    50,
-			Unit:            "RPS",
-			ZeroingCriteria: "падение сервиса = 0%",
+			StartValue:   0,
+			TargetValue:  100,
+			CurrentValue: 50,
+			Unit:         "RPS",
 			Checkpoints: []domain.KRNumericalCheckpoint{
 				{Value: 25, ProgressPercent: 25},
 			},
@@ -32,11 +31,26 @@ func TestBuildMeasureNumerical(t *testing.T) {
 	if measure.Numerical.Unit != "RPS" {
 		t.Fatalf("expected unit RPS, got %s", measure.Numerical.Unit)
 	}
-	if measure.Numerical.ZeroingCriteria == "" {
-		t.Fatalf("expected zeroing criteria")
-	}
 	if len(measure.Numerical.Checkpoints) != 1 {
 		t.Fatalf("expected checkpoints")
+	}
+}
+
+func TestMapKeyResultZeroingTopLevel(t *testing.T) {
+	for _, kind := range []domain.KRKind{domain.KRKindNumerical, domain.KRKindBoolean, domain.KRKindProject} {
+		kr := domain.KeyResult{Kind: kind, ZeroingCriteria: "падение сервиса = 0%"}
+		switch kind {
+		case domain.KRKindNumerical:
+			kr.Numerical = &domain.KRNumerical{Unit: "%"}
+		case domain.KRKindBoolean:
+			kr.Boolean = &domain.KRBoolean{}
+		case domain.KRKindProject:
+			kr.Project = &domain.KRProject{}
+		}
+		dtoKR := MapKeyResult(kr)
+		if dtoKR.ZeroingCriteria != "падение сервиса = 0%" {
+			t.Fatalf("kind %s: expected top-level zeroing, got %q", kind, dtoKR.ZeroingCriteria)
+		}
 	}
 }
 

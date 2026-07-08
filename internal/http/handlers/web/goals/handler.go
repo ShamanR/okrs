@@ -107,11 +107,12 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, err := h.deps.Service.CreateKeyResultWithMeta(ctx, scope, krs.KeyResultInput{
-		GoalID:      goalID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        kind,
+		GoalID:          goalID,
+		Title:           common.TrimmedFormValue(r, "title"),
+		Description:     common.TrimmedFormValue(r, "description"),
+		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
+		Weight:          weight,
+		Kind:            kind,
 	}, meta); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return

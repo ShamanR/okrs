@@ -73,11 +73,12 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.deps.Service.UpdateKeyResultWithMeta(ctx, scope, krs.KeyResultUpdateInput{
-		ID:          krID,
-		Title:       common.TrimmedFormValue(r, "title"),
-		Description: common.TrimmedFormValue(r, "description"),
-		Weight:      weight,
-		Kind:        krKind,
+		ID:              krID,
+		Title:           common.TrimmedFormValue(r, "title"),
+		Description:     common.TrimmedFormValue(r, "description"),
+		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
+		Weight:          weight,
+		Kind:            krKind,
 	}, meta); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
