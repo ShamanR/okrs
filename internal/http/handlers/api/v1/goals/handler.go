@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -23,6 +24,27 @@ type Handler struct {
 
 func New(service *service.Service) *Handler {
 	return &Handler{service: service}
+}
+
+// canAccessGoal reports whether the current request may act on a goal that is
+// visible to the user: it must be owned by an accessible team or shared into one.
+// A shared goal appears on the cards of every team it is shared into, so comment /
+// resolve actions must accept users who can reach any of those teams — not only the
+// owner team. Mirrors the shared-goal visibility used by the OKR list and move/leave-share.
+func (h *Handler) canAccessGoal(ctx context.Context, scope domain.TenantScope, goal domain.Goal) bool {
+	if auth.CanAccessTeamFromCtx(ctx, goal.TeamID) {
+		return true
+	}
+	shareList, err := h.service.ListGoalShares(ctx, scope, goal.ID)
+	if err != nil {
+		return false
+	}
+	for _, sh := range shareList {
+		if auth.CanAccessTeamFromCtx(ctx, sh.TeamID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +177,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
-	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+	if err != nil || !h.canAccessGoal(r.Context(), scope, goal) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
@@ -205,7 +227,7 @@ func (h *Handler) setGoalCommentResolved(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
-	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+	if err != nil || !h.canAccessGoal(r.Context(), scope, goal) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
