@@ -53,6 +53,7 @@ type GoalRepo interface {
 	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
 	MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error
 	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error
+	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
@@ -784,6 +785,10 @@ func (s *Service) UpdateGoalWeight(ctx context.Context, scope domain.TenantScope
 
 func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
 	return s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
+}
+
+func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
+	return s.goals.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
 }
 
 func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {

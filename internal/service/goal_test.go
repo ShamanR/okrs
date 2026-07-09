@@ -204,6 +204,9 @@ func (f *goalFakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, _ int6
 func (f *goalFakeStore) AddGoalComment(_ context.Context, _ domain.TenantScope, _ int64, _ string, _ int64) error {
 	return nil
 }
+func (f *goalFakeStore) SetGoalCommentResolved(_ context.Context, _ domain.TenantScope, _, _ int64, _ bool, _ int64) error {
+	return nil
+}
 func (f *goalFakeStore) ListGoalComments(_ context.Context, _ domain.TenantScope, _ int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }

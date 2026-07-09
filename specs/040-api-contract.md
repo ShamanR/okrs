@@ -399,6 +399,8 @@ CSRF token должен быть ротационным (не постоянны
 - share goal — `POST /api/v1/goals/{goalID}/share`
 - update goal weight
 - add goal comment — `POST /api/v1/goals/{goalID}/comments`
+- resolve goal comment — `POST /api/v1/goals/{goalID}/comments/{commentID}/resolve`
+- reopen goal comment — `POST /api/v1/goals/{goalID}/comments/{commentID}/unresolve`
 - update goal
 - create KR — `POST /api/v1/goals/{goalID}/key-results`
 - move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`; форма содержит `team_id` — команду, в чьём представлении периода меняется порядок. Перемещение действует на упорядоченный список этой команды (её собственные цели по `goals.sort_order` вперемешку с общими целями по `goal_shares.sort_order`), поэтому порядок общих целей можно менять в каждой команде независимо, не затрагивая порядок в других командах. Требует доступ к `team_id`; цель должна принадлежать команде (как владелец) или быть в неё расшарена.
@@ -528,9 +530,14 @@ Hierarchy node shape расширен полем:
 
 ```json
 "comments": [
-  { "id": 1, "text": "...", "author_name": "Ivan", "author_udid": "550e8400-...", "created_at": "..." }
+  {
+    "id": 1, "text": "...", "author_name": "Ivan", "author_udid": "550e8400-...", "created_at": "...",
+    "resolved": true, "resolved_by_name": "Petr", "resolved_by_udid": "660e...", "resolved_at": "..."
+  }
 ]
 ```
+
+Комментарий трактуется как замечание. `resolved` (bool) — решено ли; при `resolved=false` поля `resolved_by_name`/`resolved_by_udid` пустые, а `resolved_at` — `null`. Отметить решённым / вернуть можно эндпоинтами `.../comments/{commentID}/resolve` и `.../unresolve` (доступ — как к добавлению комментария: любой пользователь в scope цели); несуществующий/чужой комментарий → `404`.
 
 #### Key Result measure
 

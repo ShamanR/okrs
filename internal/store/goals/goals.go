@@ -2,13 +2,18 @@ package goals
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/store/krs"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// ErrNotFound is returned when a mutation targets a comment absent from the scope.
+var ErrNotFound = errors.New("goals: not found")
 
 // GoalRepository handles all goal persistence (goals, comments).
 // It depends on KRRepository to load key results as part of the goal aggregate.
@@ -579,9 +584,11 @@ func (r *GoalRepository) listGoalCommentsBatch(ctx context.Context, scope domain
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at,
+		       gc.resolved_at, ru.display_name, ru.udid
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
+		LEFT JOIN users ru ON ru.id = gc.resolved_by_user_id
 		WHERE gc.goal_id = ANY($1) AND gc.tenant_id = $2
 		ORDER BY gc.created_at DESC`, goalIDs, scope.TenantID)
 	if err != nil {
@@ -590,8 +597,8 @@ func (r *GoalRepository) listGoalCommentsBatch(ctx context.Context, scope domain
 	defer rows.Close()
 	result := make(map[int64][]domain.GoalComment)
 	for rows.Next() {
-		var c domain.GoalComment
-		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+		c, err := scanGoalComment(rows)
+		if err != nil {
 			return nil, err
 		}
 		result[c.GoalID] = append(result[c.GoalID], c)
@@ -831,9 +838,11 @@ func (r *GoalRepository) AddGoalComment(ctx context.Context, scope domain.Tenant
 
 func (r *GoalRepository) ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at
+		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at,
+		       gc.resolved_at, ru.display_name, ru.udid
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
+		LEFT JOIN users ru ON ru.id = gc.resolved_by_user_id
 		WHERE gc.goal_id = $1 AND gc.tenant_id = $2
 		ORDER BY gc.created_at DESC`, goalID, scope.TenantID)
 	if err != nil {
@@ -842,11 +851,53 @@ func (r *GoalRepository) ListGoalComments(ctx context.Context, scope domain.Tena
 	defer rows.Close()
 	var comments []domain.GoalComment
 	for rows.Next() {
-		var c domain.GoalComment
-		if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt); err != nil {
+		c, err := scanGoalComment(rows)
+		if err != nil {
 			return nil, err
 		}
 		comments = append(comments, c)
 	}
 	return comments, rows.Err()
+}
+
+// scanGoalComment reads a goal comment row that includes resolve metadata.
+// resolved_by_user_id is a LEFT JOIN, so resolver name/udid are nullable.
+func scanGoalComment(rows pgx.Rows) (domain.GoalComment, error) {
+	var c domain.GoalComment
+	var resolverName, resolverUDID *string
+	if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt,
+		&c.ResolvedAt, &resolverName, &resolverUDID); err != nil {
+		return domain.GoalComment{}, err
+	}
+	if resolverName != nil {
+		c.ResolvedByName = *resolverName
+	}
+	if resolverUDID != nil {
+		c.ResolvedByUDID = *resolverUDID
+	}
+	return c, nil
+}
+
+// SetGoalCommentResolved marks a comment resolved (stamping resolver + time) or
+// clears the resolution. The WHERE clause pins the comment to its goal and tenant;
+// a zero row count means the comment does not exist in this scope.
+func (r *GoalRepository) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
+	// resolved_by_user_id is NULL when clearing so a re-resolve re-stamps the actor.
+	var resolvedBy *int64
+	if resolved {
+		resolvedBy = &userID
+	}
+	tag, err := r.db.Exec(ctx, `
+		UPDATE goal_comments
+		SET resolved_at = CASE WHEN $1 THEN NOW() ELSE NULL END,
+		    resolved_by_user_id = $2
+		WHERE id = $3 AND goal_id = $4 AND tenant_id = $5`,
+		resolved, resolvedBy, commentID, goalID, scope.TenantID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

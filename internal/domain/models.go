@@ -107,12 +107,15 @@ type Goal struct {
 }
 
 type GoalComment struct {
-	ID         int64
-	GoalID     int64
-	Text       string
-	AuthorName string
-	AuthorUDID string
-	CreatedAt  time.Time
+	ID             int64
+	GoalID         int64
+	Text           string
+	AuthorName     string
+	AuthorUDID     string
+	CreatedAt      time.Time
+	ResolvedAt     *time.Time
+	ResolvedByName string
+	ResolvedByUDID string
 }
 
 type KeyResultNote struct {

@@ -454,6 +454,9 @@ INSERT INTO goal_comments (id, goal_id, text, author_user_id, created_at) VALUES
   (103, 105, 'Осталось 3 сервиса. Основные проблемы с устаревшими зависимостями решены.', 1, NOW()),
   (104, 112, 'Апрельский инцидент устранён. Добавили circuit breaker на 3 критичных точках.', 1, NOW());
 
+-- Одно замечание помечено решённым, второе остаётся нерешённым — демонстрирует resolve-флоу.
+UPDATE goal_comments SET resolved_at = NOW(), resolved_by_user_id = 1 WHERE id = 100;
+
 -- KR notes (1:1, author_user_id = 1)
 INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at) VALUES
   (101, 'Нашли узкое место в JWT verify — пул соединений был слишком мал.', 1, NOW()),

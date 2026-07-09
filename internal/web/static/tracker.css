@@ -320,8 +320,20 @@
 /* ── COMMENTS PANEL ──────────────────────────────────────────────────────────── */
 .comments-section { padding: 0 18px 16px; border-top: 1px solid #f3f4f6; }
 .comments-panel { padding-top: 14px; }
-.comments-panel__title { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
+.comments-panel__title { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
+.comments-panel__unresolved { text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 700; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 999px; }
+.comments-panel__resolved-head { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin: 6px 0 12px; }
 .comment { display: flex; gap: 10px; margin-bottom: 14px; }
+.comment--resolved { opacity: 0.65; }
+.comment--resolved .comment__text { background: #f3f4f6; }
+.comment__resolved-badge { font-size: 11px; font-weight: 700; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 7px; border-radius: 999px; }
+.comment__actions { margin-top: 6px; }
+.comment__resolve-btn { font-size: 12px; font-weight: 600; color: #047857; background: #fff; border: 1px solid #a7f3d0; border-radius: 7px; padding: 5px 12px; cursor: pointer; }
+.comment__resolve-btn:hover:not(:disabled) { background: #ecfdf5; }
+.comment__resolve-btn:disabled { opacity: 0.5; cursor: default; }
+.comment__resolved-meta { margin-top: 6px; font-size: 11px; color: #9ca3af; }
+.comment__link-btn { font-size: 11px; color: #6b7280; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.comment__link-btn:disabled { opacity: 0.5; cursor: default; }
 .comment__content { flex: 1; }
 .comment__header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
 .comment__author { font-size: 12px; font-weight: 600; color: #374151; }
@@ -378,6 +390,7 @@
 .goal-card__footer { display: flex; border-top: 1px solid #f3f4f6; background: #fafafa; }
 .goal-card__footer-btn { flex: 1; padding: 8px 0; border: none; background: transparent; cursor: pointer; font-size: 12px; font-weight: 500; color: #6b7280; display: flex; align-items: center; justify-content: center; gap: 5px; }
 .goal-card__footer-btn--has-comments { color: #374151; }
+.comment-unresolved-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 11px; font-weight: 700; color: #fff; background: #dc2626; }
 .goal-card__footer-divider { width: 1px; background: #f3f4f6; }
 .kr-weight-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
 

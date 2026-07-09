@@ -245,6 +245,9 @@ func (f *fakeStore) GetKeyResult(_ context.Context, _ domain.TenantScope, id int
 func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) error {
 	return nil
 }
+func (f *fakeStore) SetGoalCommentResolved(context.Context, domain.TenantScope, int64, int64, bool, int64) error {
+	return nil
+}
 func (f *fakeStore) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error {
 	return nil
 }

@@ -1,6 +1,7 @@
 package goals
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -23,6 +24,27 @@ type Handler struct {
 
 func New(service *service.Service) *Handler {
 	return &Handler{service: service}
+}
+
+// canAccessGoal reports whether the current request may act on a goal that is
+// visible to the user: it must be owned by an accessible team or shared into one.
+// A shared goal appears on the cards of every team it is shared into, so comment /
+// resolve actions must accept users who can reach any of those teams — not only the
+// owner team. Mirrors the shared-goal visibility used by the OKR list and move/leave-share.
+func (h *Handler) canAccessGoal(ctx context.Context, scope domain.TenantScope, goal domain.Goal) bool {
+	if auth.CanAccessTeamFromCtx(ctx, goal.TeamID) {
+		return true
+	}
+	shareList, err := h.service.ListGoalShares(ctx, scope, goal.ID)
+	if err != nil {
+		return false
+	}
+	for _, sh := range shareList {
+		if auth.CanAccessTeamFromCtx(ctx, sh.TeamID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +177,7 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
-	if err != nil || !auth.CanAccessTeamFromCtx(r.Context(), goal.TeamID) {
+	if err != nil || !h.canAccessGoal(r.Context(), scope, goal) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
@@ -172,6 +194,49 @@ func (h *Handler) HandleAddGoalComment(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.service.AddGoalComment(r.Context(), scope, goalID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to add comment", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) HandleResolveGoalComment(w http.ResponseWriter, r *http.Request) {
+	h.setGoalCommentResolved(w, r, true)
+}
+
+func (h *Handler) HandleUnresolveGoalComment(w http.ResponseWriter, r *http.Request) {
+	h.setGoalCommentResolved(w, r, false)
+}
+
+// setGoalCommentResolved marks a comment resolved or clears the resolution.
+// Access is gated by access to the parent goal — any user in the goal's scope
+// may resolve/reopen, matching who may comment.
+func (h *Handler) setGoalCommentResolved(w http.ResponseWriter, r *http.Request, resolved bool) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	commentID, err := common.ParseID(chi.URLParam(r, "commentID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid comment id", map[string]string{"comment_id": "invalid"})
+		return
+	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
+	if err != nil || !h.canAccessGoal(r.Context(), scope, goal) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	if err := h.service.SetGoalCommentResolved(r.Context(), scope, goalID, commentID, resolved, auth.UserIDFromContext(r.Context())); err != nil {
+		if errors.Is(err, goals.ErrNotFound) {
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "comment not found", nil)
+			return
+		}
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update comment", nil)
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})

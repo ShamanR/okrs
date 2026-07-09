@@ -15,7 +15,7 @@ func TestRegisterRoutes(t *testing.T) {
 	RegisterRoutes(r, New(nil))
 	v1.RegisterMethodNotAllowed(r)
 
-	req := httptest.NewRequest(http.MethodGet, "/krs/1/note", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/krs/1/note", nil)
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 
