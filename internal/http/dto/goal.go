@@ -11,11 +11,15 @@ type ShareTeam struct {
 }
 
 type GoalComment struct {
-	ID         int64     `json:"id"`
-	Text       string    `json:"text"`
-	AuthorName string    `json:"author_name"`
-	AuthorUDID string    `json:"author_udid"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID             int64      `json:"id"`
+	Text           string     `json:"text"`
+	AuthorName     string     `json:"author_name"`
+	AuthorUDID     string     `json:"author_udid"`
+	CreatedAt      time.Time  `json:"created_at"`
+	Resolved       bool       `json:"resolved"`
+	ResolvedByName string     `json:"resolved_by_name"`
+	ResolvedByUDID string     `json:"resolved_by_udid"`
+	ResolvedAt     *time.Time `json:"resolved_at"`
 }
 
 type GoalDetails struct {

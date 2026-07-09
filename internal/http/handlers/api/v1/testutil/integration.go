@@ -48,14 +48,12 @@ func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
-	router.Route("/api/v1", func(r chi.Router) {
-		apihierarhy.RegisterRoutes(r, hierarchyHandler)
-		apiperiods.RegisterRoutes(r, periodsHandler)
-		apiteams.RegisterRoutes(r, teamsHandler)
-		apigoals.RegisterRoutes(r, goalsHandler)
-		apikrs.RegisterRoutes(r, krsHandler)
-		v1.RegisterMethodNotAllowed(r)
-	})
+	apihierarhy.RegisterRoutes(router, hierarchyHandler)
+	apiperiods.RegisterRoutes(router, periodsHandler)
+	apiteams.RegisterRoutes(router, teamsHandler)
+	apigoals.RegisterRoutes(router, goalsHandler)
+	apikrs.RegisterRoutes(router, krsHandler)
+	v1.RegisterMethodNotAllowed(router)
 	return router
 }
 

@@ -172,7 +172,7 @@ function mapGoal(g) {
     progress: g.progress,
     progressMeta: g.progress_meta,
     krs: (g.key_results || []).map(mapKR),
-    comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text })),
+    comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text, resolved: !!c.resolved, resolvedBy: c.resolved_by_name, resolvedByUdid: c.resolved_by_udid, resolvedAt: c.resolved_at ? fmtDate(c.resolved_at) : null })),
     shareTeams: g.share_teams || [],
     shared: (g.share_teams || []).length > 0,
     updatedAt: g.updated_at,
@@ -980,27 +980,61 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7 }) {
 }
 
 // ── COMMENTS PANEL ────────────────────────────────────────────────────────────
-function CommentsPanel({ comments, onAdd, me }) {
+// A single comment row. Unresolved comments expose a "resolve" action; resolved
+// ones are visually dimmed and carry a resolver/date meta line with a "reopen" link.
+function CommentRow({ c, onResolve, onUnresolve }) {
+  const [busy, setBusy] = useState(false);
+  const act = async fn => { setBusy(true); try { await fn(); } catch { } finally { setBusy(false); } };
+  return (
+    <div className={`comment${c.resolved ? ' comment--resolved' : ''}`}>
+      <AvatarWithUDID name={c.author} udid={c.authorUdid} size={28} />
+      <div className="comment__content">
+        <div className="comment__header">
+          <span className="comment__author">{c.author}</span>
+          <span className="comment__date">{c.date}</span>
+          {c.resolved && <span className="comment__resolved-badge">✓ Решено</span>}
+        </div>
+        <Markdown text={c.text} className="comment__text" />
+        {c.resolved ? (
+          <div className="comment__resolved-meta">
+            Решено{c.resolvedBy ? ` · ${c.resolvedBy}` : ''}{c.resolvedAt ? ` · ${c.resolvedAt}` : ''}
+            {' · '}
+            <button className="comment__link-btn" disabled={busy} onClick={() => act(() => onUnresolve(c.id))}>Вернуть</button>
+          </div>
+        ) : (
+          <div className="comment__actions">
+            <button className="comment__resolve-btn" disabled={busy} onClick={() => act(() => onResolve(c.id))}>✓ Отметить решённым</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, me }) {
   const [text, setText] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async () => {
     if (!text.trim()) return;
     setSaving(true); try { await onAdd(text.trim()); setText(''); } catch { } finally { setSaving(false); }
   };
   const hasText = !!text.trim();
+  const list = comments || [];
+  const open = list.filter(c => !c.resolved);
+  const resolved = list.filter(c => c.resolved);
   return (
     <div className="comments-panel">
-      <div className="comments-panel__title">Комментарии</div>
-      {(comments || []).map((c, i) => (
-        <div key={c.id || i} className="comment">
-          <AvatarWithUDID name={c.author} udid={c.authorUdid} size={28} />
-          <div className="comment__content">
-            <div className="comment__header">
-              <span className="comment__author">{c.author}</span>
-              <span className="comment__date">{c.date}</span>
-            </div>
-            <Markdown text={c.text} className="comment__text" />
-          </div>
-        </div>
+      <div className="comments-panel__title">
+        Комментарии
+        {open.length > 0 && <span className="comments-panel__unresolved">{open.length} нерешённых</span>}
+      </div>
+      {open.map((c, i) => (
+        <CommentRow key={c.id || i} c={c} onResolve={onResolve} onUnresolve={onUnresolve} />
+      ))}
+      {resolved.length > 0 && (
+        <div className="comments-panel__resolved-head">Решённые · {resolved.length}</div>
+      )}
+      {resolved.map((c, i) => (
+        <CommentRow key={c.id || `r${i}`} c={c} onResolve={onResolve} onUnresolve={onUnresolve} />
       ))}
       <div className="comment-compose">
         <Avatar name={me?.display_name} avatarUrl={me?.avatar_url} size={28} />
@@ -1048,6 +1082,9 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const krWeightDelta = 100 - krWeightSum;
 
   const addGoalComment = async text => { await apiPost(`/api/v1/goals/${goal.id}/comments`, { text }); onReload(); };
+  const resolveComment = async commentId => { await apiPost(`/api/v1/goals/${goal.id}/comments/${commentId}/resolve`, {}); onReload(); };
+  const unresolveComment = async commentId => { await apiPost(`/api/v1/goals/${goal.id}/comments/${commentId}/unresolve`, {}); onReload(); };
+  const unresolvedCount = (goal.comments || []).filter(c => !c.resolved).length;
   // For a shared goal, deleting only detaches the current team (leaves the share); the goal stays
   // for the other participating teams. A goal that is not shared is deleted outright.
   const handleDeleteGoal = async () => {
@@ -1139,6 +1176,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         <button onClick={() => setShowCom(!showCom)}
           className={`goal-card__footer-btn${(goal.comments || []).length > 0 ? ' goal-card__footer-btn--has-comments' : ''}`}>
           {(goal.comments || []).length > 0 ? `💬 ${goal.comments.length}` : '💬 Комментарии'}
+          {unresolvedCount > 0 && <span className="comment-unresolved-badge" title={`${unresolvedCount} нерешённых`}>{unresolvedCount}</span>}
         </button>
       </div>
       {showKR && (
@@ -1182,7 +1220,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         onConfirm={handleDeleteGoal} onClose={() => setConfirmDeleteGoal(false)} />}
       {showCom && (
         <div className="comments-section">
-          <CommentsPanel comments={goal.comments} onAdd={addGoalComment} me={me} />
+          <CommentsPanel comments={goal.comments} onAdd={addGoalComment} onResolve={resolveComment} onUnresolve={unresolveComment} me={me} />
         </div>
       )}
     </div>

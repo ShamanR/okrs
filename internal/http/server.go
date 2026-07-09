@@ -535,44 +535,20 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 	})
 }
 
+// registerApiRoutes wires the /api/v1 surface. Each handler package owns its own
+// route table via RegisterRoutes (the single source of truth, shared with the
+// integration test router); the few single-endpoint handlers without a package
+// route table are registered inline here.
 func (s *Server) registerApiRoutes(r chi.Router) {
-	r.Get("/api/v1/hierarchy", apihierarhy.New(s.service).HandleHierarchy)
-	r.Get("/api/v1/periods", apiperiods.New(s.service).HandlePeriods)
+	apihierarhy.RegisterRoutes(r, apihierarhy.New(s.service))
+	apiperiods.RegisterRoutes(r, apiperiods.New(s.service))
+	apiteams.RegisterRoutes(r, apiteams.New(s.service))
+	apigoals.RegisterRoutes(r, apigoals.New(s.service))
+	apikrs.RegisterRoutes(r, apikrs.New(s.service))
+
 	r.Get("/api/v1/config", apiconfig.New(s.settingsSvc).HandleConfig)
 	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
-
-	teamHandlers := apiteams.New(s.service)
-	r.Get("/api/v1/teams/{teamID}", teamHandlers.HandleTeam)
-	r.Get("/api/v1/teams/{teamID}/okrs", teamHandlers.HandleTeamOKRs)
-	r.Get("/api/v1/teams/{teamID}/overview", teamHandlers.HandleTeamOverview)
-	r.Post("/api/v1/teams/{teamID}/status", teamHandlers.HandleUpdateTeamPeriodStatus)
-	r.Post("/api/v1/teams/{teamID}/goals", teamHandlers.HandleCreateGoal)
-
-	goalsHandler := apigoals.New(s.service)
-	r.Get("/api/v1/goals/{goalID}", goalsHandler.HandleGoal)
-	r.Post("/api/v1/goals/{goalID}/share", goalsHandler.HandleShareGoal)
-	r.Post("/api/v1/goals/{goalID}/weight", goalsHandler.HandleUpdateGoalWeight)
-	r.Post("/api/v1/goals/{goalID}/comments", goalsHandler.HandleAddGoalComment)
-	r.Post("/api/v1/goals/{goalID}", goalsHandler.HandleUpdateGoal)
-	r.Post("/api/v1/goals/{goalID}/move-up", goalsHandler.HandleMoveGoalUp)
-	r.Post("/api/v1/goals/{goalID}/move-down", goalsHandler.HandleMoveGoalDown)
-	r.Delete("/api/v1/goals/{goalID}/share/{teamID}", goalsHandler.HandleLeaveGoalShare)
-	r.Delete("/api/v1/goals/{goalID}", goalsHandler.HandleDeleteGoal)
-
-	krsHandler := apikrs.New(s.service)
-	r.Post("/api/v1/goals/{goalID}/key-results", krsHandler.HandleCreateKeyResult)
-	r.Post("/api/v1/krs/{krID}/progress/numerical", krsHandler.HandleUpdateNumericalProgress)
-	r.Post("/api/v1/krs/{krID}/progress/boolean", krsHandler.HandleUpdateBooleanProgress)
-	r.Post("/api/v1/krs/{krID}/progress/project", krsHandler.HandleUpdateProjectProgress)
-	r.Post("/api/v1/krs/{krID}/note", krsHandler.HandleUpsertKRNote)
-	r.Post("/api/v1/krs/{krID}/description", krsHandler.HandleUpdateKRDescription)
-	r.Post("/api/v1/krs/{krID}", krsHandler.HandleUpdateKeyResult)
-	r.Post("/api/v1/krs/{krID}/move-up", krsHandler.HandleMoveKeyResultUp)
-	r.Post("/api/v1/krs/{krID}/move-down", krsHandler.HandleMoveKeyResultDown)
-	r.Delete("/api/v1/krs/{krID}", krsHandler.HandleDeleteKeyResult)
-
-	hcHandler := apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache)
-	r.Get("/api/v1/health-checkin", hcHandler.HandleHealthCheckIn)
+	r.Get("/api/v1/health-checkin", apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache).HandleHealthCheckIn)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)
