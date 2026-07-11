@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"okrs/internal/auth"
 	"okrs/internal/domain"
 )
 
@@ -157,6 +158,34 @@ func TestHandleConfigFeedbackDefaults(t *testing.T) {
 	}
 	if got.FeedbackFrequencyDays != 30 {
 		t.Errorf("feedback_frequency_days: want default 30, got %d", got.FeedbackFrequencyDays)
+	}
+}
+
+func TestHandleConfigIsSystemAdmin(t *testing.T) {
+	h := New(&fakeSettings{data: map[string]json.RawMessage{}})
+
+	// Without a system-admin user in context, the flag is false.
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.HandleConfig(w, r)
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.IsSystemAdmin {
+		t.Errorf("is_system_admin: want false for non-system-admin")
+	}
+
+	// With a system-admin user in context, the flag is true.
+	r = httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	r = r.WithContext(auth.WithUser(r.Context(), &domain.User{ID: 1, IsSystemAdmin: true}))
+	w = httptest.NewRecorder()
+	h.HandleConfig(w, r)
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if !got.IsSystemAdmin {
+		t.Errorf("is_system_admin: want true for system-admin user")
 	}
 }
 

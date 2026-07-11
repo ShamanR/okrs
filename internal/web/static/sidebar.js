@@ -181,6 +181,9 @@ function SidebarFooter({ user }) {
             {cfg && cfg.is_admin && (
               <a href="/admin" className="sidebar__user-menu-item"><span className="sidebar__user-menu-icon">🛠</span>Администрирование</a>
             )}
+            {cfg && cfg.is_system_admin && (
+              <a href="/system" className="sidebar__user-menu-item"><span className="sidebar__user-menu-icon">🖥</span>System</a>
+            )}
             <button onClick={logout} className="sidebar__user-menu-item sidebar__user-menu-item--danger">
               <span className="sidebar__user-menu-icon">↩</span>Выйти
             </button>
