@@ -1,4 +1,4 @@
-// No-membership page — React SPA (CDN React 18 + Babel standalone), uses the shared header.
+// No-membership page — React SPA (CDN React 18 + Babel standalone), uses the shared Sidebar.
 // Served as a static file (like admin.js/system.js): inline Babel/JSX in an html/template
 // <script> would be mangled by template JS-context escaping.
 const {useState, useEffect} = React;
@@ -29,24 +29,23 @@ function NoAccess() {
     else if (res.status === 409) setMsg({text:'Вы уже состоите в этой организации.', ok:false});
     else { const b = await res.json().catch(()=>({})); setMsg({text:(b.error||('Ошибка '+res.status)), ok:false}); }
   };
-  return <React.Fragment>
-    <div className="topbar">
-      {me && <HeaderNavMenu user={me} active={null} />}
-      <div className="topbar__logo">OKR</div>
+  return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+    <Sidebar user={me} showSections={false} />
+    <div style={{flex:1,overflowY:'auto'}}>
+      <div className="na-wrap"><div className="na-card">
+        <h1>Нет доступа</h1>
+        {customMsg
+          ? <div className="na-card-md"><Markdown text={customMsg}/></div>
+          : <p>У вашей учётной записи нет доступа ни к одной организации. Обратитесь к администратору
+            или запросите доступ по короткому имени (slug) организации.</p>}
+        <form className="na-form" onSubmit={submit}>
+          <input placeholder="slug организации" value={slug} onChange={e=>setSlug(e.target.value)} required/>
+          <button type="submit">Запросить доступ</button>
+        </form>
+        {msg && <div className={'na-msg ' + (msg.ok ? 'ok' : 'err')}>{msg.text}</div>}
+      </div></div>
     </div>
-    <div className="na-wrap"><div className="na-card">
-      <h1>Нет доступа</h1>
-      {customMsg
-        ? <div className="na-card-md"><Markdown text={customMsg}/></div>
-        : <p>У вашей учётной записи нет доступа ни к одной организации. Обратитесь к администратору
-          или запросите доступ по короткому имени (slug) организации.</p>}
-      <form className="na-form" onSubmit={submit}>
-        <input placeholder="slug организации" value={slug} onChange={e=>setSlug(e.target.value)} required/>
-        <button type="submit">Запросить доступ</button>
-      </form>
-      {msg && <div className={'na-msg ' + (msg.ok ? 'ok' : 'err')}>{msg.text}</div>}
-    </div></div>
-  </React.Fragment>;
+  </div>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<NoAccess/>);

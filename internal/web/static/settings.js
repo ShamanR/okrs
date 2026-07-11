@@ -75,7 +75,7 @@ function TypeBadge({ type }) {
   return <span className="set-type-badge" style={{ color, background: `${color}15` }}>{(TEAM_TYPE_LABEL[type] || type).toUpperCase()}</span>;
 }
 
-// AccountMenu replaced by the shared HeaderNavMenu from header.js.
+// AccountMenu replaced by the shared Sidebar from sidebar.js.
 
 // ── SECTION: TEAM DESCRIPTIONS ────────────────────────────────────────────────
 // A row in the editable, indented hierarchy of teams the user may edit.
@@ -418,30 +418,23 @@ function App() {
 
   return (
     <div className="set-app">
-      <aside className="set-sidebar">
-        <div className="set-sidebar__header">
-          {me && <HeaderNavMenu user={me} active={null} />}
-          <div>
-            <div className="set-sidebar__logo">OKR Tracker</div>
-            <div className="set-sidebar__sub">Настройки</div>
-          </div>
-        </div>
-        <nav className="set-nav">
-          <div className="set-nav__label">Разделы</div>
+      <Sidebar user={me} active={null}>
+        <div className="sidebar__context">
+          <div className="sidebar__section-label">Настройки</div>
           {sections.map(id => {
             const m = SECTION_META[id];
             return (
-              <button key={id} className={`set-nav__item${id === active ? ' set-nav__item--active' : ''}`} onClick={() => navigate(id)}>
-                <span className="set-nav__icon">{m.icon}</span>
-                <span className="set-nav__body"><span className="set-nav__title">{m.label}</span><span className="set-nav__hint">{m.hint}</span></span>
+              <button
+                key={id}
+                className={`sidebar__navlink${id === active ? ' sidebar__navlink--active' : ''}`}
+                onClick={() => navigate(id)}
+              >
+                <span className="sidebar__navlink-icon">{m.icon}</span>{m.label}
               </button>
             );
           })}
-        </nav>
-        <div className="set-sidebar__footer">
-          <a href="/" className="set-back-btn"><span className="set-back-btn__arrow">←</span> Вернуться к OKR Tracker</a>
         </div>
-      </aside>
+      </Sidebar>
 
       <div className="set-content">
         <header className="set-topbar">

@@ -112,7 +112,7 @@ Response:
 - `green_threshold` — порог прогресса (1..100) из `health_checkin_config.green_threshold`, по умолчанию `80`. Цель или команда с прогрессом не ниже порога считается «в плане» и красится зелёным (и в sidebar, и на странице целей: карточки целей, дочерние карточки, кластерный обзор, верхний прогресс-бар команды) независимо от forecast-проверки темпа.
 - `feedback_url` — ссылка на внешний опрос обратной связи из `tenant_settings`; пустая строка, если не задана. Пока пустая — пункт меню «Обратная связь» и всплывающее окно не показываются.
 - `feedback_popup_enabled` — включено ли всплывающее окно с просьбой оставить обратную связь (`tenant_settings` ключ `feedback_popup_enabled`), по умолчанию `false`.
-- `feedback_menu_link_enabled` — включён ли пункт «Обратная связь» в гамбургер-меню (`tenant_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
+- `feedback_menu_link_enabled` — включена ли ссылка «Обратная связь» в футере сайдбара (`tenant_settings` ключ `feedback_menu_link_enabled`), по умолчанию `false`.
 - `feedback_frequency_days` — минимальный интервал между показами всплывающего окна (дней) из `tenant_settings`, по умолчанию `30`. Логика показа на стороне SPA через cookies — см. `030-user-flows.md`.
 
 ## Admin API endpoints
