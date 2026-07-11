@@ -430,7 +430,7 @@ function AvatarWithUDID({ name, udid, size = 28 }) {
   return <Avatar name={name} avatarUrl={cached?.avatar_url || null} size={size} />;
 }
 
-// HeaderNavMenu lives in the shared header.js module (loaded before this script).
+// Sidebar lives in the shared sidebar.js module (loaded before this script).
 
 // ── TEAM COMBOBOX ─────────────────────────────────────────────────────────────
 function flattenTree(nodes, depth = 0) {
@@ -2232,15 +2232,19 @@ function App() {
 
   return (
     <div className="app">
-      <div className="sidebar">
-        <div className="sidebar__header">
-          {me && <HeaderNavMenu user={me} active="tracker" />}
-          <div className="sidebar__logo">OKR Tracker</div>
-        </div>
-        <div className="sidebar__period">
-          <div className="sidebar__period-label">Период</div>
-          <PeriodSelect periods={periods} periodId={periodId} onChange={id => handlePeriodChange(id)} />
-        </div>
+      <Sidebar
+        user={me}
+        active="tracker"
+        bell={hciData && hciData.has_scope
+          ? <SidebarBell count={hciData.total_problems} onClick={() => setHciOpen(true)} />
+          : null}
+        beforeSections={
+          <div className="sidebar__period">
+            <div className="sidebar__period-label">Период</div>
+            <PeriodSelect periods={periods} periodId={periodId} onChange={id => handlePeriodChange(id)} />
+          </div>
+        }
+      >
         <div className="sidebar__tree">
           {!loading && hierarchy.length === 0
             ? (
@@ -2255,7 +2259,7 @@ function App() {
               </div>
             )
             : <>
-                <div className="sidebar__section-label">Команды</div>
+                <div className="sidebar__subsection-label">Команды</div>
                 {favNodes.length > 0 && <>
                   <div className="sidebar__subsection-label"><span className="sidebar__subsection-star">★</span> Избранное · {favNodes.length}</div>
                   {favNodes.map(n => <SidebarNode key={`fav-${n.id}`} node={{ ...n, children: [] }} depth={0} selectedId={selId} onSelect={selectTeam} expanded={expanded} toggle={toggle} accent={accent} behindMargin={behindMargin} greenThreshold={greenThreshold} favSet={favSet} onToggleFav={onToggleFav} />)}
@@ -2265,10 +2269,7 @@ function App() {
               </>
           }
         </div>
-        <div style={{ padding: '8px 8px 0' }}>
-          <HealthCheckInButton data={hciData} onClick={() => setHciOpen(true)} />
-        </div>
-      </div>
+      </Sidebar>
 
       <div className="main">
         <div className="topbar">

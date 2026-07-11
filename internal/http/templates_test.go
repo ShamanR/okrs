@@ -16,7 +16,7 @@ func TestStubShellRenders(t *testing.T) {
 		t.Fatalf("execute stub-shell: %v", err)
 	}
 	out := buf.String()
-	for _, want := range []string{`/static/header.js`, `/static/stub.js`, `id="root"`} {
+	for _, want := range []string{`/static/sidebar.js`, `/static/stub.js`, `id="root"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stub-shell output missing %q", want)
 		}

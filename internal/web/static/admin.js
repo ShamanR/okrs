@@ -291,7 +291,7 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder, single, exclud
   </div>;
 }
 
-// HeaderNavMenu lives in the shared header.js module (loaded before this script).
+// Sidebar lives in the shared sidebar.js module (loaded before this script).
 
 // ── SHELL ────────────────────────────────────────────────────────────────────
 const ADMIN_SECTIONS = [
@@ -306,36 +306,20 @@ function Shell({section, setSection, currentUser, children}) {
   const sections = ADMIN_SECTIONS;
   const cur = sections.find(s=>s.id===section);
   return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
-    <div style={{width:252,background:T.sidebarBg,display:'flex',flexDirection:'column',flexShrink:0,overflow:'hidden'}}>
-      <div style={{padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:10}}>
-        {currentUser && <HeaderNavMenu user={currentUser} active={null}/>}
-        <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:14,fontWeight:800,color:'white',letterSpacing:'-.3px'}}>OKR Tracker</div>
-          <div style={{fontSize:10,color:T.sidebarMuted,fontWeight:600,textTransform:'uppercase',letterSpacing:.5,marginTop:1}}>Управление</div>
-        </div>
+    <Sidebar user={currentUser} active={null} showSections={false}>
+      <div className="sidebar__context">
+        <div className="sidebar__section-label">Администрирование</div>
+        {sections.map(s=>(
+          <button
+            key={s.id}
+            onClick={()=>setSection(s.id)}
+            className={`sidebar__navlink${s.id===section?' sidebar__navlink--active':''}`}
+          >
+            <span className="sidebar__navlink-icon">{s.icon}</span>{s.label}
+          </button>
+        ))}
       </div>
-      <div style={{padding:'12px 8px',flex:1,overflowY:'auto'}}>
-        <div style={{fontSize:10,color:T.sidebarMuted,fontWeight:700,letterSpacing:.6,textTransform:'uppercase',padding:'8px 14px 6px'}}>Разделы</div>
-        {sections.map(s=>{
-          const sel=s.id===section;
-          return <button key={s.id} onClick={()=>setSection(s.id)}
-            style={{width:'100%',display:'flex',alignItems:'flex-start',gap:10,padding:'9px 12px',border:'none',background:sel?T.sidebarSelBg:'transparent',color:sel?T.sidebarSel:T.sidebarText,borderRadius:8,cursor:'pointer',marginBottom:2,fontFamily:'inherit',textAlign:'left'}}
-            onMouseEnter={e=>{if(!sel)e.currentTarget.style.background='rgba(255,255,255,0.04)';}}
-            onMouseLeave={e=>{if(!sel)e.currentTarget.style.background='transparent';}}>
-            <span style={{fontSize:14,marginTop:1,opacity:.85}}>{s.icon}</span>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:13,fontWeight:sel?700:500,letterSpacing:'-.1px'}}>{s.label}</div>
-              <div style={{fontSize:11,color:sel?T.sidebarSel:T.sidebarMuted,marginTop:1,opacity:sel?.7:1}}>{s.hint}</div>
-            </div>
-          </button>;
-        })}
-      </div>
-      <div style={{padding:'12px 14px',borderTop:'1px solid rgba(255,255,255,0.05)'}}>
-        <a href="/teamOkrs" style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,color:'white',fontSize:12.5,fontWeight:600,padding:'10px 12px',borderRadius:8,textDecoration:'none',background:'rgba(124,58,237,0.22)',border:'1px solid rgba(167,139,250,0.45)'}}>
-          <span style={{fontSize:14,lineHeight:1}}>←</span> Вернуться к OKR Tracker
-        </a>
-      </div>
-    </div>
+    </Sidebar>
     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:T.contentBg}}>
       <div style={{padding:'0 24px',background:'white',borderBottom:'1px solid '+T.cardBorder,display:'flex',alignItems:'center',height:54,gap:14,flexShrink:0}}>
         <a href="/teamOkrs" style={{display:'inline-flex',alignItems:'center',gap:7,padding:'6px 12px 6px 10px',background:'#f5f3ff',color:'#6d28d9',border:'1px solid #ddd6fe',borderRadius:20,fontSize:12,fontWeight:600,textDecoration:'none',flexShrink:0}}>

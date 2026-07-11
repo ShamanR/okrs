@@ -1,6 +1,6 @@
 /* Personal settings page. Reuses tracker.css design tokens (--accent,
    .avatar, .loading-screen) and markdown.css (.md-editor, .md-content).
-   Hamburger menu styling comes from header.css (.nav-menu*). */
+   Sidebar navigation styling comes from sidebar.css (.sidebar*). */
 
 .set-app { display: flex; height: 100vh; overflow: hidden; }
 

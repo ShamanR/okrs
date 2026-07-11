@@ -17,7 +17,6 @@
 .sidebar__period-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
 .sidebar__period-select { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: #e5e7eb; border-radius: 6px; padding: 6px 8px; font-size: 13px; outline: none; cursor: pointer; }
 .sidebar__tree { flex: 1; overflow: auto; padding: 6px 0; }
-.sidebar__section-label { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 4px 14px 2px; }
 .sidebar__subsection-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 14px 2px; display: flex; align-items: center; gap: 5px; }
 .sidebar__subsection-star { color: #fbbf24; font-size: 11px; }
 
@@ -121,7 +120,7 @@
 .field-label__required { color: #ef4444; margin-left: 4px; }
 
 /* ── USER MENU ───────────────────────────────────────────────────────────────── */
-/* Moved to header.css — shared by tracker, admin and settings shells. */
+/* Moved to sidebar.css (.sidebar__user*) — shared by all SPA shells. */
 
 /* ── TEAM COMBOBOX ───────────────────────────────────────────────────────────── */
 .team-combobox { position: relative; }
