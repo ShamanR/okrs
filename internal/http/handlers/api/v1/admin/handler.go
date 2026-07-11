@@ -41,6 +41,11 @@ type memberRoleSetter interface {
 	SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error
 }
 
+// tenantRenamer renames the active tenant. *service.ProvisioningService satisfies it.
+type tenantRenamer interface {
+	RenameTenant(ctx context.Context, id int64, name string) error
+}
+
 // tenantSettings covers per-tenant product settings. *service.SettingsService satisfies it.
 // Writes go through the product path, which rejects entitlement.* keys.
 type tenantSettings interface {
@@ -63,10 +68,11 @@ type Handler struct {
 	mgr      *auth.Manager
 	grants   grantsStore
 	roles    memberRoleSetter
+	renamer  tenantRenamer
 }
 
-func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore, roles memberRoleSetter) *Handler {
-	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants, roles: roles}
+func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore, roles memberRoleSetter, renamer tenantRenamer) *Handler {
+	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants, roles: roles, renamer: renamer}
 }
 
 // GET /api/v1/admin/users
@@ -304,7 +310,12 @@ func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusForbidden, "no active tenant")
 		return
 	}
+	name := ""
+	if t := auth.TenantFromContext(r.Context()); t != nil {
+		name = t.Name
+	}
 	writeJSON(w, map[string]any{
+		"name":                    name,
 		"documentation_url":       h.documentationURL(r.Context(), scope),
 		"empty_hierarchy_message": h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage),
 	})
@@ -313,11 +324,17 @@ func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Reques
 // POST /api/v1/admin/settings/general  body: {"documentation_url":"https://..."}
 func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
+		Name                  string `json:"name"`
 		DocumentationURL      string `json:"documentation_url"`
 		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	name := strings.TrimSpace(body.Name)
+	if name == "" {
+		writeError(w, http.StatusBadRequest, "name must not be empty")
 		return
 	}
 	link := strings.TrimSpace(body.DocumentationURL)
@@ -328,6 +345,10 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	if err := h.renamer.RenameTenant(r.Context(), scope.TenantID, name); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyDocumentationURL, link); err != nil {

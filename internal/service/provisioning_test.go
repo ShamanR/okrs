@@ -61,6 +61,59 @@ func TestAttachMemberAppliesDefaultAccess(t *testing.T) {
 	}
 }
 
+func TestUpdateTenantInvalidatesCache(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tnRepo := tenants.NewTenantRepository(pool)
+	tnCache := tenants.NewTenantCache(tnRepo)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := service.NewSettingsService(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	grantRepo := grants.NewGrantRepository(pool)
+	prov := service.NewProvisioningService(
+		tnRepo, tnCache,
+		memRepo, memberships.NewMembershipCache(memRepo),
+		settingsSvc, grants.NewGrantsCache(grantRepo), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
+	)
+
+	tn, err := tnRepo.Create(ctx, "acme", "Acme Inc")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// прогреваем кэш по старому slug
+	if _, err := tnCache.GetBySlug(ctx, "acme"); err != nil {
+		t.Fatalf("warm cache: %v", err)
+	}
+
+	upd, err := prov.UpdateTenant(ctx, tn.ID, "Acme LLC", "acme-llc")
+	if err != nil {
+		t.Fatalf("update tenant: %v", err)
+	}
+	if upd.Slug != "acme-llc" || upd.Name != "Acme LLC" {
+		t.Fatalf("update result = %+v", upd)
+	}
+	// после инвалидации старый slug больше не резолвится из кэша
+	if _, err := tnCache.GetBySlug(ctx, "acme"); !errors.Is(err, tenants.ErrNotFound) {
+		t.Fatalf("old slug still cached: %v", err)
+	}
+	// rename тоже работает
+	if err := prov.RenameTenant(ctx, tn.ID, "Acme Group"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	got, err := tnRepo.GetByID(ctx, tn.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Name != "Acme Group" {
+		t.Fatalf("name = %q, want Acme Group", got.Name)
+	}
+}
+
 func TestSetMemberRoleLastAdminGuard(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

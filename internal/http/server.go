@@ -421,7 +421,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding)
+	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding, s.provisioning)
 	serviceH := apiadmin.NewServiceHandler(s.service)
 
 	r.Group(func(r chi.Router) {
@@ -518,6 +518,7 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 
 		r.Post("/api/v1/system/tenants", sysH.HandleCreateTenant)
 		r.Get("/api/v1/system/tenants", sysH.HandleListTenants)
+		r.Patch("/api/v1/system/tenants/{id}", sysH.HandlePatchTenant)
 		r.Post("/api/v1/system/tenants/{id}/members", sysH.HandleAttachMember)
 		r.Get("/api/v1/system/tenants/{id}/members", sysH.HandleListMembers)
 		r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", sysH.HandleDenyMember)

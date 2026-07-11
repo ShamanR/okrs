@@ -14,6 +14,7 @@ const get  = (u)    => api(u);
 const post = (u, b) => api(u, {method:'POST', headers:csrfHeaders(), body: b===undefined?undefined:JSON.stringify(b)});
 const put  = (u, b) => api(u, {method:'PUT',  headers:csrfHeaders(), body: JSON.stringify(b)});
 const del  = (u)    => api(u, {method:'DELETE', headers:csrfHeaders()});
+const patch = (u, b) => api(u, {method:'PATCH', headers:csrfHeaders(), body: JSON.stringify(b)});
 async function errMsg(res){ try { const j = await res.json(); return j.error || ('Ошибка '+res.status); } catch { return 'Ошибка '+res.status; } }
 
 const C = { card:'#fff', border:'#e5e7eb', accent:'#2563eb', danger:'#b91c1c', ok:'#047857', muted:'#6b7280' };
@@ -24,6 +25,15 @@ const th  = {textAlign:'left', padding:'6px 8px', borderBottom:'1px solid '+C.bo
 
 function TenantsSection({tenants, reload}) {
   const [name,setName]=useState(''); const [slug,setSlug]=useState(''); const [err,setErr]=useState('');
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState('');
+  const [editSlug,setEditSlug]=useState('');
+  const startEdit = (t)=>{ setErr(''); setEditId(t.id); setEditName(t.name); setEditSlug(t.slug); };
+  const cancelEdit = ()=>{ setEditId(null); setEditName(''); setEditSlug(''); };
+  const saveEdit = async (id)=>{ setErr('');
+    const res = await patch(`/api/v1/system/tenants/${id}`, {name: editName.trim(), slug: editSlug.trim()});
+    if (res.status===200){ cancelEdit(); reload(); } else setErr(await errMsg(res));
+  };
   const create = async (e)=>{ e.preventDefault(); setErr('');
     const res = await post('/api/v1/system/tenants', {name, slug});
     if (res.status===201){ setName(''); setSlug(''); reload(); } else setErr(await errMsg(res));
@@ -33,15 +43,29 @@ function TenantsSection({tenants, reload}) {
     <h2 style={{fontSize:15,marginBottom:10}}>Пространства</h2>
     <table style={{width:'100%',borderCollapse:'collapse'}}>
       <thead><tr>{['ID','Slug','Название','Статус',''].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-      <tbody>{(tenants||[]).map(t=><tr key={t.id}>
-        <td style={{padding:'6px 8px'}}>{t.id}</td><td style={{padding:'6px 8px'}}>{t.slug}</td>
-        <td style={{padding:'6px 8px'}}>{t.name}</td>
-        <td style={{padding:'6px 8px',color:t.status==='suspended'?C.danger:C.ok}}>{t.status}</td>
-        <td style={{padding:'6px 8px'}}>
-          {t.status==='active'
-            ? <button style={{...btn,background:C.danger}} onClick={()=>setStatus(t.id,'suspend')}>Suspend</button>
-            : <button style={{...btn,background:C.ok}} onClick={()=>setStatus(t.id,'restore')}>Restore</button>}
-        </td></tr>)}</tbody>
+      <tbody>{(tenants||[]).map(t=> editId===t.id
+        ? <tr key={t.id}>
+            <td style={{padding:'6px 8px'}}>{t.id}</td>
+            <td style={{padding:'6px 8px'}}><input style={inp} value={editSlug} onChange={e=>setEditSlug(e.target.value)}/></td>
+            <td style={{padding:'6px 8px'}}><input style={inp} value={editName} onChange={e=>setEditName(e.target.value)}/></td>
+            <td style={{padding:'6px 8px',color:t.status==='suspended'?C.danger:C.ok}}>{t.status}</td>
+            <td style={{padding:'6px 8px',display:'flex',gap:6}}>
+              <button style={btn} onClick={()=>saveEdit(t.id)}>Сохранить</button>
+              <button style={{...btn,background:C.muted}} onClick={cancelEdit}>Отмена</button>
+            </td>
+          </tr>
+        : <tr key={t.id}>
+            <td style={{padding:'6px 8px'}}>{t.id}</td>
+            <td style={{padding:'6px 8px'}}>{t.slug}</td>
+            <td style={{padding:'6px 8px'}}>{t.name}</td>
+            <td style={{padding:'6px 8px',color:t.status==='suspended'?C.danger:C.ok}}>{t.status}</td>
+            <td style={{padding:'6px 8px',display:'flex',gap:6}}>
+              <button style={{...btn,background:C.muted}} onClick={()=>startEdit(t)}>Изменить</button>
+              {t.status==='active'
+                ? <button style={{...btn,background:C.danger}} onClick={()=>setStatus(t.id,'suspend')}>Suspend</button>
+                : <button style={{...btn,background:C.ok}} onClick={()=>setStatus(t.id,'restore')}>Restore</button>}
+            </td>
+          </tr>)}</tbody>
     </table>
     <form onSubmit={create} style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}>
       <input style={inp} placeholder="Название" value={name} onChange={e=>setName(e.target.value)} required/>

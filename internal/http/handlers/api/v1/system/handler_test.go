@@ -65,6 +65,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	r.Use(auth.RequireSystemAdminMiddleware(""))
 	r.Post("/api/v1/system/tenants", h.HandleCreateTenant)
 	r.Get("/api/v1/system/tenants", h.HandleListTenants)
+	r.Patch("/api/v1/system/tenants/{id}", h.HandlePatchTenant)
 	r.Post("/api/v1/system/tenants/{id}/members", h.HandleAttachMember)
 	r.Get("/api/v1/system/tenants/{id}/members", h.HandleListMembers)
 	r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", h.HandleDenyMember)
@@ -121,6 +122,66 @@ func TestSystemCreateTenantAndAttachMember(t *testing.T) {
 	got, _ := tnRepo.GetByID(ctx, created.ID)
 	if got.Status != domain.TenantSuspended {
 		t.Fatalf("status = %q, want suspended", got.Status)
+	}
+}
+
+func TestSystemPatchTenant(t *testing.T) {
+	admin := &domain.User{ID: 1, IsSystemAdmin: true}
+	r, tnRepo, _ := buildRouter(t, admin)
+	ctx := context.Background()
+
+	tn, err := tnRepo.Create(ctx, "acme", "Acme Inc")
+	if err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	if _, err := tnRepo.Create(ctx, "globex", "Globex"); err != nil {
+		t.Fatalf("seed globex: %v", err)
+	}
+
+	patch := func(id string, body string) *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, httptest.NewRequest(http.MethodPatch, "/api/v1/system/tenants/"+id, strings.NewReader(body)))
+		return w
+	}
+
+	// success: rename + slug change
+	w := patch(itoa(tn.ID), `{"name":"Acme LLC","slug":"acme-llc"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("patch: code %d (%s)", w.Code, w.Body.String())
+	}
+	var got struct {
+		Slug string `json:"slug"`
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(w.Body).Decode(&got)
+	if got.Slug != "acme-llc" || got.Name != "Acme LLC" {
+		t.Fatalf("patch result = %+v", got)
+	}
+
+	// 409 slug taken
+	if w := patch(itoa(tn.ID), `{"name":"X","slug":"globex"}`); w.Code != http.StatusConflict {
+		t.Fatalf("taken slug: code %d, want 409", w.Code)
+	}
+	// 422 invalid slug
+	if w := patch(itoa(tn.ID), `{"name":"X","slug":"AB"}`); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("invalid slug: code %d, want 422", w.Code)
+	}
+	// 422 empty name
+	if w := patch(itoa(tn.ID), `{"name":"  ","slug":"acme-llc"}`); w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("empty name: code %d, want 422", w.Code)
+	}
+	// 404 missing tenant
+	if w := patch("999999", `{"name":"X","slug":"free-slug"}`); w.Code != http.StatusNotFound {
+		t.Fatalf("missing tenant: code %d, want 404", w.Code)
+	}
+}
+
+func TestSystemPatchTenantRequiresSystemAdmin(t *testing.T) {
+	r, _, _ := buildRouter(t, nil) // no user in context → gate rejects
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest(http.MethodPatch, "/api/v1/system/tenants/1", strings.NewReader(`{"name":"X","slug":"x-slug"}`)))
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("non-admin: code %d, want 403", w.Code)
 	}
 }
 

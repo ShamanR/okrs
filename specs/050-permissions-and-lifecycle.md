@@ -92,7 +92,8 @@ Lifecycle ещё не является полноценной policy enforcement
 Три раздельные плоскости управления, каждая со своим гейтом:
 
 1. **System admin** (`users.is_system_admin`) — `/system` + `/api/v1/system/*`. Над тенантами:
-   создание тенантов, прямое назначение membership, **смена роли участника**
+   создание тенантов, **смена названия и slug пространства** (`PATCH …/tenants/{id}`),
+   прямое назначение membership, **смена роли участника**
    (`PUT …/members/{id}/role`), запись `entitlement.*`, suspend/restore, глобальный список
    пользователей, **выдача/снятие system-привилегий** другим пользователям
    (`PUT /api/v1/system/users/{id}/system-admin`), `default_registration_tenant_id`.
@@ -111,7 +112,8 @@ Lifecycle ещё не является полноценной policy enforcement
    команды, периоды (создание/редактирование/удаление, а также **архивирование и
    разархивирование** периода — архивировать можно только период в статусе `closed`, иначе `409`,
    см. `020-domain-model.md` и `040-api-contract.md`), пользователи/гранты, продуктовые ключи
-   `tenant_settings`. **Не** может писать `entitlement.*`.
+   `tenant_settings`, **переименование своего пространства** (`name`) в общих настройках
+   (`POST /api/v1/admin/settings/general`; slug менять нельзя). **Не** может писать `entitlement.*`.
 3. **User** (любой авторизованный) — `/settings`, личные `user_settings` + список своих memberships.
 
 ### Роли тенанта

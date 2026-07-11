@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"okrs/internal/domain"
 
@@ -13,6 +14,7 @@ import (
 
 var (
 	ErrInvalidSlug = errors.New("tenants: invalid slug")
+	ErrInvalidName = errors.New("tenants: invalid name")
 	ErrSlugTaken   = errors.New("tenants: slug already taken")
 	ErrNotFound    = errors.New("tenants: not found")
 )
@@ -83,6 +85,48 @@ func (r *TenantRepository) List(ctx context.Context) ([]domain.Tenant, error) {
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// Rename updates only the tenant's display name (tenant-admin path). Empty/blank name → ErrInvalidName.
+func (r *TenantRepository) Rename(ctx context.Context, id int64, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ErrInvalidName
+	}
+	ct, err := r.db.Exec(ctx, `UPDATE tenants SET name = $2 WHERE id = $1`, id, name)
+	if err != nil {
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// Update changes both name and slug (system-admin path). Hard slug cutover: the old slug is freed.
+func (r *TenantRepository) Update(ctx context.Context, id int64, name, slug string) (*domain.Tenant, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, ErrInvalidName
+	}
+	if !domain.ValidTenantSlug(slug) {
+		return nil, ErrInvalidSlug
+	}
+	var t domain.Tenant
+	err := r.db.QueryRow(ctx, `
+		UPDATE tenants SET name = $2, slug = $3 WHERE id = $1
+		RETURNING id, slug, name, status, created_at, deleted_at`,
+		id, name, slug).Scan(&t.ID, &t.Slug, &t.Name, &t.Status, &t.CreatedAt, &t.DeletedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		if pgErrCode(err) == "23505" { // unique_violation
+			return nil, ErrSlugTaken
+		}
+		return nil, fmt.Errorf("update tenant: %w", err)
+	}
+	return &t, nil
 }
 
 // SetStatus transitions a tenant between active/suspended.

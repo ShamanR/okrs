@@ -74,6 +74,25 @@ func (p *ProvisioningService) CreateTenant(ctx context.Context, name, slug strin
 	return p.tenants.Create(ctx, slug, name)
 }
 
+// RenameTenant changes only the tenant's display name (tenant-admin path) and invalidates the cache.
+func (p *ProvisioningService) RenameTenant(ctx context.Context, id int64, name string) error {
+	if err := p.tenants.Rename(ctx, id, name); err != nil {
+		return err
+	}
+	p.tenantCache.Invalidate(id)
+	return nil
+}
+
+// UpdateTenant changes name and slug (system-admin path) and invalidates the cache.
+func (p *ProvisioningService) UpdateTenant(ctx context.Context, id int64, name, slug string) (*domain.Tenant, error) {
+	t, err := p.tenants.Update(ctx, id, name, slug)
+	if err != nil {
+		return nil, err
+	}
+	p.tenantCache.Invalidate(id)
+	return t, nil
+}
+
 // AttachMember gives an existing global user an active membership in a tenant.
 // Email→invitation onboarding is Plan 4; here the caller supplies a concrete user id.
 func (p *ProvisioningService) AttachMember(ctx context.Context, tenantID, userID int64, role domain.Role) (*domain.Membership, error) {
