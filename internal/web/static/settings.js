@@ -296,6 +296,7 @@ function SidebarSection({ me, hierarchy }) {
 }
 
 // ── SECTION: MY SPACES ────────────────────────────────────────────────────────
+const ROLE_LABELS = { admin: 'Администратор', user: 'Участник' };
 function SpacesSection() {
   const [rows, setRows] = useState([]);
   const [slug, setSlug] = useState('');
@@ -318,27 +319,60 @@ function SpacesSection() {
   }
   return (
     <div className="set-panel set-spaces">
-      {msg && <div className="set-intro" style={{ color: '#b45309' }}>{msg}</div>}
-      {rows.length === 0
-        ? <div className="set-empty"><div className="set-empty__icon">🏢</div><div className="set-empty__title">Вы пока не состоите ни в одном пространстве</div><div className="set-empty__text">Отправьте заявку по slug ниже.</div></div>
-        : <ul className="set-spaces__list" style={{ listStyle: 'none', padding: 0, margin: '0 0 20px' }}>
-            {rows.map(m => (
-              <li key={m.tenant_id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #eee' }}>
-                <span style={{ fontWeight: 600, minWidth: 160 }}>{m.name}</span>
-                <span style={{ color: '#6b7280' }}>{m.slug}</span>
-                <span style={{ color: '#6b7280' }}>{m.role}</span>
-                <span style={{ marginLeft: 'auto', color: m.status === 'active' ? '#047857' : '#b45309' }}>
-                  {m.status === 'active' ? 'Активен' : 'Заявка отправлена'}
+      {msg && <div className="set-intro" style={{ color: '#b45309', margin: '0 0 14px' }}>{msg}</div>}
+      {rows.length === 0 && (
+        <div className="set-empty" style={{ padding: '24px 20px' }}>
+          <div className="set-empty__icon">🏢</div>
+          <div className="set-empty__title">Вы пока не состоите ни в одном пространстве</div>
+          <div className="set-empty__text">Отправьте заявку по slug ниже, чтобы вступить.</div>
+        </div>
+      )}
+      {rows.length > 0 && (
+        <ul className="space-list">
+          {rows.map(m => {
+            const active = m.status === 'active';
+            return (
+              <li key={m.tenant_id} className={'space-row' + (active ? ' space-row--active' : '')}>
+                <div className="space-row__body">
+                  <div className="space-row__name">{m.name}</div>
+                  <div className="space-row__meta">
+                    <span className="space-meta">
+                      <span className="space-meta__label">Slug</span>
+                      <span className="space-meta__slug">{m.slug}</span>
+                    </span>
+                    <span className="space-meta">
+                      <span className="space-meta__label">Роль</span>
+                      <span className="space-meta__role">{ROLE_LABELS[m.role] || m.role}</span>
+                    </span>
+                  </div>
+                </div>
+                <span className={'space-status ' + (active ? 'space-status--active' : 'space-status--pending')}>
+                  <span className="space-status__dot" />
+                  {active ? 'Активен' : 'Заявка отправлена'}
                 </span>
-                <button onClick={() => leave(m.tenant_id)}>
-                  {m.status === 'active' ? 'Выйти' : 'Отменить заявку'}
+                <button className="space-row__btn" onClick={() => leave(m.tenant_id)}>
+                  {active ? 'Выйти' : 'Отменить заявку'}
                 </button>
               </li>
-            ))}
-          </ul>}
-      <form onSubmit={join} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <input value={slug} onChange={e => setSlug(e.target.value)} placeholder="slug пространства" />
-        <button type="submit" disabled={!slug.trim()}>Отправить заявку</button>
+            );
+          })}
+        </ul>
+      )}
+      <form className="space-join" onSubmit={join}>
+        <div className="space-join__title">Вступить в пространство</div>
+        <div className="space-join__row">
+          <label className="space-join__field">
+            <span className="space-join__label">Slug пространства</span>
+            <input
+              className="space-join__input"
+              value={slug}
+              onChange={e => setSlug(e.target.value)}
+              placeholder="например, media-dept"
+            />
+          </label>
+          <button type="submit" className="set-btn set-btn--primary" disabled={!slug.trim()}>Отправить заявку</button>
+        </div>
+        <div className="space-join__hint">Короткий идентификатор пространства в нижнем регистре. Заявку подтвердит администратор пространства.</div>
       </form>
     </div>
   );
