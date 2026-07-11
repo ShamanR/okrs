@@ -265,31 +265,3 @@ func TestSearchUsersInSet(t *testing.T) {
 		t.Errorf("expected nil for empty inputs")
 	}
 }
-
-func TestSetUserAdmin(t *testing.T) {
-	pool, cleanup := testutil.SetupDB(t)
-	defer cleanup()
-	ctx := context.Background()
-	r := users.NewUserRepository(pool)
-
-	u, _ := r.UpsertUser(ctx, users.UpsertUserInput{ProviderSubjectKey: "p|g1", Provider: "github", Subject: "g1", DisplayName: "Grace"})
-	if u.IsAdmin {
-		t.Fatal("new user should not be admin")
-	}
-
-	if err := r.SetUserAdmin(ctx, u.ID, true); err != nil {
-		t.Fatalf("SetUserAdmin true: %v", err)
-	}
-	got, _ := r.GetUser(ctx, u.ID)
-	if !got.IsAdmin {
-		t.Fatal("expected user to be admin after SetUserAdmin(true)")
-	}
-
-	if err := r.SetUserAdmin(ctx, u.ID, false); err != nil {
-		t.Fatalf("SetUserAdmin false: %v", err)
-	}
-	got, _ = r.GetUser(ctx, u.ID)
-	if got.IsAdmin {
-		t.Fatal("expected user not to be admin after SetUserAdmin(false)")
-	}
-}

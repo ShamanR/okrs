@@ -78,7 +78,6 @@ func TestHandleMeReturnsUserJSON(t *testing.T) {
 		Email:       "alice@example.com",
 		AvatarURL:   "https://example.com/avatar.png",
 		Provider:    "google",
-		IsAdmin:     true,
 	}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	r = r.WithContext(auth.WithUser(r.Context(), u))
@@ -109,9 +108,6 @@ func TestHandleMeReturnsUserJSON(t *testing.T) {
 	}
 	if got.Provider != "google" {
 		t.Errorf("provider: want google, got %s", got.Provider)
-	}
-	if !got.IsAdmin {
-		t.Errorf("is_admin: want true, got false")
 	}
 }
 

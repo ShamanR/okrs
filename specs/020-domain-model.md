@@ -192,7 +192,7 @@
 - avatar_url
 - email (nullable)
 - attributes_json (JSONB, расширяемое хранилище без миграций)
-- is_admin
+- is_system_admin (суперадмин инстанса; tenant-admin — это `memberships.role = admin`, не поле пользователя)
 - created_at
 - updated_at
 - last_login_at

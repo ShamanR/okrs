@@ -46,9 +46,8 @@ func (e *PolicyEvaluator) AllowedTeamIDs(ctx context.Context) ([]int64, bool) {
 
 // LoadScope resolves and stores the user's allowed team IDs into the context.
 // Tenant admins get nil (unrestricted access) — admin status is tenant-scoped, read from the
-// active membership role in context (set by TenantResolveMiddleware), NOT the legacy global
-// users.is_admin flag, which would otherwise bypass every tenant's hierarchy grants. Non-admins
-// get their explicit grant expansion — an empty slice if they have no grants (no access).
+// active membership role in context (set by TenantResolveMiddleware). Non-admins get their
+// explicit grant expansion — an empty slice if they have no grants (no access).
 // The cfg param is kept for signature compatibility but default-node policy is
 // applied at registration time by Manager.applyNewUserPolicy, not per-request.
 func (e *PolicyEvaluator) LoadScope(ctx context.Context, scope domain.TenantScope, user *domain.User, cfg Config) (context.Context, error) {

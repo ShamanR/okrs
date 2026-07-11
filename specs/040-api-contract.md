@@ -76,8 +76,7 @@ Response:
   "display_name": "Ivan Ivanov",
   "email": "ivan@example.com",
   "avatar_url": "https://...",
-  "provider": "google",
-  "is_admin": false
+  "provider": "google"
 }
 ```
 
@@ -124,7 +123,7 @@ Response:
 - `GET /api/v1/admin/users` — **только пользователи активного тенанта**: активные члены и
   запросившие доступ (`memberships.status` = `active`/`requested`); пользователи без membership в
   тенанте не возвращаются. Каждый элемент: поля пользователя (id, display_name, avatar_url,
-  provider, last_login_at, is_admin) + `GrantedNodeCount` (число выданных узлов иерархии, считается
+  provider, last_login_at) + `GrantedNodeCount` (число выданных узлов иерархии, считается
   только активным) + `Status` (`active`/`requested`) + `Role` (роль в тенанте). UI использует
   `Status`, чтобы показывать запросившим кнопки «Добавить»/«Отклонить» (см. ниже), а членам —
   управление доступом.

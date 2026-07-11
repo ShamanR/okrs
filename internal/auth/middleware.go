@@ -168,7 +168,7 @@ func AccessLogMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 					slog.Bool("authenticated", true),
 					slog.Int64("user_id", user.ID),
 					slog.String("provider", user.Provider),
-					slog.Bool("is_admin", user.IsAdmin),
+					slog.Bool("is_system_admin", user.IsSystemAdmin),
 				)
 			} else {
 				attrs = append(attrs, slog.Bool("authenticated", false))
@@ -215,7 +215,6 @@ func AnonymousUserMiddleware(next http.Handler) http.Handler {
 		Provider:    "system",
 		Subject:     "anonymous-local",
 		DisplayName: "Anonymous",
-		IsAdmin:     true, // no-auth mode: everyone is admin
 	}
 	tenant := &domain.Tenant{
 		ID:     1,

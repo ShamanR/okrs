@@ -29,21 +29,21 @@ func (f fakeGrants) ListDescendantTeamIDs(_ context.Context, _ domain.TenantScop
 	return out, nil
 }
 
-// A user carrying the legacy global users.is_admin flag but whose ACTIVE tenant role is not
-// admin must NOT get unrestricted access — scope comes from the tenant grants, not the flag.
-func TestLoadScopeIgnoresGlobalIsAdminFlag(t *testing.T) {
+// A user whose ACTIVE tenant role is not admin gets no unrestricted access — scope comes
+// strictly from that tenant's hierarchy grants.
+func TestLoadScopeNonAdminGetsGrantExpansion(t *testing.T) {
 	e := NewPolicyEvaluator(fakeGrants{
 		byUser:      map[int64][]grants.HierarchyGrant{7: {{TeamID: 10}}},
 		descendants: map[int64][]int64{10: {10, 11}},
 	}, nil)
-	user := &domain.User{ID: 7, IsAdmin: true} // global flag set, but not a tenant admin
+	user := &domain.User{ID: 7} // not a tenant admin
 	ctx, err := e.LoadScope(context.Background(), domain.TenantScope{TenantID: 1}, user, Config{})
 	if err != nil {
 		t.Fatalf("LoadScope: %v", err)
 	}
 	ids, ok := AllowedTeamIDsFromCtx(ctx)
 	if !ok || ids == nil {
-		t.Fatalf("global is_admin must not grant unrestricted access; ids=%v ok=%v", ids, ok)
+		t.Fatalf("non-admin must not get unrestricted access; ids=%v ok=%v", ids, ok)
 	}
 	if len(ids) != 2 {
 		t.Fatalf("want grant expansion [10 11], got %v", ids)

@@ -736,7 +736,6 @@ async function _adminLoadUsers() {
       display_name: u.DisplayName,
       avatar_url: u.AvatarURL,
       email: u.Email,
-      is_admin: u.IsAdmin,
     })) : [];
     return _adminAllUsers;
   } catch { return []; }

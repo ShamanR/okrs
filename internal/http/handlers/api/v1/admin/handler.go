@@ -36,8 +36,7 @@ type userAdminStore interface {
 }
 
 // memberRoleSetter toggles a user's tenant-scoped role (admin/user). *service.OnboardingService
-// satisfies it. Admin status is tenant-scoped, so the toggle writes memberships.role, not the
-// legacy global users.is_admin.
+// satisfies it. Admin status is tenant-scoped, so the toggle writes memberships.role.
 type memberRoleSetter interface {
 	SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error
 }
@@ -474,7 +473,6 @@ type meResponse struct {
 	Email       string `json:"email"`
 	AvatarURL   string `json:"avatar_url"`
 	Provider    string `json:"provider"`
-	IsAdmin     bool   `json:"is_admin"`
 }
 
 // GET /api/v1/me
@@ -491,7 +489,6 @@ func HandleMe(w http.ResponseWriter, r *http.Request) {
 		Email:       user.Email,
 		AvatarURL:   user.AvatarURL,
 		Provider:    user.Provider,
-		IsAdmin:     user.IsAdmin,
 	})
 }
 

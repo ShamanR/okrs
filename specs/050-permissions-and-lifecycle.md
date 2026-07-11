@@ -40,7 +40,7 @@
 - **сессии** хранятся на сервере (PostgreSQL), клиент получает только session ID в cookie;
 - **роли**: per-tenant `user`/`admin` (`memberships.role`) — `/admin` гейтится активной ролью тенанта; плюс инстанс-уровневый `users.is_system_admin` для `/system`;
 - **scope доступа**: пользователь видит только команды, к которым ему выданы hierarchy grants и их потомков (рекурсивная CTE); scope вычисляется `PolicyEvaluator` на каждый запрос;
-- **no-auth mode**: при `AUTH_MODE=disabled` все маршруты доступны, операции выполняются от имени `anonymous-local` (IsAdmin=true).
+- **no-auth mode**: при `AUTH_MODE=disabled` все маршруты доступны, операции выполняются от имени `anonymous-local` с активной ролью тенанта `admin`.
 
 На текущий момент **не реализованы как строгие серверные гарантии**:
 
@@ -107,7 +107,7 @@ Lifecycle ещё не является полноценной policy enforcement
    (`409`, защита от self-lockout).
 2. **Tenant admin** (`memberships.role = admin` в активном тенанте) — существующий `/admin` +
    `/api/v1/admin/*`, теперь tenant-scoped. Гейт `RequireTenantAdmin` проверяет активную роль
-   из контекста (её ставит `TenantResolve`), а не глобальный `is_admin`. Внутри своего тенанта:
+   из контекста (её ставит `TenantResolve`). Внутри своего тенанта:
    команды, периоды (создание/редактирование/удаление, а также **архивирование и
    разархивирование** периода — архивировать можно только период в статусе `closed`, иначе `409`,
    см. `020-domain-model.md` и `040-api-contract.md`), пользователи/гранты, продуктовые ключи
@@ -119,8 +119,10 @@ Lifecycle ещё не является полноценной policy enforcement
 - `user` — обычный член тенанта;
 - `admin` — tenant-admin (`memberships.role = admin`).
 
-> Легаси-флаг `is_admin` на пользователе расщеплён: суперадмин инстанса → `is_system_admin`
-> (плоскость 1), «админ организации» → `memberships.role = admin` (плоскость 2).
+> Легаси-флаг `is_admin` на пользователе удалён (миграция `038_drop_users_is_admin`): суперадмин
+> инстанса — `is_system_admin` (плоскость 1), «админ организации» — `memberships.role = admin`
+> (плоскость 2). Исторический backfill: `028` перенёс суперадминов в `is_system_admin`, `035` —
+> tenant-админов в `memberships.role`.
 
 ### Write-authority настроек (проверяется в service-слое)
 
