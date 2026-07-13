@@ -1,0 +1,25 @@
+{{define "spa-head"}}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/shell.css">
+{{end}}
+
+{{/* Вендорные библиотеки, self-hosted из /static/vendor. React переключается
+     dev↔prod флагом .Dev (env WEB_ASSETS_DEV); babel/marked/dompurify — единственные
+     сборки. JSX компилируется @babel/standalone в браузере (без bundler, см. spec 010). */}}
+{{define "spa-vendor"}}
+{{if .Dev -}}
+<script src="/static/vendor/react.development.js"></script>
+<script src="/static/vendor/react-dom.development.js"></script>
+{{- else -}}
+<script src="/static/vendor/react.production.min.js"></script>
+<script src="/static/vendor/react-dom.production.min.js"></script>
+{{- end}}
+<script src="/static/vendor/babel.min.js"></script>
+<script src="/static/vendor/marked.min.js"></script>
+<script src="/static/vendor/purify.min.js"></script>
+{{end}}

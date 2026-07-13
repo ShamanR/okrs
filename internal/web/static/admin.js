@@ -2,12 +2,7 @@
 const {useState, useMemo, useEffect, useRef, useCallback} = React;
 
 // ── API ──────────────────────────────────────────────────────────────────────
-function readCSRF() {
-  return document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('okr_csrf_token='))?.split('=')[1] || '';
-}
-function csrfHeaders(extra={}) {
-  return {'X-CSRF-Token': readCSRF(), 'Content-Type': 'application/json', ...extra};
-}
+// readCSRF / csrfHeaders — общие глобали из api.js (грузится раньше).
 async function apiFetch(url, opts={}) {
   const res = await fetch(url, opts);
   if (res.status === 401) { window.location.href = '/login'; return null; }
@@ -19,9 +14,7 @@ const apiPatch= (url, body) => apiFetch(url, {method:'PATCH',  headers:csrfHeade
 const apiDel  = url       => apiFetch(url, {method:'DELETE', headers:{'X-CSRF-Token':readCSRF()}});
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
-const TEAM_TYPE_LABEL = {department:'Департамент', cluster:'Кластер', unit:'Юнит', group:'Группа', team:'Команда', squad:'Сквад', employee:'Сотрудник'};
-const TEAM_TYPE_ORDER = {department:0, cluster:1, unit:2, group:3, team:4, squad:5, employee:6};
-const TEAM_TYPE_COLOR = {department:'#4338ca', cluster:'#7c3aed', unit:'#2563eb', group:'#0891b2', team:'#059669', squad:'#d97706', employee:'#64748b'};
+// TEAM_TYPE_LABEL / TEAM_TYPE_ORDER / TEAM_TYPE_COLOR — общие константы из ui.js (грузится раньше).
 
 const T = {
   sidebarBg:'#0c1220', sidebarText:'#f1f5f9', sidebarDim:'#94a3b8', sidebarMuted:'#64748b',
@@ -100,12 +93,6 @@ function Btn({variant='secondary', onClick, disabled, children, style={}, danger
 function Chip({children, color='#6b7280', bg}) {
   return <span style={{display:'inline-block',padding:'2px 8px',fontSize:10.5,fontWeight:700,color,background:bg||(color+'15'),borderRadius:10,letterSpacing:.3,textTransform:'uppercase',lineHeight:1.45}}>{children}</span>;
 }
-function ProviderChip({p}) {
-  const dot = p==='github'?'#111827':p==='gitlab'?'#fc6d26':T.mutedFg;
-  return <span style={{display:'inline-flex',alignItems:'center',gap:5,padding:'3px 9px',fontSize:11,fontWeight:600,color:'#374151',background:'#f3f4f6',borderRadius:5,fontFamily:'ui-monospace,Menlo,monospace'}}>
-    <span style={{width:5,height:5,borderRadius:'50%',background:dot}}/>{p}
-  </span>;
-}
 const inpStyle = {width:'100%',padding:'9px 13px',borderRadius:9,border:'1.5px solid #e5e7eb',fontSize:14,outline:'none',background:'white',color:T.bodyFg};
 function Field({label, hint, children, required}) {
   return <div style={{marginBottom:14}}>
@@ -113,16 +100,6 @@ function Field({label, hint, children, required}) {
       {label}{required&&<span style={{color:T.danger}}>*</span>}
       {hint&&<span style={{fontSize:11,fontWeight:400,color:T.dimFg}}>· {hint}</span>}
     </div>
-    {children}
-  </div>;
-}
-function ListSearch({value, onChange, placeholder}) {
-  return <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder||'Поиск…'} style={{...inpStyle,padding:'7px 12px',fontSize:13,border:'1.5px solid #e5e7eb'}}/>;
-}
-function ListRow({selected, onClick, children, indent=0}) {
-  return <div onClick={onClick} style={{padding:'10px 14px 10px '+(14+indent)+'px',borderBottom:'1px solid '+T.hairline,cursor:'pointer',display:'flex',alignItems:'center',gap:10,background:selected?'#f5f3ff':'transparent',borderLeft:selected?'3px solid '+T.accent:'3px solid transparent',transition:'background .12s'}}
-    onMouseEnter={e=>{if(!selected)e.currentTarget.style.background='#fafbfc';}}
-    onMouseLeave={e=>{if(!selected)e.currentTarget.style.background='transparent;'}}>
     {children}
   </div>;
 }
@@ -180,25 +157,6 @@ function DetailSection({title, children}) {
   return <div style={{padding:'18px 24px',borderBottom:'1px solid '+T.hairline}}>
     {title&&<div style={{fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginBottom:10}}>{title}</div>}
     {children}
-  </div>;
-}
-function EmptyDetail({icon, title, hint}) {
-  return <div style={{height:'100%',minHeight:300,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:40,color:T.mutedFg,textAlign:'center'}}>
-    <div style={{fontSize:32,marginBottom:10,opacity:.55}}>{icon}</div>
-    <div style={{fontSize:14,fontWeight:700,color:T.bodyFg,marginBottom:4}}>{title}</div>
-    <div style={{fontSize:12,maxWidth:320}}>{hint}</div>
-  </div>;
-}
-function MasterDetail({toolbar, listHeader, list, detail, listWidth=440}) {
-  return <div style={{display:'flex',height:'100%',padding:'20px 24px 24px',gap:20,boxSizing:'border-box'}}>
-    <div style={{width:listWidth,flexShrink:0,display:'flex',flexDirection:'column',background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}>
-      {toolbar&&<div style={{padding:'12px 14px',borderBottom:'1px solid '+T.hairline,background:'#fafbfc'}}>{toolbar}</div>}
-      {listHeader&&<div style={{padding:'10px 14px',borderBottom:'1px solid '+T.hairline,fontSize:11,color:T.mutedFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,background:'#fafbfc'}}>{listHeader}</div>}
-      <div style={{flex:1,overflowY:'auto'}}>{list}</div>
-    </div>
-    <div style={{flex:1,minWidth:0,background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflowY:'auto'}}>
-      {detail}
-    </div>
   </div>;
 }
 

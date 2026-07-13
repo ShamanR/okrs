@@ -11,28 +11,12 @@
 
 const { useState, useCallback, useRef, useEffect, useMemo } = React;
 
-// ── SHARED localStorage CONTRACT (must match tracker.js) ──────────────────────
-const SETTINGS_KEYS = {
-  desc: uid => `okr_team_desc_overrides:${uid}`,
-  sidebar: uid => `okr_sidebar_nodes:${uid}`,
-};
-function readJSON(key, fallback) {
-  try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); }
-  catch (_) { return fallback; }
-}
-function writeJSON(key, value) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* quota / private mode */ }
-}
-
-const TEAM_TYPE_LABEL = { department: 'Департамент', cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад', employee: 'Сотрудник' };
-const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
-const ACCENT = '#7c3aed';
+// STORAGE_KEYS / readJSON / writeJSON — общий контракт из storage.js (грузится раньше).
+const SETTINGS_KEYS = STORAGE_KEYS;
+// TEAM_TYPE_LABEL / TEAM_TYPE_COLOR / ACCENT — общие константы из ui.js (грузится раньше).
 
 // ── API helpers ───────────────────────────────────────────────────────────────
-function readCSRF() {
-  const part = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('okr_csrf_token='));
-  return part ? decodeURIComponent(part.split('=')[1]) : '';
-}
+// readCSRF — общая глобаль из api.js (грузится раньше).
 async function apiGet(url) {
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -57,10 +41,6 @@ function subtreeIds(node, acc = []) {
   acc.push(node.id);
   (node.children || []).forEach(c => subtreeIds(c, acc));
   return acc;
-}
-function findNode(nodes, id) {
-  for (const n of nodes) { if (n.id === id) return n; const f = findNode(n.children || [], id); if (f) return f; }
-  return null;
 }
 
 // ── small UI pieces ───────────────────────────────────────────────────────────

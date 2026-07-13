@@ -2,39 +2,31 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+{{template "spa-head" .}}
 <title>Нет доступа · OKR</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/sidebar.css">
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
-html,body,#root{height:100%;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:#edf0f4;color:#111827;font-size:14px;-webkit-font-smoothing:antialiased}
-a{color:#2563eb;text-decoration:none}
-button{font-family:inherit}
-input{font-family:inherit;font-size:14px}
-.topbar{display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;background:#fff;border-bottom:1px solid #e5e7eb}
+html,body,#root{height:100%;font-size:14px}
+input{font-size:14px}
+.topbar{display:flex;align-items:center;gap:12px;height:56px;padding:0 16px;background:#fff;border-bottom:1px solid var(--border)}
 .topbar__logo{font-weight:700;color:#0f172a}
 .na-wrap{max-width:560px;margin:48px auto;padding:0 16px}
-.na-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 1px 3px rgba(15,23,42,0.04);padding:24px}
+.na-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:0 1px 3px rgba(15,23,42,0.04);padding:24px}
 .na-card h1{font-size:20px;margin-bottom:.5rem}
-.na-card p{color:#4b5563;margin-bottom:1rem}
+.na-card p{color:var(--text-body);margin-bottom:1rem}
 .na-form{display:flex;gap:8px;align-items:center;margin-top:1rem}
-.na-form input{flex:1;padding:7px 11px;border:1.5px solid #e5e7eb;border-radius:8px}
-.na-form button{padding:7px 16px;border:none;border-radius:8px;background:#2563eb;color:#fff;font-weight:600;cursor:pointer}
+.na-form input{flex:1;padding:7px 11px;border:1.5px solid var(--border);border-radius:var(--radius-md)}
+.na-form button{padding:7px 16px;border:none;border-radius:var(--radius-md);background:var(--link);color:#fff;font-weight:600;cursor:pointer}
 .na-msg{margin-top:.75rem;font-size:13px}
 .na-msg.err{color:#b91c1c}
 .na-msg.ok{color:#047857}
 </style>
 </head>
 <body>
-<div id="root"><div style="height:100vh;display:flex;align-items:center;justify-content:center;color:#6b7280">Загрузка…</div></div>
+<div id="root"><div class="loading-screen">Загрузка…</div></div>
 <div id="na-msg-src" hidden>{{.NoAccessMessage}}</div>
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
+{{template "spa-vendor" .}}
+<script type="text/babel" src="/static/api.js" data-presets="react"></script>
 <script type="text/babel" src="/static/markdown.js" data-presets="react"></script>
 <script type="text/babel" src="/static/sidebar.js" data-presets="react"></script>
 <script type="text/babel" src="/static/no_access.js" data-presets="react"></script>

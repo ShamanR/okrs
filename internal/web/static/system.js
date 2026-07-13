@@ -1,10 +1,7 @@
 // OKR System-admin — React SPA (CDN React 18 + Babel standalone), mirrors admin.js conventions.
 const {useState, useEffect, useCallback} = React;
 
-function readCSRF() {
-  return document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('okr_csrf_token='))?.split('=')[1] || '';
-}
-function csrfHeaders(extra={}) { return {'X-CSRF-Token': readCSRF(), 'Content-Type':'application/json', ...extra}; }
+// readCSRF / csrfHeaders — общие глобали из api.js (грузится раньше).
 async function api(url, opts={}) {
   const res = await fetch(url, opts);
   if (res.status === 401) { window.location.href = '/login'; return null; }

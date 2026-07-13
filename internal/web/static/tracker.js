@@ -1,12 +1,8 @@
 const { useState, useCallback, useRef, useEffect } = React;
-const ACCENT = '#7c3aed';
+// ACCENT, TEAM_TYPE_* — общие константы из ui.js (грузится раньше).
 
 // ── API ───────────────────────────────────────────────────────────────────────
-function readCSRF() {
-  const part = document.cookie.split(';').map(s => s.trim()).find(s => s.startsWith('okr_csrf_token='));
-  return part ? decodeURIComponent(part.split('=').slice(1).join('=')) : '';
-}
-function csrfHeaders(extra = {}) { return { 'X-CSRF-Token': readCSRF(), 'Content-Type': 'application/json', ...extra }; }
+// readCSRF / csrfHeaders — общие глобали из api.js (грузится раньше).
 async function apiFetch(url, opts = {}) {
   const r = await fetch(url, opts);
   if (!r.ok) {
@@ -67,9 +63,9 @@ function writeTreeExpanded(expanded) {
 }
 
 // Personal settings persisted by the /settings page (per-user localStorage).
-// Keys must stay in sync with settings.js.
-const SETTINGS_DESC_KEY = uid => `okr_team_desc_overrides:${uid}`;
-const SETTINGS_SIDEBAR_KEY = uid => `okr_sidebar_nodes:${uid}`;
+// Ключи — из общего storage.js (STORAGE_KEYS), единый контракт с settings.js.
+const SETTINGS_DESC_KEY = STORAGE_KEYS.desc;
+const SETTINGS_SIDEBAR_KEY = STORAGE_KEYS.sidebar;
 function readDescOverrides(uid) {
   try { const v = localStorage.getItem(SETTINGS_DESC_KEY(uid)); const m = v ? JSON.parse(v) : null; return m && typeof m === 'object' ? m : {}; }
   catch { return {}; }
@@ -334,8 +330,6 @@ function focusLabel(f) {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 }
 const STATUS_STEPS = [{ k: 'forming', l: 'Черновик' }, { k: 'ready', l: 'К валидации' }, { k: 'in_progress', l: 'В работе' }, { k: 'closed', l: 'Закрыты' }];
-const TEAM_TYPE_LABEL = { department: 'Департамент', cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад', employee: 'Сотрудник' };
-const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
 
 // greenThreshold: progress at or above this percent is considered "in plan" (green)
 // regardless of the forecast-based pace check. Configurable via admin settings (default 80).
