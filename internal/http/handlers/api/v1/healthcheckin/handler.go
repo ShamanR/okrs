@@ -60,7 +60,10 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.svc.GetHealthCheckIn(r.Context(), scope, user.UDID, user.IsAdmin, periodID, cfg)
+	// Unrestricted health-check scope is granted to tenant admins (active role), matching the
+	// PolicyEvaluator's tenant-scoped admin model — not any legacy global flag.
+	role, _ := auth.ActiveRoleFromContext(r.Context())
+	result, err := h.svc.GetHealthCheckIn(r.Context(), scope, user.UDID, role == domain.RoleAdmin, periodID, cfg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

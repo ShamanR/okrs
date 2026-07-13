@@ -23,6 +23,7 @@ import (
 // Provisioner is the control surface; *service.ProvisioningService satisfies it.
 type Provisioner interface {
 	CreateTenant(ctx context.Context, name, slug string) (*domain.Tenant, error)
+	UpdateTenant(ctx context.Context, tenantID int64, name, slug string) (*domain.Tenant, error)
 	AttachMember(ctx context.Context, tenantID, userID int64, role domain.Role) (*domain.Membership, error)
 	SetEntitlements(ctx context.Context, tenantID int64, entitlements map[string]any) error
 	Suspend(ctx context.Context, tenantID int64) error
@@ -123,6 +124,39 @@ func (h *Handler) HandleListTenants(w http.ResponseWriter, r *http.Request) {
 		out = append(out, toTenantDTO(&list[i]))
 	}
 	writeJSON(w, out)
+}
+
+// PATCH /api/v1/system/tenants/{id}  {name, slug}
+func (h *Handler) HandlePatchTenant(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	tn, err := h.prov.UpdateTenant(r.Context(), tenantID, body.Name, body.Slug)
+	if err != nil {
+		switch {
+		case errors.Is(err, tenants.ErrNotFound):
+			writeError(w, http.StatusNotFound, "tenant not found")
+		case errors.Is(err, tenants.ErrSlugTaken):
+			writeError(w, http.StatusConflict, "slug already taken")
+		case errors.Is(err, tenants.ErrInvalidSlug):
+			writeError(w, http.StatusUnprocessableEntity, "invalid slug")
+		case errors.Is(err, tenants.ErrInvalidName):
+			writeError(w, http.StatusUnprocessableEntity, "invalid name")
+		default:
+			writeError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	writeJSON(w, toTenantDTO(tn))
 }
 
 // POST /api/v1/system/tenants/{id}/members  {user_id, role}

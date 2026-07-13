@@ -27,18 +27,14 @@
         </div>
       </div>
       <div class="mb-2">
-        {{if .User.IsAdmin}}
-          <span class="badge text-bg-warning me-2">Admin</span>
-          <button class="btn btn-sm btn-outline-danger"
-            onclick="if(confirm('Снять admin?')) fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'DELETE',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
-            Снять admin
-          </button>
-        {{else}}
-          <button class="btn btn-sm btn-outline-warning"
-            onclick="fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'POST',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
-            Выдать admin
-          </button>
-        {{end}}
+        <button class="btn btn-sm btn-outline-warning"
+          onclick="fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'POST',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
+          Выдать admin
+        </button>
+        <button class="btn btn-sm btn-outline-danger"
+          onclick="if(confirm('Снять admin?')) fetch('/api/v1/admin/users/{{.User.ID}}/admin',{method:'DELETE',headers:{'X-CSRF-Token':window.getCSRFToken?.()??''}}).then(()=>location.reload())">
+          Снять admin
+        </button>
       </div>
       <p class="text-muted small mb-0">Последний вход: {{.User.LastLoginAt.Format "02.01.2006 15:04"}}</p>
     </div>

@@ -420,9 +420,6 @@
       <div class="d-flex align-items-center gap-2">
         <a class="btn btn-outline-light btn-sm" href="/">OKR команд</a>
         {{if .CurrentUser}}
-          {{if .CurrentUser.IsAdmin}}
-            <a class="btn btn-outline-warning btn-sm" href="/admin">Управление</a>
-          {{end}}
           <div class="dropdown">
             <button class="btn btn-outline-light btn-sm dropdown-toggle d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown">
               {{if .CurrentUser.AvatarURL}}
@@ -433,10 +430,6 @@
             <ul class="dropdown-menu dropdown-menu-end">
               <li><span class="dropdown-item-text text-muted small">{{.CurrentUser.Provider}}</span></li>
               <li><hr class="dropdown-divider"></li>
-              {{if .CurrentUser.IsAdmin}}
-                <li><a class="dropdown-item" href="/admin/access">Управление доступом</a></li>
-                <li><hr class="dropdown-divider"></li>
-              {{end}}
               <li>
                 <button type="button" class="dropdown-item text-danger"
                   onclick="fetch('/logout',{method:'POST',credentials:'include'}).then(()=>{location.href='/login'})">

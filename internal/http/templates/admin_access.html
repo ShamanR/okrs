@@ -67,7 +67,7 @@
                   <td class="py-2 align-middle text-muted small">{{.Email}}</td>
                   <td class="py-2 align-middle text-muted small">{{.LastLoginAt.Format "02.01.2006 15:04"}}</td>
                   <td class="py-2 align-middle">
-                    {{if .IsAdmin}}<span class="badge text-bg-warning">Admin</span>{{else}}<span class="text-muted">—</span>{{end}}
+                    <span class="text-muted">—</span>
                   </td>
                   <td class="py-2 align-middle">
                     <a href="/admin/users/{{.ID}}" class="btn btn-outline-secondary btn-sm">Изменить</a>

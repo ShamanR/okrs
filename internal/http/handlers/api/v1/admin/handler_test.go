@@ -56,9 +56,24 @@ func (f *fakeSettings) get(key string) (json.RawMessage, bool) {
 	return v, ok
 }
 
+// fakeRenamer records RenameTenant calls for handler tests.
+type fakeRenamer struct {
+	id   int64
+	name string
+	err  error
+}
+
+func (f *fakeRenamer) RenameTenant(_ context.Context, id int64, name string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.id, f.name = id, name
+	return nil
+}
+
 // withTenant attaches the default tenant #1 so TenantScopeFromContext returns {1}.
 func withTenant(r *http.Request) *http.Request {
-	return r.WithContext(auth.WithTenant(r.Context(), &domain.Tenant{ID: 1, Status: domain.TenantActive}))
+	return r.WithContext(auth.WithTenant(r.Context(), &domain.Tenant{ID: 1, Name: "Acme", Status: domain.TenantActive}))
 }
 
 func TestHandleMeReturns401WhenNoUser(t *testing.T) {
@@ -78,7 +93,6 @@ func TestHandleMeReturnsUserJSON(t *testing.T) {
 		Email:       "alice@example.com",
 		AvatarURL:   "https://example.com/avatar.png",
 		Provider:    "google",
-		IsAdmin:     true,
 	}
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
 	r = r.WithContext(auth.WithUser(r.Context(), u))
@@ -110,15 +124,12 @@ func TestHandleMeReturnsUserJSON(t *testing.T) {
 	if got.Provider != "google" {
 		t.Errorf("provider: want google, got %s", got.Provider)
 	}
-	if !got.IsAdmin {
-		t.Errorf("is_admin: want true, got false")
-	}
 }
 
 func TestHandleGetGeneralSettingsReturnsStoredURL(t *testing.T) {
 	fs := newFakeSettings()
 	fs.set("documentation_url", "https://example.com/wiki")
-	h := New(nil, fs, nil, nil, nil)
+	h := New(nil, fs, nil, nil, nil, nil)
 
 	r := withTenant(httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/general", nil))
 	w := httptest.NewRecorder()
@@ -139,7 +150,7 @@ func TestHandleGetGeneralSettingsReturnsStoredURL(t *testing.T) {
 }
 
 func TestHandleGetGeneralSettingsEmptyWhenUnset(t *testing.T) {
-	h := New(nil, newFakeSettings(), nil, nil, nil)
+	h := New(nil, newFakeSettings(), nil, nil, nil, nil)
 	r := withTenant(httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/general", nil))
 	w := httptest.NewRecorder()
 	h.HandleGetGeneralSettings(w, r)
@@ -155,9 +166,10 @@ func TestHandleGetGeneralSettingsEmptyWhenUnset(t *testing.T) {
 
 func TestHandleUpdateGeneralSettingsStoresValidURL(t *testing.T) {
 	fs := newFakeSettings()
-	h := New(nil, fs, nil, nil, nil)
+	fr := &fakeRenamer{}
+	h := New(nil, fs, nil, nil, nil, fr)
 
-	body := strings.NewReader(`{"documentation_url":"  https://example.com/wiki  "}`)
+	body := strings.NewReader(`{"name":"Acme","documentation_url":"  https://example.com/wiki  "}`)
 	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", body))
 	w := httptest.NewRecorder()
 	h.HandleUpdateGeneralSettings(w, r)
@@ -173,12 +185,47 @@ func TestHandleUpdateGeneralSettingsStoresValidURL(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateGeneralSettingsRenamesTenant(t *testing.T) {
+	fs := newFakeSettings()
+	fr := &fakeRenamer{}
+	h := New(nil, fs, nil, nil, nil, fr)
+
+	body := strings.NewReader(`{"name":"  Acme LLC  ","documentation_url":""}`)
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", body))
+	w := httptest.NewRecorder()
+	h.HandleUpdateGeneralSettings(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if fr.id != 1 || fr.name != "Acme LLC" {
+		t.Fatalf("rename call = {id:%d name:%q}, want {1 Acme LLC}", fr.id, fr.name)
+	}
+}
+
+func TestHandleUpdateGeneralSettingsRejectsEmptyName(t *testing.T) {
+	fs := newFakeSettings()
+	fr := &fakeRenamer{}
+	h := New(nil, fs, nil, nil, nil, fr)
+
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", strings.NewReader(`{"name":"  ","documentation_url":""}`)))
+	w := httptest.NewRecorder()
+	h.HandleUpdateGeneralSettings(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", w.Code)
+	}
+	if fr.name != "" {
+		t.Errorf("rename must not be called on empty name, got %q", fr.name)
+	}
+}
+
 func TestHandleUpdateGeneralSettingsAllowsEmptyToClear(t *testing.T) {
 	fs := newFakeSettings()
 	fs.set("documentation_url", "https://example.com/wiki")
-	h := New(nil, fs, nil, nil, nil)
+	h := New(nil, fs, nil, nil, nil, &fakeRenamer{})
 
-	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", strings.NewReader(`{"documentation_url":""}`)))
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", strings.NewReader(`{"name":"Acme","documentation_url":""}`)))
 	w := httptest.NewRecorder()
 	h.HandleUpdateGeneralSettings(w, r)
 
@@ -194,9 +241,9 @@ func TestHandleUpdateGeneralSettingsAllowsEmptyToClear(t *testing.T) {
 }
 
 func TestHandleUpdateGeneralSettingsRejectsNonHTTPURL(t *testing.T) {
-	for _, bad := range []string{`{"documentation_url":"javascript:alert(1)"}`, `{"documentation_url":"not a url"}`, `{"documentation_url":"ftp://example.com"}`} {
+	for _, bad := range []string{`{"name":"Acme","documentation_url":"javascript:alert(1)"}`, `{"name":"Acme","documentation_url":"not a url"}`, `{"name":"Acme","documentation_url":"ftp://example.com"}`} {
 		fs := newFakeSettings()
-		h := New(nil, fs, nil, nil, nil)
+		h := New(nil, fs, nil, nil, nil, &fakeRenamer{})
 		r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", strings.NewReader(bad)))
 		w := httptest.NewRecorder()
 		h.HandleUpdateGeneralSettings(w, r)
@@ -211,8 +258,8 @@ func TestHandleUpdateGeneralSettingsRejectsNonHTTPURL(t *testing.T) {
 
 func TestHandleGeneralSettingsEmptyHierarchyMessage(t *testing.T) {
 	fs := newFakeSettings()
-	h := New(nil, fs, nil, nil, nil)
-	body := strings.NewReader(`{"documentation_url":"","empty_hierarchy_message":"ask **ops**"}`)
+	h := New(nil, fs, nil, nil, nil, &fakeRenamer{})
+	body := strings.NewReader(`{"name":"Acme","documentation_url":"","empty_hierarchy_message":"ask **ops**"}`)
 	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", body))
 	w := httptest.NewRecorder()
 	h.HandleUpdateGeneralSettings(w, r)
@@ -232,7 +279,7 @@ func TestHandleGeneralSettingsEmptyHierarchyMessage(t *testing.T) {
 }
 
 func TestHandleGetFeedbackSettingsDefaults(t *testing.T) {
-	h := New(nil, newFakeSettings(), nil, nil, nil)
+	h := New(nil, newFakeSettings(), nil, nil, nil, nil)
 	r := withTenant(httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings/feedback", nil))
 	w := httptest.NewRecorder()
 	h.HandleGetFeedbackSettings(w, r)
@@ -259,7 +306,7 @@ func TestHandleGetFeedbackSettingsDefaults(t *testing.T) {
 
 func TestHandleUpdateFeedbackSettingsStoresValues(t *testing.T) {
 	fs := newFakeSettings()
-	h := New(nil, fs, nil, nil, nil)
+	h := New(nil, fs, nil, nil, nil, nil)
 	body := strings.NewReader(`{"feedback_url":"  https://forms.example.com/s  ","feedback_popup_enabled":true,"feedback_menu_link_enabled":true,"feedback_frequency_days":14}`)
 	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body))
 	w := httptest.NewRecorder()
@@ -289,7 +336,7 @@ func TestHandleUpdateFeedbackSettingsRejectsUnsafeScheme(t *testing.T) {
 		`{"feedback_url":"data:text/html,<script>1</script>","feedback_frequency_days":14}`,
 	} {
 		fs := newFakeSettings()
-		h := New(nil, fs, nil, nil, nil)
+		h := New(nil, fs, nil, nil, nil, nil)
 		r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", strings.NewReader(bad)))
 		w := httptest.NewRecorder()
 		h.HandleUpdateFeedbackSettings(w, r)
@@ -306,7 +353,7 @@ func TestHandleUpdateFeedbackSettingsAcceptsNonHTTPURL(t *testing.T) {
 	// Unlike documentation_url, the feedback link has no strict http(s) requirement.
 	for _, link := range []string{"forms.gle/demo", "ftp://example.com/survey", "/internal/survey"} {
 		fs := newFakeSettings()
-		h := New(nil, fs, nil, nil, nil)
+		h := New(nil, fs, nil, nil, nil, nil)
 		body := strings.NewReader(`{"feedback_url":"` + link + `","feedback_frequency_days":30}`)
 		r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body))
 		w := httptest.NewRecorder()
@@ -324,7 +371,7 @@ func TestHandleUpdateFeedbackSettingsAcceptsNonHTTPURL(t *testing.T) {
 }
 
 func TestHandleUpdateFeedbackSettingsRejectsBadFrequency(t *testing.T) {
-	h := New(nil, newFakeSettings(), nil, nil, nil)
+	h := New(nil, newFakeSettings(), nil, nil, nil, nil)
 	body := strings.NewReader(`{"feedback_url":"","feedback_frequency_days":0}`)
 	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body))
 	w := httptest.NewRecorder()
@@ -385,7 +432,7 @@ func TestHandleListUsersIsTenantScopedWithStatus(t *testing.T) {
 		},
 		activeTeamIDs: map[int64]bool{1: true},
 	}
-	h := New(fu, nil, nil, g, nil)
+	h := New(fu, nil, nil, g, nil, nil)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users", nil)
 	r = r.WithContext(auth.WithTenant(r.Context(), &domain.Tenant{ID: 1, Status: domain.TenantActive}))

@@ -736,7 +736,6 @@ async function _adminLoadUsers() {
       display_name: u.DisplayName,
       avatar_url: u.AvatarURL,
       email: u.Email,
-      is_admin: u.IsAdmin,
     })) : [];
     return _adminAllUsers;
   } catch { return []; }
@@ -1093,6 +1092,7 @@ function AccessSettingsPanel({teams}) {
 }
 
 function GeneralSettingsPanel() {
+  const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [emptyMsg, setEmptyMsg] = useState('');
   const [saving, setSaving] = useState(false);
@@ -1100,22 +1100,31 @@ function GeneralSettingsPanel() {
 
   useEffect(()=>{
     apiGet('/api/v1/admin/settings/general').then(r=>r&&r.json()).then(data=>{
-      if (data) { setUrl(data.documentation_url||''); setEmptyMsg(data.empty_hierarchy_message||''); }
+      if (data) { setName(data.name||''); setUrl(data.documentation_url||''); setEmptyMsg(data.empty_hierarchy_message||''); }
     });
   },[]);
 
   async function save() {
+    if (!name.trim()) { alert('Укажите название пространства.'); return; }
     setSaving(true); setSaved(false);
-    const res = await apiPost('/api/v1/admin/settings/general', {documentation_url: url.trim(), empty_hierarchy_message: emptyMsg});
+    const res = await apiPost('/api/v1/admin/settings/general', {name: name.trim(), documentation_url: url.trim(), empty_hierarchy_message: emptyMsg});
     setSaving(false);
     if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
-    else if (res && res.status===400) alert('Укажите корректную http(s)-ссылку или оставьте поле пустым.');
+    else if (res && res.status===400) alert('Проверьте название пространства и ссылку на документацию.');
     else alert('Ошибка сохранения настроек');
   }
 
   return <div>
-    <DetailHeader breadcrumb="Настройки" title="Документация"
-      subtitle="Ссылка на документацию в меню пользователя"/>
+    <DetailHeader breadcrumb="Настройки" title="Общие настройки"
+      subtitle="Название пространства, документация и сообщения"/>
+    <DetailSection title="Название пространства">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:16,lineHeight:1.6}}>
+        Отображается в переключателе пространств и заголовках. Slug пространства меняется только в системном разделе.
+      </div>
+      <input type="text" value={name} onChange={e=>setName(e.target.value)}
+        placeholder="Название пространства"
+        style={{...inpStyle,fontSize:13,marginBottom:16}}/>
+    </DetailSection>
     <DetailSection title="Ссылка на документацию">
       <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:16,lineHeight:1.6}}>
         Если ссылка указана, в меню пользователя появляется пункт «Документация». Оставьте поле пустым, чтобы скрыть пункт.
@@ -1596,8 +1605,8 @@ function App() {
     {section==='teams'   &&<TeamsSection teams={teams} reload={reload}/>}
     {section==='users'   &&<UsersSection users={users} teams={teams} currentUser={me} reload={reload}/>}
     {section==='settings'&&<div style={{padding:'20px 24px 24px',display:'flex',flexDirection:'column',gap:20}}>
-      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><GeneralSettingsPanel/></div>
+      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><FeedbackSettingsPanel/></div>
     </div>}
     {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}

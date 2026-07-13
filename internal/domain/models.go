@@ -195,7 +195,6 @@ type User struct {
 	AvatarURL          string
 	Email              string
 	AttributesJSON     map[string]any
-	IsAdmin            bool
 	IsSystemAdmin      bool
 	CreatedAt          time.Time
 	UpdatedAt          time.Time

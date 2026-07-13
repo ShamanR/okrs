@@ -76,8 +76,7 @@ Response:
   "display_name": "Ivan Ivanov",
   "email": "ivan@example.com",
   "avatar_url": "https://...",
-  "provider": "google",
-  "is_admin": false
+  "provider": "google"
 }
 ```
 
@@ -124,7 +123,7 @@ Response:
 - `GET /api/v1/admin/users` — **только пользователи активного тенанта**: активные члены и
   запросившие доступ (`memberships.status` = `active`/`requested`); пользователи без membership в
   тенанте не возвращаются. Каждый элемент: поля пользователя (id, display_name, avatar_url,
-  provider, last_login_at, is_admin) + `GrantedNodeCount` (число выданных узлов иерархии, считается
+  provider, last_login_at) + `GrantedNodeCount` (число выданных узлов иерархии, считается
   только активным) + `Status` (`active`/`requested`) + `Role` (роль в тенанте). UI использует
   `Status`, чтобы показывать запросившим кнопки «Добавить»/«Отклонить» (см. ниже), а членам —
   управление доступом.
@@ -168,14 +167,16 @@ Response:
 
 ```json
 {
+  "name": "Acme",
   "documentation_url": "https://github.com/ShamanR/okrs/wiki"
 }
 ```
 
-- `POST /api/v1/admin/settings/general` — обновить общие настройки; body: `{"documentation_url": "https://github.com/ShamanR/okrs/wiki"}`
+- `POST /api/v1/admin/settings/general` — обновить общие настройки; body: `{"name": "Acme", "documentation_url": "https://github.com/ShamanR/okrs/wiki"}`
 
 Validation:
 
+- `name` — название активного пространства (tenant-admin); trim, непустое, иначе `400 VALIDATION_ERROR`. `id` тенанта берётся из контекста (`TenantScopeFromContext`); `slug` через этот endpoint не меняется (только system-admin через `PATCH /api/v1/system/tenants/{id}`).
 - `documentation_url` — пустая строка (очищает ссылку, скрывает пункт меню) или абсолютный http(s) URL; иначе `400 VALIDATION_ERROR`.
 
 Значение хранится в `tenant_settings` (ключ `documentation_url`, per-tenant) и применяется без перезапуска. Публичный `GET /api/v1/config` возвращает его авторизованному пользователю для его активного тенанта.
@@ -229,6 +230,7 @@ Validation:
 Не membership-gated (system-admin может не состоять ни в одном тенанте). UI — `/system`.
 
 - `POST /api/v1/system/tenants` — создать тенант; body: `{"name": "...", "slug": "...", "entitlements": {"sso": true}}` → `201` `{id, slug, name, status}`. `422` при невалидном slug, `409` если slug занят.
+- `PATCH /api/v1/system/tenants/{id}` — сменить название и slug пространства; body: `{"name": "...", "slug": "..."}` → `200` `{id, slug, name, status}`. `404` если тенант не найден, `409` если slug занят, `422` при невалидном slug или пустом имени. Смена slug — жёсткая замена: старый slug сразу перестаёт резолвиться (join по нему вернёт `404`); alias не сохраняется.
 - `GET /api/v1/system/tenants` — список тенантов.
 - `POST /api/v1/system/tenants/{id}/members` — прямое назначение membership существующему глобальному пользователю; body: `{"user_id": 1, "role": "admin"}` → `201`. (Самостоятельный онбординг — через пригласительные ссылки, ниже.)
 - `PUT /api/v1/system/tenants/{id}/entitlements` — записать ключи `entitlement.*`; body: `{"sso": true, "max_users": 50}` (bare-ключи неймспейсятся в `entitlement.*`) → `204`.

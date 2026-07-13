@@ -55,9 +55,12 @@ type configResponse struct {
 	// teams; empty → the SPA's default text.
 	EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
 	// IsAdmin reports whether the caller is a tenant admin in the active tenant (membership
-	// role = admin). The shared header uses it to show the /admin link. Tenant-scoped — not the
-	// legacy global users.is_admin.
+	// role = admin). The shared sidebar uses it to show the /admin link. Tenant-scoped — admin
+	// is a per-tenant role, not a field on the user.
 	IsAdmin bool `json:"is_admin"`
+	// IsSystemAdmin reports whether the caller is a cross-tenant system admin (a field on the
+	// user, not a per-tenant role). The shared sidebar uses it to show the /system link.
+	IsSystemAdmin bool `json:"is_system_admin"`
 }
 
 // GET /api/v1/config
@@ -79,6 +82,9 @@ func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
 	resp.EmptyHierarchyMessage = h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage)
 	if role, ok := auth.ActiveRoleFromContext(r.Context()); ok && role == domain.RoleAdmin {
 		resp.IsAdmin = true
+	}
+	if u := auth.UserFromContext(r.Context()); u != nil && u.IsSystemAdmin {
+		resp.IsSystemAdmin = true
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)

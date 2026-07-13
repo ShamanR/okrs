@@ -14,16 +14,38 @@ const get  = (u)    => api(u);
 const post = (u, b) => api(u, {method:'POST', headers:csrfHeaders(), body: b===undefined?undefined:JSON.stringify(b)});
 const put  = (u, b) => api(u, {method:'PUT',  headers:csrfHeaders(), body: JSON.stringify(b)});
 const del  = (u)    => api(u, {method:'DELETE', headers:csrfHeaders()});
+const patch = (u, b) => api(u, {method:'PATCH', headers:csrfHeaders(), body: JSON.stringify(b)});
 async function errMsg(res){ try { const j = await res.json(); return j.error || ('Ошибка '+res.status); } catch { return 'Ошибка '+res.status; } }
 
+// Единая тема управляющих плоскостей (совпадает с admin.js T): тёмный сайдбар,
+// фиолетовый акцент, светлая контент-область. Держит /system визуально в одном
+// ряду с /admin и /settings.
+const T = {
+  sidebarBg:'#0c1220', sidebarText:'#f1f5f9', sidebarDim:'#94a3b8', sidebarMuted:'#64748b',
+  sidebarSel:'#c4b5fd', sidebarSelBg:'rgba(124,58,237,0.15)',
+  accent:'#7c3aed', link:'#2563eb',
+  contentBg:'#edf0f4', cardBg:'#ffffff', cardBorder:'#e5e7eb', hairline:'#f1f5f9',
+  headingFg:'#0f172a', bodyFg:'#111827', mutedFg:'#6b7280', dimFg:'#9ca3af',
+  danger:'#dc2626', success:'#059669', warn:'#d97706', info:'#0891b2',
+};
+
 const C = { card:'#fff', border:'#e5e7eb', accent:'#2563eb', danger:'#b91c1c', ok:'#047857', muted:'#6b7280' };
-const box = {background:C.card, border:'1px solid '+C.border, borderRadius:10, padding:16, marginBottom:16};
+const box = {background:C.card, border:'1px solid '+T.cardBorder, borderRadius:12, padding:16, marginBottom:16, boxShadow:'0 1px 3px rgba(15,23,42,0.04)'};
 const btn = {padding:'6px 12px', border:'none', borderRadius:7, background:C.accent, color:'#fff', fontWeight:600, cursor:'pointer'};
 const inp = {padding:'6px 10px', border:'1.5px solid '+C.border, borderRadius:7};
 const th  = {textAlign:'left', padding:'6px 8px', borderBottom:'1px solid '+C.border};
 
-function TenantsSection({tenants, reload}) {
+function TenantsSection({tenants, reload, onOpenMembers}) {
   const [name,setName]=useState(''); const [slug,setSlug]=useState(''); const [err,setErr]=useState('');
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState('');
+  const [editSlug,setEditSlug]=useState('');
+  const startEdit = (t)=>{ setErr(''); setEditId(t.id); setEditName(t.name); setEditSlug(t.slug); };
+  const cancelEdit = ()=>{ setEditId(null); setEditName(''); setEditSlug(''); };
+  const saveEdit = async (id)=>{ setErr('');
+    const res = await patch(`/api/v1/system/tenants/${id}`, {name: editName.trim(), slug: editSlug.trim()});
+    if (res.status===200){ cancelEdit(); reload(); } else setErr(await errMsg(res));
+  };
   const create = async (e)=>{ e.preventDefault(); setErr('');
     const res = await post('/api/v1/system/tenants', {name, slug});
     if (res.status===201){ setName(''); setSlug(''); reload(); } else setErr(await errMsg(res));
@@ -33,15 +55,30 @@ function TenantsSection({tenants, reload}) {
     <h2 style={{fontSize:15,marginBottom:10}}>Пространства</h2>
     <table style={{width:'100%',borderCollapse:'collapse'}}>
       <thead><tr>{['ID','Slug','Название','Статус',''].map(h=><th key={h} style={th}>{h}</th>)}</tr></thead>
-      <tbody>{(tenants||[]).map(t=><tr key={t.id}>
-        <td style={{padding:'6px 8px'}}>{t.id}</td><td style={{padding:'6px 8px'}}>{t.slug}</td>
-        <td style={{padding:'6px 8px'}}>{t.name}</td>
-        <td style={{padding:'6px 8px',color:t.status==='suspended'?C.danger:C.ok}}>{t.status}</td>
-        <td style={{padding:'6px 8px'}}>
-          {t.status==='active'
-            ? <button style={{...btn,background:C.danger}} onClick={()=>setStatus(t.id,'suspend')}>Suspend</button>
-            : <button style={{...btn,background:C.ok}} onClick={()=>setStatus(t.id,'restore')}>Restore</button>}
-        </td></tr>)}</tbody>
+      <tbody>{(tenants||[]).map(t=> editId===t.id
+        ? <tr key={t.id}>
+            <td style={{padding:'6px 8px'}}>{t.id}</td>
+            <td style={{padding:'6px 8px'}}><input style={inp} value={editSlug} onChange={e=>setEditSlug(e.target.value)}/></td>
+            <td style={{padding:'6px 8px'}}><input style={inp} value={editName} onChange={e=>setEditName(e.target.value)}/></td>
+            <td style={{padding:'6px 8px',color:t.status==='suspended'?C.danger:C.ok}}>{t.status}</td>
+            <td style={{padding:'6px 8px',display:'flex',gap:6}}>
+              <button style={btn} onClick={()=>saveEdit(t.id)}>Сохранить</button>
+              <button style={{...btn,background:C.muted}} onClick={cancelEdit}>Отмена</button>
+            </td>
+          </tr>
+        : <tr key={t.id}>
+            <td style={{padding:'6px 8px'}}>{t.id}</td>
+            <td style={{padding:'6px 8px'}}>{t.slug}</td>
+            <td style={{padding:'6px 8px'}}>{t.name}</td>
+            <td style={{padding:'6px 8px',color:t.status==='suspended'?C.danger:C.ok}}>{t.status}</td>
+            <td style={{padding:'6px 8px',display:'flex',gap:6}}>
+              <button style={{...btn,background:C.accent}} onClick={()=>onOpenMembers(t.id)}>Участники</button>
+              <button style={{...btn,background:C.muted}} onClick={()=>startEdit(t)}>Изменить</button>
+              {t.status==='active'
+                ? <button style={{...btn,background:C.danger}} onClick={()=>setStatus(t.id,'suspend')}>Suspend</button>
+                : <button style={{...btn,background:C.ok}} onClick={()=>setStatus(t.id,'restore')}>Restore</button>}
+            </td>
+          </tr>)}</tbody>
     </table>
     <form onSubmit={create} style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}>
       <input style={inp} placeholder="Название" value={name} onChange={e=>setName(e.target.value)} required/>
@@ -52,8 +89,8 @@ function TenantsSection({tenants, reload}) {
   </div>;
 }
 
-function MembersSection({tenants, users}) {
-  const [tid,setTid]=useState(''); const [members,setMembers]=useState([]);
+function MembersSection({tenants, users, tid, setTid}) {
+  const [members,setMembers]=useState([]);
   const [q,setQ]=useState(''); const [uid,setUid]=useState(''); const [role,setRole]=useState('user'); const [err,setErr]=useState('');
   const loadMembers = useCallback(async (id)=>{ if(!id){setMembers([]);return;} const res=await get(`/api/v1/system/tenants/${id}/members`); if(res&&res.ok) setMembers(await res.json()||[]); },[]);
   useEffect(()=>{ loadMembers(tid); },[tid,loadMembers]);
@@ -196,24 +233,78 @@ function UsersSection({users, reload}) {
   </div>;
 }
 
+// ── SHELL ────────────────────────────────────────────────────────────────────
+// Sidebar живёт в общем модуле sidebar.js (грузится ПЕРЕД этим скриптом).
+// Зеркалит admin.js: тёмный сайдбар с контекстной навигацией + верхняя строка-
+// хлебные крошки + скролл-регион контента.
+const SYSTEM_SECTIONS = [
+  {id:'tenants',      label:'Пространства',   icon:'🏢'},
+  {id:'members',      label:'Участники',      icon:'👥'},
+  {id:'users',        label:'Пользователи',   icon:'🔑'},
+  {id:'registration', label:'Регистрация',    icon:'📝'},
+  {id:'entitlements', label:'Entitlements',   icon:'🎚'},
+  {id:'messages',     label:'Сообщения',      icon:'💬'},
+];
+
+function Shell({section, setSection, currentUser, children}) {
+  const cur = SYSTEM_SECTIONS.find(s=>s.id===section);
+  return <div style={{display:'flex',height:'100vh',overflow:'hidden'}}>
+    <Sidebar user={currentUser} active={null} showSections={false}>
+      <div className="sidebar__context">
+        <div className="sidebar__section-label">Система</div>
+        {SYSTEM_SECTIONS.map(s=>(
+          <button
+            key={s.id}
+            onClick={()=>setSection(s.id)}
+            className={`sidebar__navlink${s.id===section?' sidebar__navlink--active':''}`}
+          >
+            <span className="sidebar__navlink-icon">{s.icon}</span>{s.label}
+          </button>
+        ))}
+      </div>
+    </Sidebar>
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:T.contentBg}}>
+      <div style={{padding:'0 24px',background:'white',borderBottom:'1px solid '+T.cardBorder,display:'flex',alignItems:'center',height:54,gap:14,flexShrink:0}}>
+        <a href="/teamOkrs" style={{display:'inline-flex',alignItems:'center',gap:7,padding:'6px 12px 6px 10px',background:'#f5f3ff',color:'#6d28d9',border:'1px solid #ddd6fe',borderRadius:20,fontSize:12,fontWeight:600,textDecoration:'none',flexShrink:0}}>
+          <span style={{fontSize:13,lineHeight:1}}>←</span> OKR Tracker
+        </a>
+        <div style={{width:1,height:20,background:T.cardBorder}}/>
+        <div style={{display:'flex',alignItems:'baseline',gap:10,flex:1}}>
+          <span style={{fontSize:11,color:T.dimFg,fontWeight:600,textTransform:'uppercase',letterSpacing:.5}}>Система</span>
+          <span style={{color:T.dimFg,fontSize:12}}>/</span>
+          <span style={{fontSize:17,fontWeight:800,color:T.headingFg,letterSpacing:'-.2px'}}>{cur?.label}</span>
+        </div>
+      </div>
+      <div style={{flex:1,overflow:'auto'}}>
+        <div style={{padding:'20px 24px 24px'}}>{children}</div>
+      </div>
+    </div>
+  </div>;
+}
+
 function App() {
-  const [tenants,setTenants]=useState([]); const [users,setUsers]=useState([]); const [tab,setTab]=useState('tenants');
+  const [me,setMe]=useState(null);
+  const [tenants,setTenants]=useState([]); const [users,setUsers]=useState([]);
+  const [section,setSection]=useState(()=>localStorage.getItem('okr_system_section')||'tenants');
+  const [membersTid,setMembersTid]=useState('');
+  const openMembers = useCallback((id)=>{ setMembersTid(String(id)); setSection('members'); },[]);
   const reloadTenants = useCallback(async()=>{ const res=await get('/api/v1/system/tenants'); if(res&&res.ok) setTenants(await res.json()||[]); },[]);
   const reloadUsers = useCallback(async()=>{ const res=await get('/api/v1/system/users'); if(res&&res.ok) setUsers(await res.json()||[]); },[]);
+  useEffect(()=>{ (async()=>{ const res=await get('/api/v1/me'); if(res&&res.ok) setMe(await res.json()); })(); },[]);
   useEffect(()=>{ reloadTenants(); reloadUsers(); },[reloadTenants,reloadUsers]);
-  const tabBtn = (id,label)=><button onClick={()=>setTab(id)} style={{...btn,background:tab===id?C.accent:'#94a3b8'}}>{label}</button>;
-  return <div style={{maxWidth:920,margin:'0 auto',padding:'24px 16px'}}>
-    <h1 style={{fontSize:20,marginBottom:16}}>Система · Управление</h1>
-    <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap'}}>
-      {tabBtn('tenants','Пространства')}{tabBtn('members','Участники')}{tabBtn('users','Пользователи')}{tabBtn('registration','Регистрация')}{tabBtn('entitlements','Entitlements')}{tabBtn('messages','Сообщения')}
-    </div>
-    {tab==='tenants' && <TenantsSection tenants={tenants} reload={reloadTenants}/>}
-    {tab==='members' && <MembersSection tenants={tenants} users={users}/>}
-    {tab==='users' && <UsersSection users={users} reload={reloadUsers}/>}
-    {tab==='registration' && <RegistrationSection tenants={tenants}/>}
-    {tab==='entitlements' && <EntitlementsSection tenants={tenants}/>}
-    {tab==='messages' && <MessagesSection/>}
-  </div>;
+  useEffect(()=>{ localStorage.setItem('okr_system_section',section); },[section]);
+  useEffect(()=>{
+    const label = (SYSTEM_SECTIONS.find(s=>s.id===section)||{}).label;
+    document.title = label ? `Система · ${label}` : 'Система · Управление';
+  },[section]);
+  return <Shell section={section} setSection={setSection} currentUser={me}>
+    {section==='tenants' && <TenantsSection tenants={tenants} reload={reloadTenants} onOpenMembers={openMembers}/>}
+    {section==='members' && <MembersSection tenants={tenants} users={users} tid={membersTid} setTid={setMembersTid}/>}
+    {section==='users' && <UsersSection users={users} reload={reloadUsers}/>}
+    {section==='registration' && <RegistrationSection tenants={tenants}/>}
+    {section==='entitlements' && <EntitlementsSection tenants={tenants}/>}
+    {section==='messages' && <MessagesSection/>}
+  </Shell>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);

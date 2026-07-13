@@ -34,6 +34,74 @@ func TestTenantSetStatus(t *testing.T) {
 	}
 }
 
+func TestTenantRename(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := NewTenantRepository(pool)
+	ctx := context.Background()
+
+	tn, err := repo.Create(ctx, "acme", "Acme Inc")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if err := repo.Rename(ctx, tn.ID, "Acme LLC"); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	got, err := repo.GetByID(ctx, tn.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Name != "Acme LLC" {
+		t.Fatalf("name = %q, want Acme LLC", got.Name)
+	}
+	if err := repo.Rename(ctx, tn.ID, "  "); !errors.Is(err, ErrInvalidName) {
+		t.Fatalf("blank name: want ErrInvalidName, got %v", err)
+	}
+	if err := repo.Rename(ctx, 999999, "X"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing tenant: want ErrNotFound, got %v", err)
+	}
+}
+
+func TestTenantUpdate(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := NewTenantRepository(pool)
+	ctx := context.Background()
+
+	tn, err := repo.Create(ctx, "acme", "Acme Inc")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := repo.Create(ctx, "globex", "Globex"); err != nil {
+		t.Fatalf("create globex: %v", err)
+	}
+
+	upd, err := repo.Update(ctx, tn.ID, "Acme LLC", "acme-llc")
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if upd.Name != "Acme LLC" || upd.Slug != "acme-llc" {
+		t.Fatalf("update result = %+v", upd)
+	}
+	// старый slug освобождён (жёсткая замена)
+	if _, err := repo.GetBySlug(ctx, "acme"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("old slug still resolves: %v", err)
+	}
+
+	if _, err := repo.Update(ctx, tn.ID, "X", "ACME"); !errors.Is(err, ErrInvalidSlug) {
+		t.Fatalf("invalid slug: want ErrInvalidSlug, got %v", err)
+	}
+	if _, err := repo.Update(ctx, tn.ID, "  ", "acme-llc"); !errors.Is(err, ErrInvalidName) {
+		t.Fatalf("blank name: want ErrInvalidName, got %v", err)
+	}
+	if _, err := repo.Update(ctx, tn.ID, "X", "globex"); !errors.Is(err, ErrSlugTaken) {
+		t.Fatalf("taken slug: want ErrSlugTaken, got %v", err)
+	}
+	if _, err := repo.Update(ctx, 999999, "X", "free-slug"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing tenant: want ErrNotFound, got %v", err)
+	}
+}
+
 func TestTenantRepositoryCreateAndGet(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()

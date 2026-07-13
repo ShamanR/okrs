@@ -40,7 +40,7 @@
 - **сессии** хранятся на сервере (PostgreSQL), клиент получает только session ID в cookie;
 - **роли**: per-tenant `user`/`admin` (`memberships.role`) — `/admin` гейтится активной ролью тенанта; плюс инстанс-уровневый `users.is_system_admin` для `/system`;
 - **scope доступа**: пользователь видит только команды, к которым ему выданы hierarchy grants и их потомков (рекурсивная CTE); scope вычисляется `PolicyEvaluator` на каждый запрос;
-- **no-auth mode**: при `AUTH_MODE=disabled` все маршруты доступны, операции выполняются от имени `anonymous-local` (IsAdmin=true).
+- **no-auth mode**: при `AUTH_MODE=disabled` все маршруты доступны, операции выполняются от имени `anonymous-local` с активной ролью тенанта `admin`.
 
 На текущий момент **не реализованы как строгие серверные гарантии**:
 
@@ -92,7 +92,8 @@ Lifecycle ещё не является полноценной policy enforcement
 Три раздельные плоскости управления, каждая со своим гейтом:
 
 1. **System admin** (`users.is_system_admin`) — `/system` + `/api/v1/system/*`. Над тенантами:
-   создание тенантов, прямое назначение membership, **смена роли участника**
+   создание тенантов, **смена названия и slug пространства** (`PATCH …/tenants/{id}`),
+   прямое назначение membership, **смена роли участника**
    (`PUT …/members/{id}/role`), запись `entitlement.*`, suspend/restore, глобальный список
    пользователей, **выдача/снятие system-привилегий** другим пользователям
    (`PUT /api/v1/system/users/{id}/system-admin`), `default_registration_tenant_id`.
@@ -107,11 +108,12 @@ Lifecycle ещё не является полноценной policy enforcement
    (`409`, защита от self-lockout).
 2. **Tenant admin** (`memberships.role = admin` в активном тенанте) — существующий `/admin` +
    `/api/v1/admin/*`, теперь tenant-scoped. Гейт `RequireTenantAdmin` проверяет активную роль
-   из контекста (её ставит `TenantResolve`), а не глобальный `is_admin`. Внутри своего тенанта:
+   из контекста (её ставит `TenantResolve`). Внутри своего тенанта:
    команды, периоды (создание/редактирование/удаление, а также **архивирование и
    разархивирование** периода — архивировать можно только период в статусе `closed`, иначе `409`,
    см. `020-domain-model.md` и `040-api-contract.md`), пользователи/гранты, продуктовые ключи
-   `tenant_settings`. **Не** может писать `entitlement.*`.
+   `tenant_settings`, **переименование своего пространства** (`name`) в общих настройках
+   (`POST /api/v1/admin/settings/general`; slug менять нельзя). **Не** может писать `entitlement.*`.
 3. **User** (любой авторизованный) — `/settings`, личные `user_settings` + список своих memberships.
 
 ### Роли тенанта
@@ -119,8 +121,10 @@ Lifecycle ещё не является полноценной policy enforcement
 - `user` — обычный член тенанта;
 - `admin` — tenant-admin (`memberships.role = admin`).
 
-> Легаси-флаг `is_admin` на пользователе расщеплён: суперадмин инстанса → `is_system_admin`
-> (плоскость 1), «админ организации» → `memberships.role = admin` (плоскость 2).
+> Легаси-флаг `is_admin` на пользователе удалён (миграция `038_drop_users_is_admin`): суперадмин
+> инстанса — `is_system_admin` (плоскость 1), «админ организации» — `memberships.role = admin`
+> (плоскость 2). Исторический backfill: `028` перенёс суперадминов в `is_system_admin`, `035` —
+> tenant-админов в `memberships.role`.
 
 ### Write-authority настроек (проверяется в service-слое)
 

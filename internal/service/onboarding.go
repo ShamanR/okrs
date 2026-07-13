@@ -169,7 +169,7 @@ func (s *OnboardingService) DenyRequest(ctx context.Context, scope domain.Tenant
 
 // SetMemberRole changes a user's role (user/admin) within the scoped tenant and invalidates the
 // membership cache so the new role takes effect (incl. the access scope) on the next request.
-// This is the tenant-scoped admin toggle — it does not touch the legacy global users.is_admin.
+// This is the tenant-scoped admin toggle (memberships.role); instance-level system-admin is separate.
 func (s *OnboardingService) SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error {
 	if err := s.mem.SetRole(ctx, scope, userID, role); err != nil {
 		return err
