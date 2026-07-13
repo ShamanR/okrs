@@ -158,6 +158,34 @@ func TestCategories_StaleGoal_ExcludesDraftsAndAwaitingValidation(t *testing.T) 
 	}
 }
 
+// Stale ("N дней без обновления") is an execution-phase signal: it must be
+// counted only while the team is in_progress. Closed periods and teams that
+// have no status row yet (not advanced to in_progress) must not be flagged.
+func TestCategories_StaleGoal_OnlyInProgress(t *testing.T) {
+	old := time.Now().AddDate(0, 0, -10)
+	makeData := func(statuses map[int64]domain.TeamPeriodStatus) *PeriodData {
+		kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR1", Weight: 100, Kind: domain.KRKindBoolean,
+			Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(old)}
+		g := makeGoal(1, 1, "", []domain.KeyResult{kr})
+		g.Weight = 100
+		teams := []domain.Team{makeTeam(1, "T1", "", nil)}
+		goals := map[int64][]domain.Goal{1: {g}}
+		return makePeriodData(teams, goals, statuses)
+	}
+
+	// Closed period: "нет обновлений" is not an actionable problem.
+	closed := computeCategories(makeData(map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusClosed}), []int64{1}, makeCfg(), time.Now())
+	if closed.Categories["stale"].Count != 0 {
+		t.Errorf("closed: stale must be suppressed, got %d", closed.Categories["stale"].Count)
+	}
+
+	// Team without a status row (never advanced to in_progress): must not flag.
+	missing := computeCategories(makeData(map[int64]domain.TeamPeriodStatus{}), []int64{1}, makeCfg(), time.Now())
+	if missing.Categories["stale"].Count != 0 {
+		t.Errorf("missing status: stale must be suppressed, got %d", missing.Categories["stale"].Count)
+	}
+}
+
 func TestCategories_AwaitingValidation(t *testing.T) {
 	kr := domain.KeyResult{ID: 1, GoalID: 1, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean,
 		Boolean: &domain.KRBoolean{}, ProgressUpdatedAt: timePtr(time.Now())}
