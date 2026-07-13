@@ -1073,9 +1073,11 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
-  // Drafts and goals awaiting validation are not yet being executed, so the
-  // "N дней без обновления" warning is not meaningful for them.
-  const staleTracked = periodStatus !== 'forming' && periodStatus !== 'ready';
+  // "N дней без обновления" is an execution-phase signal: it applies only while
+  // the team is in_progress ("в работе"). Drafts, goals awaiting validation and
+  // closed periods are not being actively executed, so it is not meaningful for
+  // them. Kept in sync with the Health Check-in "stale" category (bell).
+  const staleTracked = periodStatus === 'in_progress';
   const isStale = staleTracked && goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;
   const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast, greenThreshold)];

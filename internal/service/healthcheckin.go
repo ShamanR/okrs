@@ -232,9 +232,11 @@ func computeCategories(data *PeriodData, scopeIDs []int64, cfg HealthCheckInConf
 			}
 			isStale := len(g.KeyResults) > 0 && (lastProgress == nil || daysSince > cfg.StaleDays)
 
-			// Drafts and goals awaiting validation are not yet being executed, so the
-			// "N дней без обновления" warning is not meaningful for them.
-			trackStale := status != domain.TeamPeriodStatusForming && status != domain.TeamPeriodStatusReady
+			// "N дней без обновления" is an execution-phase signal: it applies only
+			// while the team is in_progress ("в работе"). Drafts, goals awaiting
+			// validation, closed periods, and teams without a status row yet are not
+			// being actively executed, so the warning is not meaningful for them.
+			trackStale := status == domain.TeamPeriodStatusInProgress
 
 			if isStale && trackStale {
 				cats["stale"].Items = append(cats["stale"].Items, HealthCheckInItem{
