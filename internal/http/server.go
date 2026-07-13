@@ -499,14 +499,13 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants, s.store.Memberships)
 
 	r.Group(func(r chi.Router) {
-		// Authorization is mandatory for the whole system plane in EVERY mode: the
-		// RequireSystemAdmin gate always applies (no AUTH_MODE=disabled bypass). RequireAuth is
-		// only about loading/redirecting the session and is skipped in disabled mode; the gate
-		// still rejects anonymous-local (not a system-admin), so disabled-mode access needs a
-		// provisioning token.
-		if !s.auth.Disabled() {
-			r.Use(auth.RequireAuthMiddleware)
-		}
+		// RequireSystemAdmin is the SOLE gate for the system plane in EVERY mode (spec 040):
+		// it admits session system-admins and Bearer PROVISIONING_TOKEN machine callers, and
+		// redirects an unauthenticated browser to /login. We deliberately do NOT chain
+		// RequireAuth here — it would 401 a token-only machine caller (no session cookie)
+		// before the gate could honor the token, breaking cross-tenant provisioning in
+		// AUTH_MODE=enabled. In disabled mode the gate still rejects anonymous-local (not a
+		// system-admin), so disabled-mode access requires the provisioning token.
 		r.Use(auth.RequireSystemAdminMiddleware(s.auth.Config().ProvisioningToken))
 		r.Use(csrf.Handler)
 

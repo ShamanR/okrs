@@ -196,6 +196,40 @@ func TestRemovedMemberLosesTenantResolutionImmediately(t *testing.T) {
 	}
 }
 
+// A cookieless machine caller (Authorization: Bearer <PROVISIONING_TOKEN>, no session) must
+// reach the system plane in AUTH_MODE=enabled — the control-plane provisioning contract
+// (spec 040). Regression: RequireAuth used to 401 such callers before the system-admin gate
+// could honor the token, so provisioning only worked when a session cookie was also present.
+func TestSystemPlaneReachableByTokenOnlyMachineCaller(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+
+	a, err := app.New(app.Config{
+		Pool: pool, Zone: time.UTC,
+		Auth: auth.Config{Mode: auth.ModeEnabled, SessionCookie: "okrs_session", SessionTTL: time.Hour, ProvisioningToken: "tkn"},
+	})
+	if err != nil {
+		t.Fatalf("app.New: %v", err)
+	}
+
+	// Bearer token, no cookie → admitted by the sole system-admin gate.
+	rw := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/system/tenants", nil)
+	req.Header.Set("Authorization", "Bearer tkn")
+	a.Handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusOK {
+		t.Fatalf("token-only machine caller = %d (%s), want 200", rw.Code, rw.Body.String())
+	}
+
+	// No cookie, no token → denied (403), never leaking the plane to anonymous callers.
+	rw = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/system/tenants", nil)
+	a.Handler.ServeHTTP(rw, req)
+	if rw.Code != http.StatusForbidden {
+		t.Fatalf("anonymous machine caller = %d, want 403", rw.Code)
+	}
+}
+
 // A user whose active tenant is suspended must still reach the tenant switcher to recover:
 // the list/switch routes are authenticated but NOT membership-gated, so RequireMembership can't
 // lock them out of a tenant they're still active in.

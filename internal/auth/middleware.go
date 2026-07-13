@@ -64,13 +64,21 @@ func RequireTenantAdminMiddleware(next http.Handler) http.Handler {
 }
 
 // RequireSystemAdminMiddleware gates the system-admin plane (/system, /api/v1/system/*).
+// It is the SOLE gate for the plane (spec 040) and must NOT be chained behind RequireAuth:
+// RequireAuth would 401/redirect a token-only machine caller (no session cookie) before this
+// gate could honor the token, breaking cross-tenant provisioning in AUTH_MODE=enabled.
+//
 // It admits the request when the session user is a system admin, OR when a non-empty
 // provisioning token is configured and the request carries "Authorization: Bearer <token>"
-// (machine/control-plane callers). Otherwise 403.
+// (machine/control-plane callers). An unauthenticated browser (no session user at all) is
+// redirected to /login so it can sign in as a system admin — the redirect RequireAuth used to
+// provide. Every other caller — authenticated non-admin, or any API request without a valid
+// token — gets 403.
 func RequireSystemAdminMiddleware(provisioningToken string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if user := UserFromContext(r.Context()); user != nil && user.IsSystemAdmin {
+			user := UserFromContext(r.Context())
+			if user != nil && user.IsSystemAdmin {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -82,6 +90,15 @@ func RequireSystemAdminMiddleware(provisioningToken string) func(http.Handler) h
 					next.ServeHTTP(w, r)
 					return
 				}
+			}
+			// No system-admin session and no valid token. A browser with no session user at
+			// all (AUTH_MODE=enabled, cookie missing/expired) is sent to login — it may just
+			// need to sign in as a system admin. In disabled mode anonymous-local is always
+			// present (non-nil), so this branch is skipped and the request falls through to
+			// 403, matching the spec that disabled-mode system access requires the token.
+			if user == nil && !isAPIRequest(r) {
+				http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusFound)
+				return
 			}
 			if isAPIRequest(r) {
 				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
