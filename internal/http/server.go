@@ -45,34 +45,7 @@ import (
 var templatesFS embed.FS
 
 func parseTemplates() (*template.Template, error) {
-	return template.New("").Funcs(template.FuncMap{
-		"sumKRWeights": func(keyResults []domain.KeyResult) int {
-			total := 0
-			for _, kr := range keyResults {
-				total += kr.Weight
-			}
-			return total
-		},
-		"sumStageWeights": func(stages []domain.KRProjectStage) int {
-			total := 0
-			for _, stage := range stages {
-				total += stage.Weight
-			}
-			return total
-		},
-		"priorityBadgeClass": func(priority domain.Priority) string {
-			switch priority {
-			case domain.PriorityP0:
-				return "text-bg-danger"
-			case domain.PriorityP1, domain.PriorityP2:
-				return "text-bg-success"
-			case domain.PriorityP3:
-				return "text-bg-secondary"
-			default:
-				return "text-bg-secondary"
-			}
-		},
-	}).ParseFS(templatesFS, "templates/*.html")
+	return template.New("").ParseFS(templatesFS, "templates/*.html")
 }
 
 type Server struct {
@@ -93,9 +66,21 @@ type Server struct {
 	onboarding      *service.OnboardingService
 	entitlements     entitlements.Entitlements
 	noMembershipName string
+	assetsDev        bool
 	publicRoutes     func(chi.Router)
 	authedRoutes     func(chi.Router)
 	tenantRoutes     func(chi.Router)
+}
+
+// shellData is the view-model every SPA shell template receives. Dev selects the
+// development vs production vendored React build (see /static/vendor) and is driven
+// by the WEB_ASSETS_DEV env flag; false (production) is the safe default.
+type shellData struct {
+	Dev bool
+}
+
+func (s *Server) shellData() shellData {
+	return shellData{Dev: s.assetsDev}
 }
 
 // Options parameterizes the server with injectable seams. Each zero value falls back to the
@@ -113,6 +98,9 @@ type Options struct {
 	Entitlements entitlements.Entitlements
 	// NoMembershipName selects the registered onboarding.NoMembershipHandler; "" → "stub".
 	NoMembershipName string
+	// AssetsDev serves the development (unminified) vendored React build instead of the
+	// production one; false (the OSS default) ships production React. Driven by WEB_ASSETS_DEV.
+	AssetsDev bool
 	// Route-mount hooks for an embedded control-plane (SaaS). Each nil → no extra routes.
 	PublicRoutes func(chi.Router) // outer: session loaded, no auth gate, no CSRF (webhooks)
 	AuthedRoutes func(chi.Router) // authed, not membership-gated (create-organization)
@@ -215,6 +203,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		onboarding:      onboardingSvc,
 		entitlements:     ent,
 		noMembershipName: noMembership,
+		assetsDev:        opts.AssetsDev,
 		publicRoutes:     opts.PublicRoutes,
 		authedRoutes:     opts.AuthedRoutes,
 		tenantRoutes:     opts.TenantRoutes,
@@ -230,7 +219,7 @@ func (s *Server) Routes() http.Handler {
 		if raw, _ := s.settingsSvc.SystemGet(r.Context(), "no_access_message"); raw != nil {
 			_ = json.Unmarshal(raw, &msg)
 		}
-		_ = s.tmpl.ExecuteTemplate(w, "no-membership", map[string]any{"NoAccessMessage": msg})
+		_ = s.tmpl.ExecuteTemplate(w, "no-membership", map[string]any{"NoAccessMessage": msg, "Dev": s.assetsDev})
 	}})
 
 	ctx := context.Background()
@@ -257,10 +246,12 @@ func (s *Server) Routes() http.Handler {
 
 	csrf := middleware.NewCSRF()
 
-	// Force the browser to revalidate static assets (app.js) on every load instead of
-	// applying heuristic caching. FileServer answers with a cheap 304 when the file is
-	// unchanged and fresh content once it changes, so clients never run a stale app.js.
-	// no-cache is deploy-safe across K8s instances: it needs no server-side state.
+	// Force the browser to revalidate static assets (the SPA bundles and vendored libs)
+	// on every load instead of applying heuristic caching. FileServer answers with a cheap
+	// 304 when the file is unchanged and fresh content once it changes, so clients never run
+	// a stale bundle after a deploy. no-cache is deploy-safe across K8s instances: it needs
+	// no server-side state. (Vendored files are not content-hashed, so long-lived immutable
+	// caching would risk serving a stale library after an in-place version bump.)
 	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static")))
 	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
@@ -386,7 +377,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	// Tracker SPA — serves the React shell for the main OKR tracker.
 	trackerShell := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "tracker-shell", nil)
+		_ = s.tmpl.ExecuteTemplate(w, "tracker-shell", s.shellData())
 	}
 	r.Get("/", trackerShell)
 	r.Get("/teams/{teamID}/okr", trackerShell)
@@ -395,14 +386,14 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	// Available to any authenticated user (not admin-only); not part of the admin panel.
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", nil)
+		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", s.shellData())
 	})
 
 	// Страницы-заглушки разделов навигации (гамбургер-меню). Доступны любому
 	// авторизованному пользователю, как /settings.
 	stubShell := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "stub-shell", nil)
+		_ = s.tmpl.ExecuteTemplate(w, "stub-shell", s.shellData())
 	}
 	r.Get("/activity-log", stubShell)
 	r.Get("/goal-tree", stubShell)
@@ -432,7 +423,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		// Admin SPA — all web admin pages serve the React shell.
 		adminShell := func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "admin-shell", nil)
+			_ = s.tmpl.ExecuteTemplate(w, "admin-shell", s.shellData())
 		}
 		r.Get("/admin", adminShell)
 		r.Get("/admin/access", adminShell)
@@ -512,7 +503,7 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		// System-admin shell (React panel; powered by the /api/v1/system/* endpoints below).
 		r.Get("/system", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "system-shell", nil)
+			_ = s.tmpl.ExecuteTemplate(w, "system-shell", s.shellData())
 		})
 
 		r.Post("/api/v1/system/tenants", sysH.HandleCreateTenant)

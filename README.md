@@ -309,6 +309,7 @@ docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql
 | `DATABASE_URL`                  | `postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable` | Строка подключения к PostgreSQL                        |
 | `PORT`                          | `8080`                                                             | Порт HTTP-сервера                                      |
 | `TZ`                            | `Asia/Bangkok`                                                     | Временная зона для отображения дат                     |
+| `WEB_ASSETS_DEV`                | `0`                                                                | Отдавать dev-сборку React из `/static/vendor` (`1`/`true`/`on`); по умолчанию — production |
 | `AUTH_MODE`                     | `disabled`                                                         | Режим авторизации: `disabled` или `enabled`            |
 | `AUTH_ENABLED_PROVIDERS`        | —                                                                  | Список провайдеров через запятую: `google,github,...`  |
 | `AUTH_SESSION_COOKIE_NAME`      | `okrs_session`                                                     | Имя cookie сессии                                      |

@@ -6,10 +6,7 @@ const {useState, useEffect} = React;
 // Customizable markdown message injected server-side into a hidden element.
 const customMsg = (document.getElementById('na-msg-src')?.textContent || '').trim();
 
-function readCSRF() {
-  return document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('okr_csrf_token='))?.split('=')[1] || '';
-}
-
+// readCSRF — общая глобаль из api.js (грузится раньше).
 function NoAccess() {
   const [me, setMe] = useState(null);
   const [slug, setSlug] = useState('');

@@ -1,19 +1,16 @@
 package common
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
-	"reflect"
 	"strconv"
 	"strings"
 	"time"
 
-	"okrs/internal/auth"
 	"okrs/internal/domain"
 	"okrs/internal/service"
 )
@@ -23,57 +20,6 @@ type Dependencies struct {
 	Logger    *slog.Logger
 	Templates *template.Template
 	Zone      *time.Location
-}
-
-func RenderTemplate(w http.ResponseWriter, r *http.Request, tmpl *template.Template, name string, data any, logger *slog.Logger) {
-	if name == "base" {
-		pageTitle, contentTemplate, err := extractLayoutFields(data)
-		if err != nil {
-			RenderError(w, logger, err)
-			return
-		}
-		var content bytes.Buffer
-		if err := tmpl.ExecuteTemplate(&content, contentTemplate, data); err != nil {
-			RenderError(w, logger, err)
-			return
-		}
-		layout := struct {
-			PageTitle   string
-			ContentHTML template.HTML
-			CurrentUser any
-		}{
-			PageTitle:   pageTitle,
-			ContentHTML: template.HTML(content.String()),
-			CurrentUser: auth.UserFromContext(r.Context()),
-		}
-		if err := tmpl.ExecuteTemplate(w, name, layout); err != nil {
-			RenderError(w, logger, err)
-		}
-		return
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
-		RenderError(w, logger, err)
-		return
-	}
-	_, _ = w.Write(buf.Bytes())
-}
-
-func extractLayoutFields(data any) (string, string, error) {
-	value := reflect.ValueOf(data)
-	if value.Kind() == reflect.Ptr {
-		value = value.Elem()
-	}
-	if value.Kind() != reflect.Struct {
-		return "", "", fmt.Errorf("layout data must be a struct")
-	}
-	pageTitle := value.FieldByName("PageTitle")
-	contentTemplate := value.FieldByName("ContentTemplate")
-	if !pageTitle.IsValid() || !contentTemplate.IsValid() {
-		return "", "", fmt.Errorf("layout fields missing")
-	}
-	return pageTitle.String(), contentTemplate.String(), nil
 }
 
 func RenderError(w http.ResponseWriter, logger *slog.Logger, err error) {

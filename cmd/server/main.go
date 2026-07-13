@@ -106,10 +106,11 @@ func main() {
 	// Assemble the box via the public façade on OSS defaults (session resolver, unlimited
 	// entitlements, stub no-membership, no control-plane mounts).
 	a, err := app.New(app.Config{
-		Pool:   pgstore.DB,
-		Logger: logger,
-		Zone:   zone,
-		Auth:   authCfg,
+		Pool:      pgstore.DB,
+		Logger:    logger,
+		Zone:      zone,
+		Auth:      authCfg,
+		AssetsDev: envBool("WEB_ASSETS_DEV"),
 	})
 	if err != nil {
 		logger.Error("failed to assemble app", slog.String("error", err.Error()))
@@ -191,6 +192,15 @@ func envOrDefault(key, def string) string {
 		return def
 	}
 	return value
+}
+
+func envBool(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func runMigrations(databaseURL string) error {

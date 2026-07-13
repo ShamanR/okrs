@@ -1,16 +1,10 @@
-/* ── VARIABLES ──────────────────────────────────────────────────────────────── */
-:root {
-  --accent: #7c3aed;
-  --accent-10: rgba(124,58,237,0.06);
-  --accent-15: rgba(124,58,237,0.09);
-  --accent-25: rgba(124,58,237,0.15);
-}
+/* Токены (--accent, палитра, радиусы) вынесены в tokens.css — общий источник для
+   всех SPA. .sidebar / .user-selector* определены в sidebar.css / components.css. */
 
 /* ── LAYOUT ─────────────────────────────────────────────────────────────────── */
 .app { display: flex; height: 100vh; overflow: hidden; }
 
 /* ── SIDEBAR ─────────────────────────────────────────────────────────────────── */
-.sidebar { width: 252px; background: #0c1220; display: flex; flex-direction: column; flex-shrink: 0; overflow: hidden; }
 .sidebar__header { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 10px; }
 .sidebar__logo { font-size: 14px; font-weight: 800; color: white; letter-spacing: -0.3px; flex: 1; }
 .sidebar__period { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
@@ -436,27 +430,7 @@
 .cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
 .cluster-loading { text-align: center; padding: 60px 0; color: #9ca3af; }
 
-/* ── USER AVATAR FALLBACK ────────────────────────────────────────────────────── */
-.user-avatar__fallback { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent); color: white; font-weight: 700; flex-shrink: 0; }
-
-/* ── USER SELECTOR ───────────────────────────────────────────────────────────── */
-.user-selector { position: relative; }
-.user-selector__field { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-height: 40px; padding: 5px 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: white; cursor: text; }
-.user-selector__field--open { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124,58,237,0.12); }
-.user-selector__input { border: none; outline: none; font-size: 13px; color: #111827; min-width: 80px; flex: 1; background: transparent; padding: 2px 0; }
-.user-selector__input::placeholder { color: #9ca3af; }
-.user-selector__dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200; background: white; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 4px 16px rgba(0,0,0,0.1); max-height: 220px; overflow-y: auto; }
-.user-selector__option { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; }
-.user-selector__option--hi { background: #f5f3ff; }
-.user-selector__option-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.user-selector__option-name { font-size: 13px; color: #111827; font-weight: 500; }
-.user-selector__option-team { font-size: 11px; color: var(--accent); }
-.user-selector__empty { padding: 12px; text-align: center; font-size: 13px; color: #9ca3af; }
-
-/* ── USER CHIP ───────────────────────────────────────────────────────────────── */
-.user-chip { display: inline-flex; align-items: center; gap: 4px; background: #f5f3ff; border: 1px solid rgba(124,58,237,0.25); border-radius: 20px; padding: 2px 8px 2px 4px; font-size: 12px; flex-shrink: 0; }
-.user-chip__name { color: #4c1d95; font-weight: 500; }
-.user-chip__remove { background: none; border: none; cursor: pointer; color: #7c3aed; font-size: 14px; padding: 0; line-height: 1; margin-left: 1px; }
+/* .user-avatar__fallback, .user-selector*, .user-chip* → components.css (общие). */
 
 /* ── USER INFO ────────────────────────────────────────────────────────────────── */
 .uinfo { display: inline-flex; align-items: center; gap: 5px; cursor: default; position: relative; }

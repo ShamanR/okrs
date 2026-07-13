@@ -1,0 +1,32 @@
+/* Базовый каркас SPA-страниц: reset, типографика, скроллбар, экран загрузки.
+   Подключается во всех SPA-shell после tokens.css. Ранее эти правила дублировались
+   инлайн в каждом shell (6 копий с расхождениями). Специфичные для страницы правила
+   остаются в её собственном CSS (tracker.css, settings.css, sidebar.css). */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--canvas);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--link); text-decoration: none; }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+textarea { resize: vertical; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* Экран загрузки до маунта React (был инлайн-дивом с повторяющимися стилями). */
+.loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}

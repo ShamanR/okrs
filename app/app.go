@@ -33,6 +33,7 @@ type Config struct {
 	EntitlementsName     string   // registry key; "" → "unlimited"
 	NoMembershipName     string   // "" → "stub"
 	ResolveStrategyNames []string // nil → ["session"]
+	AssetsDev            bool     // serve development vendored React; false → production build
 	// Embedded control-plane route mounts (SaaS), one per middleware tier; each nil in OSS.
 	PublicRoutes func(chi.Router)
 	AuthedRoutes func(chi.Router)
@@ -120,6 +121,7 @@ func New(cfg Config) (*App, error) {
 		MembershipCache:  membershipCache,
 		Entitlements:     entFactory(),
 		NoMembershipName: cfg.NoMembershipName,
+		AssetsDev:        cfg.AssetsDev,
 		PublicRoutes:     cfg.PublicRoutes,
 		AuthedRoutes:     cfg.AuthedRoutes,
 		TenantRoutes:     cfg.TenantRoutes,
