@@ -1,0 +1,25 @@
+{{define "activity-shell"}}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+{{template "spa-head" .}}
+<title>OKR Tracker · Лог активностей</title>
+<link rel="stylesheet" href="/static/tracker.css">
+<link rel="stylesheet" href="/static/markdown.css">
+<link rel="stylesheet" href="/static/components.css">
+<link rel="stylesheet" href="/static/sidebar.css">
+<link rel="stylesheet" href="/static/activity.css">
+</head>
+<body>
+<div id="root"><div class="loading-screen">Загрузка…</div></div>
+{{template "spa-vendor" .}}
+<script type="text/babel" src="/static/api.js" data-presets="react"></script>
+<script type="text/babel" src="/static/storage.js" data-presets="react"></script>
+<script type="text/babel" src="/static/ui.js" data-presets="react"></script>
+<script type="text/babel" src="/static/markdown.js" data-presets="react"></script>
+<script type="text/babel" src="/static/sidebar.js" data-presets="react"></script>
+<script type="text/babel" src="/static/userselector.js" data-presets="react"></script>
+<script type="text/babel" src="/static/activity.js" data-presets="react"></script>
+</body>
+</html>
+{{end}}

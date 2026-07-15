@@ -662,3 +662,10 @@
   gap: 8px;
 }
 .hci-empty__icon { font-size: 32px; }
+
+/* Deep-link target highlight (?goal/kr/comment) */
+.deep-link-flash { animation: deepLinkFlash 1.6s ease-out; }
+@keyframes deepLinkFlash {
+  0% { box-shadow: 0 0 0 3px #7c3aed; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}

@@ -54,7 +54,7 @@ func TestLeaveGoalShareRemovesGoalFromTeamOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
 	defer server.Close()
 
@@ -142,7 +142,7 @@ func TestLeaveGoalShareUnattachedTeamReturns404(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil)) // admin scope: passes the team-access check
 	defer server.Close()
 
@@ -213,7 +213,7 @@ func TestDetachOwnerFromSharedGoalKeepsItForOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
 	defer server.Close()
 

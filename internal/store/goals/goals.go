@@ -831,9 +831,11 @@ func (r *GoalRepository) UpdateGoalOwner(ctx context.Context, scope domain.Tenan
 	return err
 }
 
-func (r *GoalRepository) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
-	_, err := r.db.Exec(ctx, `INSERT INTO goal_comments (goal_id, text, author_user_id, tenant_id) VALUES ($1,$2,$3,$4)`, goalID, text, authorUserID, scope.TenantID)
-	return err
+func (r *GoalRepository) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) (int64, error) {
+	var id int64
+	err := r.db.QueryRow(ctx, `INSERT INTO goal_comments (goal_id, text, author_user_id, tenant_id) VALUES ($1,$2,$3,$4) RETURNING id`,
+		goalID, text, authorUserID, scope.TenantID).Scan(&id)
+	return id, err
 }
 
 func (r *GoalRepository) ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error) {

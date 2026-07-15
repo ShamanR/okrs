@@ -21,9 +21,8 @@ function apiForm(url, fd) {
 // ── NAV PERSISTENCE (URL + cookie) ───────────────────────────────────────────
 function readURLNav() {
   const p = new URLSearchParams(location.search);
-  const team = p.get('team') ? Number(p.get('team')) : null;
-  const period = p.get('period') ? Number(p.get('period')) : null;
-  return { team: Number.isFinite(team) ? team : null, period: Number.isFinite(period) ? period : null };
+  const num = k => { const v = p.get(k) ? Number(p.get(k)) : null; return Number.isFinite(v) ? v : null; };
+  return { team: num('team'), period: num('period'), goal: num('goal'), kr: num('kr'), comment: num('comment') };
 }
 function readLastNav() {
   const m = document.cookie.match(/(?:^|;\s*)okr_last=([^;]*)/);
@@ -40,7 +39,7 @@ function updateURL(teamId, periodId, replace = false) {
   if (teamId) p.set('team', teamId);
   if (periodId) p.set('period', periodId);
   const qs = p.toString();
-  const url = '/' + (qs ? '?' + qs : '');
+  const url = location.pathname + (qs ? '?' + qs : '');
   if (replace) history.replaceState(null, '', url);
   else history.pushState(null, '', url);
 }
@@ -994,7 +993,7 @@ function CommentRow({ c, onResolve, onUnresolve }) {
   const [busy, setBusy] = useState(false);
   const act = async fn => { setBusy(true); try { await fn(); } catch { } finally { setBusy(false); } };
   return (
-    <div className={`comment${c.resolved ? ' comment--resolved' : ''}`}>
+    <div id={`comment-${c.id}`} className={`comment${c.resolved ? ' comment--resolved' : ''}`}>
       <AvatarWithUDID name={c.author} udid={c.authorUdid} size={28} />
       <div className="comment__content">
         <div className="comment__header">
@@ -1063,11 +1062,13 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, me }) {
 }
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80 }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+  // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
+  const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Goals without key results start expanded so the author's attention is drawn
   // to filling them in; goals that already have KRs start collapsed.
-  const [showKR, setShowKR] = useState((goal.krs || []).length === 0);
-  const [showCom, setShowCom] = useState(false);
+  const [showKR, setShowKR] = useState((goal.krs || []).length === 0 || !!(isDeepTarget && deepLink.kr));
+  const [showCom, setShowCom] = useState(!!(isDeepTarget && deepLink.comment));
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
   const [goalDraggable, setGoalDraggable] = useState(false);
@@ -1110,7 +1111,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   ].filter(Boolean).join(' ');
 
   return (
-    <div {...rootDrag} draggable={!!(canReorderGoal && goalDraggable)}
+    <div {...rootDrag} id={`goal-${goal.id}`} draggable={!!(canReorderGoal && goalDraggable)}
       onDragEnd={e => { setGoalDraggable(false); rootDrag.onDragEnd && rootDrag.onDragEnd(e); }}
       className={cardClass}>
       {canReorderGoal && (
@@ -1205,7 +1206,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
             const canReorderKR = canEdit && !!onReorderKR;
             const isKrDrag = krDrag === kr.id;
             return (
-              <div key={kr.id}
+              <div key={kr.id} id={`kr-${kr.id}`}
                 draggable={!!canReorderKR}
                 onDragStart={canReorderKR ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
                 onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
@@ -2040,6 +2041,29 @@ function App() {
     };
   }
 
+  // Deep link (?goal/kr/comment) captured once; consumed after goals render (scroll + flash).
+  const deepLinkRef = useRef(null);
+  if (deepLinkRef.current === null) {
+    const url = readURLNav();
+    deepLinkRef.current = { goal: url.goal, kr: url.kr, comment: url.comment };
+  }
+  useEffect(() => {
+    const dl = deepLinkRef.current;
+    if (!dl || (!dl.goal && !dl.kr && !dl.comment)) return;
+    const id = dl.comment ? `comment-${dl.comment}` : dl.kr ? `kr-${dl.kr}` : dl.goal ? `goal-${dl.goal}` : null;
+    if (!id) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('deep-link-flash');
+        setTimeout(() => el.classList.remove('deep-link-flash'), 1800);
+      }
+      deepLinkRef.current = null;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [teamOKR]);
+
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
@@ -2231,6 +2255,7 @@ function App() {
       <Sidebar
         user={me}
         active="tracker"
+        linkParams={{ 'activity-log': periodId ? `?period=${periodId}` : '' }}
         bell={hciData && hciData.has_scope
           ? <SidebarBell count={hciData.total_problems} onClick={() => setHciOpen(true)} />
           : null}
@@ -2319,7 +2344,7 @@ function App() {
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },

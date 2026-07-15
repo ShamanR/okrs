@@ -218,3 +218,56 @@ const (
 	SystemUserAnonymous int64 = 1
 	SystemUserMigration int64 = 2
 )
+
+type ActivityCategory string
+
+const (
+	ActivityProgress    ActivityCategory = "progress"
+	ActivityComposition ActivityCategory = "composition"
+	ActivityStatus      ActivityCategory = "status"
+	ActivityDiscussion  ActivityCategory = "discussion"
+)
+
+type ActivityAction string
+
+const (
+	ActionKRProgress        ActivityAction = "kr_progress"
+	ActionGoalCreated       ActivityAction = "goal_created"
+	ActionGoalDeleted       ActivityAction = "goal_deleted"
+	ActionKRCreated         ActivityAction = "kr_created"
+	ActionKRDeleted         ActivityAction = "kr_deleted"
+	ActionGoalShared        ActivityAction = "goal_shared"
+	ActionGoalUnshared      ActivityAction = "goal_unshared"
+	ActionGoalOwnerChanged  ActivityAction = "goal_owner_changed"
+	ActionGoalFieldsChanged ActivityAction = "goal_fields_changed"
+	ActionKRFieldsChanged   ActivityAction = "kr_fields_changed"
+	ActionKRNoteUpdated     ActivityAction = "kr_note_updated"
+	ActionStatusChanged     ActivityAction = "status_changed"
+	ActionCommentAdded      ActivityAction = "comment_added"
+	ActionCommentResolved   ActivityAction = "comment_resolved"
+	ActionCommentReopened   ActivityAction = "comment_reopened"
+)
+
+// ActivityEvent is one append-only journal row. Pointer fields are nullable columns.
+// Actor* fields are denormalized on read (join on users/memberships); for a user who is no
+// longer an active member of the tenant, ActorRemoved is true and Actor{DisplayName,AvatarURL,UDID}
+// are blanked so no PII of a former member leaks.
+type ActivityEvent struct {
+	ID          int64
+	ActorUserID int64
+	Category    ActivityCategory
+	Action      ActivityAction
+	TeamID      *int64
+	PeriodID    *int64
+	GoalID      *int64
+	KRID        *int64
+	CommentID   *int64
+	EntityTitle string
+	Payload     map[string]any
+	CreatedAt   time.Time
+
+	ActorUDID        string
+	ActorDisplayName string
+	ActorAvatarURL   string
+	ActorRemoved     bool
+}

@@ -13,6 +13,7 @@ import (
 	"okrs/internal/domain"
 	apisystem "okrs/internal/http/handlers/api/v1/system"
 	"okrs/internal/service"
+	"okrs/internal/store/activity"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"
@@ -51,7 +52,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grantsCache, onboardingSvc, userRepo,
 	)
-	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo, memRepo)
+	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo, memRepo, activity.NewActivityRepository(pool))
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {

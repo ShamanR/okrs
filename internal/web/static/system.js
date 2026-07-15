@@ -37,6 +37,7 @@ function TenantsSection({tenants, reload, onOpenMembers}) {
   const [editId,setEditId]=useState(null);
   const [editName,setEditName]=useState('');
   const [editSlug,setEditSlug]=useState('');
+  const [purgeDepth,setPurgeDepth]=useState({});
   const startEdit = (t)=>{ setErr(''); setEditId(t.id); setEditName(t.name); setEditSlug(t.slug); };
   const cancelEdit = ()=>{ setEditId(null); setEditName(''); setEditSlug(''); };
   const saveEdit = async (id)=>{ setErr('');
@@ -48,6 +49,15 @@ function TenantsSection({tenants, reload, onOpenMembers}) {
     if (res.status===201){ setName(''); setSlug(''); reload(); } else setErr(await errMsg(res));
   };
   const setStatus = async (id, action)=>{ setErr(''); const res = await post(`/api/v1/system/tenants/${id}/${action}`); if (res.status===204) reload(); else setErr(await errMsg(res)); };
+  const purge = async (id)=>{
+    const depth = purgeDepth[id] || 'quarter';
+    const labels = {quarter:'старше квартала', year:'старше года', all:'все'};
+    if (!confirm(`Очистить лог активности пространства #${id} (${labels[depth]})? Необратимо.`)) return;
+    setErr('');
+    const res = await post(`/api/v1/system/tenants/${id}/activity/purge`, {older_than: depth});
+    if (res.status===200){ const j = await res.json(); setErr(`Пространство #${id}: удалено ${j.deleted}`); }
+    else setErr(await errMsg(res));
+  };
   return <div style={box}>
     <h2 style={{fontSize:15,marginBottom:10}}>Пространства</h2>
     <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -74,6 +84,10 @@ function TenantsSection({tenants, reload, onOpenMembers}) {
               {t.status==='active'
                 ? <button style={{...btn,background:C.danger}} onClick={()=>setStatus(t.id,'suspend')}>Suspend</button>
                 : <button style={{...btn,background:C.ok}} onClick={()=>setStatus(t.id,'restore')}>Restore</button>}
+              <select style={{...inp,padding:'4px 6px'}} value={purgeDepth[t.id]||'quarter'} onChange={e=>setPurgeDepth(d=>({...d,[t.id]:e.target.value}))}>
+                <option value="quarter">Кв.</option><option value="year">Год</option><option value="all">Всё</option>
+              </select>
+              <button style={{...btn,background:C.danger}} onClick={()=>purge(t.id)}>Очистить лог</button>
             </td>
           </tr>)}</tbody>
     </table>

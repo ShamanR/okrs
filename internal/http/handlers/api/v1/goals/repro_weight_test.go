@@ -59,7 +59,7 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil)) // admin scope
 	defer server.Close()
 

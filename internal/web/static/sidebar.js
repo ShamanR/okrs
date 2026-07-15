@@ -123,12 +123,14 @@ const SIDEBAR_SECTIONS = [
   { id: 'goal-tree',    label: 'Дерево целей',    href: '/goal-tree',    icon: '🕸' },
   { id: 'activity-log', label: 'Лог активностей', href: '/activity-log', icon: '🕑' },
 ];
-function SidebarSections({ active }) {
+// linkParams optionally appends a query string per section id (e.g. carrying the current
+// period from the tracker to the activity log so it opens for the same period).
+function SidebarSections({ active, linkParams }) {
   return (
     <div className="sidebar__sections">
       <div className="sidebar__section-label">Разделы</div>
       {SIDEBAR_SECTIONS.map(s => (
-        <a key={s.id} href={s.href} className={`sidebar__navlink${s.id === active ? ' sidebar__navlink--active' : ''}`}>
+        <a key={s.id} href={s.href + ((linkParams && linkParams[s.id]) || '')} className={`sidebar__navlink${s.id === active ? ' sidebar__navlink--active' : ''}`}>
           <span className="sidebar__navlink-icon">{s.icon}</span>{s.label}
         </a>
       ))}
@@ -198,12 +200,12 @@ function SidebarFooter({ user }) {
 // Sidebar — контейнер. children = контекстная навигация страницы (со своим
 // flex:1 скролл-регионом). beforeSections — вставка между шапкой и разделами
 // (на трекере — блок выбора периода).
-function Sidebar({ user, active, bell, beforeSections, showSections = true, children }) {
+function Sidebar({ user, active, bell, beforeSections, showSections = true, linkParams, children }) {
   return (
     <div className="sidebar">
       <SidebarTenant user={user} bell={bell} />
       {beforeSections}
-      {showSections !== false && <SidebarSections active={active} />}
+      {showSections !== false && <SidebarSections active={active} linkParams={linkParams} />}
       {children}
       <SidebarFooter user={user} />
     </div>

@@ -123,7 +123,7 @@ func TestUsersEndpoint_NoParams_Returns400(t *testing.T) {
 	_, st, cleanup := setupDB(t)
 	defer cleanup()
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 	w := doGet(t, handler, "/api/v1/users", nil)
 	if w.Code != http.StatusBadRequest {
@@ -138,7 +138,7 @@ func TestUsersEndpoint_QParam_EmptyString_ReturnsRecent(t *testing.T) {
 	insertUser(t, pool, "Alice", "alice@example.com")
 	insertUser(t, pool, "Bob", "bob@example.com")
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 	w := doGet(t, handler, "/api/v1/users?q=", nil) // nil scope = admin
 	if w.Code != http.StatusOK {
@@ -158,7 +158,7 @@ func TestUsersEndpoint_IDsMode_ReturnsByUDID(t *testing.T) {
 	_, udid2 := insertUser(t, pool, "Bob", "bob@example.com")
 	insertUser(t, pool, "Carol", "carol@example.com")
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 	url := "/api/v1/users?ids[]=" + udid1 + "&ids[]=" + udid2
 	w := doGet(t, handler, url, []int64{}) // even empty scope — ids[] skips scope
@@ -197,7 +197,7 @@ func TestUsersEndpoint_ScopedSearch_OnlyGrantedAndLeads(t *testing.T) {
 	grantAccess(t, pool, aliceID, teamA)
 	grantAccess(t, pool, carolID, teamB)
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 
 	// Scope = only teamA.
@@ -243,7 +243,7 @@ func TestUsersEndpoint_ScopedSearch_ParentGrantCoversChild(t *testing.T) {
 
 	grantAccess(t, pool, aliceID, parentID)
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 
 	// Scope = childTeam only.
@@ -267,7 +267,7 @@ func TestUsersEndpoint_EmptyScope_ReturnsEmpty(t *testing.T) {
 
 	insertUser(t, pool, "Alice", "alice@example.com")
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 
 	// Empty scope (no grants at all).
@@ -289,7 +289,7 @@ func TestUsersEndpoint_LedTeam_IncludedInResponse(t *testing.T) {
 	teamID := insertTeamWithLead(t, pool, "Platform", "Alice", aliceUDID)
 	grantAccess(t, pool, aliceID, teamID)
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil))
+	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
 	handler := http.HandlerFunc(h.Handle)
 
 	w := doGet(t, handler, "/api/v1/users?q=", nil) // admin

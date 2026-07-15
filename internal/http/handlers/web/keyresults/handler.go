@@ -79,7 +79,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
 		Weight:          weight,
 		Kind:            krKind,
-	}, meta); err != nil {
+	}, meta, auth.UserIDFromContext(ctx)); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -176,7 +176,7 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
-	if err := h.deps.Service.DeleteKeyResult(ctx, scope, krID); err != nil {
+	if err := h.deps.Service.DeleteKeyResult(ctx, scope, krID, auth.UserIDFromContext(ctx)); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}

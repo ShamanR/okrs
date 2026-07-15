@@ -189,6 +189,15 @@ func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, scope domain.Ten
 	return err
 }
 
+// GetKeyResultNote returns the note for a single KR, or nil if it has none.
+func (r *KRRepository) GetKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KeyResultNote, error) {
+	notes, err := r.BatchLoadNotes(ctx, scope, []int64{krID})
+	if err != nil {
+		return nil, err
+	}
+	return notes[krID], nil
+}
+
 // BatchLoadNotes returns a map from krID to *domain.KeyResultNote.
 // KRs without a note are absent from the map (not nil-keyed).
 func (r *KRRepository) BatchLoadNotes(ctx context.Context, scope domain.TenantScope, krIDs []int64) (map[int64]*domain.KeyResultNote, error) {

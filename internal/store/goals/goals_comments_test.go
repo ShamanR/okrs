@@ -27,7 +27,7 @@ func TestSetGoalCommentResolved(t *testing.T) {
 	scope := domain.TenantScope{TenantID: 1}
 
 	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "resolve")
-	if err := gr.AddGoalComment(ctx, scope, goalID, "blocker", seedUserID); err != nil {
+	if _, err := gr.AddGoalComment(ctx, scope, goalID, "blocker", seedUserID); err != nil {
 		t.Fatalf("add comment: %v", err)
 	}
 	comments, err := gr.ListGoalComments(ctx, scope, goalID)

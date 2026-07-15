@@ -40,7 +40,7 @@ func TestResolveGoalComment(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 	// author 1 is the seeded system user.
-	if err := repo.Goals.AddGoalComment(ctx, scope, goalID, "blocker", 1); err != nil {
+	if _, err := repo.Goals.AddGoalComment(ctx, scope, goalID, "blocker", 1); err != nil {
 		t.Fatalf("add comment: %v", err)
 	}
 	comments, err := repo.Goals.ListGoalComments(ctx, scope, goalID)
@@ -49,7 +49,7 @@ func TestResolveGoalComment(t *testing.T) {
 	}
 	commentID := comments[0].ID
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
 	defer server.Close()
 
@@ -118,13 +118,13 @@ func TestResolveGoalCommentOnSharedGoal(t *testing.T) {
 	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight, sort_order) VALUES ($1,$2,50,0)`, goalID, sharedTeam); err != nil {
 		t.Fatalf("share goal: %v", err)
 	}
-	if err := repo.Goals.AddGoalComment(ctx, scope, goalID, "blocker", 1); err != nil {
+	if _, err := repo.Goals.AddGoalComment(ctx, scope, goalID, "blocker", 1); err != nil {
 		t.Fatalf("add comment: %v", err)
 	}
 	comments, _ := repo.Goals.ListGoalComments(ctx, scope, goalID)
 	commentID := comments[0].ID
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	resolveURL := fmt.Sprintf("/api/v1/goals/%d/comments/%d/resolve", goalID, commentID)
 
 	postWithScope := func(allowed []int64, path string) int {

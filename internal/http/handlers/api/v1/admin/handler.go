@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
@@ -46,6 +47,11 @@ type tenantRenamer interface {
 	RenameTenant(ctx context.Context, id int64, name string) error
 }
 
+// activityPurger deletes journal rows for the active tenant. *service.Service satisfies it.
+type activityPurger interface {
+	PurgeActivity(ctx context.Context, scope domain.TenantScope, olderThan *time.Time) (int64, error)
+}
+
 // tenantSettings covers per-tenant product settings. *service.SettingsService satisfies it.
 // Writes go through the product path, which rejects entitlement.* keys.
 type tenantSettings interface {
@@ -69,10 +75,58 @@ type Handler struct {
 	grants   grantsStore
 	roles    memberRoleSetter
 	renamer  tenantRenamer
+	activity activityPurger
 }
 
-func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore, roles memberRoleSetter, renamer tenantRenamer) *Handler {
-	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants, roles: roles, renamer: renamer}
+func New(users userAdminStore, settings tenantSettings, mgr *auth.Manager, grants grantsStore, roles memberRoleSetter, renamer tenantRenamer, activity activityPurger) *Handler {
+	return &Handler{users: users, settings: settings, mgr: mgr, grants: grants, roles: roles, renamer: renamer, activity: activity}
+}
+
+// purgeCutoff maps a purge depth to a cutoff time. "all" returns (nil, true), meaning
+// delete everything. ok=false for an unknown depth.
+func purgeCutoff(depth string) (t *time.Time, ok bool) {
+	now := time.Now()
+	switch depth {
+	case "quarter":
+		c := now.AddDate(0, -3, 0)
+		return &c, true
+	case "year":
+		c := now.AddDate(0, -12, 0)
+		return &c, true
+	case "all":
+		return nil, true
+	default:
+		return nil, false
+	}
+}
+
+// HandlePurgeActivity handles POST /api/v1/admin/activity/purge.
+// Body: {"older_than":"quarter"|"year"|"all"}. Tenant-admin authority is enforced by
+// RequireTenantAdminMiddleware on the route group.
+func (h *Handler) HandlePurgeActivity(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		OlderThan string `json:"older_than"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	cutoff, ok := purgeCutoff(body.OlderThan)
+	if !ok {
+		writeError(w, http.StatusUnprocessableEntity, "invalid older_than")
+		return
+	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusForbidden, "no active tenant")
+		return
+	}
+	deleted, err := h.activity.PurgeActivity(r.Context(), scope, cutoff)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"deleted": deleted})
 }
 
 // GET /api/v1/admin/users

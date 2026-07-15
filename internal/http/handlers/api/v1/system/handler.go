@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
@@ -56,16 +57,68 @@ type TenantLister interface {
 	List(ctx context.Context) ([]domain.Tenant, error)
 }
 
+// activityPurger deletes journal rows for a tenant. *store.ActivityRepository satisfies it.
+type activityPurger interface {
+	Purge(ctx context.Context, scope domain.TenantScope, olderThan *time.Time) (int64, error)
+}
+
 type Handler struct {
 	prov     Provisioner
 	settings SystemSettings
 	users    UserLister
 	tenants  TenantLister
 	members  MemberLister
+	activity activityPurger
 }
 
-func New(prov Provisioner, settings SystemSettings, users UserLister, tenantsList TenantLister, members MemberLister) *Handler {
-	return &Handler{prov: prov, settings: settings, users: users, tenants: tenantsList, members: members}
+func New(prov Provisioner, settings SystemSettings, users UserLister, tenantsList TenantLister, members MemberLister, activity activityPurger) *Handler {
+	return &Handler{prov: prov, settings: settings, users: users, tenants: tenantsList, members: members, activity: activity}
+}
+
+// purgeCutoff maps a purge depth to a cutoff time; "all" → (nil, true) meaning delete all;
+// ok=false for an unknown depth.
+func purgeCutoff(depth string) (t *time.Time, ok bool) {
+	now := time.Now()
+	switch depth {
+	case "quarter":
+		c := now.AddDate(0, -3, 0)
+		return &c, true
+	case "year":
+		c := now.AddDate(0, -12, 0)
+		return &c, true
+	case "all":
+		return nil, true
+	default:
+		return nil, false
+	}
+}
+
+// HandlePurgeActivity handles POST /api/v1/system/tenants/{id}/activity/purge.
+// Body: {"older_than":"quarter"|"year"|"all"}. System-admin authority is enforced by
+// RequireSystemAdminMiddleware on the route group; the tenant id comes from the path.
+func (h *Handler) HandlePurgeActivity(w http.ResponseWriter, r *http.Request) {
+	tenantID, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		OlderThan string `json:"older_than"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	cutoff, ok := purgeCutoff(body.OlderThan)
+	if !ok {
+		writeError(w, http.StatusUnprocessableEntity, "invalid older_than")
+		return
+	}
+	deleted, err := h.activity.Purge(r.Context(), domain.TenantScope{TenantID: tenantID}, cutoff)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, map[string]any{"deleted": deleted})
 }
 
 type tenantDTO struct {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"okrs/internal/domain"
+	"okrs/internal/store/activity"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
@@ -41,6 +42,7 @@ type Store struct {
 	Sessions *sessions.SessionRepository
 	Grants   *grants.GrantRepository
 	Settings *settings.SettingsRepository
+	Activity *activity.ActivityRepository
 
 	Tenants        *tenants.TenantRepository
 	Memberships    *memberships.MembershipRepository
@@ -64,6 +66,7 @@ func New(db *pgxpool.Pool) *Store {
 		Sessions: sessions.NewSessionRepository(db),
 		Grants:   grants.NewGrantRepository(db),
 		Settings: settings.NewSettingsRepository(db),
+		Activity: activity.NewActivityRepository(db),
 
 		Tenants:        tenants.NewTenantRepository(db),
 		Memberships:    memberships.NewMembershipRepository(db),

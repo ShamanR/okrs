@@ -207,6 +207,10 @@ Validation:
 
 Значения хранятся в `tenant_settings` (ключи `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`, per-tenant) и применяются без перезапуска. Публичный `GET /api/v1/config` возвращает их авторизованному пользователю для его активного тенанта. Логика показа всплывающего окна — на стороне SPA через cookies (см. `030-user-flows.md`).
 
+### Очистка журнала активности
+
+- `POST /api/v1/admin/activity/purge` — очистить журнал активности **своего** пространства; body: `{"older_than": "quarter" | "year" | "all"}` → `200 {"deleted": <int>}`. `quarter` — старше 3 месяцев, `year` — старше 12 месяцев, `all` — всё. Cutoff считается на сервере. `422`, если `older_than` неизвестен. Write-authority — **admin** тенанта (гейт `RequireTenantAdminMiddleware`), tenant_id из контекста. CSRF обязателен.
+
 ### Периоды
 
 - `GET /api/v1/admin/periods` — список **всех** периодов тенанта, включая архивные (в отличие от публичного `GET /api/v1/periods`). Та же форма ответа (`PeriodInfo`: `id`, `name`, `start_date`, `end_date`, `parent_id`, `depth`, `status`) и тот же DFS-порядок, что и у публичного endpoint'а — архивные периоды располагаются в своей зоне после `closed` (см. `020-domain-model.md`).
@@ -235,6 +239,7 @@ Validation:
 - `POST /api/v1/system/tenants/{id}/members` — прямое назначение membership существующему глобальному пользователю; body: `{"user_id": 1, "role": "admin"}` → `201`. (Самостоятельный онбординг — через пригласительные ссылки, ниже.)
 - `PUT /api/v1/system/tenants/{id}/entitlements` — записать ключи `entitlement.*`; body: `{"sso": true, "max_users": 50}` (bare-ключи неймспейсятся в `entitlement.*`) → `204`.
 - `POST /api/v1/system/tenants/{id}/suspend` / `POST /api/v1/system/tenants/{id}/restore` → `204`; `404` если тенант не найден.
+- `POST /api/v1/system/tenants/{id}/activity/purge` — очистить журнал активности указанного тенанта (управление пространством); body: `{"older_than": "quarter" | "year" | "all"}` → `200 {"deleted": <int>}`. `422` при неизвестном `older_than`. Authority — system-admin; tenant_id из пути. CSRF обязателен.
 - `GET /api/v1/system/users` — глобальный (кросс-тенантный) список пользователей.
 - `GET /api/v1/system/tenants/{id}/members` — участники тенанта: `[{user_id, display_name, email, role, status}]` (все статусы, отсортировано по имени). UI показывает `requested` вверху с «Подключить» (= `POST …/members`) / «Отклонить» (deny ниже).
 - `POST /api/v1/system/tenants/{id}/members/{userID}/deny` — удалить заявку (`requested`-membership) пользователя в тенанте → `204`. На активного члена не действует.
@@ -299,6 +304,36 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
 - `GET /api/v1/goals/{goalID}`
+- `GET /api/v1/activity`
+- `GET /api/v1/activity/tree-counts`
+
+### `GET /api/v1/activity`
+
+Лента событий журнала активности (см. `ActivityEvent` в `020-domain-model.md`). Read-only,
+под membership-гейтом, tenant-scoped. Видимость **share-aware**: событие видно, если *audience*
+его цели (owner team ∪ команды, которым цель расшарена) пересекается с доступными пользователю
+командами (`PolicyEvaluator`); для admin — все события тенанта. Событие с неизвестной командой
+(`team_id IS NULL`) в scoped-ленту не попадает (fail-closed).
+
+Query-параметры (все опциональны): `period_id`, `team_ids[]` (фильтр по audience выбранных
+команд), `category` (`progress`|`composition`|`status`|`discussion`), `actor_udid`, `range`
+(`today`|`7d`|`30d`|`all`, по умолчанию `all`), `q` (поиск по заголовку/payload/автору),
+`cursor`, `limit` (по умолчанию 50, максимум 100).
+
+Ответ: `{ "items": [ActivityEvent], "next_cursor": "<opaque>" }`. Курсорная пагинация по
+`(created_at, id)` убыванию. Каждый `item`: `id`, `category`, `action`, `actor`
+(`{udid, display_name, avatar_url, removed}` — для бывшего участника `removed=true` и без
+PII), `team_id`/`period_id`/`goal_id`/`kr_id`/`comment_id`, `entity_title`, `target`
+(`{section:"tracker", team_id, period_id?, goal_id?, kr_id?, comment_id?}` — структурный
+дескриптор перехода; `null`, если у события нет команды), `payload` (`before`/`after` + доп.),
+`created_at`.
+
+### `GET /api/v1/activity/tree-counts`
+
+Query: `period_id` (опц.), `range` (опц.). Ответ: `{ "counts": { "<team_id>": <int> } }` —
+прямые счётчики событий по команде за период+диапазон (audience-раскрытие: событие расшаренной
+цели считается каждой командой из audience), в рамках доступного scope. Фронт агрегирует по
+поддереву. Категория/автор/`q` на счётчики не влияют.
 
 ### `GET /api/v1/periods`
 
