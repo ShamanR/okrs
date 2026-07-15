@@ -9,6 +9,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/store/activity"
 	"okrs/internal/store/goals"
+	"okrs/internal/store/shares"
 )
 
 type fakeActivityRepo struct {
@@ -217,6 +218,32 @@ func TestShareGoalRecordsAddedTeams(t *testing.T) {
 	ids := fa.recorded[0].Payload["shared_with_team_ids"].([]int64)
 	if len(ids) != 2 {
 		t.Fatalf("added teams wrong: %+v", ids)
+	}
+}
+
+func TestDeleteGoalByOwnerWithSharesRecordsOwnerChange(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{
+		goals:      map[int64]domain.Goal{7: {ID: 7, TeamID: 2, PeriodID: 3, Title: "Общая цель"}},
+		goalShares: map[int64][]shares.GoalShare{7: {{GoalID: 7, TeamID: 4, Weight: 50}}},
+	}
+	s := New(Deps{Activity: fa, Goals: gf, Shares: gf, Statuses: gf})
+	// Owner (team 2) "deletes" a goal that has a shared team → ownership transfers to team 4.
+	if _, _, err := s.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 7, 2, 9); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	var found *domain.ActivityEvent
+	for i := range fa.recorded {
+		if fa.recorded[i].Action == domain.ActionGoalOwnerChanged {
+			found = &fa.recorded[i]
+		}
+	}
+	if found == nil {
+		t.Fatalf("no goal_owner_changed recorded: %+v", fa.recorded)
+	}
+	if found.Payload["before"].(map[string]any)["owner_team_id"].(int64) != 2 ||
+		found.Payload["after"].(map[string]any)["owner_team_id"].(int64) != 4 {
+		t.Fatalf("owner change payload wrong: %+v", found.Payload)
 	}
 }
 

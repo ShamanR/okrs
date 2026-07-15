@@ -45,11 +45,18 @@ func decodeCursor(s string) *storeactivity.Cursor {
 // event's recorded team (owner/context team), which is always accessible to any viewer who can
 // see the event. Events without a team have no navigable target.
 func buildTarget(ev domain.ActivityEvent) *dto.ActivityTarget {
-	if ev.TeamID == nil {
+	// Use the viewer-accessible target team resolved by the store (owner if accessible, else an
+	// accessible shared team). A viewer can see a shared-goal event without owner-team access, so
+	// linking to the owner board would open an inaccessible/empty page.
+	teamID := ev.TargetTeamID
+	if teamID == nil {
+		teamID = ev.TeamID
+	}
+	if teamID == nil {
 		return nil
 	}
 	return &dto.ActivityTarget{
-		Section: "tracker", TeamID: *ev.TeamID, PeriodID: ev.PeriodID,
+		Section: "tracker", TeamID: *teamID, PeriodID: ev.PeriodID,
 		GoalID: ev.GoalID, KRID: ev.KRID, CommentID: ev.CommentID,
 	}
 }

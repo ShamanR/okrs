@@ -883,23 +883,42 @@ func scanGoalComment(rows pgx.Rows) (domain.GoalComment, error) {
 // SetGoalCommentResolved marks a comment resolved (stamping resolver + time) or
 // clears the resolution. The WHERE clause pins the comment to its goal and tenant;
 // a zero row count means the comment does not exist in this scope.
-func (r *GoalRepository) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
+// SetGoalCommentResolved flips a comment's resolved state. It is idempotent: the UPDATE only
+// touches a row when the state actually changes (guarded by resolved_at IS [NOT] NULL), so a
+// repeated resolve/reopen neither re-stamps resolved_at nor reports a spurious transition.
+// Returns changed=true only on a real transition; ErrNotFound if the comment doesn't exist.
+func (r *GoalRepository) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error) {
 	// resolved_by_user_id is NULL when clearing so a re-resolve re-stamps the actor.
 	var resolvedBy *int64
 	if resolved {
 		resolvedBy = &userID
 	}
+	// State guard: resolve only an open comment; reopen only a resolved one.
+	guard := "resolved_at IS NULL"
+	if !resolved {
+		guard = "resolved_at IS NOT NULL"
+	}
 	tag, err := r.db.Exec(ctx, `
 		UPDATE goal_comments
 		SET resolved_at = CASE WHEN $1 THEN NOW() ELSE NULL END,
 		    resolved_by_user_id = $2
-		WHERE id = $3 AND goal_id = $4 AND tenant_id = $5`,
+		WHERE id = $3 AND goal_id = $4 AND tenant_id = $5 AND `+guard,
 		resolved, resolvedBy, commentID, goalID, scope.TenantID)
 	if err != nil {
-		return err
+		return false, err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	if tag.RowsAffected() == 1 {
+		return true, nil
 	}
-	return nil
+	// No row changed: either the comment is missing, or it is already in the target state.
+	var exists bool
+	if err := r.db.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM goal_comments WHERE id=$1 AND goal_id=$2 AND tenant_id=$3)`,
+		commentID, goalID, scope.TenantID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, ErrNotFound
+	}
+	return false, nil // already in the target state → no-op
 }

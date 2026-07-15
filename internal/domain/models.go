@@ -270,4 +270,9 @@ type ActivityEvent struct {
 	ActorDisplayName string
 	ActorAvatarURL   string
 	ActorRemoved     bool
+
+	// TargetTeamID is the team whose board a "go to goal" link should open: the goal's owner team
+	// if the viewer can access it, otherwise a shared team the viewer can access. Computed on read
+	// (List) from the viewer's accessible set; nil when there is no navigable team.
+	TargetTeamID *int64
 }

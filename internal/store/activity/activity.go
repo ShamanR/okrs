@@ -162,6 +162,16 @@ func (r *ActivityRepository) List(ctx context.Context, scope domain.TenantScope,
 	arg := func(v any) string { args = append(args, v); return "$" + strconv.Itoa(len(args)) }
 	where := filterWhere(scope, allowedTeamIDs, f, arg, true, true)
 
+	// Navigation target team: the owner team if the viewer can access it, else a shared team the
+	// viewer can access (a viewer may see an event via goal_shares without owner-team access).
+	// For admin (allowedTeamIDs == nil) the owner team is always fine.
+	targetTeamExpr := "e.team_id"
+	if allowedTeamIDs != nil {
+		p := arg(allowedTeamIDs)
+		targetTeamExpr = "CASE WHEN e.team_id = ANY(" + p + ") THEN e.team_id " +
+			"ELSE (SELECT gs.team_id FROM goal_shares gs WHERE gs.goal_id = e.goal_id AND gs.team_id = ANY(" + p + ") ORDER BY gs.team_id LIMIT 1) END"
+	}
+
 	limit := f.Limit
 	if limit <= 0 || limit > 100 {
 		limit = 50
@@ -172,7 +182,8 @@ func (r *ActivityRepository) List(ctx context.Context, scope domain.TenantScope,
 		SELECT e.id, e.actor_user_id, e.category, e.action, e.team_id, e.period_id, e.goal_id, e.kr_id, e.comment_id,
 		       e.entity_title, e.payload_json, e.created_at,
 		       COALESCE(u.udid::text,''), COALESCE(u.display_name,''), COALESCE(u.avatar_url,''), COALESCE(u.provider,''),
-		       EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = e.actor_user_id AND m.tenant_id = e.tenant_id AND m.status = 'active')
+		       EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = e.actor_user_id AND m.tenant_id = e.tenant_id AND m.status = 'active'),
+		       ` + targetTeamExpr + ` AS target_team_id
 		FROM activity_events e
 		LEFT JOIN users u ON u.id = e.actor_user_id
 		WHERE ` + strings.Join(where, " AND ") + `
@@ -193,7 +204,7 @@ func (r *ActivityRepository) List(ctx context.Context, scope domain.TenantScope,
 		var active bool
 		if err := rows.Scan(&ev.ID, &ev.ActorUserID, &ev.Category, &ev.Action, &ev.TeamID, &ev.PeriodID,
 			&ev.GoalID, &ev.KRID, &ev.CommentID, &ev.EntityTitle, &raw, &ev.CreatedAt,
-			&ev.ActorUDID, &ev.ActorDisplayName, &ev.ActorAvatarURL, &provider, &active); err != nil {
+			&ev.ActorUDID, &ev.ActorDisplayName, &ev.ActorAvatarURL, &provider, &active, &ev.TargetTeamID); err != nil {
 			return nil, nil, err
 		}
 		_ = json.Unmarshal(raw, &ev.Payload)

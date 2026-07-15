@@ -306,6 +306,7 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/goals/{goalID}`
 - `GET /api/v1/activity`
 - `GET /api/v1/activity/tree-counts`
+- `GET /api/v1/activity/category-counts`
 
 ### `GET /api/v1/activity`
 
@@ -326,7 +327,10 @@ Query-параметры (все опциональны): `period_id`, `team_ids
 PII), `team_id`/`period_id`/`goal_id`/`kr_id`/`comment_id`, `entity_title`, `target`
 (`{section:"tracker", team_id, period_id?, goal_id?, kr_id?, comment_id?}` — структурный
 дескриптор перехода; `null`, если у события нет команды), `payload` (`before`/`after` + доп.),
-`created_at`.
+`created_at`. `target.team_id` — **доступная зрителю** команда: owner-команда цели, если она
+доступна, иначе одна из shared-команд из audience, доступная зрителю (зритель может видеть событие
+расшаренной цели по `goal_shares`, не имея доступа к owner-команде — ссылка не должна вести на
+недоступную доску). Вычисляется на чтении из набора доступных команд.
 
 ### `GET /api/v1/activity/tree-counts`
 
@@ -334,6 +338,15 @@ Query: `period_id` (опц.), `range` (опц.). Ответ: `{ "counts": { "<te
 прямые счётчики событий по команде за период+диапазон (audience-раскрытие: событие расшаренной
 цели считается каждой командой из audience), в рамках доступного scope. Фронт агрегирует по
 поддереву. Категория/автор/`q` на счётчики не влияют.
+
+### `GET /api/v1/activity/category-counts`
+
+Query: те же фильтры, что у `GET /api/v1/activity`, **кроме `category` и `cursor`** (`period_id`,
+`team_ids[]`, `range`, `actor_udid`, `q`). Ответ: `{ "counts": { "<category>": <int> }, "total": <int> }`.
+Даёт счётчики для табов ленты, стабильные при переключении категории (сам фильтр по категории
+исключён из подсчёта). Фильтр «Избранное» на клиенте применяется передачей `team_ids[]` избранных
+команд (серверная фильтрация до `LIMIT`/cursor) — поэтому пагинация, счётчики и матчинг событий
+расшаренных целей корректны.
 
 ### `GET /api/v1/periods`
 

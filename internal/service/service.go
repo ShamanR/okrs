@@ -55,7 +55,7 @@ type GoalRepo interface {
 	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
 	MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error
 	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) (int64, error)
-	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error
+	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error)
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
@@ -911,8 +911,12 @@ func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, 
 }
 
 func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
-	if err := s.goals.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID); err != nil {
+	changed, err := s.goals.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
+	if err != nil {
 		return err
+	}
+	if !changed {
+		return nil // already in the target state → no event, no re-stamp
 	}
 	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
 		action := domain.ActionCommentReopened
@@ -1478,6 +1482,13 @@ func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goal
 		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, newOwner.TeamID); err != nil {
 			return 0, 0, err
 		}
+		// Owner "deleted" a shared goal → ownership transferred to a shared team; log the composition change.
+		oldOwner, pID, gid, newOwnerTeam := goal.TeamID, goal.PeriodID, goalID, newOwner.TeamID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
+			TeamID: &newOwnerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
+			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": newOwnerTeam}},
+		})
 		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
@@ -1568,12 +1579,15 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.Ten
 	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, newShares); err != nil {
 		return 0, 0, err
 	}
-	gid, pID := goalID, goal.PeriodID
-	s.recordActivity(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
-		TeamID: &ownerID, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-		Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": ownerID}},
-	})
+	// Only log an owner change when the owner actually changed (avoid X→X noise).
+	if ownerID != oldOwner {
+		gid, pID := goalID, goal.PeriodID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
+			TeamID: &ownerID, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
+			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": ownerID}},
+		})
+	}
 	return ownerID, goal.PeriodID, nil
 }
 

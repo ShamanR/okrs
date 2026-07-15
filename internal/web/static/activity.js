@@ -257,49 +257,64 @@ function Feed({ periodId, teamId, range, setRange, category, setCategory, actorU
   const [catCounts, setCatCounts] = useState({ counts: {}, total: 0 });
   const feedRef = useRef(null);
   const sentinelRef = useRef(null);
+  const reqIdRef = useRef(0);        // feed request generation — drop responses from superseded filters
+  const loadingMoreRef = useRef(false);
 
-  // Tab counters must be stable regardless of the selected category, so they come from a
-  // separate aggregate that depends on every filter EXCEPT category.
-  useEffect(() => {
+  // Favorites are filtered SERVER-SIDE (before LIMIT/cursor) by scoping team_ids to the favorite
+  // teams, so pagination, tab counts and shared-goal matching are all correct.
+  const favTeamIds = (favIds || []).map(x => String(x));
+  const effTeamIds = teamId ? [String(teamId)] : (favOnly ? favTeamIds : []);
+  const effTeamKey = effTeamIds.join(',');
+  const noResults = favOnly && !teamId && favTeamIds.length === 0; // favorites on, but none chosen
+
+  const baseParams = useCallback(() => {
     const p = new URLSearchParams();
     if (periodId) p.set('period_id', periodId);
-    if (teamId) p.append('team_ids', teamId);
+    effTeamIds.forEach(id => p.append('team_ids', id));
     if (actorUDID) p.set('actor_udid', actorUDID);
     if (range && range !== 'all') p.set('range', range);
     if (q.trim()) p.set('q', q.trim());
+    return p;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [periodId, effTeamKey, actorUDID, range, q]);
+
+  // Tab counters: stable across the selected category (excludes category), same team/filter scope.
+  useEffect(() => {
+    if (noResults) { setCatCounts({ counts: {}, total: 0 }); return; }
+    const p = baseParams();
     apiGet('/api/v1/activity/category-counts' + (p.toString() ? '?' + p : ''))
       .then(d => setCatCounts(d || { counts: {}, total: 0 })).catch(() => { });
-  }, [periodId, teamId, actorUDID, range, q]);
+  }, [baseParams, noResults]);
 
   const buildQuery = useCallback((cursor) => {
-    const p = new URLSearchParams();
-    if (periodId) p.set('period_id', periodId);
-    if (teamId) p.append('team_ids', teamId);
+    const p = baseParams();
     if (category) p.set('category', category);
-    if (actorUDID) p.set('actor_udid', actorUDID);
-    if (range && range !== 'all') p.set('range', range);
-    if (q.trim()) p.set('q', q.trim());
     if (cursor) p.set('cursor', cursor);
     return p.toString();
-  }, [periodId, teamId, category, actorUDID, range, q]);
+  }, [baseParams, category]);
 
   useEffect(() => {
+    loadingMoreRef.current = false;
+    const myId = ++reqIdRef.current;
+    if (noResults) { setEvents([]); setNextCursor(''); setLoading(false); return; }
     setLoading(true);
     apiGet('/api/v1/activity?' + buildQuery('')).then(d => {
+      if (myId !== reqIdRef.current) return; // a newer filter change superseded this request
       setEvents((d && d.items) || []);
       setNextCursor((d && d.next_cursor) || '');
       setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [buildQuery]);
+    }).catch(() => { if (myId === reqIdRef.current) setLoading(false); });
+  }, [buildQuery, noResults]);
 
-  const loadingMoreRef = useRef(false);
   const loadMore = useCallback(() => {
     if (!nextCursor || loadingMoreRef.current) return;
     loadingMoreRef.current = true;
+    const myId = reqIdRef.current;
     apiGet('/api/v1/activity?' + buildQuery(nextCursor)).then(d => {
+      loadingMoreRef.current = false;
+      if (myId !== reqIdRef.current) return; // filters changed mid-flight → drop this stale page
       setEvents(prev => [...prev, ...((d && d.items) || [])]);
       setNextCursor((d && d.next_cursor) || '');
-      loadingMoreRef.current = false;
     }).catch(() => { loadingMoreRef.current = false; });
   }, [nextCursor, buildQuery]);
 
@@ -313,8 +328,7 @@ function Feed({ periodId, teamId, range, setRange, category, setCategory, actorU
     return () => obs.disconnect();
   }, [nextCursor, loadMore]);
 
-  const favSet = new Set(favIds || []);
-  const shown = favOnly ? events.filter(ev => ev.team_id != null && favSet.has(favId(ev.team_id))) : events;
+  const shown = events; // favorites are filtered server-side (see effTeamIds)
   const groups = groupByTime(shown);
   const counts = catCounts.counts || {};
 

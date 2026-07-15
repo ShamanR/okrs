@@ -124,6 +124,40 @@ func TestListShareAwareAndScope(t *testing.T) {
 	}
 }
 
+func TestListTargetTeamResolution(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	sr := shares.NewGoalShareRepository(pool)
+	ar := activity.NewActivityRepository(pool)
+
+	owner, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "Owner", Type: domain.TeamTypeTeam})
+	sharee, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "Sharee", Type: domain.TeamTypeTeam})
+	periodID, _ := pr.CreatePeriod(ctx, scope, q1("Q1"))
+	goalID := makeGoal(t, ctx, pool, scope, owner, periodID, "Shared goal")
+	_ = sr.ReplaceGoalShares(ctx, scope, goalID, []shares.GoalShareInput{{TeamID: sharee, Weight: 50}})
+	_, _ = ar.Record(ctx, scope, domain.ActivityEvent{ActorUserID: seedUserID, Category: domain.ActivityDiscussion, Action: domain.ActionCommentAdded, TeamID: &owner, PeriodID: &periodID, GoalID: &goalID})
+
+	// Viewer accesses only the sharee team → target must be the sharee team, not the owner.
+	evs, _, _ := ar.List(ctx, scope, []int64{sharee}, activity.ListFilter{})
+	if len(evs) != 1 || evs[0].TargetTeamID == nil || *evs[0].TargetTeamID != sharee {
+		t.Fatalf("sharee-only viewer target: want %d, got %+v", sharee, evs)
+	}
+	// Viewer accesses the owner team → target is the owner.
+	evs, _, _ = ar.List(ctx, scope, []int64{owner}, activity.ListFilter{})
+	if len(evs) != 1 || evs[0].TargetTeamID == nil || *evs[0].TargetTeamID != owner {
+		t.Fatalf("owner viewer target: want %d, got %+v", owner, evs)
+	}
+	// Admin (nil) → owner team.
+	evs, _, _ = ar.List(ctx, scope, nil, activity.ListFilter{})
+	if len(evs) != 1 || evs[0].TargetTeamID == nil || *evs[0].TargetTeamID != owner {
+		t.Fatalf("admin target: want %d, got %+v", owner, evs)
+	}
+}
+
 func TestListCursorPagination(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
