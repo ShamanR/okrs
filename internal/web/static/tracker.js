@@ -452,7 +452,7 @@ function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi(h => Math.min(available.length - 1, h + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
     else if (e.key === 'Enter') { e.preventDefault(); if (open && available[hi]) add(available[hi]); }
-    else if (e.key === 'Escape') setOpen(false);
+    else if (e.key === 'Escape') { if (open) { e.preventDefault(); setOpen(false); } }
     else if (e.key === 'Backspace' && !q && sel.length > 0) rem(sel[sel.length - 1].id);
   };
   return (
@@ -545,7 +545,14 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setStage = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const progress = calcKRProgress(form);
-  const overlay = useOverlayClose(onClose);
+  const initialNote = kr.note?.text ?? '';
+  const dirtyProgress = (() => {
+    if (form.krType === 'NUMERICAL') return String(form.current) !== String(kr.current);
+    if (form.krType === 'BOOLEAN') return !!form.done !== !!kr.done;
+    if (form.krType === 'PROJECT') return (form.stages || []).some((s, i) => !!s.done !== !!((kr.stages || [])[i] || {}).done);
+    return false;
+  })();
+  const isDirty = dirtyProgress || note.trim() !== initialNote.trim() || (descEditing && descDraft.trim() !== '');
   const save = async () => {
     setSaving(true);
     try {
@@ -568,12 +575,15 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     } catch (e) { alert('Ошибка сохранения: ' + e.message); }
     finally { setSaving(false); }
   };
+  const { requestClose, confirmEl } = useModalClose({ isDirty, canSave: !saving, onSave: save, onClose });
+  const overlay = useOverlayClose(requestClose);
   const zeroingNote = form.zeroing ? (
     <div className="kr-zeroing-note kr-zeroing-note--md">
       <span className="kr-zeroing-note__icon">⊘</span>Критерий обнуления: {form.zeroing}
     </div>
   ) : null;
   return (
+    <>
     <div className="modal-overlay modal-overlay--z300" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w480">
         <div className="modal-header">
@@ -581,7 +591,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
             <div className="modal-title">Обновить прогресс</div>
             <div className="modal-subtitle">{kr.name}</div>
           </div>
-          <button onClick={onClose} className="modal-close">×</button>
+          <button onClick={requestClose} className="modal-close">×</button>
         </div>
         {kr.desc ? (
           <div className="kr-progress-desc">
@@ -692,6 +702,8 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
         </div>
       </div>
     </div>
+    {confirmEl}
+    </>
   );
 }
 
@@ -743,13 +755,18 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
     finally { setSaving(false); }
   };
   const canSave = !saving && !!form.name.trim();
-  const overlay = useOverlayClose(onClose);
+  const initialFormRef = useRef(null);
+  if (initialFormRef.current === null) initialFormRef.current = JSON.stringify(form);
+  const isDirty = JSON.stringify(form) !== initialFormRef.current;
+  const { requestClose, confirmEl } = useModalClose({ isDirty, canSave, onSave: save, onClose });
+  const overlay = useOverlayClose(requestClose);
   return (
+    <>
     <div className="modal-overlay modal-overlay--z300" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w560">
         <div className="modal-header modal-header--sticky">
           <div className="modal-title modal-title--lg">{isNew ? 'Добавить KR' : 'Редактировать KR'}</div>
-          <button onClick={onClose} className="modal-close">×</button>
+          <button onClick={requestClose} className="modal-close">×</button>
         </div>
         <div className="modal-body">
           <div className="form-group--sm">
@@ -892,6 +909,8 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
         </div>
       </div>
     </div>
+    {confirmEl}
+    </>
   );
 }
 
@@ -899,7 +918,8 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
 function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
   const [busy, setBusy] = React.useState(false);
   const run = async () => { setBusy(true); try { await onConfirm(); } finally { setBusy(false); } };
-  const overlay = useOverlayClose(onClose);
+  const { requestClose } = useModalClose({ isDirty: false, onClose });
+  const overlay = useOverlayClose(requestClose);
   return (
     <div className="modal-overlay modal-overlay--z600" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w380">
@@ -1359,7 +1379,7 @@ function UserSelector({ value, onChange, multiple = false, placeholder = 'Пои
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi(h => Math.min(available.length - 1, h + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
     else if (e.key === 'Enter') { e.preventDefault(); if (open && available[hi]) select(available[hi]); }
-    else if (e.key === 'Escape') setOpen(false);
+    else if (e.key === 'Escape') { if (open) { e.preventDefault(); setOpen(false); } }
     else if (e.key === 'Backspace' && !q && multiple && values.length > 0) remove(values[values.length - 1]);
   };
 
@@ -1582,8 +1602,13 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
     await performSave();
   };
   const canSave = valid && !saving;
-  const overlay = useOverlayClose(onClose);
+  const initialFormRef = useRef(null);
+  if (initialFormRef.current === null) initialFormRef.current = JSON.stringify(form);
+  const isDirty = JSON.stringify(form) !== initialFormRef.current;
+  const { requestClose, confirmEl } = useModalClose({ isDirty, canSave, onSave: save, onClose });
+  const overlay = useOverlayClose(requestClose);
   return (
+    <>
     <div className="modal-overlay modal-overlay--z400" {...overlay}>
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w600">
         <div className="modal-header modal-header--sticky modal-header--goal">
@@ -1591,7 +1616,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             <div className="modal-title--goal">{isEdit ? 'Редактировать цель' : 'Новая цель'}</div>
             <div className="modal-subtitle">{periodName} · {teamName}</div>
           </div>
-          <button onClick={onClose} className="modal-close modal-close--lg">×</button>
+          <button onClick={requestClose} className="modal-close modal-close--lg">×</button>
         </div>
         <div className="modal-body modal-body--goal">
           <div className="form-group">
@@ -1692,6 +1717,8 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           onClose={() => setConfirmUnshare(false)} />
       )}
     </div>
+    {confirmEl}
+    </>
   );
 }
 

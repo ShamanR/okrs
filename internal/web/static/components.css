@@ -20,3 +20,22 @@
 .user-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); border: 1px solid rgba(124, 58, 237, 0.25); border-radius: 20px; padding: 2px 8px 2px 4px; font-size: 12px; flex-shrink: 0; }
 .user-chip__name { color: var(--accent-deep); font-weight: 500; }
 .user-chip__remove { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 14px; padding: 0; line-height: 1; margin-left: 1px; }
+
+/* Окно-подтверждение несохранённых изменений (useModalClose / ui.js).
+   Общее для tracker и admin; z-index выше любых модалок приложения.
+   --accent = #7c3aed (fallback на случай отсутствия tokens.css). */
+.modal-confirm-overlay { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, 0.45); }
+.modal-confirm-box { width: min(520px, 94vw); background: #fff; border-radius: 20px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.3); padding: 26px 28px 22px; animation: modalConfirmIn .14s ease-out; }
+@keyframes modalConfirmIn { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+.modal-confirm-title { font-size: 18px; font-weight: 800; color: var(--text, #0f172a); letter-spacing: -.2px; }
+.modal-confirm-message { font-size: 14px; color: var(--text-faint, #6b7280); line-height: 1.5; margin-top: 10px; }
+.modal-confirm-hint { font-size: 13px; color: #9ca3af; line-height: 1.5; margin-top: 6px; }
+.modal-confirm-key { font-weight: 700; color: var(--text-faint, #6b7280); }
+.modal-confirm-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+.modal-confirm-btn { padding: 9px 18px; border-radius: 10px; border: 1px solid var(--border, #e5e7eb); background: #fff; color: var(--text, #374151); font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.modal-confirm-btn:hover { background: #f8fafc; }
+.modal-confirm-btn--danger { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
+.modal-confirm-btn--danger:hover { background: #fee2e2; }
+.modal-confirm-btn--primary { border-color: transparent; background: var(--accent, #7c3aed); color: #fff; }
+.modal-confirm-btn--primary:hover { background: #6d28d9; }
+.modal-confirm-btn--primary:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
