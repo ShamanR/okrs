@@ -16,6 +16,46 @@ import (
 // author 1 is the system `anonymous-local` user seeded by migrations.
 const seedUserID = int64(1)
 
+func TestSetGoalCommentResolvedIdempotent(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "idem")
+	if _, err := gr.AddGoalComment(ctx, scope, goalID, "blocker", seedUserID); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	comments, _ := gr.ListGoalComments(ctx, scope, goalID)
+	commentID := comments[0].ID
+
+	// First resolve → changed.
+	changed, err := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, true, seedUserID)
+	if err != nil || !changed {
+		t.Fatalf("first resolve: changed=%v err=%v", changed, err)
+	}
+	comments, _ = gr.ListGoalComments(ctx, scope, goalID)
+	firstAt := comments[0].ResolvedAt
+	// Second resolve on an already-resolved comment → no change, resolved_at untouched.
+	changed, err = gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, true, seedUserID)
+	if err != nil || changed {
+		t.Fatalf("second resolve must be a no-op: changed=%v err=%v", changed, err)
+	}
+	comments, _ = gr.ListGoalComments(ctx, scope, goalID)
+	if firstAt == nil || comments[0].ResolvedAt == nil || !firstAt.Equal(*comments[0].ResolvedAt) {
+		t.Fatalf("resolved_at must not change on a repeated resolve: %v vs %v", firstAt, comments[0].ResolvedAt)
+	}
+	// Reopen twice: first changes, second is a no-op.
+	if changed, _ := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, false, seedUserID); !changed {
+		t.Fatalf("first reopen must change")
+	}
+	if changed, _ := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, false, seedUserID); changed {
+		t.Fatalf("second reopen must be a no-op")
+	}
+}
+
 func TestSetGoalCommentResolved(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
@@ -27,7 +67,7 @@ func TestSetGoalCommentResolved(t *testing.T) {
 	scope := domain.TenantScope{TenantID: 1}
 
 	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "resolve")
-	if err := gr.AddGoalComment(ctx, scope, goalID, "blocker", seedUserID); err != nil {
+	if _, err := gr.AddGoalComment(ctx, scope, goalID, "blocker", seedUserID); err != nil {
 		t.Fatalf("add comment: %v", err)
 	}
 	comments, err := gr.ListGoalComments(ctx, scope, goalID)
@@ -40,7 +80,7 @@ func TestSetGoalCommentResolved(t *testing.T) {
 	}
 
 	// Resolve stamps time + resolver.
-	if err := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, true, seedUserID); err != nil {
+	if _, err := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, true, seedUserID); err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 	comments, _ = gr.ListGoalComments(ctx, scope, goalID)
@@ -52,7 +92,7 @@ func TestSetGoalCommentResolved(t *testing.T) {
 	}
 
 	// Reopen clears both fields.
-	if err := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, false, seedUserID); err != nil {
+	if _, err := gr.SetGoalCommentResolved(ctx, scope, goalID, commentID, false, seedUserID); err != nil {
 		t.Fatalf("unresolve: %v", err)
 	}
 	comments, _ = gr.ListGoalComments(ctx, scope, goalID)
@@ -61,12 +101,12 @@ func TestSetGoalCommentResolved(t *testing.T) {
 	}
 
 	// Unknown comment id → ErrNotFound.
-	if err := gr.SetGoalCommentResolved(ctx, scope, goalID, 999999, true, seedUserID); !errors.Is(err, goals.ErrNotFound) {
+	if _, err := gr.SetGoalCommentResolved(ctx, scope, goalID, 999999, true, seedUserID); !errors.Is(err, goals.ErrNotFound) {
 		t.Fatalf("unknown comment: want ErrNotFound, got %v", err)
 	}
 
 	// Comment cannot be resolved through a different goal id.
-	if err := gr.SetGoalCommentResolved(ctx, scope, goalID+1, commentID, true, seedUserID); !errors.Is(err, goals.ErrNotFound) {
+	if _, err := gr.SetGoalCommentResolved(ctx, scope, goalID+1, commentID, true, seedUserID); !errors.Is(err, goals.ErrNotFound) {
 		t.Fatalf("wrong goal id: want ErrNotFound, got %v", err)
 	}
 }

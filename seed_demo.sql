@@ -464,6 +464,35 @@ INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at) V
   (112, 'Осталось 3 сервиса. Проблемы с устаревшими зависимостями решены.', 1, NOW());
 
 -- ----------------------------------------------------------------
+-- Activity log (демо-лента). actor_user_id = 1 (anonymous-local).
+-- id авто-генерируется (IDENTITY) — сброс последовательности не нужен.
+-- Времена разнесены (сегодня / вчера / ранее на неделе / старее) для группировки.
+-- ----------------------------------------------------------------
+INSERT INTO activity_events (tenant_id, actor_user_id, category, action, team_id, period_id, goal_id, kr_id, comment_id, entity_title, payload_json, created_at) VALUES
+  -- Сегодня
+  (1, 1, 'progress', 'kr_progress', 4, 4, 8, 9, NULL, 'Календарь дежурств внедрен в 5 команд',
+     '{"before":{"progress":40},"after":{"progress":65},"kind":"NUMERICAL"}', NOW() - INTERVAL '2 hours'),
+  (1, 1, 'discussion', 'comment_added', 2, 4, 32, NULL, 5, 'Снизить P95 latency до 200ms',
+     '{"text":"Обновление по задаче выполнено."}', NOW() - INTERVAL '5 hours'),
+  (1, 1, 'composition', 'goal_created', 23, 5, 29, NULL, NULL, 'цель2',
+     '{}', NOW() - INTERVAL '8 hours'),
+  -- Вчера
+  (1, 1, 'status', 'status_changed', 21, 4, NULL, NULL, NULL, 'PaaS / Infra',
+     '{"before":{"status":"forming"},"after":{"status":"in_progress"}}', NOW() - INTERVAL '1 day 3 hours'),
+  (1, 1, 'composition', 'kr_created', 4, 4, 9, 10, NULL, 'Инцидент менеджмент для P0\P1 автоматизирован',
+     '{}', NOW() - INTERVAL '1 day 6 hours'),
+  -- Ранее на этой неделе
+  (1, 1, 'discussion', 'comment_resolved', 4, 4, 37, NULL, 7, 'Внедрить IaC для всей инфраструктуры',
+     '{"before":{"resolved":false},"after":{"resolved":true}}', NOW() - INTERVAL '3 days'),
+  (1, 1, 'composition', 'goal_shared', 2, 4, 33, NULL, NULL, 'Покрыть 80% кода тестами',
+     '{"shared_with_team_ids":[4]}', NOW() - INTERVAL '4 days'),
+  -- Старее
+  (1, 1, 'composition', 'goal_fields_changed', 4, 4, 38, NULL, NULL, 'Сократить MTTR до 30 минут',
+     '{"changed":{"title":{"before":"Сократить MTTR","after":"Сократить MTTR до 30 минут"}}}', NOW() - INTERVAL '6 days'),
+  (1, 1, 'progress', 'kr_progress', 3, 1, 35, NULL, NULL, 'Обеспечить 99.9% uptime DWH пайплайнов',
+     '{"before":{"progress":80},"after":{"progress":100},"kind":"NUMERICAL"}', NOW() - INTERVAL '12 days');
+
+-- ----------------------------------------------------------------
 -- Reset sequences
 -- ----------------------------------------------------------------
 SELECT setval('teams_id_seq',                  (SELECT MAX(id) FROM teams));

@@ -113,7 +113,7 @@ func (h *Handler) HandleAddKeyResult(w http.ResponseWriter, r *http.Request) {
 		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
 		Weight:          weight,
 		Kind:            kind,
-	}, meta); err != nil {
+	}, meta, auth.UserIDFromContext(ctx)); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -145,7 +145,7 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 	if s := r.FormValue("team_id"); s != "" {
 		requestingTeamID, _ = common.ParseID(s)
 	}
-	teamID, periodID, err := h.deps.Service.DeleteGoal(ctx, scope, goalID, requestingTeamID)
+	teamID, periodID, err := h.deps.Service.DeleteGoal(ctx, scope, goalID, requestingTeamID, auth.UserIDFromContext(ctx))
 	if err != nil {
 		if errors.Is(err, service.ErrPeriodClosed) {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Период закрыт, изменения недоступны"))
@@ -204,7 +204,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		WorkType:    workType,
 		FocusType:   focusType,
 		OwnerText:   common.TrimmedFormValue(r, "owner_text"),
-	}); err != nil {
+	}, auth.UserIDFromContext(ctx)); err != nil {
 		common.RenderError(w, h.deps.Logger, err)
 		return
 	}
@@ -290,7 +290,7 @@ func (h *Handler) HandleUpdateGoalShare(w http.ResponseWriter, r *http.Request) 
 		common.RenderError(w, h.deps.Logger, fmt.Errorf("нужно выбрать хотя бы одну команду"))
 		return
 	}
-	ownerID, periodID, err := h.deps.Service.UpdateGoalOwnerAndShares(ctx, scope, goalID, selectedIDs)
+	ownerID, periodID, err := h.deps.Service.UpdateGoalOwnerAndShares(ctx, scope, goalID, selectedIDs, auth.UserIDFromContext(ctx))
 	if err != nil {
 		if errors.Is(err, service.ErrCannotShareWithClosedPeriod) {
 			common.RenderError(w, h.deps.Logger, fmt.Errorf("Нельзя шарить цель с закрытым периодом"))

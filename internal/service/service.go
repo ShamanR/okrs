@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/okr"
 	"okrs/internal/store"
+	"okrs/internal/store/activity"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/krs"
@@ -52,8 +54,8 @@ type GoalRepo interface {
 	UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error
 	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
 	MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error
-	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error
-	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error
+	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) (int64, error)
+	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error)
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
@@ -85,6 +87,8 @@ type KRRepo interface {
 	DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error
 	MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error
 	UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error
+	GetKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KeyResultNote, error)
+	GetBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KRBoolean, error)
 	UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error
 	FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error)
 	FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error)
@@ -114,6 +118,15 @@ type UserRepo interface {
 	ValidateUDIDsExist(ctx context.Context, udids []string) ([]string, error)
 }
 
+// ActivityRepo records and reads the append-only activity journal.
+type ActivityRepo interface {
+	Record(ctx context.Context, scope domain.TenantScope, ev domain.ActivityEvent) (int64, error)
+	List(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f activity.ListFilter) ([]domain.ActivityEvent, *activity.Cursor, error)
+	TreeCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, periodID *int64, since *time.Time) (map[int64]int, error)
+	CategoryCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f activity.ListFilter) (map[string]int, error)
+	Purge(ctx context.Context, scope domain.TenantScope, olderThan *time.Time) (int64, error)
+}
+
 // Deps holds all repository dependencies for the service.
 type Deps struct {
 	Teams    TeamRepo
@@ -125,6 +138,8 @@ type Deps struct {
 	Users    UserRepo
 	Grants   GrantsProvider
 	HCCache  *HealthCheckInCache
+	Activity ActivityRepo
+	Logger   *slog.Logger
 }
 
 type Service struct {
@@ -137,6 +152,8 @@ type Service struct {
 	users    UserRepo
 	grants   GrantsProvider
 	hcCache  *HealthCheckInCache
+	activity ActivityRepo
+	logger   *slog.Logger
 }
 
 var (
@@ -160,12 +177,14 @@ func New(deps Deps) *Service {
 		users:    deps.Users,
 		grants:   deps.Grants,
 		hcCache:  deps.HCCache,
+		activity: deps.Activity,
+		logger:   deps.Logger,
 	}
 }
 
 // NewFromStore constructs a Service from a *store.Store and a GrantsProvider.
 // Use this at the wiring layer instead of building Deps manually.
-func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *HealthCheckInCache) *Service {
+func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *HealthCheckInCache, logger *slog.Logger) *Service {
 	return New(Deps{
 		Teams:    st.Teams,
 		Goals:    st.Goals,
@@ -176,6 +195,8 @@ func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *Healt
 		Users:    st.Users,
 		Grants:   grantsProvider,
 		HCCache:  hcCache,
+		Activity: st.Activity,
+		Logger:   logger,
 	})
 }
 
@@ -696,7 +717,28 @@ func collectDescendantIDs(targetID int64, nodes []TeamNode) []int64 {
 	return descendants
 }
 
-func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
+// recordKRProgress records a progress event with explicit before/after percent (0..100).
+// The caller computes the percentages from the KR's meta because store.GetKeyResult does not
+// populate the computed KeyResult.Progress field.
+func (s *Service) recordKRProgress(ctx context.Context, scope domain.TenantScope, krID int64, kr domain.KeyResult, beforeProg, afterProg int, actorUserID int64) {
+	g, gerr := s.goals.GetGoal(ctx, scope, kr.GoalID)
+	if gerr != nil {
+		return
+	}
+	teamID, periodID, goalID, krRef := g.TeamID, g.PeriodID, g.ID, krID
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityProgress, Action: domain.ActionKRProgress,
+		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krRef, EntityTitle: kr.Title,
+		Payload: map[string]any{
+			"before":     map[string]any{"progress": beforeProg},
+			"after":      map[string]any{"progress": afterProg},
+			"kind":       string(kr.Kind),
+			"goal_title": g.Title,
+		},
+	})
+}
+
+func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.TenantScope, krID int64, current float64, actorUserID int64) error {
 	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
@@ -704,10 +746,18 @@ func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.Te
 	if kr.Kind != domain.KRKindNumerical {
 		return fmt.Errorf("unsupported kr kind for numerical update: %s", kr.Kind)
 	}
-	return s.krs.UpdateNumericalCurrent(ctx, scope, krID, current)
+	if err := s.krs.UpdateNumericalCurrent(ctx, scope, krID, current); err != nil {
+		return err
+	}
+	if n := kr.Numerical; n != nil {
+		beforeProg := okr.NumericalProgress(n.StartValue, n.TargetValue, n.CurrentValue, n.Checkpoints)
+		afterProg := okr.NumericalProgress(n.StartValue, n.TargetValue, current, n.Checkpoints)
+		s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
+	}
+	return nil
 }
 
-func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
+func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool, actorUserID int64) error {
 	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
@@ -715,7 +765,15 @@ func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.Tena
 	if kr.Kind != domain.KRKindBoolean {
 		return fmt.Errorf("unsupported kr kind for boolean update: %s", kr.Kind)
 	}
-	return s.krs.UpdateBoolean(ctx, scope, krID, done)
+	beforeDone := false
+	if bm, berr := s.krs.GetBooleanMeta(ctx, scope, krID); berr == nil && bm != nil {
+		beforeDone = bm.IsDone
+	}
+	if err := s.krs.UpdateBoolean(ctx, scope, krID, done); err != nil {
+		return err
+	}
+	s.recordKRProgress(ctx, scope, krID, kr, okr.BooleanProgress(beforeDone), okr.BooleanProgress(done), actorUserID)
+	return nil
 }
 
 type ProjectStageUpdate struct {
@@ -723,7 +781,7 @@ type ProjectStageUpdate struct {
 	IsDone bool
 }
 
-func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.TenantScope, krID int64, updates []ProjectStageUpdate) error {
+func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.TenantScope, krID int64, updates []ProjectStageUpdate, actorUserID int64) error {
 	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
 	if err != nil {
 		return err
@@ -745,7 +803,19 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.Tena
 			validUpdates[stage.ID] = done
 		}
 	}
-	return s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, validUpdates)
+	beforeProg := okr.ProjectProgress(stages)
+	if err := s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, validUpdates); err != nil {
+		return err
+	}
+	afterStages := make([]domain.KRProjectStage, len(stages))
+	copy(afterStages, stages)
+	for i := range afterStages {
+		if done, ok := validUpdates[afterStages[i].ID]; ok {
+			afterStages[i].IsDone = done
+		}
+	}
+	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, okr.ProjectProgress(afterStages), actorUserID)
+	return nil
 }
 
 type ShareTarget struct {
@@ -753,7 +823,7 @@ type ShareTarget struct {
 	Weight int
 }
 
-func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget) error {
+func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget, actorUserID int64) error {
 	// Validate every target team belongs to the active tenant before writing shares. The share
 	// repository only scopes the goal, so an unchecked target team_id could attach the goal to a
 	// team in another tenant. One scoped lookup builds the allow-set (no per-target query).
@@ -772,11 +842,52 @@ func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalI
 			}
 		}
 	}
+	// The /share endpoint replaces the whole goal_shares set, so diff the current set against the
+	// new targets to log ADDING teams (goal_shared) and REMOVING teams (goal_unshared) separately.
+	beforeSet := map[int64]bool{}
+	if cur, cerr := s.shares.ListGoalShares(ctx, scope, goalID); cerr == nil {
+		for _, sh := range cur {
+			beforeSet[sh.TeamID] = true
+		}
+	}
 	shareInputs := make([]shares.GoalShareInput, 0, len(targets))
+	newSet := map[int64]bool{}
 	for _, target := range targets {
 		shareInputs = append(shareInputs, shares.GoalShareInput{TeamID: target.TeamID, Weight: target.Weight})
+		newSet[target.TeamID] = true
 	}
-	return s.shares.ReplaceGoalShares(ctx, scope, goalID, shareInputs)
+	var added, removed []int64
+	for _, target := range targets {
+		if !beforeSet[target.TeamID] {
+			added = append(added, target.TeamID)
+		}
+	}
+	for teamID := range beforeSet {
+		if !newSet[teamID] {
+			removed = append(removed, teamID)
+		}
+	}
+	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, shareInputs); err != nil {
+		return err
+	}
+	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
+		teamID, periodID := g.TeamID, g.PeriodID
+		if len(added) > 0 {
+			s.recordActivity(ctx, scope, domain.ActivityEvent{
+				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalShared,
+				TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
+				Payload: map[string]any{"shared_with_team_ids": added},
+			})
+		}
+		if len(removed) > 0 {
+			s.recordActivity(ctx, scope, domain.ActivityEvent{
+				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
+				TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
+				Payload: map[string]any{"unshared_team_ids": removed},
+			})
+		}
+	}
+	return nil
 }
 
 func (s *Service) UpdateGoalWeight(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error {
@@ -784,15 +895,66 @@ func (s *Service) UpdateGoalWeight(ctx context.Context, scope domain.TenantScope
 }
 
 func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
-	return s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
+	commentID, err := s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
+	if err != nil {
+		return err
+	}
+	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
+		teamID, periodID := g.TeamID, g.PeriodID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionCommentAdded,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
+			EntityTitle: g.Title, Payload: map[string]any{"text": text},
+		})
+	}
+	return nil
 }
 
 func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
-	return s.goals.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
+	changed, err := s.goals.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
+	if err != nil {
+		return err
+	}
+	if !changed {
+		return nil // already in the target state → no event, no re-stamp
+	}
+	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
+		action := domain.ActionCommentReopened
+		if resolved {
+			action = domain.ActionCommentResolved
+		}
+		teamID, periodID := g.TeamID, g.PeriodID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: userID, Category: domain.ActivityDiscussion, Action: action,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
+			EntityTitle: g.Title,
+			Payload: map[string]any{"before": map[string]any{"resolved": !resolved}, "after": map[string]any{"resolved": resolved}},
+		})
+	}
+	return nil
 }
 
 func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
-	return s.krs.UpsertKeyResultNote(ctx, scope, krID, text, authorUserID)
+	beforeText := ""
+	if before, berr := s.krs.GetKeyResultNote(ctx, scope, krID); berr == nil && before != nil {
+		beforeText = before.Text
+	}
+	if err := s.krs.UpsertKeyResultNote(ctx, scope, krID, text, authorUserID); err != nil {
+		return err
+	}
+	if beforeText != text {
+		if kr, kerr := s.krs.GetKeyResult(ctx, scope, krID); kerr == nil {
+			if g, gerr := s.goals.GetGoal(ctx, scope, kr.GoalID); gerr == nil {
+				teamID, periodID, goalID, krRef := g.TeamID, g.PeriodID, g.ID, krID
+				s.recordActivity(ctx, scope, domain.ActivityEvent{
+					ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionKRNoteUpdated,
+					TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krRef, EntityTitle: kr.Title,
+					Payload: map[string]any{"before": map[string]any{"note": beforeText}, "after": map[string]any{"note": text}},
+				})
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error {
@@ -822,8 +984,28 @@ type KeyResultMetaInput struct {
 	ProjectStages        []krs.ProjectStageInput
 }
 
-func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error {
-	return s.goals.UpdateGoal(ctx, scope, input)
+func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput, actorUserID int64) error {
+	before, _ := s.goals.GetGoal(ctx, scope, input.ID)
+	if err := s.goals.UpdateGoal(ctx, scope, input); err != nil {
+		return err
+	}
+	if after, aerr := s.goals.GetGoal(ctx, scope, input.ID); aerr == nil {
+		changed := diffFields(map[string][2]any{
+			"title":       {before.Title, after.Title},
+			"description": {before.Description, after.Description},
+			"priority":    {string(before.Priority), string(after.Priority)},
+			"weight":      {before.Weight, after.Weight},
+		})
+		if len(changed) > 0 {
+			teamID, periodID, gid := after.TeamID, after.PeriodID, after.ID
+			s.recordActivity(ctx, scope, domain.ActivityEvent{
+				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalFieldsChanged,
+				TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: after.Title,
+				Payload: map[string]any{"changed": changed},
+			})
+		}
+	}
+	return nil
 }
 
 func (s *Service) MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error {
@@ -834,7 +1016,7 @@ func (s *Service) MoveKeyResult(ctx context.Context, scope domain.TenantScope, k
 	return s.krs.MoveKeyResult(ctx, scope, krID, direction)
 }
 
-func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta KeyResultMetaInput) (int64, error) {
+func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta KeyResultMetaInput, actorUserID int64) (int64, error) {
 	krID, err := s.krs.CreateKeyResult(ctx, scope, input)
 	if err != nil {
 		return 0, err
@@ -842,14 +1024,42 @@ func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.Tena
 	if err := s.applyKeyResultMeta(ctx, scope, krID, input.Kind, meta); err != nil {
 		return 0, err
 	}
+	if g, gerr := s.goals.GetGoal(ctx, scope, input.GoalID); gerr == nil {
+		teamID, periodID, goalID := g.TeamID, g.PeriodID, input.GoalID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionKRCreated,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krID, EntityTitle: input.Title,
+		})
+	}
 	return krID, nil
 }
 
-func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta KeyResultMetaInput) error {
+func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta KeyResultMetaInput, actorUserID int64) error {
+	before, _ := s.krs.GetKeyResult(ctx, scope, input.ID)
 	if err := s.krs.UpdateKeyResult(ctx, scope, input); err != nil {
 		return err
 	}
-	return s.applyKeyResultMeta(ctx, scope, input.ID, input.Kind, meta)
+	if err := s.applyKeyResultMeta(ctx, scope, input.ID, input.Kind, meta); err != nil {
+		return err
+	}
+	if after, aerr := s.krs.GetKeyResult(ctx, scope, input.ID); aerr == nil {
+		changed := diffFields(map[string][2]any{
+			"title":       {before.Title, after.Title},
+			"description": {before.Description, after.Description},
+			"weight":      {before.Weight, after.Weight},
+		})
+		if len(changed) > 0 {
+			if g, gerr := s.goals.GetGoal(ctx, scope, after.GoalID); gerr == nil {
+				teamID, periodID, gid, krID := g.TeamID, g.PeriodID, g.ID, input.ID
+				s.recordActivity(ctx, scope, domain.ActivityEvent{
+					ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionKRFieldsChanged,
+					TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, KRID: &krID, EntityTitle: after.Title,
+					Payload: map[string]any{"changed": changed},
+				})
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Service) applyKeyResultMeta(ctx context.Context, scope domain.TenantScope, krID int64, kind domain.KRKind, meta KeyResultMetaInput) error {
@@ -872,8 +1082,22 @@ func (s *Service) applyKeyResultMeta(ctx context.Context, scope domain.TenantSco
 	}
 }
 
-func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus) error {
-	return s.statuses.SetTeamPeriodStatus(ctx, scope, teamID, periodID, status)
+func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus, actorUserID int64) error {
+	before, _ := s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, periodID)
+	if err := s.statuses.SetTeamPeriodStatus(ctx, scope, teamID, periodID, status); err != nil {
+		return err
+	}
+	title := ""
+	if team, terr := s.teams.GetTeam(ctx, scope, teamID); terr == nil {
+		title = team.Name
+	}
+	tID, pID := teamID, periodID
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityStatus, Action: domain.ActionStatusChanged,
+		TeamID: &tID, PeriodID: &pID, EntityTitle: title,
+		Payload: map[string]any{"before": map[string]any{"status": string(before)}, "after": map[string]any{"status": string(status)}},
+	})
+	return nil
 }
 
 func (s *Service) DeleteTeam(ctx context.Context, scope domain.TenantScope, teamID int64) error {
@@ -1111,8 +1335,27 @@ func (s *Service) ListGoalsByTeamPeriod(ctx context.Context, scope domain.Tenant
 	return s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
 }
 
-func (s *Service) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error {
-	return s.goals.UpdateGoalFields(ctx, scope, input)
+func (s *Service) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput, actorUserID int64) error {
+	before, _ := s.goals.GetGoal(ctx, scope, input.ID)
+	if err := s.goals.UpdateGoalFields(ctx, scope, input); err != nil {
+		return err
+	}
+	if after, aerr := s.goals.GetGoal(ctx, scope, input.ID); aerr == nil {
+		changed := diffFields(map[string][2]any{
+			"title":       {before.Title, after.Title},
+			"description": {before.Description, after.Description},
+			"priority":    {string(before.Priority), string(after.Priority)},
+		})
+		if len(changed) > 0 {
+			teamID, periodID, gid := after.TeamID, after.PeriodID, after.ID
+			s.recordActivity(ctx, scope, domain.ActivityEvent{
+				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalFieldsChanged,
+				TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: after.Title,
+				Payload: map[string]any{"changed": changed},
+			})
+		}
+	}
+	return nil
 }
 
 func (s *Service) ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error) {
@@ -1127,8 +1370,18 @@ func (s *Service) GetGoalShare(ctx context.Context, scope domain.TenantScope, go
 	return s.shares.GetGoalShare(ctx, scope, goalID, teamID)
 }
 
-func (s *Service) DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error {
-	return s.shares.DeleteGoalShare(ctx, scope, goalID, teamID)
+func (s *Service) DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, actorUserID int64) error {
+	g, _ := s.goals.GetGoal(ctx, scope, goalID)
+	if err := s.shares.DeleteGoalShare(ctx, scope, goalID, teamID); err != nil {
+		return err
+	}
+	ownerTeam, periodID, shareTeam := g.TeamID, g.PeriodID, teamID
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
+		TeamID: &ownerTeam, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
+		Payload: map[string]any{"unshared_team_id": shareTeam},
+	})
+	return nil
 }
 
 func (s *Service) ListGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64) ([]shares.GoalShare, error) {
@@ -1137,8 +1390,21 @@ func (s *Service) ListGoalShares(ctx context.Context, scope domain.TenantScope, 
 
 // — Key result passthroughs —
 
-func (s *Service) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error {
-	return s.krs.DeleteKeyResult(ctx, scope, id)
+func (s *Service) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64, actorUserID int64) error {
+	kr, _ := s.krs.GetKeyResult(ctx, scope, id)
+	if err := s.krs.DeleteKeyResult(ctx, scope, id); err != nil {
+		return err
+	}
+	var g domain.Goal
+	if kr.GoalID != 0 {
+		g, _ = s.goals.GetGoal(ctx, scope, kr.GoalID)
+	}
+	teamID, periodID, goalID, krID := g.TeamID, g.PeriodID, g.ID, id
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionKRDeleted,
+		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krID, EntityTitle: kr.Title,
+	})
+	return nil
 }
 
 func (s *Service) FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error) {
@@ -1153,7 +1419,7 @@ func (s *Service) FindGoalIDByStage(ctx context.Context, scope domain.TenantScop
 
 // CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
 // Returns ErrPeriodClosed if the team's period status is InProgress or Closed.
-func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error) {
+func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput, actorUserID int64) (int64, error) {
 	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, input.TeamID, input.PeriodID)
 	if err != nil {
 		return 0, err
@@ -1170,13 +1436,18 @@ func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, inpu
 			return 0, err
 		}
 	}
+	teamID, periodID := input.TeamID, input.PeriodID
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalCreated,
+		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: input.Title,
+	})
 	return goalID, nil
 }
 
 // DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.
 // Returns the effective requesting teamID and the goal's periodID for redirect.
 // Returns ErrPeriodClosed if the owner tries to delete in a closed period with no shares.
-func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64) (effectiveTeamID, periodID int64, err error) {
+func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64, actorUserID int64) (effectiveTeamID, periodID int64, err error) {
 	goal, err := s.goals.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
@@ -1188,6 +1459,14 @@ func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goal
 		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, requestingTeamID); err != nil {
 			return 0, 0, err
 		}
+		// A shared team declined the goal — record it (anchored to the owner team, whose feed
+		// the owner watches; payload carries the team that left).
+		ownerTeam, pID, gid, decliner := goal.TeamID, goal.PeriodID, goalID, requestingTeamID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
+			TeamID: &ownerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
+			Payload: map[string]any{"declined_by_team_id": decliner},
+		})
 		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
@@ -1203,6 +1482,13 @@ func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goal
 		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, newOwner.TeamID); err != nil {
 			return 0, 0, err
 		}
+		// Owner "deleted" a shared goal → ownership transferred to a shared team; log the composition change.
+		oldOwner, pID, gid, newOwnerTeam := goal.TeamID, goal.PeriodID, goalID, newOwner.TeamID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
+			TeamID: &newOwnerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
+			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": newOwnerTeam}},
+		})
 		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
 	}
@@ -1216,6 +1502,11 @@ func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goal
 	if err := s.goals.DeleteGoal(ctx, scope, goalID); err != nil {
 		return 0, 0, err
 	}
+	teamID, pID := goal.TeamID, goal.PeriodID
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalDeleted,
+		TeamID: &teamID, PeriodID: &pID, GoalID: &goalID, EntityTitle: goal.Title,
+	})
 	_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 	return requestingTeamID, goal.PeriodID, nil
 }
@@ -1234,11 +1525,12 @@ func (s *Service) resetStatusIfNoGoals(ctx context.Context, scope domain.TenantS
 
 // UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
 // Returns ErrCannotShareWithClosedPeriod if any selected team has an in_progress or closed period.
-func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64) (ownerID, periodID int64, err error) {
+func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64, actorUserID int64) (ownerID, periodID int64, err error) {
 	goal, err := s.goals.GetGoal(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
 	}
+	oldOwner := goal.TeamID
 	shareList, err := s.shares.ListGoalShares(ctx, scope, goalID)
 	if err != nil {
 		return 0, 0, err
@@ -1287,5 +1579,61 @@ func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.Ten
 	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, newShares); err != nil {
 		return 0, 0, err
 	}
+	// Only log an owner change when the owner actually changed (avoid X→X noise).
+	if ownerID != oldOwner {
+		gid, pID := goalID, goal.PeriodID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
+			TeamID: &ownerID, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
+			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": ownerID}},
+		})
+	}
 	return ownerID, goal.PeriodID, nil
+}
+
+// ── Activity journal ─────────────────────────────────────────────────────────
+
+// diffFields returns only the entries whose before != after, as {field: {"before":x,"after":y}}.
+func diffFields(pairs map[string][2]any) map[string]any {
+	out := map[string]any{}
+	for field, ba := range pairs {
+		if ba[0] != ba[1] {
+			out[field] = map[string]any{"before": ba[0], "after": ba[1]}
+		}
+	}
+	return out
+}
+
+// recordActivity persists one event best-effort: a failure is logged, never returned,
+// so the activity journal can never break the user's mutation.
+func (s *Service) recordActivity(ctx context.Context, scope domain.TenantScope, ev domain.ActivityEvent) {
+	if s.activity == nil {
+		return
+	}
+	if _, err := s.activity.Record(ctx, scope, ev); err != nil && s.logger != nil {
+		s.logger.Warn("activity: record failed", "action", string(ev.Action), "tenant", scope.TenantID, "err", err)
+	}
+}
+
+// ListActivity returns a scoped page of journal events. allowedTeamIDs == nil = admin/unrestricted.
+func (s *Service) ListActivity(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f activity.ListFilter) ([]domain.ActivityEvent, *activity.Cursor, error) {
+	return s.activity.List(ctx, scope, allowedTeamIDs, f)
+}
+
+// ActivityTreeCounts returns direct per-team event counts for the sidebar tree.
+func (s *Service) ActivityTreeCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, periodID *int64, since *time.Time) (map[int64]int, error) {
+	return s.activity.TreeCounts(ctx, scope, allowedTeamIDs, periodID, since)
+}
+
+// ActivityCategoryCounts returns per-category event counts for the feed's tab counters,
+// stable across the selected category (the filter excludes category).
+func (s *Service) ActivityCategoryCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f activity.ListFilter) (map[string]int, error) {
+	return s.activity.CategoryCounts(ctx, scope, allowedTeamIDs, f)
+}
+
+// PurgeActivity deletes journal rows for the caller's tenant. Authority (tenant-admin) is
+// enforced by RequireTenantAdminMiddleware on the route; the system plane uses
+// ProvisioningService.PurgeActivityForTenant instead.
+func (s *Service) PurgeActivity(ctx context.Context, scope domain.TenantScope, olderThan *time.Time) (int64, error) {
+	return s.activity.Purge(ctx, scope, olderThan)
 }

@@ -85,7 +85,7 @@ func (h *Handler) HandleCreateKeyResult(w http.ResponseWriter, r *http.Request) 
 		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
 		Weight:          weight,
 		Kind:            kind,
-	}, meta)
+	}, meta, auth.UserIDFromContext(r.Context()))
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create key result", nil)
 		return
@@ -134,7 +134,7 @@ func (h *Handler) HandleUpdateKeyResult(w http.ResponseWriter, r *http.Request) 
 		ZeroingCriteria: common.TrimmedFormValue(r, "zeroing_criteria"),
 		Weight:          weight,
 		Kind:            kind,
-	}, meta); err != nil {
+	}, meta, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update key result", nil)
 		return
 	}
@@ -163,7 +163,7 @@ func (h *Handler) HandleUpdateNumericalProgress(w http.ResponseWriter, r *http.R
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	if err := h.service.UpdateKRProgressNumerical(r.Context(), scope, krID, req.CurrentValue); err != nil {
+	if err := h.service.UpdateKRProgressNumerical(r.Context(), scope, krID, req.CurrentValue, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
@@ -192,7 +192,7 @@ func (h *Handler) HandleUpdateBooleanProgress(w http.ResponseWriter, r *http.Req
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	if err := h.service.UpdateKRProgressBoolean(r.Context(), scope, krID, req.Done); err != nil {
+	if err := h.service.UpdateKRProgressBoolean(r.Context(), scope, krID, req.Done, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
@@ -236,7 +236,7 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 		}
 		updates = append(updates, service.ProjectStageUpdate{ID: stage.ID, IsDone: stage.Done})
 	}
-	if err := h.service.UpdateKRProgressProject(r.Context(), scope, krID, updates); err != nil {
+	if err := h.service.UpdateKRProgressProject(r.Context(), scope, krID, updates, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
 	}
@@ -338,7 +338,7 @@ func (h *Handler) HandleDeleteKeyResult(w http.ResponseWriter, r *http.Request) 
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	if err := h.service.DeleteKeyResult(r.Context(), scope, krID); err != nil {
+	if err := h.service.DeleteKeyResult(r.Context(), scope, krID, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete key result", nil)
 		return
 	}

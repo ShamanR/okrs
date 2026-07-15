@@ -242,11 +242,17 @@ func (f *fakeStore) UpdateGoalTeamWeight(context.Context, domain.TenantScope, in
 func (f *fakeStore) GetKeyResult(_ context.Context, _ domain.TenantScope, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
-func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) error {
-	return nil
+func (f *fakeStore) GetBooleanMeta(context.Context, domain.TenantScope, int64) (*domain.KRBoolean, error) {
+	return nil, nil
 }
-func (f *fakeStore) SetGoalCommentResolved(context.Context, domain.TenantScope, int64, int64, bool, int64) error {
-	return nil
+func (f *fakeStore) GetKeyResultNote(context.Context, domain.TenantScope, int64) (*domain.KeyResultNote, error) {
+	return nil, nil
+}
+func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) (int64, error) {
+	return 1, nil
+}
+func (f *fakeStore) SetGoalCommentResolved(context.Context, domain.TenantScope, int64, int64, bool, int64) (bool, error) {
+	return true, nil
 }
 func (f *fakeStore) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error {
 	return nil
@@ -364,12 +370,12 @@ func TestShareGoalRejectsForeignTeamTarget(t *testing.T) {
 	svc := newTestService(store, nil)
 	scope := domain.TenantScope{TenantID: 1}
 
-	err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 2, Weight: 50}, {TeamID: 99, Weight: 50}})
+	err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 2, Weight: 50}, {TeamID: 99, Weight: 50}}, 1)
 	if err != ErrShareTargetNotInTenant {
 		t.Fatalf("foreign target (99) must be rejected with ErrShareTargetNotInTenant, got %v", err)
 	}
 
-	if err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 1, Weight: 100}}); err != nil {
+	if err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 1, Weight: 100}}, 1); err != nil {
 		t.Fatalf("all-valid targets must be accepted, got %v", err)
 	}
 }
@@ -409,7 +415,7 @@ func TestUpdateKRProgressNumerical(t *testing.T) {
 	store.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindNumerical}
 	service := newTestService(store, nil)
 
-	if err := service.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 42); err != nil {
+	if err := service.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 42, 1); err != nil {
 		t.Fatalf("update numerical: %v", err)
 	}
 	if store.numericalUpdates[1] != 42 {
@@ -455,7 +461,7 @@ func TestUpdateKRProgressBoolean(t *testing.T) {
 	store.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindBoolean}
 	service := newTestService(store, nil)
 
-	if err := service.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 3, true); err != nil {
+	if err := service.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 3, true, 1); err != nil {
 		t.Fatalf("update boolean: %v", err)
 	}
 	if !store.booleanUpdates[3] {
@@ -470,7 +476,7 @@ func TestUpdateKRProgressProject(t *testing.T) {
 	service := newTestService(store, nil)
 
 	updates := []ProjectStageUpdate{{ID: 100, IsDone: true}}
-	if err := service.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 4, updates); err != nil {
+	if err := service.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 4, updates, 1); err != nil {
 		t.Fatalf("update project: %v", err)
 	}
 	if !store.stageUpdates[100] {

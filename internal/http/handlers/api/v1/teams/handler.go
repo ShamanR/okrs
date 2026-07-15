@@ -154,7 +154,7 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status", map[string]string{"status": "invalid"})
 		return
 	}
-	if err := h.service.UpdateTeamPeriodStatus(r.Context(), scope, teamID, req.PeriodID, status); err != nil {
+	if err := h.service.UpdateTeamPeriodStatus(r.Context(), scope, teamID, req.PeriodID, status, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
 		return
 	}
@@ -258,7 +258,7 @@ func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
 		WorkType:    workType,
 		FocusType:   focusType,
 		OwnerUDIDs:  req.OwnerUDIDs,
-	})
+	}, auth.UserIDFromContext(r.Context()))
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create goal", nil)
 		return

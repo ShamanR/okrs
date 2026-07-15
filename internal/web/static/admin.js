@@ -1049,6 +1049,36 @@ function AccessSettingsPanel({teams}) {
   </div>;
 }
 
+function ActivityLogPanel() {
+  const [depth, setDepth] = useState('quarter');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const labels = {quarter:'старше квартала', year:'старше года', all:'все'};
+  async function purge() {
+    if (!confirm(`Удалить логи активности (${labels[depth]})? Действие необратимо.`)) return;
+    setBusy(true); setMsg('');
+    const res = await apiPost('/api/v1/admin/activity/purge', {older_than: depth});
+    setBusy(false);
+    if (res && res.ok) { const j = await res.json(); setMsg(`Удалено записей: ${j.deleted}`); }
+    else if (res && res.status===422) setMsg('Неверная глубина очистки');
+    else setMsg('Ошибка очистки');
+  }
+  return <div>
+    <DetailHeader breadcrumb="Настройки" title="Лог активности" subtitle="Очистка накопленных событий журнала"/>
+    <DetailSection title="Очистить лог активности">
+      <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+        <select value={depth} onChange={e=>setDepth(e.target.value)} style={{...inpStyle,width:'auto',fontSize:13,cursor:'pointer'}}>
+          <option value="quarter">Старше квартала</option>
+          <option value="year">Старше года</option>
+          <option value="all">Всё</option>
+        </select>
+        <Btn danger onClick={purge} disabled={busy}>{busy?'Очистка…':'Очистить'}</Btn>
+        {msg && <span style={{fontSize:12,color:'#6b7280',fontWeight:600}}>{msg}</span>}
+      </div>
+    </DetailSection>
+  </div>;
+}
+
 function GeneralSettingsPanel() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
@@ -1566,6 +1596,7 @@ function App() {
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><GeneralSettingsPanel/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><FeedbackSettingsPanel/></div>
+      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><ActivityLogPanel/></div>
     </div>}
     {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}
   </Shell>;

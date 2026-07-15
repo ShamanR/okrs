@@ -141,6 +141,12 @@ func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, _ domain.Tenant
 func (f *goalFakeStore) GetKeyResult(_ context.Context, _ domain.TenantScope, id int64) (domain.KeyResult, error) {
 	return f.keyResults[id], nil
 }
+func (f *goalFakeStore) GetBooleanMeta(context.Context, domain.TenantScope, int64) (*domain.KRBoolean, error) {
+	return nil, nil
+}
+func (f *goalFakeStore) GetKeyResultNote(context.Context, domain.TenantScope, int64) (*domain.KeyResultNote, error) {
+	return nil, nil
+}
 func (f *goalFakeStore) CreateKeyResult(_ context.Context, _ domain.TenantScope, _ krs.KeyResultInput) (int64, error) {
 	id := f.nextGoalID
 	f.nextGoalID++
@@ -194,18 +200,24 @@ func (f *goalFakeStore) UnarchivePeriod(_ context.Context, _ domain.TenantScope,
 func (f *goalFakeStore) ListGoalsByTeamsPeriod(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64][]domain.Goal, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) UpdateGoal(_ context.Context, _ domain.TenantScope, _ goals.GoalUpdateInput) error { return nil }
+func (f *goalFakeStore) UpdateGoal(_ context.Context, _ domain.TenantScope, in goals.GoalUpdateInput) error {
+	if g, ok := f.goals[in.ID]; ok {
+		g.Title, g.Description, g.Priority, g.Weight = in.Title, in.Description, in.Priority, in.Weight
+		f.goals[in.ID] = g
+	}
+	return nil
+}
 func (f *goalFakeStore) UpdateGoalFields(_ context.Context, _ domain.TenantScope, _ goals.GoalFieldsUpdateInput) error {
 	return nil
 }
 func (f *goalFakeStore) MoveGoal(_ context.Context, _ domain.TenantScope, _ int64, _ int64, _ int) error {
 	return nil
 }
-func (f *goalFakeStore) AddGoalComment(_ context.Context, _ domain.TenantScope, _ int64, _ string, _ int64) error {
-	return nil
+func (f *goalFakeStore) AddGoalComment(_ context.Context, _ domain.TenantScope, _ int64, _ string, _ int64) (int64, error) {
+	return 1, nil
 }
-func (f *goalFakeStore) SetGoalCommentResolved(_ context.Context, _ domain.TenantScope, _, _ int64, _ bool, _ int64) error {
-	return nil
+func (f *goalFakeStore) SetGoalCommentResolved(_ context.Context, _ domain.TenantScope, _, _ int64, _ bool, _ int64) (bool, error) {
+	return true, nil
 }
 func (f *goalFakeStore) ListGoalComments(_ context.Context, _ domain.TenantScope, _ int64) ([]domain.GoalComment, error) {
 	return nil, nil
@@ -292,7 +304,7 @@ func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
 	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10})
+	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10}, 1)
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed, got %v", err)
 	}
@@ -303,7 +315,7 @@ func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10})
+	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10}, 1)
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed for in_progress, got %v", err)
 	}
@@ -314,7 +326,7 @@ func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 	// no entry in statuses → defaults to NoGoals
 	svc := newGoalTestService(st)
 
-	goalID, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5})
+	goalID, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5}, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -335,7 +347,7 @@ func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 	st.statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
 	svc := newGoalTestService(st)
 
-	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5})
+	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5}, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -351,7 +363,7 @@ func TestDeleteGoalBySharedTeamRemovesShareOnly(t *testing.T) {
 	st.goals[7] = domain.Goal{ID: 7, TeamID: 1, PeriodID: 5}
 	svc := newGoalTestService(st)
 
-	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 7, 2)
+	effectiveTeam, periodID, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 7, 2, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -372,7 +384,7 @@ func TestDeleteGoalByOwnerTransfersOwnershipWhenShared(t *testing.T) {
 	st.goalShares[8] = []shares.GoalShare{{GoalID: 8, TeamID: 3, Weight: 30}}
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 8, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 8, 1, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -396,7 +408,7 @@ func TestDeleteGoalByOwnerDeletesGoalWhenNoSharesAndPeriodOpen(t *testing.T) {
 	// statuses defaults to NoGoals → open period
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 9, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 9, 1, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -411,7 +423,7 @@ func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
 	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10, 1, 1)
 	if err != ErrPeriodClosed {
 		t.Fatalf("expected ErrPeriodClosed, got %v", err)
 	}
@@ -427,7 +439,7 @@ func TestDeleteGoalResetsStatusWhenLastGoalRemoved(t *testing.T) {
 	// goalsAfterDelete is empty → no goals remain after deletion
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 11, 1)
+	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 11, 1, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -452,7 +464,7 @@ func TestUpdateGoalOwnerAndSharesBlockedByInProgressPeriod(t *testing.T) {
 	st.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(st)
 
-	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 20, []int64{2})
+	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 20, []int64{2}, 1)
 	if err != ErrCannotShareWithClosedPeriod {
 		t.Fatalf("expected ErrCannotShareWithClosedPeriod, got %v", err)
 	}
@@ -464,7 +476,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 	// team 3 has open period (defaults to NoGoals)
 	svc := newGoalTestService(st)
 
-	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 21, []int64{3})
+	ownerID, periodID, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 21, []int64{3}, 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -486,7 +498,7 @@ func TestUpdateKRProgressNumericalRejectsUnsupportedKind(t *testing.T) {
 	st.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 50); err == nil {
+	if err := svc.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 50, 1); err == nil {
 		t.Fatal("expected error for boolean KR with numerical update")
 	}
 }
@@ -496,7 +508,7 @@ func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 2, true); err == nil {
+	if err := svc.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 2, true, 1); err == nil {
 		t.Fatal("expected error for numerical KR with boolean update")
 	}
 }
@@ -506,7 +518,7 @@ func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 3, nil); err == nil {
+	if err := svc.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 3, nil, 1); err == nil {
 		t.Fatal("expected error for numerical KR with project update")
 	}
 }
@@ -520,6 +532,7 @@ func TestCreateKeyResultWithMetaAppliesNumericalMeta(t *testing.T) {
 	_, err := svc.CreateKeyResultWithMeta(context.Background(), domain.TenantScope{TenantID: 1},
 		krs.KeyResultInput{Kind: domain.KRKindNumerical},
 		KeyResultMetaInput{NumericalStart: 0, NumericalTarget: 100, NumericalCurrent: 30, NumericalUnit: "%"},
+		1,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -540,6 +553,7 @@ func TestCreateKeyResultWithMetaAppliesBooleanMeta(t *testing.T) {
 	_, err := svc.CreateKeyResultWithMeta(context.Background(), domain.TenantScope{TenantID: 1},
 		krs.KeyResultInput{Kind: domain.KRKindBoolean},
 		KeyResultMetaInput{BooleanDone: true},
+		1,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -557,6 +571,7 @@ func TestCreateKeyResultWithMetaAppliesProjectStages(t *testing.T) {
 	_, err := svc.CreateKeyResultWithMeta(context.Background(), domain.TenantScope{TenantID: 1},
 		krs.KeyResultInput{Kind: domain.KRKindProject},
 		KeyResultMetaInput{ProjectStages: stages},
+		1,
 	)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

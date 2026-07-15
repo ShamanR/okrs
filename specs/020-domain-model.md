@@ -132,7 +132,7 @@
 - в режиме `auth.mode=disabled` автором выступает системный пользователь `anonymous-local` (id=1);
 - исторические комментарии, созданные до миграции, бэкфиллены системным пользователем `migration` (id=2);
 - комментарий трактуется как замечание с состоянием: решён ⇔ `resolved_at IS NOT NULL`; `resolved_at` и `resolved_by_user_id` всегда либо оба заполнены, либо оба NULL;
-- отметка решённым обратима (reopen обнуляет оба поля); повторная отметка перезаписывает `resolved_by_user_id` текущим пользователем.
+- отметка решённым обратима (reopen обнуляет оба поля); переход **идемпотентен** — обновление и запись в журнал происходят только при реальной смене состояния (guard `resolved_at IS [NOT] NULL`), поэтому повторный resolve/reopen не перезаписывает `resolved_at`/`resolved_by_user_id` и не создаёт ложную запись в логе активности.
 
 ### KeyResultNote
 
@@ -164,6 +164,31 @@
 - одна и та же goal может быть расшарена на много команд;
 - для каждой shared team хранится собственный weight и собственный sort_order — порядок общей цели можно менять в каждой команде независимо; при шаринге sort_order инициализируется значением `goals.sort_order` владельца;
 - pair (goal_id, team_id) уникален.
+
+### ActivityEvent
+
+Append-only журнал событий OKR (таблица `activity_events`, миграция `039_activity_events`).
+
+**Поля:**
+
+- id
+- tenant_id (FK → tenants.id, ON DELETE CASCADE)
+- actor_user_id (FK → users.id) — кто совершил действие; в `auth.mode=disabled` — `anonymous-local` (id=1)
+- category — `progress` | `composition` | `status` | `discussion` (совпадает с табами UI)
+- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`
+- team_id (FK → teams.id, ON DELETE SET NULL) — команда-контекст на момент события (owner team / команда статуса)
+- period_id (FK → periods.id, ON DELETE SET NULL) — период-контекст
+- goal_id, kr_id, comment_id — ссылки на сущности (**не** FK: журнал переживает удаление сущности)
+- entity_title — снапшот заголовка цели/KR/команды на момент события
+- payload_json (JSONB) — `{ before, after, ... }` + доп. поля (проценты, текст, `changed`, `shared_with_team_ids`)
+- created_at
+
+**Инварианты:**
+
+- журнал **append-only**; событие пишется **best-effort после** успешной мутации в service-слое — ошибка записи логируется, но не роняет действие пользователя (источник правды — сама мутация);
+- actor резолвится tenant-scoped на чтении: активный участник тенанта → имя + аватар; не участник (кроме системных, provider=`system`) → нейтральный плейсхолдер `removed=true` **без** email/аватара/UDID (PII бывшего участника не утекает);
+- хранимые `team_id`/`period_id` — исторический контекст (scope, счётчики, бейдж периода); навигационный target собирается на чтении;
+- очистка журнала — только через admin-действие (tenant-admin своего пространства / system-admin по любому тенанту), см. `040-api-contract.md` и `050-permissions-and-lifecycle.md`.
 
 ### TeamPeriodStatus
 

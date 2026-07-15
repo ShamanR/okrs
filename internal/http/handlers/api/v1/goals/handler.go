@@ -116,7 +116,7 @@ func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
 		}
 		targets = append(targets, service.ShareTarget{TeamID: target.TeamID, Weight: target.Weight})
 	}
-	if err := h.service.ShareGoal(r.Context(), scope, goalID, targets); err != nil {
+	if err := h.service.ShareGoal(r.Context(), scope, goalID, targets, auth.UserIDFromContext(r.Context())); err != nil {
 		if errors.Is(err, service.ErrShareTargetNotInTenant) {
 			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team_id", map[string]string{"team_id": "not in tenant"})
 			return
@@ -304,7 +304,7 @@ func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 		WorkType:    workType,
 		FocusType:   focusType,
 		OwnerUDIDs:  ownerUDIDs,
-	}); err != nil {
+	}, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update goal", nil)
 		return
 	}
@@ -419,7 +419,7 @@ func (h *Handler) HandleLeaveGoalShare(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if _, _, err := h.service.DeleteGoal(r.Context(), scope, goalID, teamID); err != nil {
+	if _, _, err := h.service.DeleteGoal(r.Context(), scope, goalID, teamID, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
 		return
 	}
@@ -442,7 +442,7 @@ func (h *Handler) HandleDeleteGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
-	if _, _, err := h.service.DeleteGoal(r.Context(), scope, goalID, goal.TeamID); err != nil {
+	if _, _, err := h.service.DeleteGoal(r.Context(), scope, goalID, goal.TeamID, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", err.Error(), nil)
 		return
 	}

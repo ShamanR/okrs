@@ -95,7 +95,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		t.Fatalf("meta: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
 	defer server.Close()
 
@@ -189,7 +189,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 		t.Fatalf("create kr: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil)
+	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
 	defer server.Close()
 

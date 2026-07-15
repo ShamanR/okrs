@@ -13,6 +13,7 @@ import (
 	"okrs/internal/domain"
 	"okrs/internal/entitlements"
 	v1 "okrs/internal/http/handlers/api/v1"
+	apiactivity "okrs/internal/http/handlers/api/v1/activity"
 	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	apiconfig "okrs/internal/http/handlers/api/v1/config"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
@@ -190,7 +191,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		logger:      logger,
 		tmpl:        tmpl,
 		zone:        zone,
-		service:     service.NewFromStore(st, grantsCache, hcCache),
+		service:     service.NewFromStore(st, grantsCache, hcCache, logger),
 		auth:        authMgr,
 		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache: grantsCache,
@@ -395,7 +396,11 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = s.tmpl.ExecuteTemplate(w, "stub-shell", s.shellData())
 	}
-	r.Get("/activity-log", stubShell)
+	activityShell := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
+	}
+	r.Get("/activity-log", activityShell)
 	r.Get("/goal-tree", stubShell)
 
 	// Legacy redirect for bookmarks — the tracker now lives at the root.
@@ -412,7 +417,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding, s.provisioning)
+	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding, s.provisioning, s.service)
 	serviceH := apiadmin.NewServiceHandler(s.service)
 
 	r.Group(func(r chi.Router) {
@@ -451,6 +456,9 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Get("/api/v1/admin/settings/feedback", adminAPI.HandleGetFeedbackSettings)
 		r.Post("/api/v1/admin/settings/feedback", adminAPI.HandleUpdateFeedbackSettings)
 
+		// Admin activity-log purge.
+		r.Post("/api/v1/admin/activity/purge", adminAPI.HandlePurgeActivity)
+
 		// Admin periods API.
 		r.Get("/api/v1/admin/periods", serviceH.HandleListPeriods)
 		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)
@@ -487,7 +495,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 }
 
 func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddleware) {
-	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants, s.store.Memberships)
+	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants, s.store.Memberships, s.store.Activity)
 
 	r.Group(func(r chi.Router) {
 		// RequireSystemAdmin is the SOLE gate for the system plane in EVERY mode (spec 040):
@@ -518,6 +526,7 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		r.Get("/api/v1/system/tenants/{id}/entitlements", sysH.HandleGetEntitlements)
 		r.Post("/api/v1/system/tenants/{id}/suspend", sysH.HandleSuspend)
 		r.Post("/api/v1/system/tenants/{id}/restore", sysH.HandleRestore)
+		r.Post("/api/v1/system/tenants/{id}/activity/purge", sysH.HandlePurgeActivity)
 		r.Get("/api/v1/system/users", sysH.HandleListUsers)
 		r.Put("/api/v1/system/users/{userID}/system-admin", sysH.HandleSetSystemAdmin)
 		r.Get("/api/v1/system/settings", sysH.HandleGetSettings)
@@ -532,6 +541,7 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 // route table are registered inline here.
 func (s *Server) registerApiRoutes(r chi.Router) {
 	apihierarhy.RegisterRoutes(r, apihierarhy.New(s.service))
+	apiactivity.RegisterRoutes(r, apiactivity.New(s.service))
 	apiperiods.RegisterRoutes(r, apiperiods.New(s.service))
 	apiteams.RegisterRoutes(r, apiteams.New(s.service))
 	apigoals.RegisterRoutes(r, apigoals.New(s.service))

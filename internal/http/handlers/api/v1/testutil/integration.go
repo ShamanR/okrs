@@ -13,6 +13,7 @@ import (
 	"okrs/internal/auth"
 	"okrs/internal/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
+	apiactivity "okrs/internal/http/handlers/api/v1/activity"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
@@ -53,6 +54,7 @@ func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.
 	apiteams.RegisterRoutes(router, teamsHandler)
 	apigoals.RegisterRoutes(router, goalsHandler)
 	apikrs.RegisterRoutes(router, krsHandler)
+	apiactivity.RegisterRoutes(router, apiactivity.New(svc))
 	v1.RegisterMethodNotAllowed(router)
 	return router
 }
