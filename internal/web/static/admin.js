@@ -111,19 +111,24 @@ function RowAction({title, onClick, disabled, danger, children}) {
     {children}
   </button>;
 }
-function Modal({open, title, subtitle, onClose, children, width=640}) {
+function Modal({open, title, subtitle, onClose, children, width=640, guarded=false, closeRef}) {
   // Закрываем по оверлею только если и нажатие, и отпускание мыши были на нём самом —
   // иначе выделение текста с выносом курсора за пределы окна закрывало бы модалку.
   const downOnOverlay=useRef(false);
+  // guarded — закрытием (×, оверлей, Escape) управляет useModalClose в теле редактора
+  // через closeRef.current (=requestClose): он покажет guard несохранённых изменений.
+  const fire=()=>{ if (guarded && closeRef && closeRef.current) closeRef.current(); else onClose(); };
   const onMouseDown=e=>{downOnOverlay.current=e.target===e.currentTarget;};
-  const onMouseUp=e=>{const close=downOnOverlay.current&&e.target===e.currentTarget;downOnOverlay.current=false;if(close)onClose();};
+  const onMouseUp=e=>{const close=downOnOverlay.current&&e.target===e.currentTarget;downOnOverlay.current=false;if(close)fire();};
   useEffect(()=>{
     if (!open) return;
+    // Когда guarded — keydown и блокировку скролла ведёт useModalClose (в теле).
+    if (guarded) return;
     const h=e=>{if(e.key==='Escape')onClose();};
     document.addEventListener('keydown',h);
     const prev=document.body.style.overflow; document.body.style.overflow='hidden';
     return()=>{document.removeEventListener('keydown',h);document.body.style.overflow=prev;};
-  },[open,onClose]);
+  },[open,onClose,guarded]);
   if (!open) return null;
   return <div onMouseDown={onMouseDown} onMouseUp={onMouseUp} style={{position:'fixed',inset:0,background:'rgba(15,23,42,0.42)',backdropFilter:'blur(2px)',zIndex:2000,display:'flex',alignItems:'flex-start',justifyContent:'center',padding:'28px 24px 48px',overflow:'auto'}}>
     {/* overflow:visible — чтобы выпадающие списки (напр. выбор родителя) не обрезались рамкой окна */}
@@ -133,7 +138,7 @@ function Modal({open, title, subtitle, onClose, children, width=640}) {
           <div style={{fontSize:16,fontWeight:800,color:T.headingFg,letterSpacing:'-.2px'}}>{title}</div>
           {subtitle&&<div style={{fontSize:12,color:T.mutedFg,marginTop:3}}>{subtitle}</div>}
         </div>
-        <button onClick={onClose} style={{width:30,height:30,borderRadius:8,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:'pointer',fontSize:15,lineHeight:1,padding:0,flexShrink:0}}
+        <button onClick={fire} style={{width:30,height:30,borderRadius:8,border:'1px solid '+T.cardBorder,background:'white',color:T.mutedFg,cursor:'pointer',fontSize:15,lineHeight:1,padding:0,flexShrink:0}}
           onMouseEnter={e=>{e.currentTarget.style.background='#f8fafc';}}
           onMouseLeave={e=>{e.currentTarget.style.background='white';}}>×</button>
       </div>
@@ -205,7 +210,7 @@ function TeamCombobox({selectedIds, onChange, teams, placeholder, single, exclud
     if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(interactable.length-1,h+1));}
     else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
     else if(e.key==='Enter'){e.preventDefault();if(open&&interactable[hi])add(interactable[hi]);}
-    else if(e.key==='Escape')setOpen(false);
+    else if(e.key==='Escape'){if(open){e.preventDefault();setOpen(false);}}
     else if(e.key==='Backspace'&&!q&&selected.length>0)remove(selected[selected.length-1].id);
   };
   return <div ref={wrapRef} style={{position:'relative'}}>
@@ -394,6 +399,7 @@ function PeriodRow({p, cols, first, onOpen, actions}) {
 
 function PeriodsSection({periods, reload}) {
   const [modal, setModal] = useState(null); // {mode:'new', parent} | {mode:'edit', period}
+  const periodCloseRef = useRef(null);
   const [saving, setSaving] = useState(false);
 
   const openNew = parent => setModal({mode:'new', parent: parent||null});
@@ -470,17 +476,17 @@ function PeriodsSection({periods, reload}) {
       subtitle={modal && modal.mode==='new'
         ? 'Заполните название и даты. Статус вычисляется по датам.'
         : 'Измените название и даты. Статус вычисляется по датам.'}
-      onClose={()=>setModal(null)} width={560}>
+      onClose={()=>setModal(null)} width={560} guarded closeRef={periodCloseRef}>
       {modal && <PeriodModalBody
         key={modal.mode==='edit' ? 'edit-'+modal.period.id : 'new-'+(modal.parent?modal.parent.id:'root')}
         modal={modal} saving={saving}
-        onSave={save} onClose={()=>setModal(null)}
+        onSave={save} onClose={()=>setModal(null)} closeRef={periodCloseRef}
         onDelete={modal.mode==='edit' ? ()=>remove(modal.period) : null}/>}
     </Modal>
   </div>;
 }
 
-function PeriodModalBody({modal, saving, onSave, onClose, onDelete}) {
+function PeriodModalBody({modal, saving, onSave, onClose, onDelete, closeRef}) {
   const isNew = modal.mode === 'new';
   const period = modal.period;
   const parent = modal.parent;
@@ -491,6 +497,9 @@ function PeriodModalBody({modal, saving, onSave, onClose, onDelete}) {
 
   const [f, setF] = useState(initial);
   const canSave = f.name.trim() && f.start_date && f.end_date;
+  const isDirty = JSON.stringify(f) !== JSON.stringify(initial);
+  const { requestClose, confirmEl } = useModalClose({ isDirty, canSave: !!canSave && !saving, onSave: () => { if (canSave) onSave(f); }, onClose });
+  useEffect(() => { if (closeRef) closeRef.current = requestClose; }, [closeRef, requestClose]);
   const preview = periodStatusPreview(f.start_date, f.end_date, isArchived);
 
   return <div>
@@ -519,6 +528,7 @@ function PeriodModalBody({modal, saving, onSave, onClose, onDelete}) {
       <Btn onClick={onClose} disabled={saving}>Отмена</Btn>
       <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving ? 'Сохранение…' : isNew ? 'Создать' : 'Сохранить'}</Btn>
     </div>
+    {confirmEl}
   </div>;
 }
 
@@ -541,6 +551,7 @@ function TeamsSection({teams, reload}) {
   useEffect(()=>{ writeTeamsExpanded(expanded); },[expanded]);
   const [modal, setModal] = useState(null); // {mode:'new', parentId} | {mode:'edit', team}
   const [saving, setSaving] = useState(false);
+  const teamCloseRef = useRef(null);
 
   const activeTeams = teams.filter(t=>!t.deleted_at);
   const deletedTeams = teams.filter(t=>!!t.deleted_at);
@@ -673,8 +684,8 @@ function TeamsSection({teams, reload}) {
         ))}
       </>}
     </div>
-    <Modal open={!!modal} title={modalTitle} subtitle={modalSubtitle} onClose={()=>setModal(null)} width={680}>
-      {modal&&<TeamEditor value={modalValue} teams={activeTeams} onSave={save} onClose={()=>setModal(null)}
+    <Modal open={!!modal} title={modalTitle} subtitle={modalSubtitle} onClose={()=>setModal(null)} width={680} guarded closeRef={teamCloseRef}>
+      {modal&&<TeamEditor value={modalValue} teams={activeTeams} onSave={save} onClose={()=>setModal(null)} closeRef={teamCloseRef}
         onDelete={modal.mode==='edit'?()=>remove(modal.team.id,modal.team.name):null} saving={saving}/>}
     </Modal>
   </div>;
@@ -785,10 +796,13 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
 
 // Modal body for creating/editing a team. The surrounding <Modal> supplies the
 // header (title + breadcrumb + close); this renders the form fields and footer.
-function TeamEditor({value, teams, onSave, onClose, onDelete, saving}) {
+function TeamEditor({value, teams, onSave, onClose, onDelete, saving, closeRef}) {
   const [f, setF] = useState({...value});
   useEffect(()=>{setF({...value});},[value.id]);
   const canSave = f.name.trim() && f.type;
+  const isDirty = JSON.stringify(f) !== JSON.stringify(value);
+  const { requestClose, confirmEl } = useModalClose({ isDirty, canSave: !!canSave && !saving, onSave: () => { if (canSave) onSave(f); }, onClose });
+  useEffect(()=>{ if (closeRef) closeRef.current = requestClose; },[closeRef, requestClose]);
   const isNew = !value.id;
   const children = value.id ? teams.filter(t=>t.parent_id===value.id) : [];
   const sep = <div style={{height:1,background:T.hairline,margin:'2px 0 16px'}}/>;
@@ -825,6 +839,7 @@ function TeamEditor({value, teams, onSave, onClose, onDelete, saving}) {
       <Btn onClick={onClose} disabled={saving}>Отмена</Btn>
       <Btn variant="primary" onClick={()=>canSave&&onSave(f)} disabled={!canSave||saving}>{saving?'Сохранение…':isNew?'Создать':'Сохранить'}</Btn>
     </div>
+    {confirmEl}
   </div>;
 }
 
@@ -1296,6 +1311,7 @@ function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('all'); // all | admins | noaccess
   const [modalId, setModalId] = useState(null);
+  const userCloseRef = useRef(null);
 
   const activeTeams = useMemo(()=>teams.filter(t=>!t.deleted_at),[teams]);
   // Teams each user leads, keyed by lead UDID — used both for search and display.
@@ -1404,8 +1420,8 @@ function UsersSection({users, teams, currentUser, reload}) {
     <Modal open={!!modalUser}
       title={modalUser&&<span style={{display:'inline-flex',alignItems:'center',gap:12}}><Avatar user={modalUser} size={36}/>{modalUser.DisplayName}{modalUser.ID===currentUser?.id&&<span style={{fontSize:10.5,color:T.mutedFg,background:'#f1f5f9',padding:'2px 7px',borderRadius:5,fontWeight:700}}>ВЫ</span>}</span>}
       subtitle={modalUser&&`${modalUser.Provider} · ${modalUser.Email}`}
-      onClose={()=>setModalId(null)} width={760}>
-      {modalUser&&<UserModal user={modalUser} teams={teams} currentUser={currentUser} allUsers={users} ledTeams={ledTeams(modalUser)} onClose={()=>setModalId(null)} onSaved={()=>{setModalId(null);reload();}}/>}
+      onClose={()=>setModalId(null)} width={760} guarded closeRef={userCloseRef}>
+      {modalUser&&<UserModal user={modalUser} teams={teams} currentUser={currentUser} allUsers={users} ledTeams={ledTeams(modalUser)} onClose={()=>setModalId(null)} onSaved={()=>{setModalId(null);reload();}} closeRef={userCloseRef}/>}
     </Modal>
   </div>;
 }
@@ -1413,7 +1429,7 @@ function UsersSection({users, teams, currentUser, reload}) {
 // Modal body for a user. The surrounding <Modal> supplies the header (avatar +
 // name + close). Admin toggle and hierarchy grants are batched and applied on
 // «Сохранить»; «Отмена» discards them.
-function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSaved}) {
+function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSaved, closeRef}) {
   const [grants, setGrants] = useState(null);          // original grants loaded from API
   const [loading, setLoading] = useState(true);
   const [pendingGrantIds, setPendingGrantIds] = useState([]);
@@ -1448,6 +1464,14 @@ function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSav
       onSaved();
     } finally { setSaving(false); }
   }
+
+  const grantsDirty = grants != null && (
+    pendingGrantIds.length !== grants.length ||
+    pendingGrantIds.some(id => !grants.some(g => g.TeamID === id))
+  );
+  const isDirty = (pendingAdmin !== (user.Role === 'admin')) || grantsDirty;
+  const { requestClose, confirmEl } = useModalClose({ isDirty, canSave: !saving && !loading, onSave: save, onClose });
+  useEffect(() => { if (closeRef) closeRef.current = requestClose; }, [closeRef, requestClose]);
 
   return <div>
     <DetailSection title="Учётная запись">
@@ -1511,6 +1535,7 @@ function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSav
       <Btn onClick={onClose} disabled={saving}>Отмена</Btn>
       <Btn variant="primary" onClick={save} disabled={saving||loading}>{saving?'Сохранение…':'Сохранить'}</Btn>
     </div>
+    {confirmEl}
   </div>;
 }
 
