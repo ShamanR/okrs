@@ -755,7 +755,7 @@ function UserSelector({value, onChange, placeholder='Поиск пользова
     if(e.key==='ArrowDown'){e.preventDefault();setOpen(true);setHi(h=>Math.min(users.length-1,h+1));}
     else if(e.key==='ArrowUp'){e.preventDefault();setHi(h=>Math.max(0,h-1));}
     else if(e.key==='Enter'){e.preventDefault();if(open&&users[hi])select(users[hi]);}
-    else if(e.key==='Escape'){setOpen(false);setInputVal(value||'');}
+    else if(e.key==='Escape'){if(open){e.preventDefault();setOpen(false);setInputVal(value||'');}}
   };
 
   return (
