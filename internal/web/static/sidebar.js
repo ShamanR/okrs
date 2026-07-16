@@ -121,15 +121,17 @@ function SidebarTenant({ user, bell }) {
 const SIDEBAR_SECTIONS = [
   { id: 'tracker',      label: 'Цели команды',    href: '/',             icon: '🎯' },
   { id: 'goal-tree',    label: 'Дерево целей',    href: '/goal-tree',    icon: '🕸' },
-  { id: 'activity-log', label: 'Лог активностей', href: '/activity-log', icon: '🕑' },
+  // Лог активностей доступен только tenant-admin (совпадает с серверным гейтом) — скрыт для остальных.
+  { id: 'activity-log', label: 'Лог активностей', href: '/activity-log', icon: '🕑', adminOnly: true },
 ];
 // linkParams optionally appends a query string per section id (e.g. carrying the current
 // period from the tracker to the activity log so it opens for the same period).
-function SidebarSections({ active, linkParams }) {
+// isAdmin скрывает admin-only разделы у обычных пользователей.
+function SidebarSections({ active, linkParams, isAdmin }) {
   return (
     <div className="sidebar__sections">
       <div className="sidebar__section-label">Разделы</div>
-      {SIDEBAR_SECTIONS.map(s => (
+      {SIDEBAR_SECTIONS.filter(s => !s.adminOnly || isAdmin).map(s => (
         <a key={s.id} href={s.href + ((linkParams && linkParams[s.id]) || '')} className={`sidebar__navlink${s.id === active ? ' sidebar__navlink--active' : ''}`}>
           <span className="sidebar__navlink-icon">{s.icon}</span>{s.label}
         </a>
@@ -139,16 +141,9 @@ function SidebarSections({ active, linkParams }) {
 }
 
 // SidebarFooter — ссылки Документация/Обратная связь + блок пользователя.
-// Сам тянет /api/v1/config (для docUrl, feedback_url, is_admin) и рендерит FeedbackNudge.
-function SidebarFooter({ user }) {
-  const [cfg, setCfg] = React.useState(null);
+// cfg (/api/v1/config: docUrl, feedback_url, is_admin, …) приходит из Sidebar; рендерит FeedbackNudge.
+function SidebarFooter({ user, cfg }) {
   const [menuOpen, setMenuOpen] = React.useState(false);
-  React.useEffect(() => {
-    fetch('/api/v1/config', { credentials: 'include' })
-      .then(r => (r.ok ? r.json() : null))
-      .then(c => { if (c) setCfg(c); })
-      .catch(() => {});
-  }, []);
   React.useEffect(() => {
     if (!menuOpen) return;
     const onKey = e => { if (e.key === 'Escape') setMenuOpen(false); };
@@ -201,13 +196,21 @@ function SidebarFooter({ user }) {
 // flex:1 скролл-регионом). beforeSections — вставка между шапкой и разделами
 // (на трекере — блок выбора периода).
 function Sidebar({ user, active, bell, beforeSections, showSections = true, linkParams, children }) {
+  // Единый источник конфига для сайдбара: разделы (activity-log под is_admin) и футер.
+  const [cfg, setCfg] = React.useState(null);
+  React.useEffect(() => {
+    fetch('/api/v1/config', { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(c => { if (c) setCfg(c); })
+      .catch(() => {});
+  }, []);
   return (
     <div className="sidebar">
       <SidebarTenant user={user} bell={bell} />
       {beforeSections}
-      {showSections !== false && <SidebarSections active={active} linkParams={linkParams} />}
+      {showSections !== false && <SidebarSections active={active} linkParams={linkParams} isAdmin={!!(cfg && cfg.is_admin)} />}
       {children}
-      <SidebarFooter user={user} />
+      <SidebarFooter user={user} cfg={cfg} />
     </div>
   );
 }
