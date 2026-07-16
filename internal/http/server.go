@@ -396,11 +396,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = s.tmpl.ExecuteTemplate(w, "stub-shell", s.shellData())
 	}
-	activityShell := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
-	}
-	r.Get("/activity-log", activityShell)
+	// /activity-log — под tenant-admin гейтом, регистрируется в registerAdminRoutes.
 	r.Get("/goal-tree", stubShell)
 
 	// Legacy redirect for bookmarks — the tracker now lives at the root.
@@ -434,6 +430,12 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Get("/admin/access", adminShell)
 		r.Get("/admin/teams", adminShell)
 		r.Get("/admin/periods", adminShell)
+
+		// Журнал активности — tenant-admin-only раздел (собственный shell, не admin-панель).
+		r.Get("/activity-log", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
+		})
 		// Legacy deep-links → root SPA.
 		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
 		r.Get("/admin/teams/new", redirect)
@@ -541,7 +543,14 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 // route table are registered inline here.
 func (s *Server) registerApiRoutes(r chi.Router) {
 	apihierarhy.RegisterRoutes(r, apihierarhy.New(s.service))
-	apiactivity.RegisterRoutes(r, apiactivity.New(s.service))
+	// Журнал активности (лента + счётчики) — только для tenant-admin, как и очистка
+	// журнала (RequireTenantAdmin). При AUTH_MODE=disabled anonymous-local — admin, доступ есть.
+	r.Group(func(r chi.Router) {
+		if !s.auth.Disabled() {
+			r.Use(auth.RequireTenantAdminMiddleware)
+		}
+		apiactivity.RegisterRoutes(r, apiactivity.New(s.service))
+	})
 	apiperiods.RegisterRoutes(r, apiperiods.New(s.service))
 	apiteams.RegisterRoutes(r, apiteams.New(s.service))
 	apigoals.RegisterRoutes(r, apigoals.New(s.service))

@@ -311,10 +311,11 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 ### `GET /api/v1/activity`
 
 Лента событий журнала активности (см. `ActivityEvent` в `020-domain-model.md`). Read-only,
-под membership-гейтом, tenant-scoped. Видимость **share-aware**: событие видно, если *audience*
-его цели (owner team ∪ команды, которым цель расшарена) пересекается с доступными пользователю
-командами (`PolicyEvaluator`); для admin — все события тенанта. Событие с неизвестной командой
-(`team_id IS NULL`) в scoped-ленту не попадает (fail-closed).
+tenant-scoped. **Доступ — только tenant-admin** (`RequireTenantAdmin`, `memberships.role = admin`);
+не-админ получает `403`. При `AUTH_MODE=disabled` доступен всем (`anonymous-local` — admin). Админ
+видит **все** события своего тенанта; событие с неизвестной командой (`team_id IS NULL`) в ленту
+не попадает (fail-closed). Share-aware audience-фильтрация (`PolicyEvaluator`) в коде сохраняется,
+но для admin-scope охватывает все команды тенанта.
 
 Query-параметры (все опциональны): `period_id`, `team_ids[]` (фильтр по audience выбранных
 команд), `category` (`progress`|`composition`|`status`|`discussion`), `actor_udid`, `range`
@@ -334,6 +335,7 @@ PII), `team_id`/`period_id`/`goal_id`/`kr_id`/`comment_id`, `entity_title`, `tar
 
 ### `GET /api/v1/activity/tree-counts`
 
+**Доступ — только tenant-admin** (тот же гейт, что и у `GET /api/v1/activity`); не-админ — `403`.
 Query: `period_id` (опц.), `range` (опц.). Ответ: `{ "counts": { "<team_id>": <int> } }` —
 прямые счётчики событий по команде за период+диапазон (audience-раскрытие: событие расшаренной
 цели считается каждой командой из audience), в рамках доступного scope. Фронт агрегирует по
@@ -341,6 +343,7 @@ Query: `period_id` (опц.), `range` (опц.). Ответ: `{ "counts": { "<te
 
 ### `GET /api/v1/activity/category-counts`
 
+**Доступ — только tenant-admin** (тот же гейт, что и у `GET /api/v1/activity`); не-админ — `403`.
 Query: те же фильтры, что у `GET /api/v1/activity`, **кроме `category` и `cursor`** (`period_id`,
 `team_ids[]`, `range`, `actor_udid`, `q`). Ответ: `{ "counts": { "<category>": <int> }, "total": <int> }`.
 Даёт счётчики для табов ленты, стабильные при переключении категории (сам фильтр по категории
