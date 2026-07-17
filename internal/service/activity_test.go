@@ -75,6 +75,92 @@ func TestSetGoalCommentResolvedRecordsEvent(t *testing.T) {
 	}
 }
 
+func TestAddGoalReplyRecordsReplyAddedEvent(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{goals: map[int64]domain.Goal{7: {ID: 7, TeamID: 42, PeriodID: 3, Title: "P95"}}}
+	s := New(Deps{Activity: fa, Goals: gf})
+	if err := s.AddGoalReply(context.Background(), domain.TenantScope{TenantID: 1}, 7, 11, "a reply", 5); err != nil {
+		t.Fatalf("AddGoalReply: %v", err)
+	}
+	if len(fa.recorded) != 1 {
+		t.Fatalf("want 1 event, got %d", len(fa.recorded))
+	}
+	ev := fa.recorded[0]
+	if ev.Category != domain.ActivityDiscussion || ev.Action != domain.ActionReplyAdded {
+		t.Fatalf("wrong event: %+v", ev)
+	}
+	if ev.TeamID == nil || *ev.TeamID != 42 || ev.EntityTitle != "P95" || ev.Payload["text"] != "a reply" {
+		t.Fatalf("event fields wrong: %+v", ev)
+	}
+}
+
+func TestAddGoalReplyBadParentNoEvent(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{goals: map[int64]domain.Goal{7: {ID: 7}}, addReplyErr: goals.ErrNotFound}
+	s := New(Deps{Activity: fa, Goals: gf})
+	if err := s.AddGoalReply(context.Background(), domain.TenantScope{TenantID: 1}, 7, 999, "orphan", 5); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if len(fa.recorded) != 0 {
+		t.Fatalf("no event expected on failed reply, got %d", len(fa.recorded))
+	}
+}
+
+func TestDeleteGoalCommentForbiddenForNonAuthorNonAdmin(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{goals: map[int64]domain.Goal{7: {ID: 7, TeamID: 42, PeriodID: 3, Title: "P95"}}, commentAuthor: 2, commentIsTask: true}
+	s := New(Deps{Activity: fa, Goals: gf})
+	// requesting user 1, author is 2, not admin → forbidden.
+	if _, err := s.DeleteGoalComment(context.Background(), domain.TenantScope{TenantID: 1}, 7, 11, 1, false); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("want ErrForbidden, got %v", err)
+	}
+	if len(gf.deleteCommentCalls) != 0 || len(fa.recorded) != 0 {
+		t.Fatalf("no delete/event expected on forbidden: deletes=%v events=%d", gf.deleteCommentCalls, len(fa.recorded))
+	}
+}
+
+func TestDeleteGoalCommentAdminDeletesReplyLogsReplyDeleted(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{goals: map[int64]domain.Goal{7: {ID: 7, TeamID: 42, PeriodID: 3, Title: "P95"}}, commentAuthor: 2, commentIsTask: false}
+	s := New(Deps{Activity: fa, Goals: gf})
+	// requesting user 1 is admin, author is 2, target is a reply.
+	isTask, err := s.DeleteGoalComment(context.Background(), domain.TenantScope{TenantID: 1}, 7, 11, 1, true)
+	if err != nil || isTask {
+		t.Fatalf("admin delete reply: isTask=%v err=%v", isTask, err)
+	}
+	if len(gf.deleteCommentCalls) != 1 {
+		t.Fatalf("delete must be called once, got %d", len(gf.deleteCommentCalls))
+	}
+	if len(fa.recorded) != 1 || fa.recorded[0].Action != domain.ActionReplyDeleted {
+		t.Fatalf("want reply_deleted, got %+v", fa.recorded)
+	}
+}
+
+func TestDeleteGoalCommentAuthorDeletesTaskLogsCommentDeleted(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{goals: map[int64]domain.Goal{7: {ID: 7, TeamID: 42, PeriodID: 3, Title: "P95"}}, commentAuthor: 5, commentIsTask: true}
+	s := New(Deps{Activity: fa, Goals: gf})
+	isTask, err := s.DeleteGoalComment(context.Background(), domain.TenantScope{TenantID: 1}, 7, 11, 5, false)
+	if err != nil || !isTask {
+		t.Fatalf("author delete task: isTask=%v err=%v", isTask, err)
+	}
+	if len(fa.recorded) != 1 || fa.recorded[0].Action != domain.ActionCommentDeleted {
+		t.Fatalf("want comment_deleted, got %+v", fa.recorded)
+	}
+}
+
+func TestDeleteGoalCommentMissingReturnsNotFound(t *testing.T) {
+	fa := &fakeActivityRepo{}
+	gf := &goalFakeStore{goals: map[int64]domain.Goal{7: {ID: 7}}, commentMetaErr: goals.ErrNotFound}
+	s := New(Deps{Activity: fa, Goals: gf})
+	if _, err := s.DeleteGoalComment(context.Background(), domain.TenantScope{TenantID: 1}, 7, 11, 5, false); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if len(fa.recorded) != 0 {
+		t.Fatalf("no event expected when comment missing, got %d", len(fa.recorded))
+	}
+}
+
 func TestUpdateStatusRecordsEvent(t *testing.T) {
 	fa := &fakeActivityRepo{}
 	st := newFakeStore()

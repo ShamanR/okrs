@@ -7,6 +7,8 @@ func RegisterRoutes(r chi.Router, h *Handler) {
 	r.Post("/api/v1/goals/{goalID}/share", h.HandleShareGoal)
 	r.Post("/api/v1/goals/{goalID}/weight", h.HandleUpdateGoalWeight)
 	r.Post("/api/v1/goals/{goalID}/comments", h.HandleAddGoalComment)
+	r.Post("/api/v1/goals/{goalID}/comments/{commentID}/replies", h.HandleAddGoalReply)
+	r.Delete("/api/v1/goals/{goalID}/comments/{commentID}", h.HandleDeleteGoalComment)
 	r.Post("/api/v1/goals/{goalID}/comments/{commentID}/resolve", h.HandleResolveGoalComment)
 	r.Post("/api/v1/goals/{goalID}/comments/{commentID}/unresolve", h.HandleUnresolveGoalComment)
 	r.Post("/api/v1/goals/{goalID}", h.HandleUpdateGoal)

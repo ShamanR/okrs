@@ -33,6 +33,14 @@ type goalFakeStore struct {
 	upsertNumericalCalls []krs.NumericalMetaInput
 	upsertBoolCalls      []upsertBoolArg
 	replaceStageCalls    []replaceStagesArg
+
+	// comment/reply fakes
+	commentAuthor      int64
+	commentIsTask      bool
+	commentMetaErr     error
+	deleteCommentErr   error
+	addReplyErr        error
+	deleteCommentCalls []int64
 }
 
 type setStatusArg struct {
@@ -221,6 +229,25 @@ func (f *goalFakeStore) SetGoalCommentResolved(_ context.Context, _ domain.Tenan
 }
 func (f *goalFakeStore) ListGoalComments(_ context.Context, _ domain.TenantScope, _ int64) ([]domain.GoalComment, error) {
 	return nil, nil
+}
+func (f *goalFakeStore) AddGoalReply(_ context.Context, _ domain.TenantScope, _, _ int64, _ string, _ int64) (int64, error) {
+	if f.addReplyErr != nil {
+		return 0, f.addReplyErr
+	}
+	return 1, nil
+}
+func (f *goalFakeStore) GetGoalCommentMeta(_ context.Context, _ domain.TenantScope, _, _ int64) (int64, bool, error) {
+	if f.commentMetaErr != nil {
+		return 0, false, f.commentMetaErr
+	}
+	return f.commentAuthor, f.commentIsTask, nil
+}
+func (f *goalFakeStore) DeleteGoalComment(_ context.Context, _ domain.TenantScope, _, commentID int64) error {
+	if f.deleteCommentErr != nil {
+		return f.deleteCommentErr
+	}
+	f.deleteCommentCalls = append(f.deleteCommentCalls, commentID)
+	return nil
 }
 func (f *goalFakeStore) GetGoalShare(_ context.Context, _ domain.TenantScope, _, _ int64) (shares.GoalShare, error) {
 	return shares.GoalShare{}, nil

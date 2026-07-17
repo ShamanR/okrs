@@ -167,7 +167,7 @@ function mapGoal(g) {
     progress: g.progress,
     progressMeta: g.progress_meta,
     krs: (g.key_results || []).map(mapKR),
-    comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text, resolved: !!c.resolved, resolvedBy: c.resolved_by_name, resolvedByUdid: c.resolved_by_udid, resolvedAt: c.resolved_at ? fmtDate(c.resolved_at) : null })),
+    comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text, resolved: !!c.resolved, resolvedBy: c.resolved_by_name, resolvedByUdid: c.resolved_by_udid, resolvedAt: c.resolved_at ? fmtDate(c.resolved_at) : null, replies: (c.replies || []).map(rp => ({ id: rp.id, author: rp.author_name, authorUdid: rp.author_udid, date: fmtDate(rp.created_at), text: rp.text })) })),
     shareTeams: g.share_teams || [],
     shared: (g.share_teams || []).length > 0,
     updatedAt: g.updated_at,
@@ -1007,13 +1007,59 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7 }) {
 }
 
 // ── COMMENTS PANEL ────────────────────────────────────────────────────────────
-// A single comment row. Unresolved comments expose a "resolve" action; resolved
-// ones are visually dimmed and carry a resolver/date meta line with a "reopen" link.
-function CommentRow({ c, onResolve, onUnresolve }) {
+// canModerate: the current user authored the item, or is a tenant admin.
+function canModerate(authorUdid, me, isAdmin) {
+  return isAdmin || (!!me && !!authorUdid && me.udid === authorUdid);
+}
+
+// A single reply row (one level, under a task). Replies are not resolvable.
+function ReplyRow({ r, canDelete, onDelete }) {
   const [busy, setBusy] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const act = async fn => { setBusy(true); try { await fn(); } catch { } finally { setBusy(false); } };
   return (
-    <div id={`comment-${c.id}`} className={`comment${c.resolved ? ' comment--resolved' : ''}`}>
+    <div id={`comment-${r.id}`} className="comment comment--reply">
+      <AvatarWithUDID name={r.author} udid={r.authorUdid} size={24} />
+      <div className="comment__content">
+        <div className="comment__header">
+          <span className="comment__author">{r.author}</span>
+          <span className="comment__date">{r.date}</span>
+        </div>
+        <Markdown text={r.text} className="comment__text" />
+        {canDelete && (
+          <div className="comment__actions">
+            {confirm ? (
+              <>
+                <span className="comment__confirm">Удалить ответ?</span>
+                <button className="comment__link-btn" disabled={busy} onClick={() => act(() => onDelete(r.id))}>Да</button>
+                <button className="comment__link-btn" disabled={busy} onClick={() => setConfirm(false)}>Отмена</button>
+              </>
+            ) : (
+              <button className="comment__link-btn" onClick={() => setConfirm(true)}>Удалить</button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// A single task row (first-level comment). Unresolved tasks expose "resolve"; resolved
+// ones are dimmed with a reopen link. Tasks can be replied to and deleted (author/admin).
+function CommentRow({ c, onResolve, onUnresolve, onReply, onDelete, me, isAdmin }) {
+  const [busy, setBusy] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [showReply, setShowReply] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const act = async fn => { setBusy(true); try { await fn(); } catch { } finally { setBusy(false); } };
+  const canDel = canModerate(c.authorUdid, me, isAdmin);
+  const submitReply = async () => {
+    if (!replyText.trim()) return;
+    await act(() => onReply(c.id, replyText.trim()));
+    setReplyText(''); setShowReply(false);
+  };
+  return (
+    <div id={`comment-${c.id}`} className={`comment${c.resolved ? ' comment--resolved' : ' comment--task-open'}`}>
       <AvatarWithUDID name={c.author} udid={c.authorUdid} size={28} />
       <div className="comment__content">
         <div className="comment__header">
@@ -1024,13 +1070,56 @@ function CommentRow({ c, onResolve, onUnresolve }) {
         <Markdown text={c.text} className="comment__text" />
         {c.resolved ? (
           <div className="comment__resolved-meta">
-            Решено{c.resolvedBy ? ` · ${c.resolvedBy}` : ''}{c.resolvedAt ? ` · ${c.resolvedAt}` : ''}
-            {' · '}
-            <button className="comment__link-btn" disabled={busy} onClick={() => act(() => onUnresolve(c.id))}>Вернуть</button>
+            <span className="comment__resolved-info">Решено{c.resolvedBy ? ` · ${c.resolvedBy}` : ''}{c.resolvedAt ? ` · ${c.resolvedAt}` : ''}</span>
+            <span className="comment__actions-inline">
+              <button className="comment__link-btn" disabled={busy} onClick={() => act(() => onUnresolve(c.id))}><span className="comment__link-ic">↺</span>Вернуть</button>
+              <span className="comment__sep">·</span>
+              <button className="comment__link-btn" onClick={() => setShowReply(v => !v)}><span className="comment__link-ic">↩</span>Ответить</button>
+              {canDel && !confirm && <><span className="comment__sep">·</span>
+                <button className="comment__link-btn comment__link-btn--danger" onClick={() => setConfirm(true)}><span className="comment__link-ic">🗑</span>Удалить</button></>}
+              {canDel && confirm && (
+                <>
+                  <span className="comment__sep">·</span>
+                  <span className="comment__confirm">Удалить замечание и ответы?</span>
+                  <button className="comment__link-btn comment__link-btn--danger" disabled={busy} onClick={() => act(() => onDelete(c.id))}>Да</button>
+                  <span className="comment__sep">·</span>
+                  <button className="comment__link-btn" disabled={busy} onClick={() => setConfirm(false)}>Отмена</button>
+                </>
+              )}
+            </span>
           </div>
         ) : (
           <div className="comment__actions">
             <button className="comment__resolve-btn" disabled={busy} onClick={() => act(() => onResolve(c.id))}>✓ Отметить решённым</button>
+            <button className="comment__link-btn" onClick={() => setShowReply(v => !v)}><span className="comment__link-ic">↩</span>Ответить</button>
+            {canDel && !confirm && <button className="comment__link-btn comment__link-btn--danger" onClick={() => setConfirm(true)}><span className="comment__link-ic">🗑</span>Удалить</button>}
+            {canDel && confirm && (
+              <>
+                <span className="comment__confirm">Удалить замечание и ответы?</span>
+                <button className="comment__link-btn comment__link-btn--danger" disabled={busy} onClick={() => act(() => onDelete(c.id))}>Да</button>
+                <button className="comment__link-btn" disabled={busy} onClick={() => setConfirm(false)}>Отмена</button>
+              </>
+            )}
+          </div>
+        )}
+        {(c.replies || []).length > 0 && (
+          <div className="comment__replies">
+            {c.replies.map(r => (
+              <ReplyRow key={r.id} r={r} canDelete={canModerate(r.authorUdid, me, isAdmin)} onDelete={onDelete} />
+            ))}
+          </div>
+        )}
+        {showReply && (
+          <div className="comment-compose comment-compose--reply">
+            <MarkdownEditor value={replyText} onChange={setReplyText} rows={2} placeholder="Ответ… (Cmd+Enter)"
+              onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitReply(); }}
+              textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ width: '100%', resize: 'vertical' }} />
+            <div className="comment-submit-row">
+              <button onClick={() => { setShowReply(false); setReplyText(''); }} disabled={busy}
+                className="comment-cancel">Отмена</button>
+              <button onClick={submitReply} disabled={!replyText.trim() || busy}
+                className={`comment-submit ${replyText.trim() ? 'comment-submit--active' : 'comment-submit--disabled'}`}>Ответить</button>
+            </div>
           </div>
         )}
       </div>
@@ -1038,7 +1127,7 @@ function CommentRow({ c, onResolve, onUnresolve }) {
   );
 }
 
-function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, me }) {
+function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, onReply, onDelete, me, isAdmin }) {
   const [text, setText] = useState(''); const [saving, setSaving] = useState(false);
   const submit = async () => {
     if (!text.trim()) return;
@@ -1055,13 +1144,13 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, me }) {
         {open.length > 0 && <span className="comments-panel__unresolved">{open.length} нерешённых</span>}
       </div>
       {open.map((c, i) => (
-        <CommentRow key={c.id || i} c={c} onResolve={onResolve} onUnresolve={onUnresolve} />
+        <CommentRow key={c.id || i} c={c} onResolve={onResolve} onUnresolve={onUnresolve} onReply={onReply} onDelete={onDelete} me={me} isAdmin={isAdmin} />
       ))}
       {resolved.length > 0 && (
         <div className="comments-panel__resolved-head">Решённые · {resolved.length}</div>
       )}
       {resolved.map((c, i) => (
-        <CommentRow key={c.id || `r${i}`} c={c} onResolve={onResolve} onUnresolve={onUnresolve} />
+        <CommentRow key={c.id || `r${i}`} c={c} onResolve={onResolve} onUnresolve={onUnresolve} onReply={onReply} onDelete={onDelete} me={me} isAdmin={isAdmin} />
       ))}
       <div className="comment-compose">
         <Avatar name={me?.display_name} avatarUrl={me?.avatar_url} size={28} />
@@ -1082,7 +1171,7 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, me }) {
 }
 
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Goals without key results start expanded so the author's attention is drawn
@@ -1113,6 +1202,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
   const krWeightDelta = 100 - krWeightSum;
 
   const addGoalComment = async text => { await apiPost(`/api/v1/goals/${goal.id}/comments`, { text }); onReload(); };
+  const addGoalReply = async (parentId, text) => { await apiPost(`/api/v1/goals/${goal.id}/comments/${parentId}/replies`, { text }); onReload(); };
+  const deleteComment = async commentId => { await apiDelete(`/api/v1/goals/${goal.id}/comments/${commentId}`); onReload(); };
   const resolveComment = async commentId => { await apiPost(`/api/v1/goals/${goal.id}/comments/${commentId}/resolve`, {}); onReload(); };
   const unresolveComment = async commentId => { await apiPost(`/api/v1/goals/${goal.id}/comments/${commentId}/unresolve`, {}); onReload(); };
   const unresolvedCount = (goal.comments || []).filter(c => !c.resolved).length;
@@ -1251,7 +1342,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
         onConfirm={handleDeleteGoal} onClose={() => setConfirmDeleteGoal(false)} />}
       {showCom && (
         <div className="comments-section">
-          <CommentsPanel comments={goal.comments} onAdd={addGoalComment} onResolve={resolveComment} onUnresolve={unresolveComment} me={me} />
+          <CommentsPanel comments={goal.comments} onAdd={addGoalComment} onResolve={resolveComment} onUnresolve={unresolveComment} onReply={addGoalReply} onDelete={deleteComment} me={me} isAdmin={isAdmin} />
         </div>
       )}
     </div>
@@ -2049,6 +2140,7 @@ function App() {
   const [staleDays, setStaleDays] = useState(7);
   const [behindMargin, setBehindMargin] = useState(10);
   const [greenThreshold, setGreenThreshold] = useState(80);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const loadHCI = useCallback((pid) => {
     if (!pid) return;
@@ -2094,7 +2186,7 @@ function App() {
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, perData, cfg]) => {
       if (meData) setMe(meData);
-      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); if (cfg.green_threshold >= 1 && cfg.green_threshold <= 100) setGreenThreshold(cfg.green_threshold); setEmptyHierMsg(cfg.empty_hierarchy_message || ''); }
+      if (cfg) { setDocUrl(cfg.documentation_url || ''); if (cfg.stale_days > 0) setStaleDays(cfg.stale_days); if (typeof cfg.behind_margin === 'number') setBehindMargin(cfg.behind_margin); if (cfg.green_threshold >= 1 && cfg.green_threshold <= 100) setGreenThreshold(cfg.green_threshold); setEmptyHierMsg(cfg.empty_hierarchy_message || ''); setIsAdmin(!!cfg.is_admin); }
       const items = perData?.items || [];
       setPeriods(items);
       if (items.length > 0) {
@@ -2371,7 +2463,7 @@ function App() {
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
