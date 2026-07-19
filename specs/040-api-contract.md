@@ -400,14 +400,17 @@ Success response (`200`):
     "no_goals":            { "in_counter": true,  "count": 1, "items": [...] },
     "awaiting_validation": { "in_counter": true,  "count": 1, "items": [...] },
     "formation_errors":    { "in_counter": true,  "count": 1, "items": [...] },
-    "lagging":             { "in_counter": false, "count": 0, "items": [] }
+    "lagging":             { "in_counter": false, "count": 0, "items": [] },
+    "comments":            { "in_counter": false, "count": 2, "unresolved": [...], "resolved": [...] }
   }
 }
 ```
 
 `total_problems` = Σ `count` по категориям с `in_counter: true`.
 
-Категория `stale` («N дней без обновления») — сигнал фазы исполнения: считается только для команд в статусе `in_progress` («в работе»). Для статусов `forming` (черновик), `ready` (к валидации), `closed` (закрыт), а также для команд без записи статуса за период (ещё не переведены в работу) предупреждение об отсутствии обновлений не применяется — такие цели не исполняются активно. То же правило действует для предупреждения на карточке цели в трекере.
+Категория `comments` имеет форму `{ in_counter, count, unresolved: [...], resolved: [...] }` (вместо `items`). `count` = число нерешённых комментариев (`unresolved`) в scope пользователя (его lead-команды + спуск на `comment_depth` уровней + owner-команды); в `total_problems` входит только при `in_counter.comments = true` (по умолчанию false). `resolved` — последние `resolved_comments_limit` комментариев пользователя, решённых **не** им самим, по `resolved_at` убыв.; в серверный `total_problems` эта величина **не** входит — их «непросмотренный» счётчик считается на клиенте (watermark в `localStorage`). Элемент `unresolved`: `team_id, team_name, team_path, goal_id, goal_title, comment_id, author_name, text, created_at`. Элемент `resolved`: те же поля + `resolved_at, resolved_by_name` (без `author_name`).
+
+Категория `stale` («N дней без обновления») — сигнал фазы исполнения: считается только для команд в статусе `in_progress` («в работе»). Точка отсчёта порога — последнее обновление прогресса KR цели; если обновлений не было, порог отсчитывается от начала периода (`period.start_date`). Цель попадает в категорию только если прошло больше `stale_days` дней от этой точки, поэтому не начавшийся период (`start_date` в будущем) целей в категорию не добавляет. Для статусов `forming` (черновик), `ready` (к валидации), `closed` (закрыт), а также для команд без записи статуса за период (ещё не переведены в работу) предупреждение об отсутствии обновлений не применяется — такие цели не исполняются активно. То же правило действует для предупреждения на карточке цели в трекере.
 
 Errors:
 - `400 VALIDATION_ERROR` при отсутствии или невалидном `period_id`
@@ -428,7 +431,7 @@ Idempotency: read-only, нет side effects.
 
 Обновляет конфиг Health Check-in. Требует admin-роли и CSRF token.
 
-Body: JSON объект с полями `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `green_threshold`, `in_counter`. Валидация: `stale_days` и `cache_ttl_minutes` > 0, `green_threshold` в диапазоне 1..100.
+Body: JSON объект с полями `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`, `green_threshold`, `comment_depth`, `resolved_comments_limit`, `in_counter` (включая ключ `comments`). Валидация: `stale_days` и `cache_ttl_minutes` > 0, `green_threshold` в диапазоне 1..100, `comment_depth` >= 0, `resolved_comments_limit` >= 1.
 
 После сохранения сбрасывает in-memory кеш.
 

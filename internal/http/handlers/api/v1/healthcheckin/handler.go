@@ -105,6 +105,14 @@ func (h *Handler) HandleUpdateHealthCheckInSettings(w http.ResponseWriter, r *ht
 		writeError(w, http.StatusBadRequest, "green_threshold must be 1..100")
 		return
 	}
+	if body.CommentDepth < 0 {
+		writeError(w, http.StatusBadRequest, "comment_depth must be >= 0")
+		return
+	}
+	if body.ResolvedCommentsLimit < 1 {
+		writeError(w, http.StatusBadRequest, "resolved_comments_limit must be >= 1")
+		return
+	}
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
 		writeError(w, http.StatusForbidden, "no active tenant")

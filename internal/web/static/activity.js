@@ -132,16 +132,7 @@ function ActivitySidebarNode({ node, depth, selectedId, onSelect, expanded, togg
 }
 
 // ── Feed rendering ──────────────────────────────────────────────────────────────
-function buildTargetURL(target) {
-  if (!target) return null;
-  const p = new URLSearchParams();
-  if (target.team_id) p.set('team', target.team_id);
-  if (target.period_id) p.set('period', target.period_id);
-  if (target.goal_id) p.set('goal', target.goal_id);
-  if (target.kr_id) p.set('kr', target.kr_id);
-  if (target.comment_id) p.set('comment', target.comment_id);
-  return '/?' + p.toString();
-}
+// buildTargetURL вынесен в общий ui.js (единый механизм перехода для журнала и колокольчика).
 
 const CATEGORY_ICON = { progress: '📈', composition: '🧩', status: '🚦', discussion: '💬' };
 const CATEGORY_LABEL = { progress: 'Прогресс', composition: 'Состав целей', status: 'Статусы и риски', discussion: 'Обсуждения' };

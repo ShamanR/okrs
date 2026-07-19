@@ -7,6 +7,23 @@ const TEAM_TYPE_LABEL = { department: 'Департамент', cluster: 'Кла
 const TEAM_TYPE_ORDER = { department: 0, cluster: 1, unit: 2, group: 3, team: 4, squad: 5, employee: 6 };
 const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
 
+// buildTargetURL — единый механизм перехода к команде/цели/KR/комментарию в трекере
+// (из журнала событий и из колокольчика Health Check-in). Собирает deep-link на трекер
+// (`/?team=&period=&goal=&kr=&comment=`), который трекер разбирает на загрузке:
+// выбирает команду/период, раскрывает цель и секцию комментариев, скроллит и подсвечивает.
+// target: { team_id?, period_id?, goal_id?, kr_id?, comment_id? }.
+function buildTargetURL(target) {
+  if (!target) return null;
+  const p = new URLSearchParams();
+  if (target.team_id) p.set('team', target.team_id);
+  if (target.period_id) p.set('period', target.period_id);
+  if (target.goal_id) p.set('goal', target.goal_id);
+  if (target.kr_id) p.set('kr', target.kr_id);
+  if (target.comment_id) p.set('comment', target.comment_id);
+  const qs = p.toString();
+  return qs ? '/?' + qs : null;
+}
+
 // ── ОБЩЕЕ ПОВЕДЕНИЕ ЗАКРЫТИЯ МОДАЛОК ────────────────────────────────────────────
 // useModalClose — единое поведение всех модальных окон приложения:
 //   • Escape / крестик / клик по оверлею → requestClose();

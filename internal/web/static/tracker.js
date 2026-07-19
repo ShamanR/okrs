@@ -1886,15 +1886,36 @@ const HCI_CAT_META = {
   awaiting_validation: { icon: '○', label: 'Ожидают валидации', color: '#6b7280' },
   formation_errors: { icon: '⚠', label: 'Ошибки формирования', color: '#ef4444' },
   lagging: { icon: '▼', label: 'Отстающие', color: '#3b82f6' },
+  comments: { icon: '💬', label: 'Комментарии', color: '#8b5cf6' },
 };
-const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging'];
+const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging', 'comments'];
 const HCI_ACTION_LABEL = {
   stale: '→ Обновить прогресс',
   no_goals: '→ Перейти к команде',
   awaiting_validation: '→ Перейти к команде',
   formation_errors: '→ Исправить',
   lagging: '→ Перейти к цели',
+  comments: '→ Перейти к комментарию',
 };
+
+function hciSeenKey(meId) { return `hci_resolved_seen_${meId || 'anon'}`; }
+
+// Непросмотренные решённые = те, чей resolved_at строго новее сохранённого watermark.
+function hciUnseenResolved(hciData, meId) {
+  const resolved = hciData?.categories?.comments?.resolved || [];
+  if (resolved.length === 0) return 0;
+  const wm = localStorage.getItem(hciSeenKey(meId));
+  const wmMs = wm ? new Date(wm).getTime() : 0;
+  return resolved.filter(r => new Date(r.resolved_at).getTime() > wmMs).length;
+}
+
+// Двигает watermark на максимум resolved_at среди показанных решённых.
+function hciMarkResolvedSeen(hciData, meId) {
+  const resolved = hciData?.categories?.comments?.resolved || [];
+  if (resolved.length === 0) return;
+  const maxMs = Math.max(...resolved.map(r => new Date(r.resolved_at).getTime()));
+  localStorage.setItem(hciSeenKey(meId), new Date(maxMs).toISOString());
+}
 
 function HealthCheckInButton({ data, onClick }) {
   if (!data || !data.has_scope) return null;
@@ -1920,7 +1941,7 @@ function formatHCIErrorType(errType, item) {
   return labels[errType] || errType;
 }
 
-function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
+function HealthCheckInPanel({ data, open, onClose }) {
   const [filter, setFilter] = useState(null);
   if (!data) return null;
 
@@ -1931,9 +1952,21 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
     return 'Всё в порядке';
   })();
 
-  const nonEmptyCats = HCI_CAT_ORDER.filter(k => (data.categories?.[k]?.count ?? 0) > 0);
+  // Для категории comments «объём» = нерешённые + мои решённые (у неё нет items/count-семантики badge).
+  const catVisibleCount = (k) => {
+    if (k === 'comments') {
+      const c = data.categories?.comments;
+      return (c?.unresolved?.length || 0) + (c?.resolved?.length || 0);
+    }
+    return data.categories?.[k]?.count ?? 0;
+  };
+  const nonEmptyCats = HCI_CAT_ORDER.filter(k => catVisibleCount(k) > 0);
   const counterCats = HCI_CAT_ORDER.filter(k => data.categories?.[k]?.in_counter);
-  const visibleCats = filter ? [filter] : counterCats;
+  // Секция «Комментарии» видна по умолчанию, даже если не в счётчике (in_counter=false).
+  const commentsNonEmpty = nonEmptyCats.includes('comments');
+  const baseCats = commentsNonEmpty && !counterCats.includes('comments')
+    ? [...counterCats, 'comments'] : counterCats;
+  const visibleCats = filter ? [filter] : baseCats;
 
   return (
     <>
@@ -1966,7 +1999,7 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
                   className="hci-chip"
                   style={chipStyle}
                   onClick={() => setFilter(isActive ? null : k)}>
-                  {meta.icon} {meta.label} · {cat.count}
+                  {meta.icon} {meta.label} · {catVisibleCount(k)}
                 </button>
               );
             })}
@@ -1974,7 +2007,7 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
         )}
 
         <div className="hci-body">
-          {visibleCats.every(k => (data.categories?.[k]?.count ?? 0) === 0) ? (
+          {visibleCats.every(k => catVisibleCount(k) === 0) ? (
             <div className="hci-empty">
               <span className="hci-empty__icon">{filter ? '🔍' : '✅'}</span>
               <span>{filter ? 'По выбранному фильтру ничего нет' : 'Всё ok'}</span>
@@ -1982,7 +2015,48 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
           ) : (
             visibleCats.map(k => {
               const cat = data.categories?.[k];
-              if (!cat || cat.count === 0) return null;
+              if (!cat) return null;
+
+              if (k === 'comments') {
+                const unresolved = cat.unresolved || [];
+                const resolved = cat.resolved || [];
+                if (unresolved.length === 0 && resolved.length === 0) return null;
+                const cmeta = HCI_CAT_META[k];
+                const renderRow = (item, kind) => (
+                  <div key={`${kind}-${item.comment_id}`} className="hci-item">
+                    <div className="hci-item__title">{item.goal_title}</div>
+                    <Markdown text={item.text} className="hci-item__comment" />
+                    <div className="hci-item__meta">
+                      {kind === 'unresolved'
+                        ? (item.author_name || '')
+                        : `решил: ${item.resolved_by_name || ''}`}
+                      {' · '}{(item.team_path || []).join(' › ')}
+                    </div>
+                    <a className="hci-item__action"
+                      href={buildTargetURL({ team_id: item.team_id, period_id: data.period_id, goal_id: item.goal_id, comment_id: item.comment_id })}>
+                      {HCI_ACTION_LABEL[k]}
+                    </a>
+                  </div>
+                );
+                return (
+                  <div key={k} className="hci-section">
+                    <div className="hci-section__header" style={{ color: cmeta.color }}>
+                      <span>{cmeta.icon}</span><span>{cmeta.label}</span>
+                      <span className="hci-section__count">{unresolved.length + resolved.length}</span>
+                    </div>
+                    {unresolved.length > 0 && <>
+                      <div className="hci-team__name"><span>▸</span><span>Нерешённые · {unresolved.length}</span></div>
+                      {unresolved.map(it => renderRow(it, 'unresolved'))}
+                    </>}
+                    {resolved.length > 0 && <>
+                      <div className="hci-team__name"><span>▸</span><span>Мои решённые · {resolved.length}</span></div>
+                      {resolved.map(it => renderRow(it, 'resolved'))}
+                    </>}
+                  </div>
+                );
+              }
+
+              if (cat.count === 0) return null;
               const meta = HCI_CAT_META[k];
               const byTeam = {};
               for (const item of cat.items) {
@@ -2010,10 +2084,10 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
                           {item.progress !== undefined && item.expected_pace !== undefined && (
                             <div className="hci-item__meta">Прогресс: {item.progress}% · Ожидалось: {item.expected_pace}%</div>
                           )}
-                          <button className="hci-item__action"
-                            onClick={() => { onSelectTeam(item.team_id, item.goal_id); onClose(); }}>
+                          <a className="hci-item__action"
+                            href={buildTargetURL({ team_id: item.team_id, period_id: data.period_id, goal_id: item.goal_id })}>
                             {HCI_ACTION_LABEL[k]}
-                          </button>
+                          </a>
                         </div>
                       ))}
                     </div>
@@ -2055,6 +2129,14 @@ function App() {
     apiGet(`/api/v1/health-checkin?period_id=${pid}`)
       .then(d => d && setHciData(d));
   }, []);
+
+  // При открытии панели помечаем решённые комментарии просмотренными (watermark в localStorage),
+  // чтобы после первого просмотра их непросмотренный счётчик в бейдже обнулился.
+  useEffect(() => {
+    if (hciOpen && hciData) {
+      hciMarkResolvedSeen(hciData, me?.id);
+    }
+  }, [hciOpen]);
 
   // Read desired initial team+period once from URL (highest prio) then cookie.
   const initialNavRef = useRef(null);
@@ -2284,7 +2366,7 @@ function App() {
         active="tracker"
         linkParams={{ 'activity-log': periodId ? `?period=${periodId}` : '' }}
         bell={hciData && hciData.has_scope
-          ? <SidebarBell count={hciData.total_problems} onClick={() => setHciOpen(true)} />
+          ? <SidebarBell count={hciData.total_problems + hciUnseenResolved(hciData, me?.id)} onClick={() => setHciOpen(true)} />
           : null}
         beforeSections={
           <div className="sidebar__period">
@@ -2396,15 +2478,6 @@ function App() {
         data={hciData}
         open={hciOpen}
         onClose={() => setHciOpen(false)}
-        onSelectTeam={(teamId, goalId) => {
-          selectTeam(teamId);
-          if (goalId) {
-            setTimeout(() => {
-              const el = document.getElementById(`goal-${goalId}`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 400);
-          }
-        }}
       />
     </div>
   );

@@ -134,6 +134,26 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		if err != nil {
 			return nil, err
 		}
+		goalIDSet := make(map[int64]struct{})
+		for _, goals := range goalsByTeam {
+			for _, g := range goals {
+				goalIDSet[g.ID] = struct{}{}
+			}
+		}
+		goalIDs := make([]int64, 0, len(goalIDSet))
+		for id := range goalIDSet {
+			goalIDs = append(goalIDs, id)
+		}
+		commentsByGoal, err := st.Goals.ListGoalCommentsByGoals(ctx, scope, goalIDs)
+		if err != nil {
+			return nil, err
+		}
+		for teamID, goals := range goalsByTeam {
+			for i := range goals {
+				goals[i].Comments = commentsByGoal[goals[i].ID]
+			}
+			goalsByTeam[teamID] = goals
+		}
 		return &service.PeriodData{
 			PeriodID:    periodID,
 			Period:      period,
