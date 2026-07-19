@@ -469,6 +469,38 @@ func TestCategories_Comments_ResolvedMineLimitK(t *testing.T) {
 	}
 }
 
+func TestCategories_Comments_SharedGoalCountedOnce(t *testing.T) {
+	// Goal 10 owned by team 1, расшарена в team 2; я лид обеих (обе в comment scope).
+	// ListGoalsByTeamsPeriod кладёт копию цели с TeamID = видимой команды под КАЖДУЮ команду,
+	// поэтому один и тот же комментарий не должен считаться дважды.
+	now := time.Now()
+	open := domain.GoalComment{ID: 500, GoalID: 10, Text: "нерешённый", AuthorName: "Bob", AuthorUDID: "udid-bob", CreatedAt: now}
+	rt := now.AddDate(0, 0, -1)
+	mineResolved := domain.GoalComment{ID: 501, GoalID: 10, Text: "мой решённый", AuthorUDID: "udid-alice", ResolvedAt: &rt, ResolvedByUDID: "udid-bob"}
+	gOwner := domain.Goal{ID: 10, TeamID: 1, Title: "Общая цель", Weight: 100, Comments: []domain.GoalComment{open, mineResolved}}
+	gShared := domain.Goal{ID: 10, TeamID: 2, Title: "Общая цель", Weight: 100, Comments: []domain.GoalComment{open, mineResolved}}
+	teams := []domain.Team{
+		makeTeamWithUDID(1, "Owner", strPtr("udid-alice"), nil),
+		makeTeamWithUDID(2, "SharedInto", strPtr("udid-alice"), nil),
+	}
+	data := &PeriodData{
+		PeriodID:    1,
+		Period:      domain.Period{ID: 1, StartDate: now.AddDate(0, -1, 0), EndDate: now.AddDate(0, 1, 0)},
+		Teams:       teams,
+		GoalsByTeam: map[int64][]domain.Goal{1: {gOwner}, 2: {gShared}},
+		Statuses:    map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress, 2: domain.TeamPeriodStatusInProgress},
+	}
+	cfg := makeCfg()
+	res := computeCategories(data, []int64{1, 2}, "udid-alice", cfg, now)
+	comments := res.Categories["comments"]
+	if len(comments.Unresolved) != 1 {
+		t.Fatalf("shared-goal unresolved comment must be counted once, got %d", len(comments.Unresolved))
+	}
+	if len(comments.Resolved) != 1 {
+		t.Fatalf("shared-goal resolved-mine comment must be counted once, got %d", len(comments.Resolved))
+	}
+}
+
 func TestComputeCommentScope_LeadDepth(t *testing.T) {
 	// 1(lead alice) → 2 → 3 → 4 ; owner-only команда 5.
 	teams := []domain.Team{

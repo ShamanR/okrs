@@ -357,10 +357,15 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 	}
 
 	// ── Comments category ─────────────────────────────────────────────
+	// Комментарий привязан к цели по comment_id, а не к команде. Расшаренная цель
+	// присутствует в data.GoalsByTeam под каждой командой, куда она расшарена (у копии
+	// g.TeamID = видимая команда), поэтому один и тот же комментарий встречается несколько
+	// раз. Дедупим по comment_id, чтобы не задваивать счётчик и список.
 	commentScope := computeCommentScope(data.Teams, data.GoalsByTeam, userUDID, cfg.CommentDepth)
 	commentsCat := cats["comments"]
+	seenComment := make(map[int64]struct{})
 
-	// Unresolved: open comments on goals owned by teams in commentScope.
+	// Unresolved: open comments on goals visible to teams in commentScope.
 	for teamID := range commentScope {
 		team, ok := teamsByID[teamID]
 		if !ok {
@@ -368,13 +373,14 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 		}
 		path := buildTeamPath(teamID, teamsByID)
 		for _, g := range data.GoalsByTeam[teamID] {
-			if g.TeamID != teamID { // skip shared goals (count under owner team only)
-				continue
-			}
 			for _, c := range g.Comments {
 				if c.ResolvedAt != nil {
 					continue
 				}
+				if _, dup := seenComment[c.ID]; dup {
+					continue
+				}
+				seenComment[c.ID] = struct{}{}
 				commentsCat.Unresolved = append(commentsCat.Unresolved, HealthCheckInCommentItem{
 					TeamID: teamID, TeamName: team.Name, TeamPath: path,
 					GoalID: g.ID, GoalTitle: g.Title,
@@ -387,6 +393,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 	// Resolved-mine: my comments resolved by someone else, across the whole period, newest K.
 	if userUDID != "" {
 		var mine []HealthCheckInCommentItem
+		seenResolved := make(map[int64]struct{})
 		for teamID, goals := range data.GoalsByTeam {
 			team, ok := teamsByID[teamID]
 			if !ok {
@@ -394,13 +401,14 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 			}
 			path := buildTeamPath(teamID, teamsByID)
 			for _, g := range goals {
-				if g.TeamID != teamID {
-					continue
-				}
 				for _, c := range g.Comments {
 					if c.ResolvedAt == nil || c.AuthorUDID != userUDID || c.ResolvedByUDID == userUDID {
 						continue
 					}
+					if _, dup := seenResolved[c.ID]; dup {
+						continue
+					}
+					seenResolved[c.ID] = struct{}{}
 					rc := c.ResolvedAt
 					mine = append(mine, HealthCheckInCommentItem{
 						TeamID: teamID, TeamName: team.Name, TeamPath: path,
