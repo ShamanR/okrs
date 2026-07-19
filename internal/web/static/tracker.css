@@ -636,7 +636,16 @@
   font-size: 11px;
   color: #64748b;
 }
+.hci-item__comment {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin: 4px 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.hci-item__comment p { margin: 0; }
 .hci-item__action {
+  display: inline-block;
   font-size: 12px;
   font-weight: 600;
   color: #a78bfa;

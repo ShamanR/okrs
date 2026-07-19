@@ -56,6 +56,58 @@ func TestSetGoalCommentResolvedIdempotent(t *testing.T) {
 	}
 }
 
+func TestListGoalCommentsByGoals(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "by-goals")
+	if _, err := gr.AddGoalComment(ctx, scope, goalID, "открытый", seedUserID); err != nil {
+		t.Fatalf("add open: %v", err)
+	}
+	if _, err := gr.AddGoalComment(ctx, scope, goalID, "решённый", seedUserID); err != nil {
+		t.Fatalf("add resolved: %v", err)
+	}
+	comments, _ := gr.ListGoalComments(ctx, scope, goalID)
+	// Resolve one of the two comments.
+	if _, err := gr.SetGoalCommentResolved(ctx, scope, goalID, comments[0].ID, true, seedUserID); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	byGoal, err := gr.ListGoalCommentsByGoals(ctx, scope, []int64{goalID})
+	if err != nil {
+		t.Fatalf("ListGoalCommentsByGoals: %v", err)
+	}
+	if len(byGoal[goalID]) != 2 {
+		t.Fatalf("expected 2 comments for goal, got %d", len(byGoal[goalID]))
+	}
+	var open, resolved int
+	for _, c := range byGoal[goalID] {
+		if c.ResolvedAt == nil {
+			open++
+		} else {
+			resolved++
+		}
+	}
+	if open != 1 || resolved != 1 {
+		t.Fatalf("expected 1 open + 1 resolved, got %d/%d", open, resolved)
+	}
+
+	// Empty input → empty result, no error.
+	empty, err := gr.ListGoalCommentsByGoals(ctx, scope, nil)
+	if err != nil {
+		t.Fatalf("empty input: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("expected empty map for nil goal IDs, got %d", len(empty))
+	}
+}
+
 func TestSetGoalCommentResolved(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
