@@ -1081,8 +1081,41 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, me }) {
   );
 }
 
+// Copy a shareable deep-link to this goal. URL shape and open behavior match the
+// activity-log "↗ к цели" link (shared buildTargetURL from ui.js). For a shared goal
+// the link points at the currently-open team, so it resolves back to the same board.
+function CopyLinkButton({ teamId, periodId, goalId }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async e => {
+    e.stopPropagation();
+    const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId });
+    if (!path) return;
+    const url = location.origin + path;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* silent: leave icon unchanged on failure */ }
+  };
+  return (
+    <button type="button" onClick={copy}
+      className={`goal-card__copy-link${copied ? ' goal-card__copy-link--copied' : ''}`}
+      title={copied ? 'Скопировано' : 'Скопировать ссылку на цель'}
+      aria-label="Скопировать ссылку на цель">
+      {copied ? '✓' : '🔗'}
+    </button>
+  );
+}
+
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Goals without key results start expanded so the author's attention is drawn
@@ -1153,6 +1186,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, accent, currentTea
               ))}
             </div>
           )}
+          <CopyLinkButton teamId={currentTeamId} periodId={periodId} goalId={goal.id} />
         </div>
         <div className="goal-card__title-row">
           <div onClick={canEdit ? () => onEditGoal(goal) : undefined}
@@ -2146,6 +2180,7 @@ function App() {
     initialNavRef.current = {
       team: url.team || cookie.team || null,
       period: url.period || cookie.period || null,
+      fromUrl: !!url.team, // team came from a shared/deep link → reveal it in the tree
       used: false,
     };
   }
@@ -2201,6 +2236,13 @@ function App() {
         let target = null;
         if (!initialNavRef.current.used && initialNavRef.current.team) {
           target = findNodeById(nodes, initialNavRef.current.team) || null;
+          // Opened via a shared/deep link: reveal the target team by expanding its
+          // ancestors, overriding any stored collapsed state. Same behavior the
+          // activity-log "↗ к цели" link now gets.
+          if (target && initialNavRef.current.fromUrl) {
+            const anc = findAncestorIds(nodes, target.id);
+            if (anc.length) setExpanded(m => { const next = { ...m }; anc.forEach(aid => { next[aid] = true; }); return next; });
+          }
         }
         initialNavRef.current.used = true;
         if (!target) target = findFirstNode(nodes);
@@ -2265,6 +2307,20 @@ function App() {
   function findNodeById(nodes, id) {
     for (const n of nodes) { if (n.id === id) return n; const f = findNodeById(n.children || [], id); if (f) return f; }
     return null;
+  }
+  // Ancestor ids of the node with `id` (excluding the node itself), root→parent order.
+  // Used to force-expand a collapsed tree so a deep-linked team becomes visible.
+  function findAncestorIds(nodes, id) {
+    const path = [];
+    const walk = (list, trail) => {
+      for (const n of (list || [])) {
+        if (n.id === id) { path.push(...trail); return true; }
+        if (walk(n.children, [...trail, n.id])) return true;
+      }
+      return false;
+    };
+    walk(nodes, []);
+    return path;
   }
 
   // Nodes are expanded by default (absence ≡ expanded), so the effective state is
@@ -2453,7 +2509,7 @@ function App() {
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
