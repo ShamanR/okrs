@@ -10,16 +10,25 @@ type ShareTeam struct {
 	Weight    int    `json:"weight"`
 }
 
+type GoalReply struct {
+	ID         int64     `json:"id"`
+	Text       string    `json:"text"`
+	AuthorName string    `json:"author_name"`
+	AuthorUDID string    `json:"author_udid"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type GoalComment struct {
-	ID             int64      `json:"id"`
-	Text           string     `json:"text"`
-	AuthorName     string     `json:"author_name"`
-	AuthorUDID     string     `json:"author_udid"`
-	CreatedAt      time.Time  `json:"created_at"`
-	Resolved       bool       `json:"resolved"`
-	ResolvedByName string     `json:"resolved_by_name"`
-	ResolvedByUDID string     `json:"resolved_by_udid"`
-	ResolvedAt     *time.Time `json:"resolved_at"`
+	ID             int64       `json:"id"`
+	Text           string      `json:"text"`
+	AuthorName     string      `json:"author_name"`
+	AuthorUDID     string      `json:"author_udid"`
+	CreatedAt      time.Time   `json:"created_at"`
+	Resolved       bool        `json:"resolved"`
+	ResolvedByName string      `json:"resolved_by_name"`
+	ResolvedByUDID string      `json:"resolved_by_udid"`
+	ResolvedAt     *time.Time  `json:"resolved_at"`
+	Replies        []GoalReply `json:"replies"`
 }
 
 type GoalDetails struct {

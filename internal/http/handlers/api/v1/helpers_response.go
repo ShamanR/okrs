@@ -194,6 +194,16 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period, userRefs m
 }
 
 func MapGoalComment(c domain.GoalComment) dto.GoalComment {
+	replies := make([]dto.GoalReply, 0, len(c.Replies))
+	for _, r := range c.Replies {
+		replies = append(replies, dto.GoalReply{
+			ID:         r.ID,
+			Text:       r.Text,
+			AuthorName: r.AuthorName,
+			AuthorUDID: r.AuthorUDID,
+			CreatedAt:  r.CreatedAt,
+		})
+	}
 	return dto.GoalComment{
 		ID:             c.ID,
 		Text:           c.Text,
@@ -204,6 +214,7 @@ func MapGoalComment(c domain.GoalComment) dto.GoalComment {
 		ResolvedByName: c.ResolvedByName,
 		ResolvedByUDID: c.ResolvedByUDID,
 		ResolvedAt:     c.ResolvedAt,
+		Replies:        replies,
 	}
 }
 

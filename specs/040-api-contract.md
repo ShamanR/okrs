@@ -454,9 +454,11 @@ CSRF token должен быть ротационным (не постоянны
 
 - share goal — `POST /api/v1/goals/{goalID}/share`
 - update goal weight
-- add goal comment — `POST /api/v1/goals/{goalID}/comments`
-- resolve goal comment — `POST /api/v1/goals/{goalID}/comments/{commentID}/resolve`
-- reopen goal comment — `POST /api/v1/goals/{goalID}/comments/{commentID}/unresolve`
+- add goal comment (таска) — `POST /api/v1/goals/{goalID}/comments`
+- add goal reply (ответ на таску) — `POST /api/v1/goals/{goalID}/comments/{commentID}/replies` (`commentID` должен быть таской, `parent_id IS NULL`, иначе `404`; на ответ ответить нельзя)
+- delete goal comment/reply — `DELETE /api/v1/goals/{goalID}/comments/{commentID}` (автор ИЛИ tenant-admin; удаление таски каскадно удаляет её ответы; чужой без admin → `403`; отсутствует → `404`)
+- resolve goal comment — `POST /api/v1/goals/{goalID}/comments/{commentID}/resolve` (только таска; ответ → `404`)
+- reopen goal comment — `POST /api/v1/goals/{goalID}/comments/{commentID}/unresolve` (только таска; ответ → `404`)
 - update goal
 - create KR — `POST /api/v1/goals/{goalID}/key-results`
 - move goal up / down — `POST /api/v1/goals/{goalID}/move-up`, `POST /api/v1/goals/{goalID}/move-down`; форма содержит `team_id` — команду, в чьём представлении периода меняется порядок. Перемещение действует на упорядоченный список этой команды (её собственные цели по `goals.sort_order` вперемешку с общими целями по `goal_shares.sort_order`), поэтому порядок общих целей можно менять в каждой команде независимо, не затрагивая порядок в других командах. Требует доступ к `team_id`; цель должна принадлежать команде (как владелец) или быть в неё расшарена.
@@ -582,18 +584,26 @@ Hierarchy node shape расширен полем:
 
 ### `GET /api/v1/teams/{teamID}/okrs?period_id={id}`
 
-Каждый goal в `goals[]` содержит вложенный массив `comments[]`:
+Каждый goal в `goals[]` содержит вложенный массив `comments[]`. `comments[]` — **только таски** (`parent_id IS NULL`), отсортированные `created_at` по возрастанию (старые → новые); у каждой таски — вложенный `replies[]` (ответы, тоже `created_at` по возрастанию):
 
 ```json
 "comments": [
   {
     "id": 1, "text": "...", "author_name": "Ivan", "author_udid": "550e8400-...", "created_at": "...",
-    "resolved": true, "resolved_by_name": "Petr", "resolved_by_udid": "660e...", "resolved_at": "..."
+    "resolved": true, "resolved_by_name": "Petr", "resolved_by_udid": "660e...", "resolved_at": "...",
+    "replies": [
+      { "id": 5, "text": "...", "author_name": "Anna", "author_udid": "770e...", "created_at": "..." }
+    ]
   }
 ]
 ```
 
-Комментарий трактуется как замечание. `resolved` (bool) — решено ли; при `resolved=false` поля `resolved_by_name`/`resolved_by_udid` пустые, а `resolved_at` — `null`. Отметить решённым / вернуть можно эндпоинтами `.../comments/{commentID}/resolve` и `.../unresolve` (доступ — как к добавлению комментария: любой пользователь в scope цели); несуществующий/чужой комментарий → `404`.
+Таска трактуется как замечание. `resolved` (bool) — решено ли; при `resolved=false` поля `resolved_by_name`/`resolved_by_udid` пустые, а `resolved_at` — `null`. Ответ (`replies[]`) несёт `id`, `text`, `author_name`, `author_udid`, `created_at` — **без** resolve-полей: ответ таской не является и не резолвится.
+
+- отметить решённым / вернуть можно эндпоинтами `.../comments/{commentID}/resolve` и `.../unresolve` **только для таски**; для ответа → `404`. Доступ — как к добавлению комментария (любой пользователь в scope цели); несуществующий/чужой комментарий → `404`;
+- ответ создаётся `POST .../comments/{commentID}/replies` (доступ — любой в scope цели; `commentID` должен быть таской, иначе `404`); удаление таски/ответа — `DELETE .../comments/{commentID}` (автор ИЛИ tenant-admin; таска удаляется каскадно вместе с ответами);
+- **счётчик комментариев цели = число тасок** (`comments.length`); ответы в счётчик не входят;
+- **контроль доступа** для всех comment/reply/resolve/delete: tenant-scope → доступ к команде-владельцу или shared-команде цели (`404` иначе) → привязка `commentID` к `goalID`+тенанту; для `DELETE` дополнительно автор или tenant-admin (`403` иначе). Проверяется на сервере, не только в UI.
 
 #### Key Result measure
 

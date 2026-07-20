@@ -817,7 +817,7 @@ function TeamEditor({value, teams, onSave, onClose, onDelete, saving, closeRef})
           </select>
         </Field>
       </div>
-      <Field label="Описание" hint="необязательно"><MarkdownEditor value={f.description} onChange={v=>setF({...f,description:v})} rows={2} textareaStyle={{...inpStyle,resize:'vertical',lineHeight:1.5,minHeight:64}}/></Field>
+      <Field label="Описание" hint="необязательно"><MarkdownEditor value={f.description} onChange={v=>setF({...f,description:v})} rows={2} textareaStyle={{...inpStyle,border:'none',borderRadius:0,resize:'vertical',lineHeight:1.5,minHeight:64}}/></Field>
       {sep}
       <Field label="Руководитель"><UserSelector value={f.lead||''} onChange={(name, udid)=>setF({...f,lead:name,lead_udid:udid||null})} placeholder="Поиск пользователя…"/></Field>
       {sep}
@@ -1160,7 +1160,7 @@ function GeneralSettingsPanel() {
         Markdown. Показывается в трекере пользователю без доступных команд. Пусто → текст по умолчанию.
       </div>
       <div style={{marginBottom:16}}>
-        <MarkdownEditor value={emptyMsg} onChange={setEmptyMsg} rows={4} textareaStyle={{...inpStyle,resize:'vertical',lineHeight:1.5,minHeight:96}}/>
+        <MarkdownEditor value={emptyMsg} onChange={setEmptyMsg} rows={4} textareaStyle={{...inpStyle,border:'none',borderRadius:0,resize:'vertical',lineHeight:1.5,minHeight:96}}/>
       </div>
       <div style={{display:'flex',alignItems:'center',gap:10}}>
         <Btn variant="primary" onClick={save} disabled={saving}>

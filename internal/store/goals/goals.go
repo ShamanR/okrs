@@ -590,26 +590,33 @@ func (r *GoalRepository) listGoalCommentsBatch(ctx context.Context, scope domain
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at,
-		       gc.resolved_at, ru.display_name, ru.udid
+		SELECT gc.id, gc.goal_id, gc.parent_id, gc.text, u.display_name, u.udid,
+		       gc.author_user_id, gc.created_at, gc.resolved_at, ru.display_name, ru.udid
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
 		LEFT JOIN users ru ON ru.id = gc.resolved_by_user_id
 		WHERE gc.goal_id = ANY($1) AND gc.tenant_id = $2
-		ORDER BY gc.created_at DESC`, goalIDs, scope.TenantID)
+		ORDER BY gc.created_at ASC, gc.id ASC`, goalIDs, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	result := make(map[int64][]domain.GoalComment)
+	flatByGoal := make(map[int64][]domain.GoalComment)
 	for rows.Next() {
 		c, err := scanGoalComment(rows)
 		if err != nil {
 			return nil, err
 		}
-		result[c.GoalID] = append(result[c.GoalID], c)
+		flatByGoal[c.GoalID] = append(flatByGoal[c.GoalID], c)
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	result := make(map[int64][]domain.GoalComment, len(flatByGoal))
+	for goalID, flat := range flatByGoal {
+		result[goalID] = nestGoalComments(flat)
+	}
+	return result, nil
 }
 
 func (r *GoalRepository) listGoalLastKRActivity(ctx context.Context, goalIDs []int64) (map[int64]time.Time, error) {
@@ -844,37 +851,90 @@ func (r *GoalRepository) AddGoalComment(ctx context.Context, scope domain.Tenant
 	return id, err
 }
 
+// AddGoalReply inserts a reply under a task. The INSERT..SELECT guard requires the
+// parent to be a task (parent_id IS NULL) of the same goal and tenant, enforcing the
+// single-level depth; a bad/absent parent yields no row → ErrNotFound.
+func (r *GoalRepository) AddGoalReply(ctx context.Context, scope domain.TenantScope, goalID, parentID int64, text string, authorUserID int64) (int64, error) {
+	var id int64
+	err := r.db.QueryRow(ctx, `
+		INSERT INTO goal_comments (goal_id, parent_id, text, author_user_id, tenant_id)
+		SELECT $1, $2::bigint, $3, $4, $5
+		WHERE EXISTS (
+			SELECT 1 FROM goal_comments
+			WHERE id = $2 AND goal_id = $1 AND tenant_id = $5 AND parent_id IS NULL
+		)
+		RETURNING id`, goalID, parentID, text, authorUserID, scope.TenantID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return id, err
+}
+
+// GetGoalCommentMeta returns the author and whether the comment is a task (parent_id IS NULL),
+// pinned to the goal and tenant. ErrNotFound if the comment does not exist in this scope.
+func (r *GoalRepository) GetGoalCommentMeta(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) (int64, bool, error) {
+	var author int64
+	var isTask bool
+	err := r.db.QueryRow(ctx, `
+		SELECT author_user_id, parent_id IS NULL
+		FROM goal_comments
+		WHERE id = $1 AND goal_id = $2 AND tenant_id = $3`,
+		commentID, goalID, scope.TenantID).Scan(&author, &isTask)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, ErrNotFound
+	}
+	return author, isTask, err
+}
+
+// DeleteGoalComment removes a task (cascading its replies via ON DELETE CASCADE) or a
+// single reply. The WHERE pins the row to its goal and tenant. ErrNotFound if absent.
+func (r *GoalRepository) DeleteGoalComment(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) error {
+	tag, err := r.db.Exec(ctx, `
+		DELETE FROM goal_comments WHERE id = $1 AND goal_id = $2 AND tenant_id = $3`,
+		commentID, goalID, scope.TenantID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *GoalRepository) ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT gc.id, gc.goal_id, gc.text, u.display_name, u.udid, gc.created_at,
-		       gc.resolved_at, ru.display_name, ru.udid
+		SELECT gc.id, gc.goal_id, gc.parent_id, gc.text, u.display_name, u.udid,
+		       gc.author_user_id, gc.created_at, gc.resolved_at, ru.display_name, ru.udid
 		FROM goal_comments gc
 		JOIN users u ON u.id = gc.author_user_id
 		LEFT JOIN users ru ON ru.id = gc.resolved_by_user_id
 		WHERE gc.goal_id = $1 AND gc.tenant_id = $2
-		ORDER BY gc.created_at DESC`, goalID, scope.TenantID)
+		ORDER BY gc.created_at ASC, gc.id ASC`, goalID, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var comments []domain.GoalComment
+	var flat []domain.GoalComment
 	for rows.Next() {
 		c, err := scanGoalComment(rows)
 		if err != nil {
 			return nil, err
 		}
-		comments = append(comments, c)
+		flat = append(flat, c)
 	}
-	return comments, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return nestGoalComments(flat), nil
 }
 
-// scanGoalComment reads a goal comment row that includes resolve metadata.
-// resolved_by_user_id is a LEFT JOIN, so resolver name/udid are nullable.
+// scanGoalComment reads a goal comment row that includes parent, author id and resolve
+// metadata. resolved_by_user_id is a LEFT JOIN, so resolver name/udid are nullable.
 func scanGoalComment(rows pgx.Rows) (domain.GoalComment, error) {
 	var c domain.GoalComment
 	var resolverName, resolverUDID *string
-	if err := rows.Scan(&c.ID, &c.GoalID, &c.Text, &c.AuthorName, &c.AuthorUDID, &c.CreatedAt,
-		&c.ResolvedAt, &resolverName, &resolverUDID); err != nil {
+	if err := rows.Scan(&c.ID, &c.GoalID, &c.ParentID, &c.Text, &c.AuthorName, &c.AuthorUDID,
+		&c.AuthorUserID, &c.CreatedAt, &c.ResolvedAt, &resolverName, &resolverUDID); err != nil {
 		return domain.GoalComment{}, err
 	}
 	if resolverName != nil {
@@ -884,6 +944,29 @@ func scanGoalComment(rows pgx.Rows) (domain.GoalComment, error) {
 		c.ResolvedByUDID = *resolverUDID
 	}
 	return c, nil
+}
+
+// nestGoalComments splits a flat, created_at-ASC-ordered slice into top-level
+// tasks (parent_id IS NULL) each carrying its replies. Replies whose parent is
+// absent from the slice are dropped (defensive; should not happen within a goal).
+func nestGoalComments(flat []domain.GoalComment) []domain.GoalComment {
+	tasks := make([]domain.GoalComment, 0, len(flat))
+	idx := make(map[int64]int, len(flat))
+	for _, c := range flat {
+		if c.ParentID == nil {
+			idx[c.ID] = len(tasks)
+			tasks = append(tasks, c)
+		}
+	}
+	for _, c := range flat {
+		if c.ParentID == nil {
+			continue
+		}
+		if i, ok := idx[*c.ParentID]; ok {
+			tasks[i].Replies = append(tasks[i].Replies, c)
+		}
+	}
+	return tasks
 }
 
 // SetGoalCommentResolved marks a comment resolved (stamping resolver + time) or
@@ -899,10 +982,11 @@ func (r *GoalRepository) SetGoalCommentResolved(ctx context.Context, scope domai
 	if resolved {
 		resolvedBy = &userID
 	}
-	// State guard: resolve only an open comment; reopen only a resolved one.
-	guard := "resolved_at IS NULL"
+	// State guard: only a TASK (parent_id IS NULL) is resolvable; resolve only an open
+	// task, reopen only a resolved one.
+	guard := "parent_id IS NULL AND resolved_at IS NULL"
 	if !resolved {
-		guard = "resolved_at IS NOT NULL"
+		guard = "parent_id IS NULL AND resolved_at IS NOT NULL"
 	}
 	tag, err := r.db.Exec(ctx, `
 		UPDATE goal_comments
@@ -919,7 +1003,7 @@ func (r *GoalRepository) SetGoalCommentResolved(ctx context.Context, scope domai
 	// No row changed: either the comment is missing, or it is already in the target state.
 	var exists bool
 	if err := r.db.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM goal_comments WHERE id=$1 AND goal_id=$2 AND tenant_id=$3)`,
+		`SELECT EXISTS(SELECT 1 FROM goal_comments WHERE id=$1 AND goal_id=$2 AND tenant_id=$3 AND parent_id IS NULL)`,
 		commentID, goalID, scope.TenantID).Scan(&exists); err != nil {
 		return false, err
 	}

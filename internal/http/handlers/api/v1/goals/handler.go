@@ -242,6 +242,93 @@ func (h *Handler) setGoalCommentResolved(w http.ResponseWriter, r *http.Request,
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
+// HandleAddGoalReply creates a reply under a task. Access chain: tenant scope → goal
+// reachable by the caller (owner or shared team) → the parent must be a task of this goal
+// (enforced in the store; a bad/non-task parent → 404).
+func (h *Handler) HandleAddGoalReply(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	commentID, err := common.ParseID(chi.URLParam(r, "commentID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid comment id", map[string]string{"comment_id": "invalid"})
+		return
+	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
+	if err != nil || !h.canAccessGoal(r.Context(), scope, goal) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	if req.Text == "" {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
+		return
+	}
+	if err := h.service.AddGoalReply(r.Context(), scope, goalID, commentID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
+		if errors.Is(err, goals.ErrNotFound) {
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "comment not found", nil)
+			return
+		}
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to add reply", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// HandleDeleteGoalComment deletes a task (cascading its replies) or a reply. Access chain:
+// tenant scope → goal reachable by the caller → the service enforces author-or-admin and pins
+// the comment to the goal/tenant. Author or tenant admin only; others → 403.
+func (h *Handler) HandleDeleteGoalComment(w http.ResponseWriter, r *http.Request) {
+	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid goal id", map[string]string{"goal_id": "invalid"})
+		return
+	}
+	commentID, err := common.ParseID(chi.URLParam(r, "commentID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid comment id", map[string]string{"comment_id": "invalid"})
+		return
+	}
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
+		return
+	}
+	goal, err := h.service.GetGoal(r.Context(), scope, goalID)
+	if err != nil || !h.canAccessGoal(r.Context(), scope, goal) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
+		return
+	}
+	role, _ := auth.ActiveRoleFromContext(r.Context())
+	isAdmin := role == domain.RoleAdmin
+	if _, err := h.service.DeleteGoalComment(r.Context(), scope, goalID, commentID, auth.UserIDFromContext(r.Context()), isAdmin); err != nil {
+		if errors.Is(err, goals.ErrNotFound) {
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "comment not found", nil)
+			return
+		}
+		if errors.Is(err, service.ErrForbidden) {
+			v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "not allowed to delete", nil)
+			return
+		}
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to delete comment", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (h *Handler) HandleUpdateGoal(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))
 	if err != nil {

@@ -71,8 +71,7 @@
 .desc-row__lead { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6b7280; margin-top: 5px; }
 .desc-row__desc { font-size: 13px; color: #4b5563; line-height: 1.5; margin-top: 7px; }
 .desc-row__empty { font-size: 13px; color: #9ca3af; font-style: italic; margin-top: 7px; }
-.desc-row__editor { margin-top: 10px; border: 1.5px solid #e5e7eb; border-radius: 11px; padding: 10px 12px; background: #fafafa; }
-.desc-row__editor .md-editor { gap: 8px; }
+.desc-row__editor { margin-top: 10px; }
 .set-textarea { width: 100%; border: 1.5px solid #e5e7eb; border-radius: 9px; padding: 9px 11px; font-size: 14px; color: #111827; outline: none; background: #fff; }
 .set-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-25); }
 .desc-row__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }

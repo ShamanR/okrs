@@ -22,8 +22,14 @@
 .md-content strong { font-weight: 700; }
 
 /* Markdown editor */
-.md-editor { display: flex; flex-direction: column; gap: 7px; }
-.md-editor__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+/* The editor is one framed box: a toolbar header with a divider below, a borderless
+   textarea/preview body, and the Markdown hint as an in-frame footer. Hosts should not
+   add their own border/frame around it (see settings/admin overrides). */
+.md-editor { display: flex; flex-direction: column; gap: 0; border: 1.5px solid #e5e7eb; border-radius: 10px; background: #fff; overflow: hidden; }
+.md-editor:focus-within { border-color: var(--accent); }
+.md-editor__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 5px 8px; border-bottom: 1px solid #eef0f2; }
+.md-editor textarea { border: none; border-radius: 0; outline: none; }
+.md-editor textarea:focus { box-shadow: none; }
 .md-editor__tools { display: flex; align-items: center; gap: 1px; }
 .md-editor__btn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 6px; border: none; background: none; border-radius: 6px; font-size: 13px; color: #4b5563; cursor: pointer; line-height: 1; }
 .md-editor__btn:hover:not(:disabled) { background: #f1f3f5; color: #111827; }
@@ -33,7 +39,7 @@
 .md-editor__tabs { display: inline-flex; padding: 2px; background: #f1f3f5; border-radius: 8px; gap: 2px; }
 .md-editor__tab { padding: 4px 12px; border: none; background: none; border-radius: 6px; font-size: 12px; font-weight: 600; color: #6b7280; cursor: pointer; }
 .md-editor__tab--active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
-.md-editor__preview { min-height: 64px; padding: 10px 12px; border: 1.5px solid #e5e7eb; border-radius: 9px; background: #fafafa; }
+.md-editor__preview { min-height: 64px; padding: 10px 12px; background: #fafafa; }
 .md-editor__empty { color: #9ca3af; font-size: 13px; }
-.md-editor__hint { font-size: 11px; color: #9ca3af; line-height: 1.4; }
+.md-editor__hint { font-size: 11px; color: #9ca3af; line-height: 1.4; padding: 6px 10px; border-top: 1px solid #eef0f2; background: #fcfcfd; }
 .md-editor__hint strong { color: #6b7280; font-weight: 700; }

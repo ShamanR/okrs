@@ -254,6 +254,15 @@ func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, s
 func (f *fakeStore) SetGoalCommentResolved(context.Context, domain.TenantScope, int64, int64, bool, int64) (bool, error) {
 	return true, nil
 }
+func (f *fakeStore) AddGoalReply(context.Context, domain.TenantScope, int64, int64, string, int64) (int64, error) {
+	return 1, nil
+}
+func (f *fakeStore) GetGoalCommentMeta(context.Context, domain.TenantScope, int64, int64) (int64, bool, error) {
+	return 0, true, nil
+}
+func (f *fakeStore) DeleteGoalComment(context.Context, domain.TenantScope, int64, int64) error {
+	return nil
+}
 func (f *fakeStore) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error {
 	return nil
 }

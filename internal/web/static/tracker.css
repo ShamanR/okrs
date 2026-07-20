@@ -316,16 +316,25 @@
 .comments-panel__title { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
 .comments-panel__unresolved { text-transform: none; letter-spacing: 0; font-size: 11px; font-weight: 700; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 999px; }
 .comments-panel__resolved-head { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.6px; margin: 6px 0 12px; }
-.comment { display: flex; gap: 10px; margin-bottom: 14px; }
+.comment { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-start; }
 .comment--resolved { opacity: 0.65; }
-.comment--resolved .comment__text { background: #f3f4f6; }
+/* Background highlight applies to the task's own text only (direct child), not to
+   replies nested inside its content — replies must not be highlighted. */
+.comment--resolved > .comment__content > .comment__text { background: #f3f4f6; }
+.comment--task-open > .comment__content > .comment__text { background: #fffbeb; border-color: #fcd34d; }
 .comment__resolved-badge { font-size: 11px; font-weight: 700; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 7px; border-radius: 999px; }
-.comment__actions { margin-top: 6px; }
+.comment__actions { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .comment__resolve-btn { font-size: 12px; font-weight: 600; color: #047857; background: #fff; border: 1px solid #a7f3d0; border-radius: 7px; padding: 5px 12px; cursor: pointer; }
 .comment__resolve-btn:hover:not(:disabled) { background: #ecfdf5; }
 .comment__resolve-btn:disabled { opacity: 0.5; cursor: default; }
-.comment__resolved-meta { margin-top: 6px; font-size: 11px; color: #9ca3af; }
-.comment__link-btn { font-size: 11px; color: #6b7280; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.comment__resolved-meta { margin-top: 6px; font-size: 11px; color: #9ca3af; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.comment__resolved-info { color: #9ca3af; }
+.comment__actions-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.comment__sep { color: #d1d5db; user-select: none; }
+.comment__link-ic { margin-right: 3px; font-size: 11px; opacity: 0.85; }
+.comment__link-btn { display: inline-flex; align-items: center; font-size: 11px; color: #6b7280; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.comment__link-btn:hover:not(:disabled) { color: #374151; }
+.comment__link-btn--danger:hover:not(:disabled) { color: #b91c1c; }
 .comment__link-btn:disabled { opacity: 0.5; cursor: default; }
 .comment__content { flex: 1; }
 .comment__header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
@@ -334,10 +343,17 @@
 .comment__text { font-size: 13px; color: #374151; line-height: 1.55; background: #f9fafb; padding: 9px 12px; border-radius: 8px; border: 1px solid #f3f4f6; }
 .comment-compose { display: flex; gap: 8px; align-items: flex-start; }
 .comment-compose__right { flex: 1; }
-.comment-submit-row { display: flex; justify-content: flex-end; margin-top: 5px; }
+.comment-submit-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 5px; }
 .comment-submit { padding: 6px 14px; border-radius: 7px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
 .comment-submit--active { background: var(--accent); color: white; }
 .comment-submit--disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
+.comment-cancel { padding: 6px 14px; border-radius: 7px; border: 1px solid #e5e7eb; background: #fff; color: #6b7280; font-size: 13px; font-weight: 600; cursor: pointer; }
+.comment-cancel:hover:not(:disabled) { background: #f9fafb; color: #374151; }
+.comment-cancel:disabled { opacity: 0.5; cursor: default; }
+.comment__replies { margin-top: 8px; padding-left: 16px; border-left: 2px solid #e5e7eb; display: flex; flex-direction: column; gap: 10px; }
+.comment--reply { display: flex; gap: 8px; align-items: flex-start; }
+.comment-compose--reply { margin-top: 8px; flex-direction: column; align-items: stretch; gap: 6px; }
+.comment__confirm { font-size: 12px; color: #b91c1c; }
 
 /* ── GOAL CARD ───────────────────────────────────────────────────────────────── */
 .goal-card { background: white; border-radius: 12px; margin-bottom: 12px; border: 1px solid #f0f1f3; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.15s, opacity 0.15s; position: relative; }

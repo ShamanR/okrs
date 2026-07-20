@@ -109,13 +109,16 @@ type Goal struct {
 type GoalComment struct {
 	ID             int64
 	GoalID         int64
+	ParentID       *int64 // nil → task; non-nil → reply to that task
 	Text           string
 	AuthorName     string
 	AuthorUDID     string
+	AuthorUserID   int64 // used for delete authorization
 	CreatedAt      time.Time
 	ResolvedAt     *time.Time
 	ResolvedByName string
 	ResolvedByUDID string
+	Replies        []GoalComment // populated for tasks only
 }
 
 type KeyResultNote struct {
@@ -246,6 +249,9 @@ const (
 	ActionCommentAdded      ActivityAction = "comment_added"
 	ActionCommentResolved   ActivityAction = "comment_resolved"
 	ActionCommentReopened   ActivityAction = "comment_reopened"
+	ActionReplyAdded        ActivityAction = "reply_added"
+	ActionCommentDeleted    ActivityAction = "comment_deleted"
+	ActionReplyDeleted      ActivityAction = "reply_deleted"
 )
 
 // ActivityEvent is one append-only journal row. Pointer fields are nullable columns.

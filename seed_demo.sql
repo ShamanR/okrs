@@ -454,6 +454,11 @@ INSERT INTO goal_comments (id, goal_id, text, author_user_id, created_at) VALUES
   (103, 105, 'Осталось 3 сервиса. Основные проблемы с устаревшими зависимостями решены.', 1, NOW()),
   (104, 112, 'Апрельский инцидент устранён. Добавили circuit breaker на 3 критичных точках.', 1, NOW());
 
+-- Ответы (parent_id → таска). Демонстрирует ветку «таска → ответы»: ответ не резолвится.
+INSERT INTO goal_comments (id, goal_id, parent_id, text, author_user_id, created_at) VALUES
+  (150, 100, 100, 'Согласовали с Infra: HTTP/2 включаем на следующей неделе.', 1, NOW()),
+  (151, 100, 101, 'Уточнил у PaaS — конфиг nginx поправят в этом спринте.', 1, NOW());
+
 -- Одно замечание помечено решённым, второе остаётся нерешённым — демонстрирует resolve-флоу.
 UPDATE goal_comments SET resolved_at = NOW(), resolved_by_user_id = 1 WHERE id = 100;
 

@@ -162,3 +162,145 @@ func TestSetGoalCommentResolved(t *testing.T) {
 		t.Fatalf("wrong goal id: want ErrNotFound, got %v", err)
 	}
 }
+
+func TestListGoalCommentsNestsRepliesInOrder(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "nest")
+
+	// Two tasks, oldest first expected.
+	t1, err := gr.AddGoalComment(ctx, scope, goalID, "task-1", seedUserID)
+	if err != nil {
+		t.Fatalf("task1: %v", err)
+	}
+	if _, err := gr.AddGoalComment(ctx, scope, goalID, "task-2", seedUserID); err != nil {
+		t.Fatalf("task2: %v", err)
+	}
+	// Two replies under task-1.
+	if _, err := gr.AddGoalReply(ctx, scope, goalID, t1, "reply-a", seedUserID); err != nil {
+		t.Fatalf("reply-a: %v", err)
+	}
+	if _, err := gr.AddGoalReply(ctx, scope, goalID, t1, "reply-b", seedUserID); err != nil {
+		t.Fatalf("reply-b: %v", err)
+	}
+
+	comments, err := gr.ListGoalComments(ctx, scope, goalID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(comments) != 2 {
+		t.Fatalf("want 2 tasks (replies must be nested), got %d", len(comments))
+	}
+	if comments[0].Text != "task-1" || comments[1].Text != "task-2" {
+		t.Fatalf("tasks must be oldest→newest: %q, %q", comments[0].Text, comments[1].Text)
+	}
+	if len(comments[0].Replies) != 2 {
+		t.Fatalf("task-1 must have 2 replies, got %d", len(comments[0].Replies))
+	}
+	if comments[0].Replies[0].Text != "reply-a" || comments[0].Replies[1].Text != "reply-b" {
+		t.Fatalf("replies must be oldest→newest: %q, %q", comments[0].Replies[0].Text, comments[0].Replies[1].Text)
+	}
+	if comments[0].Replies[0].ParentID == nil || *comments[0].Replies[0].ParentID != t1 {
+		t.Fatalf("reply.ParentID must point to task-1")
+	}
+}
+
+func TestAddGoalReplyRejectsNonTaskParent(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "reply-guard")
+
+	task, _ := gr.AddGoalComment(ctx, scope, goalID, "task", seedUserID)
+	reply, err := gr.AddGoalReply(ctx, scope, goalID, task, "reply", seedUserID)
+	if err != nil {
+		t.Fatalf("valid reply: %v", err)
+	}
+	// Replying to a reply must be rejected (depth 1 only).
+	if _, err := gr.AddGoalReply(ctx, scope, goalID, reply, "nested", seedUserID); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("reply-to-reply must be ErrNotFound, got %v", err)
+	}
+	// Replying to a non-existent parent must be rejected.
+	if _, err := gr.AddGoalReply(ctx, scope, goalID, 999999, "orphan", seedUserID); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("orphan reply must be ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteGoalCommentCascadesReplies(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "cascade")
+
+	task, _ := gr.AddGoalComment(ctx, scope, goalID, "task", seedUserID)
+	if _, err := gr.AddGoalReply(ctx, scope, goalID, task, "reply", seedUserID); err != nil {
+		t.Fatalf("reply: %v", err)
+	}
+	if err := gr.DeleteGoalComment(ctx, scope, goalID, task); err != nil {
+		t.Fatalf("delete task: %v", err)
+	}
+	comments, _ := gr.ListGoalComments(ctx, scope, goalID)
+	if len(comments) != 0 {
+		t.Fatalf("task + cascaded replies must be gone, got %d", len(comments))
+	}
+	// Deleting a missing comment → ErrNotFound.
+	if err := gr.DeleteGoalComment(ctx, scope, goalID, task); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("second delete must be ErrNotFound, got %v", err)
+	}
+}
+
+func TestGetGoalCommentMeta(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "meta")
+
+	task, _ := gr.AddGoalComment(ctx, scope, goalID, "task", seedUserID)
+	reply, _ := gr.AddGoalReply(ctx, scope, goalID, task, "reply", seedUserID)
+
+	author, isTask, err := gr.GetGoalCommentMeta(ctx, scope, goalID, task)
+	if err != nil || author != seedUserID || !isTask {
+		t.Fatalf("task meta: author=%d isTask=%v err=%v", author, isTask, err)
+	}
+	_, isTask, err = gr.GetGoalCommentMeta(ctx, scope, goalID, reply)
+	if err != nil || isTask {
+		t.Fatalf("reply meta must have isTask=false: isTask=%v err=%v", isTask, err)
+	}
+	if _, _, err := gr.GetGoalCommentMeta(ctx, scope, goalID, 999999); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("missing meta must be ErrNotFound, got %v", err)
+	}
+}
+
+func TestResolveRejectsReply(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	_, _, goalID := seedGoal(t, ctx, gr, tr, pr, scope, "resolve-reply")
+
+	task, _ := gr.AddGoalComment(ctx, scope, goalID, "task", seedUserID)
+	reply, _ := gr.AddGoalReply(ctx, scope, goalID, task, "reply", seedUserID)
+	if _, err := gr.SetGoalCommentResolved(ctx, scope, goalID, reply, true, seedUserID); !errors.Is(err, goals.ErrNotFound) {
+		t.Fatalf("resolving a reply must be ErrNotFound, got %v", err)
+	}
+}

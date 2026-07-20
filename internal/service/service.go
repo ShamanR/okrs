@@ -55,6 +55,9 @@ type GoalRepo interface {
 	UpdateGoalOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
 	MoveGoal(ctx context.Context, scope domain.TenantScope, teamID, goalID int64, direction int) error
 	AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) (int64, error)
+	AddGoalReply(ctx context.Context, scope domain.TenantScope, goalID, parentID int64, text string, authorUserID int64) (int64, error)
+	GetGoalCommentMeta(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) (int64, bool, error)
+	DeleteGoalComment(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) error
 	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error)
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
@@ -163,6 +166,8 @@ var (
 	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
 	ErrShareTargetNotInTenant      = errors.New("share target team is not in the active tenant")
 	ErrPeriodNotClosed             = errors.New("period must be closed to archive")
+	// ErrForbidden signals an authorization failure the handler maps to HTTP 403.
+	ErrForbidden = errors.New("forbidden")
 )
 
 // New constructs a Service from a Deps bundle.
@@ -932,6 +937,54 @@ func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.Tenan
 		})
 	}
 	return nil
+}
+
+func (s *Service) AddGoalReply(ctx context.Context, scope domain.TenantScope, goalID, parentID int64, text string, authorUserID int64) error {
+	replyID, err := s.goals.AddGoalReply(ctx, scope, goalID, parentID, text, authorUserID)
+	if err != nil {
+		return err // includes goals.ErrNotFound for a bad/non-task parent
+	}
+	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
+		teamID, periodID := g.TeamID, g.PeriodID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionReplyAdded,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &replyID,
+			EntityTitle: g.Title, Payload: map[string]any{"text": text},
+		})
+	}
+	return nil
+}
+
+// DeleteGoalComment removes a task (cascading its replies) or a reply. Authorization:
+// the requesting user must be the author, or a tenant admin. Returns isTask so the
+// caller/log distinguishes a task deletion (comment_deleted) from a reply (reply_deleted).
+// A cascaded task deletion logs a single comment_deleted event (replies vanish silently).
+func (s *Service) DeleteGoalComment(ctx context.Context, scope domain.TenantScope, goalID, commentID, requestingUserID int64, isAdmin bool) (bool, error) {
+	author, isTask, err := s.goals.GetGoalCommentMeta(ctx, scope, goalID, commentID)
+	if err != nil {
+		return false, err // goals.ErrNotFound if absent
+	}
+	if author != requestingUserID && !isAdmin {
+		return false, ErrForbidden
+	}
+	if err := s.goals.DeleteGoalComment(ctx, scope, goalID, commentID); err != nil {
+		return false, err
+	}
+	action := domain.ActionReplyDeleted
+	if isTask {
+		action = domain.ActionCommentDeleted
+	}
+	// The goal is not deleted by removing a comment, so it is still readable for the
+	// team/period/title snapshot of the journal entry.
+	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
+		teamID, periodID := g.TeamID, g.PeriodID
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: requestingUserID, Category: domain.ActivityDiscussion, Action: action,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
+			EntityTitle: g.Title,
+		})
+	}
+	return isTask, nil
 }
 
 func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {

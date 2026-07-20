@@ -193,9 +193,12 @@ function eventText(ev, teamNames) {
     case 'goal_fields_changed': return <>изменил цель «{t}»{fieldsSummary(p.changed)}</>;
     case 'kr_fields_changed': return <>изменил KR «{t}»{fieldsSummary(p.changed)}</>;
     case 'kr_note_updated': return <>обновил заметку к KR «{t}»</>;
-    case 'comment_added': return <>прокомментировал «{t}»</>;
+    case 'comment_added': return <>оставил замечание к «{t}»</>;
+    case 'reply_added': return <>ответил на замечание к «{t}»</>;
     case 'comment_resolved': return <>отметил замечание к «{t}» решённым</>;
     case 'comment_reopened': return <>переоткрыл замечание к «{t}»</>;
+    case 'comment_deleted': return <>удалил замечание к «{t}»</>;
+    case 'reply_deleted': return <>удалил ответ на замечание к «{t}»</>;
     default: return <>{ev.action} «{t}»</>;
   }
 }
@@ -203,7 +206,7 @@ function eventText(ev, teamNames) {
 // eventMarkdownBody returns comment/note text to render as Markdown below the summary line, or null.
 function eventMarkdownBody(ev) {
   const p = ev.payload || {};
-  if (ev.action === 'comment_added') return p.text || '';
+  if (ev.action === 'comment_added' || ev.action === 'reply_added') return p.text || '';
   if (ev.action === 'kr_note_updated') return (p.after || {}).note || '';
   return null;
 }

@@ -120,6 +120,7 @@
 
 - id
 - goal_id
+- parent_id (nullable, FK → goal_comments.id, ON DELETE CASCADE) — NULL для таски (замечания первого уровня); ссылка на таску для ответа
 - text
 - author_user_id (ссылка на users.id, NOT NULL)
 - created_at
@@ -131,8 +132,13 @@
 - комментарий всегда имеет автора;
 - в режиме `auth.mode=disabled` автором выступает системный пользователь `anonymous-local` (id=1);
 - исторические комментарии, созданные до миграции, бэкфиллены системным пользователем `migration` (id=2);
-- комментарий трактуется как замечание с состоянием: решён ⇔ `resolved_at IS NOT NULL`; `resolved_at` и `resolved_by_user_id` всегда либо оба заполнены, либо оба NULL;
-- отметка решённым обратима (reopen обнуляет оба поля); переход **идемпотентен** — обновление и запись в журнал происходят только при реальной смене состояния (guard `resolved_at IS [NOT] NULL`), поэтому повторный resolve/reopen не перезаписывает `resolved_at`/`resolved_by_user_id` и не создаёт ложную запись в логе активности.
+- комментарий первого уровня (`parent_id IS NULL`) — **таска/замечание** с состоянием: решён ⇔ `resolved_at IS NOT NULL`; `resolved_at` и `resolved_by_user_id` всегда либо оба заполнены, либо оба NULL;
+- **ответ** (`parent_id` указывает на таску) таской не является: у ответа `resolved_at`/`resolved_by_user_id` всегда NULL, резолву он не подлежит;
+- глубина вложенности ровно один уровень — ответ можно оставить только на таску (`parent_id` всегда указывает на строку с `parent_id IS NULL`); ответа на ответ нет;
+- таски сортируются `created_at` по возрастанию (старые → новые); ответы внутри таски — тоже по возрастанию `created_at`;
+- удаление таски каскадно удаляет её ответы (`ON DELETE CASCADE`); удалять таску/ответ может **автор** или **tenant-admin**;
+- счётчик комментариев цели — число тасок (решённых и нерешённых); ответы в счётчик не входят;
+- отметка решённым обратима (reopen обнуляет оба поля); переход **идемпотентен** — обновление и запись в журнал происходят только при реальной смене состояния (guard `parent_id IS NULL AND resolved_at IS [NOT] NULL`), поэтому повторный resolve/reopen не перезаписывает `resolved_at`/`resolved_by_user_id` и не создаёт ложную запись в логе активности.
 
 ### KeyResultNote
 
@@ -175,7 +181,7 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 - tenant_id (FK → tenants.id, ON DELETE CASCADE)
 - actor_user_id (FK → users.id) — кто совершил действие; в `auth.mode=disabled` — `anonymous-local` (id=1)
 - category — `progress` | `composition` | `status` | `discussion` (совпадает с табами UI)
-- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`
+- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
 - team_id (FK → teams.id, ON DELETE SET NULL) — команда-контекст на момент события (owner team / команда статуса)
 - period_id (FK → periods.id, ON DELETE SET NULL) — период-контекст
 - goal_id, kr_id, comment_id — ссылки на сущности (**не** FK: журнал переживает удаление сущности)
