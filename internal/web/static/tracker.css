@@ -374,6 +374,9 @@
 .goal-card__spacer { flex: 1; }
 .goal-card__owner { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
 .goal-card__owner-label { color: #9ca3af; font-weight: 500; }
+.goal-card__copy-link { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #6b7280; font-size: 13px; line-height: 1; cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+.goal-card__copy-link:hover { background: #f9fafb; border-color: #d1d5db; color: #374151; }
+.goal-card__copy-link--copied { border-color: #86efac; background: #f0fdf4; color: #16a34a; }
 .goal-card__title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .goal-card__title { font-size: 15px; font-weight: 700; color: #111827; line-height: 1.35; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; flex: 1; }
 .goal-card__title--readonly { cursor: default; }
@@ -652,7 +655,16 @@
   font-size: 11px;
   color: #64748b;
 }
+.hci-item__comment {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin: 4px 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.hci-item__comment p { margin: 0; }
 .hci-item__action {
+  display: inline-block;
   font-size: 12px;
   font-weight: 600;
   color: #a78bfa;

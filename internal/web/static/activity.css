@@ -118,6 +118,7 @@
   color: #7c3aed; font-size: 12px; font-weight: 600; text-decoration: none;
 }
 .act-row__link:hover { text-decoration: underline; }
+.act-row__time { margin-left: auto; color: #94a3b8; font-size: 12px; cursor: default; }
 
 .act-sentinel { height: 1px; }
 .act-more {

@@ -891,6 +891,11 @@ function HealthCheckInSettingsPanel() {
       hint: 'Цели ниже ожидаемого темпа периода. Информационная категория — показывает риски.',
       param: { field: 'behind_margin', label: 'Отставание (п.п.)', min: 1 },
     },
+    {
+      key: 'comments', icon: '💬', label: 'Комментарии',
+      hint: 'Нерешённые комментарии к целям ваших команд и команд под ними. Тумблер «В счётчик» включает их в бейдж (по умолчанию выключено). «Мои решённые» показываются всегда, их непросмотренный счётчик считается локально.',
+      param: { field: 'comment_depth', label: 'Глубина команд (уровней вниз)', min: 0 },
+    },
   ];
 
   const fieldStyle = {background:'#f8fafc', border:'1px solid #e5e7eb', borderRadius:6, padding:'6px 10px', fontSize:13, width:70, fontFamily:'inherit'};
@@ -952,6 +957,20 @@ function HealthCheckInSettingsPanel() {
             />
           </div>
           <div style={hintStyle}>Цель или команда с прогрессом не ниже порога считается «в плане» и подсвечивается зелёным (в сайдбаре и на странице целей), независимо от ожидаемого темпа периода.</div>
+        </div>
+
+        <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
+          <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>💬 Мои решённые комментарии</div>
+          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+            <span style={labelStyle}>Сколько показывать (K):</span>
+            <input
+              type="number" min={1}
+              value={cfg.resolved_comments_limit ?? 5}
+              onChange={e => update('resolved_comments_limit', Number(e.target.value))}
+              style={fieldStyle}
+            />
+          </div>
+          <div style={hintStyle}>Сколько ваших последних решённых (не вами) комментариев показывать в колокольчике.</div>
         </div>
 
         <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>

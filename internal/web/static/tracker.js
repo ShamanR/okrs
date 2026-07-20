@@ -1170,8 +1170,41 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, onReply, onDel
   );
 }
 
+// Copy a shareable deep-link to this goal. URL shape and open behavior match the
+// activity-log "↗ к цели" link (shared buildTargetURL from ui.js). For a shared goal
+// the link points at the currently-open team, so it resolves back to the same board.
+function CopyLinkButton({ teamId, periodId, goalId }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async e => {
+    e.stopPropagation();
+    const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId });
+    if (!path) return;
+    const url = location.origin + path;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* silent: leave icon unchanged on failure */ }
+  };
+  return (
+    <button type="button" onClick={copy}
+      className={`goal-card__copy-link${copied ? ' goal-card__copy-link--copied' : ''}`}
+      title={copied ? 'Скопировано' : 'Скопировать ссылку на цель'}
+      aria-label="Скопировать ссылку на цель">
+      {copied ? '✓' : '🔗'}
+    </button>
+  );
+}
+
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Goals without key results start expanded so the author's attention is drawn
@@ -1244,6 +1277,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
               ))}
             </div>
           )}
+          <CopyLinkButton teamId={currentTeamId} periodId={periodId} goalId={goal.id} />
         </div>
         <div className="goal-card__title-row">
           <div onClick={canEdit ? () => onEditGoal(goal) : undefined}
@@ -1977,15 +2011,36 @@ const HCI_CAT_META = {
   awaiting_validation: { icon: '○', label: 'Ожидают валидации', color: '#6b7280' },
   formation_errors: { icon: '⚠', label: 'Ошибки формирования', color: '#ef4444' },
   lagging: { icon: '▼', label: 'Отстающие', color: '#3b82f6' },
+  comments: { icon: '💬', label: 'Комментарии', color: '#8b5cf6' },
 };
-const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging'];
+const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging', 'comments'];
 const HCI_ACTION_LABEL = {
   stale: '→ Обновить прогресс',
   no_goals: '→ Перейти к команде',
   awaiting_validation: '→ Перейти к команде',
   formation_errors: '→ Исправить',
   lagging: '→ Перейти к цели',
+  comments: '→ Перейти к комментарию',
 };
+
+function hciSeenKey(meId) { return `hci_resolved_seen_${meId || 'anon'}`; }
+
+// Непросмотренные решённые = те, чей resolved_at строго новее сохранённого watermark.
+function hciUnseenResolved(hciData, meId) {
+  const resolved = hciData?.categories?.comments?.resolved || [];
+  if (resolved.length === 0) return 0;
+  const wm = localStorage.getItem(hciSeenKey(meId));
+  const wmMs = wm ? new Date(wm).getTime() : 0;
+  return resolved.filter(r => new Date(r.resolved_at).getTime() > wmMs).length;
+}
+
+// Двигает watermark на максимум resolved_at среди показанных решённых.
+function hciMarkResolvedSeen(hciData, meId) {
+  const resolved = hciData?.categories?.comments?.resolved || [];
+  if (resolved.length === 0) return;
+  const maxMs = Math.max(...resolved.map(r => new Date(r.resolved_at).getTime()));
+  localStorage.setItem(hciSeenKey(meId), new Date(maxMs).toISOString());
+}
 
 function HealthCheckInButton({ data, onClick }) {
   if (!data || !data.has_scope) return null;
@@ -2011,7 +2066,7 @@ function formatHCIErrorType(errType, item) {
   return labels[errType] || errType;
 }
 
-function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
+function HealthCheckInPanel({ data, open, onClose }) {
   const [filter, setFilter] = useState(null);
   if (!data) return null;
 
@@ -2022,9 +2077,21 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
     return 'Всё в порядке';
   })();
 
-  const nonEmptyCats = HCI_CAT_ORDER.filter(k => (data.categories?.[k]?.count ?? 0) > 0);
+  // Для категории comments «объём» = нерешённые + мои решённые (у неё нет items/count-семантики badge).
+  const catVisibleCount = (k) => {
+    if (k === 'comments') {
+      const c = data.categories?.comments;
+      return (c?.unresolved?.length || 0) + (c?.resolved?.length || 0);
+    }
+    return data.categories?.[k]?.count ?? 0;
+  };
+  const nonEmptyCats = HCI_CAT_ORDER.filter(k => catVisibleCount(k) > 0);
   const counterCats = HCI_CAT_ORDER.filter(k => data.categories?.[k]?.in_counter);
-  const visibleCats = filter ? [filter] : counterCats;
+  // Секция «Комментарии» видна по умолчанию, даже если не в счётчике (in_counter=false).
+  const commentsNonEmpty = nonEmptyCats.includes('comments');
+  const baseCats = commentsNonEmpty && !counterCats.includes('comments')
+    ? [...counterCats, 'comments'] : counterCats;
+  const visibleCats = filter ? [filter] : baseCats;
 
   return (
     <>
@@ -2057,7 +2124,7 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
                   className="hci-chip"
                   style={chipStyle}
                   onClick={() => setFilter(isActive ? null : k)}>
-                  {meta.icon} {meta.label} · {cat.count}
+                  {meta.icon} {meta.label} · {catVisibleCount(k)}
                 </button>
               );
             })}
@@ -2065,7 +2132,7 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
         )}
 
         <div className="hci-body">
-          {visibleCats.every(k => (data.categories?.[k]?.count ?? 0) === 0) ? (
+          {visibleCats.every(k => catVisibleCount(k) === 0) ? (
             <div className="hci-empty">
               <span className="hci-empty__icon">{filter ? '🔍' : '✅'}</span>
               <span>{filter ? 'По выбранному фильтру ничего нет' : 'Всё ok'}</span>
@@ -2073,7 +2140,48 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
           ) : (
             visibleCats.map(k => {
               const cat = data.categories?.[k];
-              if (!cat || cat.count === 0) return null;
+              if (!cat) return null;
+
+              if (k === 'comments') {
+                const unresolved = cat.unresolved || [];
+                const resolved = cat.resolved || [];
+                if (unresolved.length === 0 && resolved.length === 0) return null;
+                const cmeta = HCI_CAT_META[k];
+                const renderRow = (item, kind) => (
+                  <div key={`${kind}-${item.comment_id}`} className="hci-item">
+                    <div className="hci-item__title">{item.goal_title}</div>
+                    <Markdown text={item.text} className="hci-item__comment" />
+                    <div className="hci-item__meta">
+                      {kind === 'unresolved'
+                        ? (item.author_name || '')
+                        : `решил: ${item.resolved_by_name || ''}`}
+                      {' · '}{(item.team_path || []).join(' › ')}
+                    </div>
+                    <a className="hci-item__action"
+                      href={buildTargetURL({ team_id: item.team_id, period_id: data.period_id, goal_id: item.goal_id, comment_id: item.comment_id })}>
+                      {HCI_ACTION_LABEL[k]}
+                    </a>
+                  </div>
+                );
+                return (
+                  <div key={k} className="hci-section">
+                    <div className="hci-section__header" style={{ color: cmeta.color }}>
+                      <span>{cmeta.icon}</span><span>{cmeta.label}</span>
+                      <span className="hci-section__count">{unresolved.length + resolved.length}</span>
+                    </div>
+                    {unresolved.length > 0 && <>
+                      <div className="hci-team__name"><span>▸</span><span>Нерешённые · {unresolved.length}</span></div>
+                      {unresolved.map(it => renderRow(it, 'unresolved'))}
+                    </>}
+                    {resolved.length > 0 && <>
+                      <div className="hci-team__name"><span>▸</span><span>Мои решённые · {resolved.length}</span></div>
+                      {resolved.map(it => renderRow(it, 'resolved'))}
+                    </>}
+                  </div>
+                );
+              }
+
+              if (cat.count === 0) return null;
               const meta = HCI_CAT_META[k];
               const byTeam = {};
               for (const item of cat.items) {
@@ -2101,10 +2209,10 @@ function HealthCheckInPanel({ data, open, onClose, onSelectTeam }) {
                           {item.progress !== undefined && item.expected_pace !== undefined && (
                             <div className="hci-item__meta">Прогресс: {item.progress}% · Ожидалось: {item.expected_pace}%</div>
                           )}
-                          <button className="hci-item__action"
-                            onClick={() => { onSelectTeam(item.team_id, item.goal_id); onClose(); }}>
+                          <a className="hci-item__action"
+                            href={buildTargetURL({ team_id: item.team_id, period_id: data.period_id, goal_id: item.goal_id })}>
                             {HCI_ACTION_LABEL[k]}
-                          </button>
+                          </a>
                         </div>
                       ))}
                     </div>
@@ -2148,6 +2256,14 @@ function App() {
       .then(d => d && setHciData(d));
   }, []);
 
+  // При открытии панели помечаем решённые комментарии просмотренными (watermark в localStorage),
+  // чтобы после первого просмотра их непросмотренный счётчик в бейдже обнулился.
+  useEffect(() => {
+    if (hciOpen && hciData) {
+      hciMarkResolvedSeen(hciData, me?.id);
+    }
+  }, [hciOpen]);
+
   // Read desired initial team+period once from URL (highest prio) then cookie.
   const initialNavRef = useRef(null);
   if (initialNavRef.current === null) {
@@ -2156,6 +2272,7 @@ function App() {
     initialNavRef.current = {
       team: url.team || cookie.team || null,
       period: url.period || cookie.period || null,
+      fromUrl: !!url.team, // team came from a shared/deep link → reveal it in the tree
       used: false,
     };
   }
@@ -2211,6 +2328,13 @@ function App() {
         let target = null;
         if (!initialNavRef.current.used && initialNavRef.current.team) {
           target = findNodeById(nodes, initialNavRef.current.team) || null;
+          // Opened via a shared/deep link: reveal the target team by expanding its
+          // ancestors, overriding any stored collapsed state. Same behavior the
+          // activity-log "↗ к цели" link now gets.
+          if (target && initialNavRef.current.fromUrl) {
+            const anc = findAncestorIds(nodes, target.id);
+            if (anc.length) setExpanded(m => { const next = { ...m }; anc.forEach(aid => { next[aid] = true; }); return next; });
+          }
         }
         initialNavRef.current.used = true;
         if (!target) target = findFirstNode(nodes);
@@ -2275,6 +2399,20 @@ function App() {
   function findNodeById(nodes, id) {
     for (const n of nodes) { if (n.id === id) return n; const f = findNodeById(n.children || [], id); if (f) return f; }
     return null;
+  }
+  // Ancestor ids of the node with `id` (excluding the node itself), root→parent order.
+  // Used to force-expand a collapsed tree so a deep-linked team becomes visible.
+  function findAncestorIds(nodes, id) {
+    const path = [];
+    const walk = (list, trail) => {
+      for (const n of (list || [])) {
+        if (n.id === id) { path.push(...trail); return true; }
+        if (walk(n.children, [...trail, n.id])) return true;
+      }
+      return false;
+    };
+    walk(nodes, []);
+    return path;
   }
 
   // Nodes are expanded by default (absence ≡ expanded), so the effective state is
@@ -2376,7 +2514,7 @@ function App() {
         active="tracker"
         linkParams={{ 'activity-log': periodId ? `?period=${periodId}` : '' }}
         bell={hciData && hciData.has_scope
-          ? <SidebarBell count={hciData.total_problems} onClick={() => setHciOpen(true)} />
+          ? <SidebarBell count={hciData.total_problems + hciUnseenResolved(hciData, me?.id)} onClick={() => setHciOpen(true)} />
           : null}
         beforeSections={
           <div className="sidebar__period">
@@ -2463,7 +2601,7 @@ function App() {
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
@@ -2488,15 +2626,6 @@ function App() {
         data={hciData}
         open={hciOpen}
         onClose={() => setHciOpen(false)}
-        onSelectTeam={(teamId, goalId) => {
-          selectTeam(teamId);
-          if (goalId) {
-            setTimeout(() => {
-              const el = document.getElementById(`goal-${goalId}`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }, 400);
-          }
-        }}
       />
     </div>
   );

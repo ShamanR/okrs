@@ -57,6 +57,20 @@ function fmtPeriodDate(iso) {
 }
 function fmtDateRange(a, b) { return `${fmtPeriodDate(a)} – ${fmtPeriodDate(b)}`; }
 
+// ── Event timestamp formatting ──────────────────────────────────────────────────
+// Visible label shows only the date (ДД/ММ/ГГ); the exact time down to seconds lives in the tooltip.
+function fmtLogDate(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' }).replace(/\./g, '/');
+}
+function fmtLogDateTimeFull(iso) {
+  if (!iso) return '';
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+}
+
 function PeriodSelect({ periods, periodId, onChange }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState(null);
@@ -132,16 +146,7 @@ function ActivitySidebarNode({ node, depth, selectedId, onSelect, expanded, togg
 }
 
 // ── Feed rendering ──────────────────────────────────────────────────────────────
-function buildTargetURL(target) {
-  if (!target) return null;
-  const p = new URLSearchParams();
-  if (target.team_id) p.set('team', target.team_id);
-  if (target.period_id) p.set('period', target.period_id);
-  if (target.goal_id) p.set('goal', target.goal_id);
-  if (target.kr_id) p.set('kr', target.kr_id);
-  if (target.comment_id) p.set('comment', target.comment_id);
-  return '/?' + p.toString();
-}
+// buildTargetURL вынесен в общий ui.js (единый механизм перехода для журнала и колокольчика).
 
 const CATEGORY_ICON = { progress: '📈', composition: '🧩', status: '🚦', discussion: '💬' };
 const CATEGORY_LABEL = { progress: 'Прогресс', composition: 'Состав целей', status: 'Статусы и риски', discussion: 'Обсуждения' };
@@ -246,6 +251,7 @@ function EventRow({ ev, teamNames, periodNames }) {
           {ev.team_id != null && <span className="act-badge">{teamNames[ev.team_id] || `команда #${ev.team_id}`}</span>}
           {ev.period_id != null && <span className="act-badge act-badge--period">{periodNames[ev.period_id] || `период #${ev.period_id}`}</span>}
           {url && <a className="act-row__link" href={url}>↗ к цели</a>}
+          <span className="act-row__time" title={fmtLogDateTimeFull(ev.created_at)}>{fmtLogDate(ev.created_at)}</span>
         </div>
       </div>
     </div>

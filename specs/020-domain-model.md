@@ -301,7 +301,12 @@ Append-only журнал событий OKR (таблица `activity_events`, �
   `default_hierarchy_node_id` (int64/null), `health_checkin_config` (object:
   `stale_days`, `behind_margin`, `weight_tolerance`, `cache_ttl_minutes`,
   `green_threshold` (1..100, по умолчанию 80 — порог прогресса, при котором цель/команда
-  считается «в плане» и подсвечивается зелёным), `in_counter` map[string]bool),
+  считается «в плане» и подсвечивается зелёным),
+  `comment_depth` (int ≥ 0, по умолчанию 1 — на сколько уровней вниз от команд пользователя
+  спускаться при поиске нерешённых комментариев для категории «Комментарии»),
+  `resolved_comments_limit` (int ≥ 1, по умолчанию 5 — сколько последних решённых (не самим
+  пользователем) его комментариев показывать), `in_counter` map[string]bool (ключи категорий
+  колокольчика, включая `comments` — по умолчанию false)),
   `documentation_url` (абсолютный http(s) URL или пусто),
   `feedback_url`, `feedback_popup_enabled`, `feedback_menu_link_enabled`, `feedback_frequency_days`;
 - ключи `entitlement.*` (пишет только system-admin/provisioning): `entitlement.sso`,
