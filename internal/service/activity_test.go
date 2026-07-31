@@ -24,6 +24,13 @@ func (f *fakeActivityRepo) Record(_ context.Context, _ domain.TenantScope, ev do
 	f.recorded = append(f.recorded, ev)
 	return int64(len(f.recorded)), nil
 }
+func (f *fakeActivityRepo) RecordBatch(_ context.Context, _ domain.TenantScope, evs []domain.ActivityEvent) error {
+	if f.failNext {
+		return errors.New("boom")
+	}
+	f.recorded = append(f.recorded, evs...)
+	return nil
+}
 func (f *fakeActivityRepo) List(context.Context, domain.TenantScope, []int64, activity.ListFilter) ([]domain.ActivityEvent, *activity.Cursor, error) {
 	return nil, nil, nil
 }

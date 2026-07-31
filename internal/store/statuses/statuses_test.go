@@ -112,3 +112,39 @@ func TestGetTeamPeriodStatusWithTime(t *testing.T) {
 		t.Fatal("expected non-nil updated_at after set")
 	}
 }
+
+func TestSetTeamPeriodStatuses_Batch(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := statuses.NewTeamStatusRepository(pool)
+
+	var periodID int64
+	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ('BulkP','2025-01-01','2025-03-31') RETURNING id`).Scan(&periodID)
+	ids := make([]int64, 3)
+	for i := range ids {
+		pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('BT') RETURNING id`).Scan(&ids[i])
+	}
+	// Seed one team already closed to prove the batch overwrites existing rows too.
+	if err := r.SetTeamPeriodStatus(ctx, sc1, ids[0], periodID, domain.TeamPeriodStatusClosed); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	if err := r.SetTeamPeriodStatuses(ctx, sc1, periodID, ids, domain.TeamPeriodStatusInProgress); err != nil {
+		t.Fatalf("SetTeamPeriodStatuses: %v", err)
+	}
+	got, err := r.ListTeamPeriodStatuses(ctx, sc1, periodID, ids)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, id := range ids {
+		if got[id] != domain.TeamPeriodStatusInProgress {
+			t.Fatalf("team %d: expected in_progress, got %s", id, got[id])
+		}
+	}
+
+	// Empty slice is a no-op, not an error.
+	if err := r.SetTeamPeriodStatuses(ctx, sc1, periodID, nil, domain.TeamPeriodStatusClosed); err != nil {
+		t.Fatalf("empty slice must be no-op: %v", err)
+	}
+}

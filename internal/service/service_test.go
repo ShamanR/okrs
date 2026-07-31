@@ -30,6 +30,8 @@ type fakeStore struct {
 	softDeleted      []int64
 	restored         []int64
 	hardDeleted      []int64
+	bulkSetTeamIDs   []int64
+	bulkSetStatus    domain.TeamPeriodStatus
 }
 
 func newFakeStore() *fakeStore {
@@ -299,6 +301,14 @@ func (f *fakeStore) ReplaceProjectStages(context.Context, domain.TenantScope, in
 	return nil
 }
 func (f *fakeStore) SetTeamPeriodStatus(context.Context, domain.TenantScope, int64, int64, domain.TeamPeriodStatus) error {
+	return nil
+}
+func (f *fakeStore) SetTeamPeriodStatuses(_ context.Context, _ domain.TenantScope, periodID int64, teamIDs []int64, status domain.TeamPeriodStatus) error {
+	f.bulkSetTeamIDs = append([]int64(nil), teamIDs...)
+	f.bulkSetStatus = status
+	for _, id := range teamIDs {
+		f.statuses[[2]int64{id, periodID}] = status
+	}
 	return nil
 }
 func (f *fakeStore) CreateTeam(_ context.Context, _ domain.TenantScope, _ storeteams.TeamInput) (int64, error) {

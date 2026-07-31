@@ -110,6 +110,7 @@ type TeamStatusRepo interface {
 	GetTeamPeriodStatusWithTime(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error)
 	ListTeamPeriodStatuses(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error)
 	SetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus) error
+	SetTeamPeriodStatuses(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64, status domain.TeamPeriodStatus) error
 }
 
 type UserRepo interface {
@@ -124,6 +125,7 @@ type UserRepo interface {
 // ActivityRepo records and reads the append-only activity journal.
 type ActivityRepo interface {
 	Record(ctx context.Context, scope domain.TenantScope, ev domain.ActivityEvent) (int64, error)
+	RecordBatch(ctx context.Context, scope domain.TenantScope, evs []domain.ActivityEvent) error
 	List(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f activity.ListFilter) ([]domain.ActivityEvent, *activity.Cursor, error)
 	TreeCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, periodID *int64, since *time.Time) (map[int64]int, error)
 	CategoryCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f activity.ListFilter) (map[string]int, error)

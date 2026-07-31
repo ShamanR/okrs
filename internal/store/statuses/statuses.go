@@ -56,6 +56,22 @@ func (r *TeamStatusRepository) SetTeamPeriodStatus(ctx context.Context, scope do
 	return err
 }
 
+// SetTeamPeriodStatuses upserts the same status for many teams in one round-trip.
+// Empty teamIDs is a no-op.
+func (r *TeamStatusRepository) SetTeamPeriodStatuses(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64, status domain.TeamPeriodStatus) error {
+	if len(teamIDs) == 0 {
+		return nil
+	}
+	_, err := r.db.Exec(ctx, `
+		INSERT INTO team_period_statuses (team_id, period_id, status, tenant_id, updated_at)
+		SELECT unnest($1::bigint[]), $2, $3, $4, NOW()
+		ON CONFLICT (team_id, period_id)
+		DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+		teamIDs, periodID, status, scope.TenantID,
+	)
+	return err
+}
+
 func (r *TeamStatusRepository) ListTeamPeriodStatuses(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
 	statuses := make(map[int64]domain.TeamPeriodStatus, len(teamIDs))
 	if len(teamIDs) == 0 {
