@@ -1,26 +1,24 @@
-{{define "admin-shell"}}
+{{define "period-overview-shell"}}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
 {{template "spa-head" .}}
-<title>OKR Admin · Управление</title>
+<title>OKR Tracker · Обзор периода</title>
+<link rel="stylesheet" href="/static/tracker.css">
 <link rel="stylesheet" href="/static/markdown.css">
 <link rel="stylesheet" href="/static/components.css">
 <link rel="stylesheet" href="/static/sidebar.css">
-<style>
-html,body,#root{height:100%;font-size:14px}
-@keyframes admModalIn{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
-</style>
 </head>
 <body>
 <div id="root"><div class="loading-screen">Загрузка…</div></div>
 {{template "spa-vendor" .}}
 <script type="text/babel" src="/static/api.js" data-presets="react"></script>
+<script type="text/babel" src="/static/storage.js" data-presets="react"></script>
 <script type="text/babel" src="/static/ui.js" data-presets="react"></script>
-<script type="text/babel" src="/static/markdown.js" data-presets="react"></script>
 <script type="text/babel" src="/static/sidebar.js" data-presets="react"></script>
+<script type="text/babel" src="/static/period_select.js" data-presets="react"></script>
 <script type="text/babel" src="/static/period_overview_view.js" data-presets="react"></script>
-<script type="text/babel" src="/static/admin.js" data-presets="react"></script>
+<script type="text/babel" src="/static/period-overview.js" data-presets="react"></script>
 </body>
 </html>
 {{end}}

@@ -434,7 +434,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding, s.provisioning, s.service)
-	serviceH := apiadmin.NewServiceHandler(s.service)
+	serviceH := apiadmin.NewServiceHandler(s.service, s.settingsSvc)
 
 	r.Group(func(r chi.Router) {
 		if !s.auth.Disabled() {
@@ -455,6 +455,11 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Get("/activity-log", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
+		})
+		// Обзор периода — tenant-admin-only раздел основного приложения (собственный shell).
+		r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
 		})
 		// Legacy deep-links → root SPA.
 		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
@@ -483,11 +488,15 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 
 		// Admin periods API.
 		r.Get("/api/v1/admin/periods", serviceH.HandleListPeriods)
+		r.Get("/api/v1/admin/periods/stats", serviceH.HandlePeriodStats)
 		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)
 		r.Patch("/api/v1/admin/periods/{periodID}", serviceH.HandleUpdatePeriod)
 		r.Delete("/api/v1/admin/periods/{periodID}", serviceH.HandleDeletePeriod)
+		r.Get("/api/v1/admin/periods/{periodID}/overview", serviceH.HandlePeriodOverview)
 		r.Post("/api/v1/admin/periods/{periodID}/archive", serviceH.HandleArchivePeriod)
 		r.Post("/api/v1/admin/periods/{periodID}/unarchive", serviceH.HandleUnarchivePeriod)
+		r.Post("/api/v1/admin/periods/{periodID}/teams/activate", serviceH.HandleActivatePeriodTeams)
+		r.Post("/api/v1/admin/periods/{periodID}/teams/close", serviceH.HandleClosePeriodTeams)
 
 		// Admin teams API.
 		r.Get("/api/v1/admin/teams", serviceH.HandleListTeams)

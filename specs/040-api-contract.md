@@ -221,6 +221,13 @@ Validation:
 - `POST /api/v1/admin/periods/{periodID}/unarchive` — разархивировать период (`archived_at = null`), без ограничений по текущему статусу.
 - `move-up`/`move-down` для периодов **не существуют** — ручного порядка нет (см. `020-domain-model.md`).
 
+#### Метрики и обзор периодов
+
+- `GET /api/v1/admin/periods/stats` → `{ "items": [ { "period_id", "total_teams", "teams_with_goals", "avg_progress", "weight_error_count" } ] }`. Лёгкие метрики строк по всем периодам, вычисляются агрегатором обзора. Сам список `GET /api/v1/admin/periods` метрик не содержит (остаётся быстрым); метрики грузятся отдельным запросом.
+- `GET /api/v1/admin/periods/{periodID}/overview` → `{ "period_id", "summary": { "by_status": {in_progress, ready, forming, closed, no_goals}, "total_teams", "teams_with_goals", "weight_error_count", "avg_progress" }, "teams": [ { "id", "name", "path", "status", "goals_count", "progress", "weight_sum", "weight_error" } ] }`. Полный обзор для модалки управления периодом; `teams` — источник drill-down состава категорий. `avg_progress` — невзвешенное среднее по командам с целями от их взвешенного прогресса; `weight_error_count` учитывает допуск весов из настроек health-checkin. Легаси-статус `validated` считается в бакете `in_progress`.
+- `POST /api/v1/admin/periods/{periodID}/teams/activate` → `{ "affected", "skipped" }`. Переводит все команды с ≥1 целью и статусом ≠ `in_progress` в `in_progress`. `skipped` — команды без целей.
+- `POST /api/v1/admin/periods/{periodID}/teams/close` → `{ "affected", "skipped" }`. Переводит все команды с ≥1 целью и статусом ≠ `closed` в `closed`. Команды без целей пропускаются.
+
 Все mutating endpoints выше доступны только tenant-admin (или всем при `AUTH_MODE=disabled`) и требуют CSRF token.
 
 Все admin API endpoints требуют CSRF token при вызове из браузера.

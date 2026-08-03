@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -18,12 +19,18 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-type ServiceHandler struct {
-	service *service.Service
+// settingsReader loads per-tenant settings; *service.SettingsService satisfies it.
+type settingsReader interface {
+	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
 
-func NewServiceHandler(svc *service.Service) *ServiceHandler {
-	return &ServiceHandler{service: svc}
+type ServiceHandler struct {
+	service  *service.Service
+	settings settingsReader
+}
+
+func NewServiceHandler(svc *service.Service, settings settingsReader) *ServiceHandler {
+	return &ServiceHandler{service: svc, settings: settings}
 }
 
 // ── PERIODS ───────────────────────────────────────────────────────────────────
@@ -191,6 +198,82 @@ func (h *ServiceHandler) HandleUnarchivePeriod(w http.ResponseWriter, r *http.Re
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// weightTolerance loads the tenant's health-checkin weight tolerance (defaults to 0).
+func (h *ServiceHandler) weightTolerance(r *http.Request, scope domain.TenantScope) int {
+	if h.settings == nil {
+		return 0
+	}
+	cfg, err := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
+	if err != nil {
+		return 0
+	}
+	return cfg.WeightTolerance
+}
+
+// GET /api/v1/admin/periods/stats
+func (h *ServiceHandler) HandlePeriodStats(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
+	items, err := h.service.PeriodStats(r.Context(), scope, h.weightTolerance(r, scope))
+	if err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load period stats", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// GET /api/v1/admin/periods/{periodID}/overview
+func (h *ServiceHandler) HandlePeriodOverview(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
+		return
+	}
+	ov, err := h.service.PeriodOverview(r.Context(), scope, periodID, h.weightTolerance(r, scope))
+	if err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load overview", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, ov)
+}
+
+func (h *ServiceHandler) handleBulk(w http.ResponseWriter, r *http.Request, target domain.TeamPeriodStatus) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
+		return
+	}
+	res, err := h.service.BulkSetTeamPeriodStatus(r.Context(), scope, periodID, target, auth.UserIDFromContext(r.Context()))
+	if err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to apply bulk operation", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, res)
+}
+
+// POST /api/v1/admin/periods/{periodID}/teams/activate
+func (h *ServiceHandler) HandleActivatePeriodTeams(w http.ResponseWriter, r *http.Request) {
+	h.handleBulk(w, r, domain.TeamPeriodStatusInProgress)
+}
+
+// POST /api/v1/admin/periods/{periodID}/teams/close
+func (h *ServiceHandler) HandleClosePeriodTeams(w http.ResponseWriter, r *http.Request) {
+	h.handleBulk(w, r, domain.TeamPeriodStatusClosed)
 }
 
 // ── TEAMS ─────────────────────────────────────────────────────────────────────

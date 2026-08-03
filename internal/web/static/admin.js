@@ -340,14 +340,28 @@ function periodStatusPreview(start, end, archived) {
   if (t > e) return 'closed';
   return 'active';
 }
-// Кнопка-действие в строке таблицы периодов (текстовая, как в макете).
-function PeriodAction({onClick, accent, danger, title, big, children}) {
+// Иконочная кнопка-действие в строке (SVG + подсказка при наведении).
+function IconBtn({onClick, title, danger, children}) {
   const [hover, setHover] = useState(false);
-  const color = accent ? T.accent : danger ? T.danger : T.mutedFg;
-  return <button onClick={e=>{e.stopPropagation();onClick();}} title={title}
+  const color = danger ? T.danger : T.mutedFg;
+  return <button onClick={e=>{e.stopPropagation();onClick();}} title={title} aria-label={title}
     onMouseEnter={()=>setHover(true)} onMouseLeave={()=>setHover(false)}
-    style={{background:'none',border:'none',cursor:'pointer',fontSize:big?16:12.5,fontWeight:accent?600:500,color,opacity:hover?0.65:1,padding:big?'0 2px':'2px 3px',lineHeight:1,whiteSpace:'nowrap',transition:'opacity .12s'}}>{children}</button>;
+    style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:30,height:30,
+      background:hover?(danger?'#fdecec':'#f1f0fb'):'transparent',border:'none',borderRadius:8,
+      cursor:'pointer',color,opacity:hover?1:0.75,transition:'background .12s,opacity .12s',padding:0}}>
+    {children}
+  </button>;
 }
+
+// Набор SVG-иконок 16×16 (наследуют currentColor).
+const Icons = {
+  gear: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+  nested: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 4v10a2 2 0 0 0 2 2h9"/><path d="m16 12 4 4-4 4"/></svg>,
+  pencil: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>,
+  trash: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>,
+  archiveIn: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 12h4"/></svg>,
+  archiveOut: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M12 18v-6"/><path d="m9 14 3-3 3 3"/></svg>,
+};
 
 // Пояснение статус-флоу над таблицей (req: описание статусов в формате флоу).
 function StatusFlowGuide() {
@@ -379,8 +393,24 @@ function StatusFlowGuide() {
   </div>;
 }
 
+// Метрики строки периода: X/Y с целями, прогресс-бар, %, бейдж ошибок весов.
+function PeriodMetrics({stat}) {
+  const total = stat.total_teams || 0;
+  const withGoals = stat.teams_with_goals || 0;
+  const pct = Math.max(0, Math.min(100, stat.avg_progress || 0));
+  const err = stat.weight_error_count || 0;
+  return <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4,flexWrap:'wrap'}}>
+    <span style={{fontSize:11.5,color:T.dimFg}}>{withGoals}/{total} с целями</span>
+    <span style={{display:'inline-block',width:56,height:5,borderRadius:999,background:'#eceaf6',position:'relative'}}>
+      <span style={{position:'absolute',left:0,top:0,bottom:0,width:pct+'%',borderRadius:999,background:T.accent}}/>
+    </span>
+    <span style={{fontSize:12,fontWeight:700,color:T.headingFg}}>{pct}%</span>
+    {err > 0 && <span style={{fontSize:11,fontWeight:600,color:'#b91c1c',background:'#fdecec',borderRadius:999,padding:'1px 8px'}}>веса {err}</span>}
+  </div>;
+}
+
 // Строка таблицы периодов.
-function PeriodRow({p, cols, first, onOpen, actions}) {
+function PeriodRow({p, stat, cols, first, onOpen, actions}) {
   const [hover, setHover] = useState(false);
   const s = PERIOD_STATUS[p.status] || PERIOD_STATUS.closed;
   const root = p.depth === 0;
@@ -391,9 +421,47 @@ function PeriodRow({p, cols, first, onOpen, actions}) {
       <span style={{width:8,height:8,borderRadius:999,background:s.dot,flexShrink:0}}/>
       <span style={{fontSize:root?14.5:13.5,fontWeight:root?700:500,color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.name}</span>
     </div>
-    <div style={{fontSize:12.5,color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace'}}>{fmtDateShort(p.start_date)} – {fmtDateShort(p.end_date)}</div>
+    <div style={{minWidth:0}}>
+      <div style={{fontSize:12.5,color:T.mutedFg,fontFamily:'ui-monospace,Menlo,monospace'}}>{fmtDateShort(p.start_date)} – {fmtDateShort(p.end_date)}</div>
+      {stat ? <PeriodMetrics stat={stat}/> : <div style={{height:16}}/>}
+    </div>
     <div><PeriodBadge status={p.status}/></div>
-    <div style={{display:'flex',gap:14,alignItems:'center',justifyContent:'flex-end'}}>{actions}</div>
+    <div style={{display:'flex',gap:4,alignItems:'center',justifyContent:'flex-end'}}>{actions}</div>
+  </div>;
+}
+
+// Модалка «Управление периодом»: шапка + общий компонент обзора (period_overview_view.js).
+function PeriodOverviewModal({period, onEdit, onDelete, reload}) {
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => apiGet(`/api/v1/admin/periods/${period.id}/overview`).then(r => r && r.json()).then(setData).catch(()=>{});
+  useEffect(() => { load(); }, [period.id]);
+
+  async function onApply(ep) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await apiPost(`/api/v1/admin/periods/${period.id}/teams/${ep}`, {});
+      if (!res || !res.ok) { alert('Ошибка операции'); return; }
+      await load();
+      reload();
+    } finally { setBusy(false); }
+  }
+
+  return <div>
+    <div style={{padding:'18px 22px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'flex-start',gap:16}}>
+      <div style={{flex:1}}>
+        <div style={{fontSize:20,fontWeight:800,color:T.headingFg}}>{period.name}</div>
+        <div style={{fontSize:12.5,color:T.mutedFg,marginTop:4,display:'flex',alignItems:'center',gap:10}}>
+          <span style={{fontFamily:'ui-monospace,Menlo,monospace'}}>{fmtDateShort(period.start_date)} — {fmtDateShort(period.end_date)}</span>
+          <PeriodBadge status={period.status}/>
+        </div>
+      </div>
+      <Btn onClick={onEdit}>Редактировать</Btn>
+      <Btn danger onClick={onDelete}>Удалить</Btn>
+    </div>
+    <PeriodOverviewContent data={data} busy={busy} onApply={onApply}/>
   </div>;
 }
 
@@ -401,6 +469,19 @@ function PeriodsSection({periods, reload}) {
   const [modal, setModal] = useState(null); // {mode:'new', parent} | {mode:'edit', period}
   const periodCloseRef = useRef(null);
   const [saving, setSaving] = useState(false);
+  const [overview, setOverview] = useState(null); // period selected for the management modal
+  const [stats, setStats] = useState({}); // periodID -> {total_teams, teams_with_goals, avg_progress, weight_error_count}
+
+  useEffect(() => {
+    let alive = true;
+    apiGet('/api/v1/admin/periods/stats').then(r => r && r.json()).then(data => {
+      if (!alive || !data || !data.items) return;
+      const m = {};
+      for (const it of data.items) m[it.period_id] = it;
+      setStats(m);
+    }).catch(()=>{});
+    return () => { alive = false; };
+  }, [periods]);
 
   const openNew = parent => setModal({mode:'new', parent: parent||null});
   const openEdit = period => setModal({mode:'edit', period});
@@ -434,7 +515,7 @@ function PeriodsSection({periods, reload}) {
   // Последняя колонка — фиксированной ширины: набор действий у строк разный
   // (у «Закрыто» есть «В архив»), и `auto` заставлял бы колонки ДАТЫ/СТАТУС
   // разъезжаться между строками и относительно заголовка.
-  const cols = 'minmax(0,1fr) 210px 150px 280px';
+  const cols = 'minmax(0,1fr) 260px 150px 210px';
   const hdrCell = {fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5};
 
   return <div style={{padding:'20px 24px 24px'}}>
@@ -460,14 +541,14 @@ function PeriodsSection({periods, reload}) {
             Периодов пока нет. Создайте первый — кнопка «+ Период» справа вверху.
           </div>
         : periods.map((p, i) => {
-            const actions = [
-              <PeriodAction key="add" accent title="Создать вложенный период" onClick={()=>openNew(p)}>+ вложенный</PeriodAction>,
-            ];
-            if (p.status === 'closed')   actions.push(<PeriodAction key="arch" title="Скрыть из активных списков" onClick={()=>toggleArchive(p)}>В архив</PeriodAction>);
-            if (p.status === 'archived') actions.push(<PeriodAction key="unarch" title="Вернуть в активные списки" onClick={()=>toggleArchive(p)}>Из архива</PeriodAction>);
-            actions.push(<PeriodAction key="edit" title="Редактировать период" onClick={()=>openEdit(p)}>Изм.</PeriodAction>);
-            actions.push(<PeriodAction key="del" danger big title="Удалить период" onClick={()=>remove(p)}>×</PeriodAction>);
-            return <PeriodRow key={p.id} p={p} cols={cols} first={i===0} onOpen={()=>openEdit(p)} actions={actions}/>;
+            const actions = [];
+            if (p.status === 'closed')   actions.push(<IconBtn key="arch" title="В архив — скрыть из активных списков" onClick={()=>toggleArchive(p)}>{Icons.archiveIn}</IconBtn>);
+            if (p.status === 'archived') actions.push(<IconBtn key="unarch" title="Вернуть из архива" onClick={()=>toggleArchive(p)}>{Icons.archiveOut}</IconBtn>);
+            actions.push(<IconBtn key="manage" title="Управление периодом" onClick={()=>setOverview(p)}>{Icons.gear}</IconBtn>);
+            actions.push(<IconBtn key="add" title="Создать вложенный период" onClick={()=>openNew(p)}>{Icons.nested}</IconBtn>);
+            actions.push(<IconBtn key="edit" title="Редактировать период" onClick={()=>openEdit(p)}>{Icons.pencil}</IconBtn>);
+            actions.push(<IconBtn key="del" danger title="Удалить период" onClick={()=>remove(p)}>{Icons.trash}</IconBtn>);
+            return <PeriodRow key={p.id} p={p} stat={stats[p.id]} cols={cols} first={i===0} onOpen={()=>openEdit(p)} actions={actions}/>;
           })}
     </div>
 
@@ -482,6 +563,17 @@ function PeriodsSection({periods, reload}) {
         modal={modal} saving={saving}
         onSave={save} onClose={()=>setModal(null)} closeRef={periodCloseRef}
         onDelete={modal.mode==='edit' ? ()=>remove(modal.period) : null}/>}
+    </Modal>
+
+    <Modal open={!!overview}
+      title={overview ? `Управление периодом · ${overview.name}` : ''}
+      subtitle="Статусы команд, ошибки весов и массовые операции"
+      onClose={()=>setOverview(null)} width={820}>
+      {overview && <PeriodOverviewModal
+        period={overview}
+        onEdit={()=>{ const p=overview; setOverview(null); openEdit(p); }}
+        onDelete={()=>{ const p=overview; setOverview(null); remove(p); }}
+        reload={reload}/>}
     </Modal>
   </div>;
 }

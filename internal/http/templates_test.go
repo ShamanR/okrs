@@ -29,10 +29,19 @@ func TestStubShellRenders(t *testing.T) {
 	}
 }
 
+func TestPeriodOverviewShellRenders(t *testing.T) {
+	out := renderShell(t, "period-overview-shell", shellData{})
+	for _, want := range []string{`/static/sidebar.js`, `/static/period_select.js`, `/static/period_overview_view.js`, `/static/period-overview.js`, `id="root"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("period-overview-shell missing %q", want)
+		}
+	}
+}
+
 // TestShellSharedPartials verifies every SPA shell pulls in the shared head partial
 // (tokens + shell stylesheets) and the shared vendor block, so the DRY extraction stays wired.
 func TestShellSharedPartials(t *testing.T) {
-	shells := []string{"tracker-shell", "settings-shell", "admin-shell", "system-shell", "stub-shell", "activity-shell"}
+	shells := []string{"tracker-shell", "settings-shell", "admin-shell", "system-shell", "stub-shell", "activity-shell", "period-overview-shell"}
 	for _, name := range shells {
 		out := renderShell(t, name, shellData{})
 		for _, want := range []string{`/static/tokens.css`, `/static/shell.css`, `/static/vendor/babel.min.js`, `class="loading-screen"`} {

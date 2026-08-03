@@ -106,6 +106,9 @@ func (f *goalFakeStore) SetTeamPeriodStatus(_ context.Context, _ domain.TenantSc
 	f.setStatusCalls = append(f.setStatusCalls, setStatusArg{teamID, periodID, status})
 	return nil
 }
+func (f *goalFakeStore) SetTeamPeriodStatuses(context.Context, domain.TenantScope, int64, []int64, domain.TeamPeriodStatus) error {
+	return nil
+}
 func (f *goalFakeStore) ReplaceGoalShares(_ context.Context, _ domain.TenantScope, goalID int64, shares []shares.GoalShareInput) error {
 	f.replaceSharesCalls = append(f.replaceSharesCalls, replaceSharesArg{goalID, shares})
 	return nil

@@ -121,7 +121,8 @@ function SidebarTenant({ user, bell }) {
 const SIDEBAR_SECTIONS = [
   { id: 'tracker',      label: 'Цели команды',    href: '/',             icon: '🎯' },
   { id: 'goal-tree',    label: 'Дерево целей',    href: '/goal-tree',    icon: '🕸' },
-  // Лог активностей доступен только tenant-admin (совпадает с серверным гейтом) — скрыт для остальных.
+  // Обзор периода и лог активностей доступны только tenant-admin (совпадает с серверным гейтом) — скрыты для остальных.
+  { id: 'period-overview', label: 'Обзор периода', href: '/period-overview', icon: '📊', adminOnly: true },
   { id: 'activity-log', label: 'Лог активностей', href: '/activity-log', icon: '🕑', adminOnly: true },
 ];
 // linkParams optionally appends a query string per section id (e.g. carrying the current

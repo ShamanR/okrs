@@ -243,3 +243,36 @@ func TestTreeCountsAudience(t *testing.T) {
 		t.Fatalf("restricted counts: %+v", restricted)
 	}
 }
+
+func TestRecordBatch(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	ar := activity.NewActivityRepository(pool)
+
+	t1, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "A", Type: domain.TeamTypeTeam})
+	t2, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "B", Type: domain.TeamTypeTeam})
+	periodID, _ := pr.CreatePeriod(ctx, scope, q1("BatchP"))
+
+	evs := []domain.ActivityEvent{
+		{ActorUserID: seedUserID, Category: domain.ActivityStatus, Action: domain.ActionStatusChanged, TeamID: &t1, PeriodID: &periodID, EntityTitle: "A", Payload: map[string]any{"after": map[string]any{"status": "in_progress"}}},
+		{ActorUserID: seedUserID, Category: domain.ActivityStatus, Action: domain.ActionStatusChanged, TeamID: &t2, PeriodID: &periodID, EntityTitle: "B", Payload: map[string]any{"after": map[string]any{"status": "in_progress"}}},
+	}
+	if err := ar.RecordBatch(ctx, scope, evs); err != nil {
+		t.Fatalf("RecordBatch: %v", err)
+	}
+
+	var n int
+	pool.QueryRow(ctx, `SELECT count(*) FROM activity_events WHERE tenant_id=$1 AND period_id=$2 AND action='status_changed'`, scope.TenantID, periodID).Scan(&n)
+	if n != 2 {
+		t.Fatalf("expected 2 rows, got %d", n)
+	}
+
+	// Empty slice is a no-op.
+	if err := ar.RecordBatch(ctx, scope, nil); err != nil {
+		t.Fatalf("empty must be no-op: %v", err)
+	}
+}

@@ -65,6 +65,39 @@ func (r *ActivityRepository) Record(ctx context.Context, scope domain.TenantScop
 	return id, err
 }
 
+// RecordBatch inserts many events in a single pipelined round-trip. Empty is a no-op.
+func (r *ActivityRepository) RecordBatch(ctx context.Context, scope domain.TenantScope, evs []domain.ActivityEvent) error {
+	if len(evs) == 0 {
+		return nil
+	}
+	b := &pgx.Batch{}
+	for _, ev := range evs {
+		payload := ev.Payload
+		if payload == nil {
+			payload = map[string]any{}
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return err
+		}
+		b.Queue(`
+			INSERT INTO activity_events
+				(tenant_id, actor_user_id, category, action, team_id, period_id, goal_id, kr_id, comment_id, entity_title, payload_json)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			scope.TenantID, ev.ActorUserID, ev.Category, ev.Action,
+			ev.TeamID, ev.PeriodID, ev.GoalID, ev.KRID, ev.CommentID, ev.EntityTitle, raw,
+		)
+	}
+	br := r.db.SendBatch(ctx, b)
+	defer br.Close()
+	for range evs {
+		if _, err := br.Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // GetByID returns a single event (no actor join; used by tests and internal lookups).
 func (r *ActivityRepository) GetByID(ctx context.Context, scope domain.TenantScope, id int64) (domain.ActivityEvent, error) {
 	var ev domain.ActivityEvent
