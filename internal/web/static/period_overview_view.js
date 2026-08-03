@@ -23,16 +23,27 @@ function POPrimaryBtn({ disabled, onClick, children }) {
 }
 
 function PeriodOverviewContent({ data, busy, onApply }) {
-  const [drill, setDrill] = useState(null); // {title, teams:[...]}
+  // Храним селектор категории (kind/key), а не снимок команд, чтобы drill-down
+  // пересчитывался от актуальных data после массовой операции или смены периода.
+  const [drill, setDrill] = useState(null); // {title, kind:'status'|'err'|'goals', key?}
   if (!data) return <div style={{ padding: '40px 22px', textAlign: 'center', color: PO.mutedFg }}>Загрузка обзора…</div>;
   const s = data.summary;
   const allTeams = data.teams || [];
 
-  const teamsByStatus = k => allTeams.filter(t => t.status === k || (k === 'in_progress' && t.status === 'validated'));
+  // Статус строки уже нормализован сервером в бакет плитки — фильтруем по нему напрямую.
+  const teamsByStatus = k => allTeams.filter(t => t.status === k);
   const teamsWithErr = () => allTeams.filter(t => t.weight_error);
   const teamsWithGoals = () => allTeams.filter(t => t.goals_count > 0);
+  const drillTeams = () => {
+    if (!drill) return [];
+    if (drill.kind === 'status') return teamsByStatus(drill.key);
+    if (drill.kind === 'err') return teamsWithErr();
+    return teamsWithGoals();
+  };
 
-  const affectActivate = teamsWithGoals().filter(t => t.status !== 'in_progress' && t.status !== 'validated').length;
+  // Тот же предикат, что и на сервере (computeBulkAffected): затрагиваются команды
+  // с целями, чей статус не равен целевому.
+  const affectActivate = teamsWithGoals().filter(t => t.status !== 'in_progress').length;
   const affectClose = teamsWithGoals().filter(t => t.status !== 'closed').length;
   const skipNoGoals = s.total_teams - s.teams_with_goals;
 
@@ -49,31 +60,31 @@ function PeriodOverviewContent({ data, busy, onApply }) {
       {PO_STATUS_TILES.map(st => tile(
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: 999, background: st.dot }} />{st.label}</span>,
         (s.by_status && s.by_status[st.key]) || 0, 'показать состав', st.color,
-        () => setDrill({ title: st.label, teams: teamsByStatus(st.key) })
+        () => setDrill({ title: st.label, kind: 'status', key: st.key })
       ))}
     </div>
 
     <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '18px 0 10px' }}>Качество и результат</div>
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-      {tile('Команды с целями', `${s.teams_with_goals}/${s.total_teams}`, 'только они участвуют в массовых операциях', PO.accent, () => setDrill({ title: 'Команды с целями', teams: teamsWithGoals() }))}
-      {tile('Ошибки весов', s.weight_error_count, 'сумма весов целей ≠ 100%', '#b91c1c', () => setDrill({ title: 'Ошибки весов', teams: teamsWithErr() }))}
+      {tile('Команды с целями', `${s.teams_with_goals}/${s.total_teams}`, 'только они участвуют в массовых операциях', PO.accent, () => setDrill({ title: 'Команды с целями', kind: 'goals' }))}
+      {tile('Ошибки весов', s.weight_error_count, 'сумма весов целей ≠ 100%', '#b91c1c', () => setDrill({ title: 'Ошибки весов', kind: 'err' }))}
       {tile('Средний прогресс', `${s.avg_progress}%`, `по ${s.teams_with_goals} командам с целями`, PO.accent)}
     </div>
 
-    {drill && <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
+    {drill && (() => { const dt = drillTeams(); return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '10px 14px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: PO.headingFg }}>{drill.title} · {drill.teams.length}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: PO.headingFg }}>{drill.title} · {dt.length}</span>
         <button onClick={() => setDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: PO.mutedFg, fontSize: 16 }}>×</button>
       </div>
       <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-        {drill.teams.length === 0
+        {dt.length === 0
           ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
-          : drill.teams.map(t => <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
+          : dt.map(t => <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
               <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(t.path || []).join(' › ') || t.name}</span>
               <span style={{ color: t.weight_error ? PO.danger : PO.mutedFg, flexShrink: 0 }}>{t.goals_count > 0 ? `${t.progress}% · веса ${t.weight_sum}` : 'нет целей'}</span>
             </div>)}
       </div>
-    </div>}
+    </div>; })()}
 
     <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '18px 0 10px' }}>Массовые операции · только админ</div>
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

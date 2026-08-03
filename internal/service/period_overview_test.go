@@ -72,6 +72,30 @@ func TestComputePeriodOverview_ValidatedCountsAsInProgress(t *testing.T) {
 	}
 }
 
+// A goal shared into a team that has no status row of its own leaves the team at
+// no_goals while carrying a goal. It must bucket (and its row must serialize) as
+// forming, so the Forming tile count and its drill-down agree.
+func TestComputePeriodOverview_GoalsButNoGoalsStatusBucketsForming(t *testing.T) {
+	data := &PeriodData{
+		PeriodID: 1,
+		Teams:    []domain.Team{{ID: 1, Name: "Sharee"}},
+		GoalsByTeam: map[int64][]domain.Goal{
+			1: {{ID: 1, TeamID: 1, Weight: 100, KeyResults: []domain.KeyResult{numericKR(1, 100, 30)}}},
+		},
+		Statuses: map[int64]domain.TeamPeriodStatus{}, // no row -> resolves to no_goals
+	}
+	ov := computePeriodOverview(data, 0)
+	if ov.Summary.ByStatus["forming"] != 1 || ov.Summary.ByStatus["no_goals"] != 0 {
+		t.Fatalf("by_status: want forming=1,no_goals=0, got %+v", ov.Summary.ByStatus)
+	}
+	if ov.Summary.TeamsWithGoals != 1 {
+		t.Fatalf("teams_with_goals: want 1, got %d", ov.Summary.TeamsWithGoals)
+	}
+	if len(ov.Teams) != 1 || ov.Teams[0].Status != "forming" {
+		t.Fatalf("row status must be forming to match the tile, got %+v", ov.Teams)
+	}
+}
+
 func TestServicePeriodOverview_UsesCache(t *testing.T) {
 	data := &PeriodData{
 		PeriodID: 5,

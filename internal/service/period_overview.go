@@ -90,18 +90,25 @@ func computePeriodOverview(data *PeriodData, weightTolerance int) PeriodOverview
 			status = domain.TeamPeriodStatusNoGoals
 		}
 
+		// Serialize the bucket the summary counts this team under (not the raw
+		// status), so a drill-down that filters teams by tile key matches the tile
+		// count. Notably a team with a goal shared into it but no status row of its
+		// own is bucketed as forming, not no_goals.
+		bucket := "no_goals"
+		if len(goals) > 0 {
+			bucket = bucketStatusWithGoals(status)
+		}
+
 		row := PeriodTeamSummary{
 			TeamID:     id,
 			TeamName:   team.Name,
 			TeamPath:   buildTeamPath(id, teamsByID),
-			Status:     string(status),
+			Status:     bucket,
 			GoalsCount: len(goals),
 		}
+		byStatus[bucket]++
 
-		if len(goals) == 0 {
-			byStatus["no_goals"]++
-		} else {
-			byStatus[bucketStatusWithGoals(status)]++
+		if len(goals) > 0 {
 			teamsWithGoals++
 			weightSum := 0
 			for i := range goals {

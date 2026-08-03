@@ -43,19 +43,25 @@ function App() {
     }).catch(() => setErr(true));
   }, []);
 
+  // Текущий выбранный период в ref — чтобы игнорировать ответы (overview и bulk),
+  // относящиеся к уже смещённому выбору (гонка при переключении периода).
+  const periodIdRef = useRef(null);
   const load = (pid) => {
     if (!pid) return;
     setData(null); setErr(false);
-    apiGet(`/api/v1/admin/periods/${pid}/overview`).then(d => setData(d)).catch(() => setErr(true));
+    apiGet(`/api/v1/admin/periods/${pid}/overview`)
+      .then(d => { if (pid === periodIdRef.current) setData(d); })
+      .catch(() => { if (pid === periodIdRef.current) setErr(true); });
   };
-  useEffect(() => { load(periodId); }, [periodId]);
+  useEffect(() => { periodIdRef.current = periodId; load(periodId); }, [periodId]);
 
   async function onApply(ep) {
     if (busy || !periodId) return;
+    const pid = periodId;
     setBusy(true);
     try {
-      await apiPostJSON(`/api/v1/admin/periods/${periodId}/teams/${ep}`, {});
-      load(periodId);
+      await apiPostJSON(`/api/v1/admin/periods/${pid}/teams/${ep}`, {});
+      if (pid === periodIdRef.current) load(pid);
     } catch { alert('Ошибка операции'); }
     finally { setBusy(false); }
   }
