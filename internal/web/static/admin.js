@@ -430,36 +430,15 @@ function PeriodRow({p, stat, cols, first, onOpen, actions}) {
   </div>;
 }
 
-const STATUS_TILES = [
-  {key:'in_progress', label:'В работе',    dot:'#22c55e', color:'#166534'},
-  {key:'ready',       label:'К валидации', dot:'#f59e0b', color:'#92400e'},
-  {key:'forming',     label:'Черновик',    dot:'#9ca3af', color:'#4b5563'},
-  {key:'closed',      label:'Закрыто',     dot:'#9ca3af', color:'#4b5563'},
-  {key:'no_goals',    label:'Нет целей',   dot:'#cbd5e1', color:'#64748b'},
-];
-
-// Модалка «Управление периодом»: обзор команд по статусам/весам/прогрессу и массовые операции.
+// Модалка «Управление периодом»: шапка + общий компонент обзора (period_overview_view.js).
 function PeriodOverviewModal({period, onEdit, onDelete, reload}) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [drill, setDrill] = useState(null); // {title, teams:[...]}
 
   const load = () => apiGet(`/api/v1/admin/periods/${period.id}/overview`).then(r => r && r.json()).then(setData).catch(()=>{});
   useEffect(() => { load(); }, [period.id]);
 
-  if (!data) return <div style={{padding:'40px 22px',textAlign:'center',color:T.mutedFg}}>Загрузка обзора…</div>;
-  const s = data.summary;
-  const allTeams = data.teams || [];
-
-  const teamsByStatus = k => allTeams.filter(t => t.status===k || (k==='in_progress' && t.status==='validated'));
-  const teamsWithErr   = () => allTeams.filter(t => t.weight_error);
-  const teamsWithGoals = () => allTeams.filter(t => t.goals_count>0);
-
-  const affectActivate = teamsWithGoals().filter(t => t.status!=='in_progress' && t.status!=='validated').length;
-  const affectClose    = teamsWithGoals().filter(t => t.status!=='closed').length;
-  const skipNoGoals    = s.total_teams - s.teams_with_goals;
-
-  async function apply(ep) {
+  async function onApply(ep) {
     if (busy) return;
     setBusy(true);
     try {
@@ -469,13 +448,6 @@ function PeriodOverviewModal({period, onEdit, onDelete, reload}) {
       reload();
     } finally { setBusy(false); }
   }
-
-  const tile = (label, value, sub, accent, onClick) =>
-    <div onClick={onClick} style={{flex:'1 1 150px',minWidth:140,background:'white',border:'1px solid '+T.cardBorder,borderRadius:12,padding:'14px 16px',cursor:onClick?'pointer':'default'}}>
-      <div style={{fontSize:12,color:T.mutedFg,fontWeight:600}}>{label}</div>
-      <div style={{fontSize:26,fontWeight:800,color:accent||T.headingFg,marginTop:4}}>{value}</div>
-      {sub && <div style={{fontSize:11,color:T.dimFg,marginTop:2}}>{sub}</div>}
-    </div>;
 
   return <div>
     <div style={{padding:'18px 22px',borderBottom:'1px solid '+T.hairline,display:'flex',alignItems:'flex-start',gap:16}}>
@@ -489,59 +461,7 @@ function PeriodOverviewModal({period, onEdit, onDelete, reload}) {
       <Btn onClick={onEdit}>Редактировать</Btn>
       <Btn danger onClick={onDelete}>Удалить</Btn>
     </div>
-
-    <div style={{padding:'18px 22px'}}>
-      <div style={{fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,marginBottom:10}}>Команды по статусам · всего {s.total_teams}</div>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-        {STATUS_TILES.map(st => tile(
-          <span style={{display:'inline-flex',alignItems:'center',gap:6}}><span style={{width:7,height:7,borderRadius:999,background:st.dot}}/>{st.label}</span>,
-          (s.by_status && s.by_status[st.key]) || 0, 'показать состав', st.color,
-          () => setDrill({title:st.label, teams:teamsByStatus(st.key)})
-        ))}
-      </div>
-
-      <div style={{fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,margin:'18px 0 10px'}}>Качество и результат</div>
-      <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-        {tile('Команды с целями', `${s.teams_with_goals}/${s.total_teams}`, 'участвуют в массовых операциях', T.accent, ()=>setDrill({title:'Команды с целями', teams:teamsWithGoals()}))}
-        {tile('Ошибки весов', s.weight_error_count, 'сумма весов целей ≠ 100%', '#b91c1c', ()=>setDrill({title:'Ошибки весов', teams:teamsWithErr()}))}
-        {tile('Средний прогресс', `${s.avg_progress}%`, `по ${s.teams_with_goals} командам с целями`, T.accent)}
-      </div>
-
-      {drill && <div style={{marginTop:14,border:'1px solid '+T.cardBorder,borderRadius:12,overflow:'hidden'}}>
-        <div style={{padding:'10px 14px',background:'#f8fafc',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{fontSize:12.5,fontWeight:700,color:T.headingFg}}>{drill.title} · {drill.teams.length}</span>
-          <button onClick={()=>setDrill(null)} style={{background:'none',border:'none',cursor:'pointer',color:T.mutedFg,fontSize:16}}>×</button>
-        </div>
-        <div style={{maxHeight:220,overflowY:'auto'}}>
-          {drill.teams.length===0
-            ? <div style={{padding:'16px',textAlign:'center',color:T.dimFg,fontSize:12.5}}>Пусто</div>
-            : drill.teams.map(t => <div key={t.id} style={{display:'flex',justifyContent:'space-between',gap:10,padding:'8px 14px',borderTop:'1px solid '+T.hairline,fontSize:12.5}}>
-                <span style={{color:T.headingFg,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{(t.path||[]).join(' › ')||t.name}</span>
-                <span style={{color:t.weight_error?'#b91c1c':T.mutedFg,flexShrink:0}}>{t.goals_count>0?`${t.progress}% · веса ${t.weight_sum}`:'нет целей'}</span>
-              </div>)}
-        </div>
-      </div>}
-
-      <div style={{fontSize:11,color:T.dimFg,fontWeight:700,textTransform:'uppercase',letterSpacing:.5,margin:'18px 0 10px'}}>Массовые операции</div>
-      <div style={{display:'flex',flexDirection:'column',gap:10}}>
-        <div style={{border:'1px solid '+T.cardBorder,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:14}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:13.5,fontWeight:700,color:T.headingFg}}>Перевести все команды в «В работе»</div>
-            <div style={{fontSize:12,color:T.mutedFg,marginTop:3}}>Только команды с ≥1 целью. Цели блокируются от редактирования, остаётся обновление прогресса.</div>
-          </div>
-          <div style={{fontSize:11.5,color:T.dimFg,textAlign:'right'}}>затронет {affectActivate}<br/>пропустим {skipNoGoals} без целей</div>
-          <Btn variant="primary" disabled={busy||affectActivate===0} onClick={()=>apply('activate')}>Применить</Btn>
-        </div>
-        <div style={{border:'1px solid '+T.cardBorder,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:14}}>
-          <div style={{flex:1}}>
-            <div style={{fontSize:13.5,fontWeight:700,color:T.headingFg}}>Закрыть цели всех команд периода</div>
-            <div style={{fontSize:12,color:T.mutedFg,marginTop:3}}>Команды без целей не трогаем. У остальных статус становится «Закрыто» — доступны только комментарии.</div>
-          </div>
-          <div style={{fontSize:11.5,color:T.dimFg,textAlign:'right'}}>затронет {affectClose}<br/>пропустим {skipNoGoals} без целей</div>
-          <Btn variant="primary" disabled={busy||affectClose===0} onClick={()=>apply('close')}>Применить</Btn>
-        </div>
-      </div>
-    </div>
+    <PeriodOverviewContent data={data} busy={busy} onApply={onApply}/>
   </div>;
 }
 

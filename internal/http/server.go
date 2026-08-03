@@ -456,6 +456,11 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
 		})
+		// Обзор периода — tenant-admin-only раздел основного приложения (собственный shell).
+		r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
+		})
 		// Legacy deep-links → root SPA.
 		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
 		r.Get("/admin/teams/new", redirect)
