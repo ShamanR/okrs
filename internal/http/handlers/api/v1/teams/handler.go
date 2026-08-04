@@ -7,6 +7,7 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
+	"okrs/internal/export"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
@@ -159,6 +160,68 @@ func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Re
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// GET /api/v1/teams/{teamID}/export
+func (h *Handler) HandleTeamExport(w http.ResponseWriter, r *http.Request) {
+	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
+		return
+	}
+	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
+		return
+	}
+	scopeCtx, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
+	periodID, err := common.ParsePeriodID(r)
+	if err != nil || periodID == 0 {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
+		return
+	}
+
+	q := r.URL.Query()
+	exportScope := export.Scope(q.Get("scope"))
+	if exportScope != export.ScopeGoal && exportScope != export.ScopeTeam && exportScope != export.ScopeTree {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid scope", map[string]string{"scope": "invalid"})
+		return
+	}
+	format := export.Format(q.Get("format"))
+	if format == "" {
+		format = export.FormatShort
+	}
+	if format != export.FormatShort && format != export.FormatFull {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid format", map[string]string{"format": "invalid"})
+		return
+	}
+	var goalID int64
+	if exportScope == export.ScopeGoal {
+		goalID, err = common.ParseID(q.Get("goal_id"))
+		if err != nil || goalID == 0 {
+			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "goal_id required", map[string]string{"goal_id": "required"})
+			return
+		}
+	}
+	allowed, _ := auth.AllowedTeamIDsFromCtx(r.Context())
+
+	res, err := h.service.ExportOKR(r.Context(), scopeCtx, service.ExportParams{
+		TeamID: teamID, PeriodID: periodID, GoalID: goalID, Scope: exportScope,
+		Options:        export.Options{Format: format, Comments: q.Get("comments") == "1"},
+		AllowedTeamIDs: allowed,
+	})
+	if err != nil {
+		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "export not available", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, map[string]any{
+		"filename": res.Filename,
+		"markdown": res.Markdown,
+		"lines":    res.Lines,
+	})
 }
 
 func collectOKRUserUDIDs(okr service.TeamOKR) []string {

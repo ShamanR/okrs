@@ -585,6 +585,29 @@ func (r *GoalRepository) ListGoalCommentsByGoals(ctx context.Context, scope doma
 	return r.listGoalCommentsBatch(ctx, scope, goalIDs)
 }
 
+// ListGoalOwnerTeamIDs returns the true owner team id (goals.team_id) for each goal id.
+// The batched board loader (ListGoalsByTeamsPeriod) reports the board team, not the owner,
+// so consumers that must distinguish owned vs shared goals use this to recover ownership.
+func (r *GoalRepository) ListGoalOwnerTeamIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64]int64, error) {
+	result := make(map[int64]int64, len(goalIDs))
+	if len(goalIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.db.Query(ctx, `SELECT id, team_id FROM goals WHERE id = ANY($1) AND tenant_id = $2`, goalIDs, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, teamID int64
+		if err := rows.Scan(&id, &teamID); err != nil {
+			return nil, err
+		}
+		result[id] = teamID
+	}
+	return result, rows.Err()
+}
+
 func (r *GoalRepository) listGoalCommentsBatch(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
 	if len(goalIDs) == 0 {
 		return nil, nil

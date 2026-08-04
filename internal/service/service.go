@@ -60,6 +60,8 @@ type GoalRepo interface {
 	DeleteGoalComment(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) error
 	SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error)
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
+	ListGoalCommentsByGoals(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]domain.GoalComment, error)
+	ListGoalOwnerTeamIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64]int64, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
 
@@ -91,6 +93,7 @@ type KRRepo interface {
 	MoveKeyResult(ctx context.Context, scope domain.TenantScope, krID int64, direction int) error
 	UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error
 	GetKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KeyResultNote, error)
+	BatchLoadNotes(ctx context.Context, scope domain.TenantScope, krIDs []int64) (map[int64]*domain.KeyResultNote, error)
 	GetBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KRBoolean, error)
 	UpdateKeyResultDescription(ctx context.Context, scope domain.TenantScope, krID int64, description string) error
 	FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error)
@@ -170,6 +173,8 @@ var (
 	ErrPeriodNotClosed             = errors.New("period must be closed to archive")
 	// ErrForbidden signals an authorization failure the handler maps to HTTP 403.
 	ErrForbidden = errors.New("forbidden")
+	// ErrGoalNotOnTeamBoard signals a goal-scope export where the goal is not on the context team's board.
+	ErrGoalNotOnTeamBoard = errors.New("goal not on team board")
 )
 
 // New constructs a Service from a Deps bundle.
