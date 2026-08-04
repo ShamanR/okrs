@@ -432,6 +432,33 @@ function flattenTree(nodes, depth = 0) {
   return out;
 }
 
+// findTreeNode returns the hierarchy node with the given id (searching the whole forest).
+function findTreeNode(nodes, id) {
+  for (const n of nodes || []) {
+    if (n.id === id) return n;
+    const f = findTreeNode(n.children || [], id);
+    if (f) return f;
+  }
+  return null;
+}
+
+// countSubtree counts a node and all its descendants (1 for a leaf).
+function countSubtree(node) {
+  if (!node) return 0;
+  return 1 + (node.children || []).reduce((s, c) => s + countSubtree(c), 0);
+}
+
+// treePathNames returns the names root→node for the given id, or null if not found.
+function treePathNames(nodes, id, trail = []) {
+  for (const n of nodes || []) {
+    const next = [...trail, n.name];
+    if (n.id === id) return next;
+    const f = treePathNames(n.children || [], id, next);
+    if (f) return f;
+  }
+  return null;
+}
+
 function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
   const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [hi, setHi] = useState(0);
   const inputRef = useRef(); const wrapRef = useRef();
@@ -1203,8 +1230,155 @@ function CopyLinkButton({ teamId, periodId, goalId }) {
   );
 }
 
+// ── MARKDOWN EXPORT ─────────────────────────────────────────────────────────
+function pluralRu(n, forms) {
+  const mod10 = n % 10, mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return forms[0];
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return forms[1];
+  return forms[2];
+}
+
+// ExportModal fetches server-rendered Markdown for the chosen scope/options and lets the user
+// preview, copy or download it. Generation is entirely server-side (single source of truth);
+// this component only displays the returned text and derives the download Blob from it.
+function ExportModal({ goal, teamId, periodId, info, onClose }) {
+  const [scope, setScope] = useState('goal');
+  const [full, setFull] = useState(false);
+  const [comments, setComments] = useState(false);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [reloadTick, setReloadTick] = useState(0);
+  const { requestClose } = useModalClose({ isDirty: false, onClose });
+  const overlay = useOverlayClose(requestClose);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true); setError(false);
+    const params = new URLSearchParams({
+      period_id: periodId, scope,
+      format: full ? 'full' : 'short',
+      comments: comments ? '1' : '0',
+    });
+    if (scope === 'goal') params.set('goal_id', goal.id);
+    const t = setTimeout(async () => {
+      try {
+        const d = await apiGet(`/api/v1/teams/${teamId}/export?${params.toString()}`);
+        if (!cancelled) { setData(d); setLoading(false); }
+      } catch {
+        if (!cancelled) { setError(true); setLoading(false); }
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [scope, full, comments, reloadTick, teamId, periodId, goal.id]);
+
+  const copy = async () => {
+    if (!data) return;
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(data.markdown);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = data.markdown; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* silent */ }
+  };
+
+  const download = () => {
+    if (!data) return;
+    const blob = new Blob([data.markdown], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = data.filename; document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  };
+
+  const teamGoals = info.teamGoalCount || 0;
+  const subtreeTeams = info.subtreeTeamCount || 0;
+  const cards = [
+    { key: 'goal', title: 'Одна цель', sub: goal.title },
+    { key: 'team', title: 'Цели команды', sub: `${teamGoals} ${pluralRu(teamGoals, ['цель', 'цели', 'целей'])}` },
+    { key: 'tree', title: 'С вложенными командами', sub: `${subtreeTeams} ${pluralRu(subtreeTeams, ['команда', 'команды', 'команд'])} в структуре` },
+  ];
+
+  return (
+    <div className="modal-overlay modal-overlay--z600" {...overlay}>
+      <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w720 export-modal">
+        <div className="export-modal__header">
+          <div className="modal-title">Экспорт целей в Markdown</div>
+          <div className="modal-subtitle">{[info.periodName, (info.teamPath || []).join(' / ')].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div className="export-modal__scopes">
+          {cards.map(c => (
+            <button key={c.key} type="button"
+              onClick={() => setScope(c.key)}
+              className={`export-modal__scope-card${scope === c.key ? ' export-modal__scope-card--active' : ''}`}>
+              <div className="export-modal__scope-title">{c.title}</div>
+              <div className="export-modal__scope-sub">{c.sub}</div>
+            </button>
+          ))}
+        </div>
+        <div className="export-modal__options">
+          <label className="export-modal__check"><input type="checkbox" checked={full} onChange={e => setFull(e.target.checked)} /> Полный экспорт</label>
+          <label className="export-modal__check"><input type="checkbox" checked={comments} onChange={e => setComments(e.target.checked)} /> Комментарии</label>
+        </div>
+        <div className="export-modal__preview-wrap">
+          {loading && <div className="export-modal__state">Загрузка превью…</div>}
+          {!loading && error && (
+            <div className="export-modal__state">
+              Не удалось построить экспорт.
+              <button type="button" className="btn btn--secondary export-modal__retry" onClick={() => setReloadTick(t => t + 1)}>Повторить</button>
+            </div>
+          )}
+          {!loading && !error && data && <pre className="export-modal__preview">{data.markdown}</pre>}
+        </div>
+        <div className="export-modal__footer">
+          <div className="export-modal__filename">{data ? `${data.filename} · ${data.lines} ${pluralRu(data.lines, ['строка', 'строки', 'строк'])}` : ''}</div>
+          <div className="export-modal__actions">
+            <button type="button" className="btn btn--secondary" onClick={onClose}>Закрыть</button>
+            <button type="button" className="btn btn--secondary" onClick={copy} disabled={!data}>{copied ? '✓ Скопировано' : 'Скопировать'}</button>
+            <button type="button" className="btn btn--primary" onClick={download} disabled={!data}>Скачать .md</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ExportMenu is the "···" affordance on a goal card that opens the export modal.
+function ExportMenu({ goal, teamId, periodId, info }) {
+  const [open, setOpen] = useState(false);
+  const [modal, setModal] = useState(false);
+  const wrapRef = useRef();
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="export-menu" ref={wrapRef}>
+      <button type="button" className="export-menu__btn" title="Ещё" aria-label="Ещё" onClick={() => setOpen(o => !o)}>···</button>
+      {open && (
+        <div className="export-menu__dropdown">
+          <button type="button" className="export-menu__item" onClick={() => { setOpen(false); setModal(true); }}>
+            <span className="export-menu__item-title">↓ Экспорт в Markdown</span>
+            <span className="export-menu__item-sub">только эта цель — или шире</span>
+          </button>
+        </div>
+      )}
+      {modal && <ExportModal goal={goal} teamId={teamId} periodId={periodId} info={info} onClose={() => setModal(false)} />}
+    </div>
+  );
+}
+
 // ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null, exportInfo = null }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Goals without key results start expanded so the author's attention is drawn
@@ -1278,6 +1452,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
             </div>
           )}
           <CopyLinkButton teamId={currentTeamId} periodId={periodId} goalId={goal.id} />
+          {exportInfo && <ExportMenu goal={goal} teamId={currentTeamId} periodId={periodId} info={exportInfo} />}
         </div>
         <div className="goal-card__title-row">
           <div onClick={canEdit ? () => onEditGoal(goal) : undefined}
@@ -2443,6 +2618,14 @@ function App() {
   const goalWeightOff = goals.length > 0 && goalWeightSum !== 100;
   const goalWeightDelta = 100 - goalWeightSum;
   const hasChildren = overview && (overview.children_summary?.items?.length > 0);
+  // Context passed to the per-goal export menu: period label, team hierarchy path and the
+  // scope-card counts (subtree team count comes from the already-loaded hierarchy).
+  const exportInfo = selId ? {
+    periodName: curPeriod?.name || '',
+    teamPath: treePathNames(hierarchy, selId) || (teamOKR?.team?.name ? [teamOKR.team.name] : []),
+    teamGoalCount: goals.length,
+    subtreeTeamCount: countSubtree(findTreeNode(hierarchy, selId)),
+  } : null;
   const goalWeightWarn = goalWeightOff ? (
     <div className="goal-weight-warn">
       <span className="goal-weight-warn__icon">⚠</span>
@@ -2556,7 +2739,7 @@ function App() {
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current} exportInfo={exportInfo}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },

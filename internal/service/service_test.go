@@ -250,6 +250,9 @@ func (f *fakeStore) GetBooleanMeta(context.Context, domain.TenantScope, int64) (
 func (f *fakeStore) GetKeyResultNote(context.Context, domain.TenantScope, int64) (*domain.KeyResultNote, error) {
 	return nil, nil
 }
+func (f *fakeStore) BatchLoadNotes(context.Context, domain.TenantScope, []int64) (map[int64]*domain.KeyResultNote, error) {
+	return nil, nil
+}
 func (f *fakeStore) AddGoalComment(context.Context, domain.TenantScope, int64, string, int64) (int64, error) {
 	return 1, nil
 }
@@ -341,6 +344,12 @@ func (f *fakeStore) UpdateGoalFields(context.Context, domain.TenantScope, goals.
 }
 func (f *fakeStore) UpdateGoalOwner(context.Context, domain.TenantScope, int64, int64, int) error {
 	return nil
+}
+func (f *fakeStore) ListGoalCommentsByGoals(context.Context, domain.TenantScope, []int64) (map[int64][]domain.GoalComment, error) {
+	return nil, nil
+}
+func (f *fakeStore) ListGoalOwnerTeamIDs(context.Context, domain.TenantScope, []int64) (map[int64]int64, error) {
+	return nil, nil
 }
 func (f *fakeStore) ListGoalComments(context.Context, domain.TenantScope, int64) ([]domain.GoalComment, error) {
 	return nil, nil

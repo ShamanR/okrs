@@ -310,6 +310,7 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
+- `GET /api/v1/teams/{teamID}/export`
 - `GET /api/v1/goals/{goalID}`
 - `GET /api/v1/activity`
 - `GET /api/v1/activity/tree-counts`
@@ -697,3 +698,57 @@ Idempotency / side effects:
 
 - endpoint read-only;
 - не изменяет доменные агрегаты, только рассчитывает производные метрики для UI.
+
+### `GET /api/v1/teams/{teamID}/export`
+
+Назначение: выгрузка OKR в Markdown для последующего копирования/скачивания в трекере.
+Генерация — на сервере (пакет `internal/export`, единый источник форматирования).
+
+**Method + path:** `GET /api/v1/teams/{teamID}/export`
+
+**Request (query-параметры):**
+
+- `period_id` (int64, обязателен) — период выгрузки.
+- `scope` (обязателен) — `goal` | `team` | `tree`:
+  - `goal` — одна цель (`goal_id` обязателен);
+  - `team` — все цели команды-контекста (owner + shared-in, как на доске);
+  - `tree` — цели команды и всего доступного поддерева.
+- `goal_id` (int64) — обязателен при `scope=goal`.
+- `format` — `short` | `full`, по умолчанию `short`.
+- `comments` — `0` | `1`, по умолчанию `0`.
+
+**Validation rules:**
+
+- `period_id` отсутствует/невалиден → `400 VALIDATION_ERROR`.
+- `scope` не из набора → `400 VALIDATION_ERROR`.
+- `scope=goal` без валидного `goal_id` → `400 VALIDATION_ERROR`.
+- `format` вне набора → `400 VALIDATION_ERROR`.
+- `teamID` вне tenant/scope запрашивающего → `404 NOT_FOUND`.
+- `scope=goal`: цель не на доске команды-контекста (не владелец и не расшарена в неё) → `404 NOT_FOUND`.
+
+**Success response (`200 application/json`):**
+
+```json
+{
+  "filename": "okr-y26q1-u1.md",
+  "markdown": "<!-- OKR export · Q1 2026 -->\n\n# Платформа\n\n## ...",
+  "lines": 41
+}
+```
+
+- `filename` — предлагаемое имя файла: `okr-y<YY>q<Q>-<code>.md` (`<code>` = `g<goalID>` / `<типная-буква><teamID>` / `<типная-буква><teamID>-tree`); `YY`/`Q` выводятся из `period.start_date`.
+- `markdown` — готовый текст (краткий: команда с иерархией, цели, описания, KR-чеклист; полный: + метаданные цели, детали/описания/заметки KR; `comments=1`: + блок обсуждений).
+- `lines` — число строк в `markdown` (для футера модалки).
+
+**Error cases:** `400 VALIDATION_ERROR`, `404 NOT_FOUND`, `500 INTERNAL`.
+
+**Idempotency:** read-only, без side effects; CSRF не требуется (safe GET).
+
+**Side effects on aggregates:** нет.
+
+**Права доступа:** tenant (`TenantScopeFromContext`) + grant-scope (`AllowedTeamIDsFromCtx`).
+В `scope=tree` недоступные пользователю ветки исключаются из вывода **и** из счётчиков
+(пересечение поддерева со scope). Расшаренная цель доступна, если пользователь видит
+команду-владельца или одну из shared-команд из своего scope. Проверяется на сервере.
+Экспорт не зависит от `team period status` (доступен во всех статусах). Скачивание файла
+выполняет клиент из поля `markdown` (Blob) — отдельного download-эндпоинта нет.
