@@ -59,7 +59,11 @@ func oneline(s string) string {
 
 func writeGoal(b *strings.Builder, block TeamBlock, g domain.Goal, opts Options) {
 	if owner, ok := block.RefGoals[g.ID]; ok {
-		b.WriteString("\n## " + oneline(g.Title) + " _(общая, владелец: " + oneline(owner) + ")_\n")
+		if owner == "" {
+			b.WriteString("\n## " + oneline(g.Title) + " _(общая)_\n")
+		} else {
+			b.WriteString("\n## " + oneline(g.Title) + " _(общая, владелец: " + oneline(owner) + ")_\n")
+		}
 		return
 	}
 	b.WriteString("\n## " + oneline(g.Title) + "\n")

@@ -137,12 +137,19 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 		}
 	}
 
+	included := make(map[int64]bool, len(teamIDs))
+	for _, id := range teamIDs {
+		included[id] = true
+	}
+
+	// A goal is rendered fully exactly once. If its owner team has its own block in this export,
+	// non-owner teams show a reference (the owner block carries the full body). If the owner is
+	// outside the exported/accessible subtree, no owner block exists, so the goal is rendered
+	// fully at its first visible occurrence and referenced only in later ones.
+	renderedFull := make(map[int64]bool)
 	blocks := make([]export.TeamBlock, 0, len(teamIDs))
 	for _, id := range teamIDs {
 		goals := goalsByTeam[id]
-		// A goal owned by another team is rendered once (under its owner block) and shown as a
-		// reference under every other team it is shared into — so the subtree export does not
-		// repeat the full goal body across teams.
 		var refGoals map[int64]string
 		for gi := range goals {
 			g := &goals[gi]
@@ -159,11 +166,22 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 			if comments != nil {
 				g.Comments = comments[g.ID]
 			}
-			if owner, ok := ownerByGoal[g.ID]; ok && owner != id {
+			owner := ownerByGoal[g.ID]
+			var asRef bool
+			if included[owner] {
+				asRef = owner != id // owner block renders full; others reference it
+			} else {
+				asRef = renderedFull[g.ID] // no owner block: full once, reference after
+			}
+			if asRef {
 				if refGoals == nil {
 					refGoals = make(map[int64]string)
 				}
+				// Owner name only when the owner team is part of the export (never leak an
+				// inaccessible team's name); blank falls back to a generic reference.
 				refGoals[g.ID] = teamsByID[owner].Name
+			} else {
+				renderedFull[g.ID] = true
 			}
 		}
 		blocks = append(blocks, export.TeamBlock{
