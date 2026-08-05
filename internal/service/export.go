@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"okrs/internal/domain"
@@ -86,6 +87,12 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 	if err != nil {
 		return nil, err
 	}
+	// Strip nodes outside the caller's grant scope before deriving paths, so headings never leak
+	// the names of inaccessible ancestors (matches the hierarchy endpoint's scope filtering).
+	// nil AllowedTeamIDs means admin/unrestricted — no filtering.
+	if p.AllowedTeamIDs != nil {
+		hierarchy = filterNodesByScope(hierarchy, p.AllowedTeamIDs)
+	}
 	// team + descendants, in DFS order, intersected with allowed scope.
 	ordered := orderedSubtreeIDs(team.ID, hierarchy)
 	teamsByID, pathByID := indexTeamsWithPaths(hierarchy)
@@ -167,6 +174,23 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 		})
 	}
 	return blocks, nil
+}
+
+// filterNodesByScope removes tree nodes not in allowedIDs and promotes accessible children of
+// removed nodes to their parent's level, so the result is a valid forest rooted at the caller's
+// access boundary. Mirrors the same logic in the hierarchy API handler.
+func filterNodesByScope(nodes []TeamNode, allowedIDs []int64) []TeamNode {
+	result := make([]TeamNode, 0, len(nodes))
+	for _, node := range nodes {
+		filteredChildren := filterNodesByScope(node.Children, allowedIDs)
+		if slices.Contains(allowedIDs, node.Team.ID) {
+			node.Children = filteredChildren
+			result = append(result, node)
+		} else {
+			result = append(result, filteredChildren...)
+		}
+	}
+	return result
 }
 
 func allowedContains(allowed []int64, id int64) bool {

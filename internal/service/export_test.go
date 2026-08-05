@@ -129,6 +129,22 @@ func TestExportOKRTree(t *testing.T) {
 		t.Fatalf("expected full goal heading in goal scope:\n%s", res3.Markdown)
 	}
 
+	// tree scope rooted at the child, with access ONLY to the child (not the root):
+	// the heading must not leak the inaccessible parent's name.
+	res5, err := svc.ExportOKR(ctx, scope, service.ExportParams{
+		TeamID: childID, PeriodID: periodID, Scope: export.ScopeTree,
+		Options: export.Options{Format: export.FormatShort}, AllowedTeamIDs: []int64{childID},
+	})
+	if err != nil {
+		t.Fatalf("ExportOKR child-only tree: %v", err)
+	}
+	if strings.Contains(res5.Markdown, "Платформа") {
+		t.Fatalf("inaccessible ancestor name leaked into headings:\n%s", res5.Markdown)
+	}
+	if !strings.Contains(res5.Markdown, "# Web\n") {
+		t.Fatalf("expected child heading without ancestor path:\n%s", res5.Markdown)
+	}
+
 	// team scope from the shared-into team must also render the shared goal fully.
 	res4, err := svc.ExportOKR(ctx, scope, service.ExportParams{
 		TeamID: childID, PeriodID: periodID, Scope: export.ScopeTeam,
