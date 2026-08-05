@@ -119,4 +119,14 @@ func TestTeamExportEndpoint(t *testing.T) {
 	if resp3.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected 404 out of scope, got %d", resp3.StatusCode)
 	}
+
+	// nonexistent period -> 404 (genuine not-found, not a 500)
+	resp4, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/export?period_id=999999&scope=team", inScope.URL, teamID))
+	if err != nil {
+		t.Fatalf("get missing period: %v", err)
+	}
+	defer resp4.Body.Close()
+	if resp4.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing period, got %d", resp4.StatusCode)
+	}
 }

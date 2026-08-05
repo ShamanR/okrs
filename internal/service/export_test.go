@@ -79,6 +79,23 @@ func TestExportOKRTree(t *testing.T) {
 		t.Fatalf("share goal: %v", err)
 	}
 
+	// A goal owned by a team OUTSIDE root's subtree, shared into the child. When exporting root's
+	// tree, no owner block exists for it, so it must render fully (not a bare reference).
+	var otherID, outsideGoalID int64
+	if err := pool.QueryRow(ctx, `INSERT INTO teams (name, team_type) VALUES ('Секрет', 'team') RETURNING id`).Scan(&otherID); err != nil {
+		t.Fatalf("insert other team: %v", err)
+	}
+	outsideGoalID, err = repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
+		TeamID: otherID, PeriodID: periodID, Title: "Внешняя цель", Description: "детали внешней цели",
+		Priority: domain.PriorityP2, Weight: 100, WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+	})
+	if err != nil {
+		t.Fatalf("create outside goal: %v", err)
+	}
+	if err := repo.Shares.ReplaceGoalShares(ctx, scope, outsideGoalID, []shares.GoalShareInput{{TeamID: childID, Weight: 100}}); err != nil {
+		t.Fatalf("share outside goal: %v", err)
+	}
+
 	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 
 	// full subtree access: owner block full, child block shows shared reference
@@ -127,6 +144,38 @@ func TestExportOKRTree(t *testing.T) {
 	}
 	if !strings.Contains(res3.Markdown, "## Общая цель\n") {
 		t.Fatalf("expected full goal heading in goal scope:\n%s", res3.Markdown)
+	}
+
+	// tree scope rooted at the child, with access ONLY to the child (not the root):
+	// the heading must not leak the inaccessible parent's name.
+	res5, err := svc.ExportOKR(ctx, scope, service.ExportParams{
+		TeamID: childID, PeriodID: periodID, Scope: export.ScopeTree,
+		Options: export.Options{Format: export.FormatShort}, AllowedTeamIDs: []int64{childID},
+	})
+	if err != nil {
+		t.Fatalf("ExportOKR child-only tree: %v", err)
+	}
+	if strings.Contains(res5.Markdown, "Платформа") {
+		t.Fatalf("inaccessible ancestor name leaked into headings:\n%s", res5.Markdown)
+	}
+	if !strings.Contains(res5.Markdown, "# Web\n") {
+		t.Fatalf("expected child heading without ancestor path:\n%s", res5.Markdown)
+	}
+
+	// export root's tree (access to root+child, NOT the outside owner): the outside-owned goal
+	// shared into the child must render fully, not collapse to a reference that would drop its body.
+	res6, err := svc.ExportOKR(ctx, scope, service.ExportParams{
+		TeamID: rootID, PeriodID: periodID, Scope: export.ScopeTree,
+		Options: export.Options{Format: export.FormatShort}, AllowedTeamIDs: []int64{rootID, childID},
+	})
+	if err != nil {
+		t.Fatalf("ExportOKR outside-owner: %v", err)
+	}
+	if strings.Contains(res6.Markdown, "## Внешняя цель _(общая") {
+		t.Fatalf("outside-owner goal wrongly collapsed to a reference:\n%s", res6.Markdown)
+	}
+	if !strings.Contains(res6.Markdown, "## Внешняя цель\n") || !strings.Contains(res6.Markdown, "детали внешней цели") {
+		t.Fatalf("outside-owner goal must render fully with its body:\n%s", res6.Markdown)
 	}
 
 	// team scope from the shared-into team must also render the shared goal fully.

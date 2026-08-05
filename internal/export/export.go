@@ -40,9 +40,9 @@ type TeamBlock struct {
 // Markdown renders the export document. Blocks are rendered in the given order.
 func Markdown(period domain.Period, blocks []TeamBlock, opts Options) string {
 	var b strings.Builder
-	b.WriteString("<!-- OKR export · " + period.Name + " -->\n")
+	b.WriteString("<!-- OKR export · " + oneline(period.Name) + " -->\n")
 	for _, block := range blocks {
-		b.WriteString("\n# " + block.Heading + "\n")
+		b.WriteString("\n# " + oneline(block.Heading) + "\n")
 		for _, g := range block.Goals {
 			writeGoal(&b, block, g, opts)
 		}
@@ -50,12 +50,23 @@ func Markdown(period domain.Period, blocks []TeamBlock, opts Options) string {
 	return b.String()
 }
 
+// oneline collapses newlines, carriage returns and tabs to single spaces so user-provided
+// identifiers (titles, team names) placed on structural Markdown lines cannot inject extra
+// headings, list items or blocks. Descriptions/notes are intentionally left as raw Markdown.
+func oneline(s string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ", "\t", " ").Replace(s))
+}
+
 func writeGoal(b *strings.Builder, block TeamBlock, g domain.Goal, opts Options) {
 	if owner, ok := block.RefGoals[g.ID]; ok {
-		b.WriteString("\n## " + g.Title + " _(общая, владелец: " + owner + ")_\n")
+		if owner == "" {
+			b.WriteString("\n## " + oneline(g.Title) + " _(общая)_\n")
+		} else {
+			b.WriteString("\n## " + oneline(g.Title) + " _(общая, владелец: " + oneline(owner) + ")_\n")
+		}
 		return
 	}
-	b.WriteString("\n## " + g.Title + "\n")
+	b.WriteString("\n## " + oneline(g.Title) + "\n")
 	if opts.Format == FormatFull {
 		b.WriteString("\n" + goalMetaLine(g) + "\n")
 	}
@@ -118,7 +129,7 @@ func writeKR(b *strings.Builder, kr domain.KeyResult, opts Options) {
 	if kr.Progress == 100 {
 		box = "x"
 	}
-	b.WriteString("- [" + box + "] " + kr.Title + "\n")
+	b.WriteString("- [" + box + "] " + oneline(kr.Title) + "\n")
 	if opts.Format != FormatFull {
 		return
 	}
@@ -135,7 +146,7 @@ func writeKR(b *strings.Builder, kr domain.KeyResult, opts Options) {
 			if st.IsDone {
 				sbox = "x"
 			}
-			b.WriteString("    - [" + sbox + "] " + st.Title + " (вес " + strconv.Itoa(st.Weight) + "%)\n")
+			b.WriteString("    - [" + sbox + "] " + oneline(st.Title) + " (вес " + strconv.Itoa(st.Weight) + "%)\n")
 		}
 	}
 	if kr.ZeroingCriteria != "" {

@@ -2,8 +2,11 @@ package teams
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/jackc/pgx/v5"
 
 	"okrs/internal/auth"
 	"okrs/internal/domain"
@@ -214,7 +217,15 @@ func (h *Handler) HandleTeamExport(w http.ResponseWriter, r *http.Request) {
 		AllowedTeamIDs: allowed,
 	})
 	if err != nil {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "export not available", nil)
+		// Genuine "not found" (goal not on board, team invisible in period, missing team/period)
+		// maps to 404; anything else (DB/store failure) is an operational 500.
+		if errors.Is(err, service.ErrGoalNotOnTeamBoard) ||
+			errors.Is(err, service.ErrTeamNotVisibleInPeriod) ||
+			errors.Is(err, pgx.ErrNoRows) {
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "export not available", nil)
+			return
+		}
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to build export", nil)
 		return
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]any{

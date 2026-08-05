@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"okrs/internal/domain"
@@ -86,6 +87,12 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 	if err != nil {
 		return nil, err
 	}
+	// Strip nodes outside the caller's grant scope before deriving paths, so headings never leak
+	// the names of inaccessible ancestors (matches the hierarchy endpoint's scope filtering).
+	// nil AllowedTeamIDs means admin/unrestricted — no filtering.
+	if p.AllowedTeamIDs != nil {
+		hierarchy = filterNodesByScope(hierarchy, p.AllowedTeamIDs)
+	}
 	// team + descendants, in DFS order, intersected with allowed scope.
 	ordered := orderedSubtreeIDs(team.ID, hierarchy)
 	teamsByID, pathByID := indexTeamsWithPaths(hierarchy)
@@ -130,12 +137,19 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 		}
 	}
 
+	included := make(map[int64]bool, len(teamIDs))
+	for _, id := range teamIDs {
+		included[id] = true
+	}
+
+	// A goal is rendered fully exactly once. If its owner team has its own block in this export,
+	// non-owner teams show a reference (the owner block carries the full body). If the owner is
+	// outside the exported/accessible subtree, no owner block exists, so the goal is rendered
+	// fully at its first visible occurrence and referenced only in later ones.
+	renderedFull := make(map[int64]bool)
 	blocks := make([]export.TeamBlock, 0, len(teamIDs))
 	for _, id := range teamIDs {
 		goals := goalsByTeam[id]
-		// A goal owned by another team is rendered once (under its owner block) and shown as a
-		// reference under every other team it is shared into — so the subtree export does not
-		// repeat the full goal body across teams.
 		var refGoals map[int64]string
 		for gi := range goals {
 			g := &goals[gi]
@@ -152,11 +166,22 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 			if comments != nil {
 				g.Comments = comments[g.ID]
 			}
-			if owner, ok := ownerByGoal[g.ID]; ok && owner != id {
+			owner := ownerByGoal[g.ID]
+			var asRef bool
+			if included[owner] {
+				asRef = owner != id // owner block renders full; others reference it
+			} else {
+				asRef = renderedFull[g.ID] // no owner block: full once, reference after
+			}
+			if asRef {
 				if refGoals == nil {
 					refGoals = make(map[int64]string)
 				}
+				// Owner name only when the owner team is part of the export (never leak an
+				// inaccessible team's name); blank falls back to a generic reference.
 				refGoals[g.ID] = teamsByID[owner].Name
+			} else {
+				renderedFull[g.ID] = true
 			}
 		}
 		blocks = append(blocks, export.TeamBlock{
@@ -167,6 +192,23 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 		})
 	}
 	return blocks, nil
+}
+
+// filterNodesByScope removes tree nodes not in allowedIDs and promotes accessible children of
+// removed nodes to their parent's level, so the result is a valid forest rooted at the caller's
+// access boundary. Mirrors the same logic in the hierarchy API handler.
+func filterNodesByScope(nodes []TeamNode, allowedIDs []int64) []TeamNode {
+	result := make([]TeamNode, 0, len(nodes))
+	for _, node := range nodes {
+		filteredChildren := filterNodesByScope(node.Children, allowedIDs)
+		if slices.Contains(allowedIDs, node.Team.ID) {
+			node.Children = filteredChildren
+			result = append(result, node)
+		} else {
+			result = append(result, filteredChildren...)
+		}
+	}
+	return result
 }
 
 func allowedContains(allowed []int64, id int64) bool {

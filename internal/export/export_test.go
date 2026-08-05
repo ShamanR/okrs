@@ -213,6 +213,27 @@ func TestMarkdownSharedGoalRendersFullyWithoutRef(t *testing.T) {
 	}
 }
 
+// User-provided titles containing newlines must not inject extra Markdown structure.
+func TestMarkdownNormalizesTitleNewlines(t *testing.T) {
+	got := Markdown(domain.Period{Name: "Q1 2026"}, []TeamBlock{{
+		Heading: "Плат\nформа", TeamID: 1,
+		Goals: []domain.Goal{{
+			ID: 1, TeamID: 1, Title: "Цель\n## поддельный заголовок",
+			KeyResults: []domain.KeyResult{{Title: "KR\n- поддельный пункт", Progress: 0}},
+		}},
+	}}, Options{Format: FormatShort})
+	for _, bad := range []string{"Плат\nформа", "Цель\n## поддельный", "KR\n- поддельный"} {
+		if strings.Contains(got, bad) {
+			t.Fatalf("newline not normalized (%q leaked):\n%s", bad, got)
+		}
+	}
+	for _, want := range []string{"# Плат форма\n", "## Цель ## поддельный заголовок\n", "- [ ] KR - поддельный пункт\n"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing normalized %q in:\n%s", want, got)
+		}
+	}
+}
+
 func TestFilename(t *testing.T) {
 	period := domain.Period{StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
 	team := domain.Team{ID: 1, Type: domain.TeamType("unit")}

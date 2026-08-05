@@ -1253,6 +1253,10 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
   const { requestClose } = useModalClose({ isDirty: false, onClose });
   const overlay = useOverlayClose(requestClose);
 
+  // Identifies the current selection. Responses are tagged with the key they were fetched for, so
+  // a response for stale options never drives the preview, filename or copy/download actions.
+  const curKey = `${scope}|${full ? 'full' : 'short'}|${comments ? '1' : '0'}`;
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true); setError(false);
@@ -1265,7 +1269,7 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
     const t = setTimeout(async () => {
       try {
         const d = await apiGet(`/api/v1/teams/${teamId}/export?${params.toString()}`);
-        if (!cancelled) { setData(d); setLoading(false); }
+        if (!cancelled) { setData({ ...d, key: curKey }); setLoading(false); }
       } catch {
         if (!cancelled) { setError(true); setLoading(false); }
       }
@@ -1273,14 +1277,17 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
     return () => { cancelled = true; clearTimeout(t); };
   }, [scope, full, comments, reloadTick, teamId, periodId, goal.id]);
 
+  // Only a response matching the current selection (and not mid-load/error) is actionable.
+  const fresh = !loading && !error && data && data.key === curKey ? data : null;
+
   const copy = async () => {
-    if (!data) return;
+    if (!fresh) return;
     try {
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(data.markdown);
+        await navigator.clipboard.writeText(fresh.markdown);
       } else {
         const ta = document.createElement('textarea');
-        ta.value = data.markdown; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        ta.value = fresh.markdown; ta.style.position = 'fixed'; ta.style.opacity = '0';
         document.body.appendChild(ta); ta.focus(); ta.select();
         document.execCommand('copy'); document.body.removeChild(ta);
       }
@@ -1290,11 +1297,11 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
   };
 
   const download = () => {
-    if (!data) return;
-    const blob = new Blob([data.markdown], { type: 'text/markdown;charset=utf-8' });
+    if (!fresh) return;
+    const blob = new Blob([fresh.markdown], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = data.filename; document.body.appendChild(a); a.click();
+    a.href = url; a.download = fresh.filename; document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   };
 
@@ -1328,21 +1335,21 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
           <label className="export-modal__check"><input type="checkbox" checked={comments} onChange={e => setComments(e.target.checked)} /> Комментарии</label>
         </div>
         <div className="export-modal__preview-wrap">
-          {loading && <div className="export-modal__state">Загрузка превью…</div>}
-          {!loading && error && (
+          {error && (
             <div className="export-modal__state">
               Не удалось построить экспорт.
               <button type="button" className="btn btn--secondary export-modal__retry" onClick={() => setReloadTick(t => t + 1)}>Повторить</button>
             </div>
           )}
-          {!loading && !error && data && <pre className="export-modal__preview">{data.markdown}</pre>}
+          {!error && !fresh && <div className="export-modal__state">Загрузка превью…</div>}
+          {!error && fresh && <pre className="export-modal__preview">{fresh.markdown}</pre>}
         </div>
         <div className="export-modal__footer">
-          <div className="export-modal__filename">{data ? `${data.filename} · ${data.lines} ${pluralRu(data.lines, ['строка', 'строки', 'строк'])}` : ''}</div>
+          <div className="export-modal__filename">{fresh ? `${fresh.filename} · ${fresh.lines} ${pluralRu(fresh.lines, ['строка', 'строки', 'строк'])}` : ''}</div>
           <div className="export-modal__actions">
             <button type="button" className="btn btn--secondary" onClick={onClose}>Закрыть</button>
-            <button type="button" className="btn btn--secondary" onClick={copy} disabled={!data}>{copied ? '✓ Скопировано' : 'Скопировать'}</button>
-            <button type="button" className="btn btn--primary" onClick={download} disabled={!data}>Скачать .md</button>
+            <button type="button" className="btn btn--secondary" onClick={copy} disabled={!fresh}>{copied ? '✓ Скопировано' : 'Скопировать'}</button>
+            <button type="button" className="btn btn--primary" onClick={download} disabled={!fresh}>Скачать .md</button>
           </div>
         </div>
       </div>
