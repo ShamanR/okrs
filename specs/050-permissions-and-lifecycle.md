@@ -323,6 +323,16 @@ join-request).
 - проверяется ли это на сервере;
 - зависит ли она от будущих permissions / roles.
 
+### Экспорт целей в Markdown (read-only)
+
+`GET /api/v1/teams/{teamID}/export` — не mutation-фича, но проходит те же вопросы:
+
+- **зависит ли от `team period status`** — нет; экспорт доступен во всех статусах (`forming`/`ready`/`in_progress`/`validated`/`closed`/`no_goals`);
+- **разрешён ли в `validated`** — да;
+- **разрешён ли в `closed`** — да;
+- **проверяется ли на сервере** — да: доступ ограничен активным тенантом (`TenantScopeFromContext`) и grant-scope (`AllowedTeamIDsFromCtx`/`CanAccessTeamFromCtx`). Для `scope=tree` вывод и счётчики строятся по пересечению поддерева со scope — недоступные ветки исключаются; для `scope=goal` цель должна быть на доске команды-контекста (владелец или расшарена в неё). Endpoint read-only, без side effects, CSRF не требуется (GET);
+- **зависит ли от будущих permissions / roles** — нет; опирается только на текущую модель tenant + hierarchy grants.
+
 ## Team deletion lifecycle
 
 Для оргструктуры сервер теперь обязан применять отдельные lifecycle/visibility правила:
