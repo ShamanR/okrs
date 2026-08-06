@@ -37,7 +37,7 @@ func TestComputePeriodOverview_CountsWeightsProgress(t *testing.T) {
 	}
 	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
-	ov := computePeriodOverview(data, 0)
+	ov := computePeriodOverview(data, 0, nil)
 
 	if ov.Summary.TotalTeams != 3 {
 		t.Fatalf("total_teams: want 3, got %d", ov.Summary.TotalTeams)
@@ -57,6 +57,107 @@ func TestComputePeriodOverview_CountsWeightsProgress(t *testing.T) {
 	}
 }
 
+func TestComputeBalances_CountsAndPercentsWithFixedOrder(t *testing.T) {
+	goals := []PeriodGoalItem{
+		{ID: 1, WorkType: "Delivery", FocusType: "STABILITY", Priority: "P1"},
+		{ID: 2, WorkType: "Delivery", FocusType: "TECH_INDEPENDENCE", Priority: "P1"},
+		{ID: 3, WorkType: "Discovery", FocusType: "PROFITABILITY", Priority: "P2"},
+	}
+	b := computeBalances(goals)
+	if b.DiscoveryDelivery[0].Key != "Delivery" || b.DiscoveryDelivery[0].Count != 2 {
+		t.Fatalf("delivery bucket: %+v", b.DiscoveryDelivery)
+	}
+	if b.DiscoveryDelivery[0].Percent != 67 { // round(2/3*100)
+		t.Fatalf("delivery percent: want 67, got %d", b.DiscoveryDelivery[0].Percent)
+	}
+	if len(b.Priorities) != 4 || b.Priorities[0].Key != "P0" || b.Priorities[0].Count != 0 {
+		t.Fatalf("priorities must list P0..P3 incl zero: %+v", b.Priorities)
+	}
+	if len(b.Focuses) != 4 {
+		t.Fatalf("focuses must list all 4 categories: %+v", b.Focuses)
+	}
+}
+
+func TestComputePeriodOverview_EmitsBalancesAndGoals(t *testing.T) {
+	teams := []domain.Team{{ID: 1, Name: "Alpha"}}
+	goalsByTeam := map[int64][]domain.Goal{
+		1: {
+			{ID: 10, TeamID: 1, Title: "G1", Weight: 50, Priority: domain.PriorityP1, WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}},
+			{ID: 11, TeamID: 1, Title: "G2", Weight: 50, Priority: domain.PriorityP2, WorkType: domain.WorkTypeDiscovery, FocusType: domain.FocusProfitability, KeyResults: []domain.KeyResult{numericKR(101, 100, 60)}},
+		},
+	}
+	statuses := map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress}
+	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+
+	ov := computePeriodOverview(data, 0, nil)
+	if len(ov.Goals) != 2 {
+		t.Fatalf("goals: want 2, got %d", len(ov.Goals))
+	}
+	if ov.Balances.DiscoveryDelivery[0].Count != 1 || ov.Balances.DiscoveryDelivery[1].Count != 1 {
+		t.Fatalf("discovery/delivery balance: %+v", ov.Balances.DiscoveryDelivery)
+	}
+	if ov.Goals[0].WorkType != "Delivery" || ov.Goals[0].TeamName != "Alpha" {
+		t.Fatalf("slim goal mapping wrong: %+v", ov.Goals[0])
+	}
+}
+
+func TestComputePeriodOverview_TeamFilterScopesCounts(t *testing.T) {
+	teams := []domain.Team{
+		{ID: 1, Name: "Alpha"},
+		{ID: 2, Name: "Beta"},
+		{ID: 3, Name: "Gamma"},
+	}
+	goalsByTeam := map[int64][]domain.Goal{
+		1: {{ID: 10, TeamID: 1, Weight: 100, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}}},
+		2: {{ID: 20, TeamID: 2, Weight: 100, KeyResults: []domain.KeyResult{numericKR(200, 100, 80)}}},
+	}
+	statuses := map[int64]domain.TeamPeriodStatus{
+		1: domain.TeamPeriodStatusInProgress,
+		2: domain.TeamPeriodStatusInProgress,
+	}
+	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+
+	filter := map[int64]bool{1: true} // only Alpha in scope
+	ov := computePeriodOverview(data, 0, filter)
+	if ov.Summary.TotalTeams != 1 {
+		t.Fatalf("scoped total_teams: want 1, got %d", ov.Summary.TotalTeams)
+	}
+	if len(ov.Teams) != 1 || ov.Teams[0].TeamID != 1 {
+		t.Fatalf("scoped teams mismatch: %+v", ov.Teams)
+	}
+	if ov.Summary.AvgProgress != 40 {
+		t.Fatalf("scoped avg_progress: want 40 (Alpha only), got %d", ov.Summary.AvgProgress)
+	}
+}
+
+func TestComputePeriodOverview_DraftTeamsExcludedFromProgress(t *testing.T) {
+	teams := []domain.Team{
+		{ID: 1, Name: "Working"},
+		{ID: 2, Name: "Draft"},
+	}
+	goalsByTeam := map[int64][]domain.Goal{
+		1: {{ID: 10, TeamID: 1, Weight: 100, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}}},
+		2: {{ID: 20, TeamID: 2, Weight: 100, KeyResults: []domain.KeyResult{numericKR(200, 100, 90)}}},
+	}
+	statuses := map[int64]domain.TeamPeriodStatus{
+		1: domain.TeamPeriodStatusInProgress,
+		2: domain.TeamPeriodStatusForming, // черновик — excluded from progress
+	}
+	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+
+	ov := computePeriodOverview(data, 0, nil)
+	// Both teams have goals, but only the working team feeds AvgProgress.
+	if ov.Summary.TeamsWithGoals != 2 {
+		t.Fatalf("teams_with_goals: want 2, got %d", ov.Summary.TeamsWithGoals)
+	}
+	if ov.Summary.ProgressTeams != 1 {
+		t.Fatalf("progress_teams: want 1 (draft excluded), got %d", ov.Summary.ProgressTeams)
+	}
+	if ov.Summary.AvgProgress != 40 {
+		t.Fatalf("avg_progress: want 40 (working team only, draft's 90 excluded), got %d", ov.Summary.AvgProgress)
+	}
+}
+
 func TestComputePeriodOverview_ValidatedCountsAsInProgress(t *testing.T) {
 	data := &PeriodData{
 		PeriodID: 1,
@@ -66,7 +167,7 @@ func TestComputePeriodOverview_ValidatedCountsAsInProgress(t *testing.T) {
 		},
 		Statuses: map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatus("validated")},
 	}
-	ov := computePeriodOverview(data, 0)
+	ov := computePeriodOverview(data, 0, nil)
 	if ov.Summary.ByStatus["in_progress"] != 1 {
 		t.Fatalf("validated must bucket as in_progress: %+v", ov.Summary.ByStatus)
 	}
@@ -84,7 +185,7 @@ func TestComputePeriodOverview_GoalsButNoGoalsStatusBucketsForming(t *testing.T)
 		},
 		Statuses: map[int64]domain.TeamPeriodStatus{}, // no row -> resolves to no_goals
 	}
-	ov := computePeriodOverview(data, 0)
+	ov := computePeriodOverview(data, 0, nil)
 	if ov.Summary.ByStatus["forming"] != 1 || ov.Summary.ByStatus["no_goals"] != 0 {
 		t.Fatalf("by_status: want forming=1,no_goals=0, got %+v", ov.Summary.ByStatus)
 	}

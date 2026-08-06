@@ -397,8 +397,15 @@ func (f *fakeUsers) ListByTenant(context.Context, domain.TenantScope) ([]users.T
 // teams are still active; ListDescendantTeamIDs returns only the active roots
 // (descendant expansion is irrelevant for the membership test the handler does).
 type fakeGrants struct {
-	all           map[int64][]grants.HierarchyGrant
-	activeTeamIDs map[int64]bool
+	all             map[int64][]grants.HierarchyGrant
+	activeTeamIDs   map[int64]bool
+	leadScope       map[string][]int64
+	leadScopeCalled bool
+}
+
+func (f *fakeGrants) ListLeadTeamScope(_ context.Context, _ domain.TenantScope, udid string) ([]int64, error) {
+	f.leadScopeCalled = true
+	return f.leadScope[udid], nil
 }
 
 func (f *fakeGrants) ListUserGrants(context.Context, domain.TenantScope, int64) ([]grants.HierarchyGrant, error) {

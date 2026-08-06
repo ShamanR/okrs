@@ -49,7 +49,7 @@ func (f *fakePeriodRepo) UnarchivePeriod(context.Context, domain.TenantScope, in
 // only functioning repo is Periods, returning p for any GetPeriod call.
 func newAdminHandlerWithPeriod(_ *testing.T, p domain.Period) *ServiceHandler {
 	svc := service.New(service.Deps{Periods: &fakePeriodRepo{period: p}})
-	return NewServiceHandler(svc, nil)
+	return NewServiceHandler(svc, nil, nil)
 }
 
 // withTenantScope attaches the given tenant scope so TenantScopeFromContext resolves it.

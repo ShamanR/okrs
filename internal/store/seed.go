@@ -4,15 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/krs"
+	"okrs/internal/store/progresssnap"
 
 	"github.com/jackc/pgx/v5"
 )
 
-func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs.KRRepository, periodID int64) error {
+func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs.KRRepository, snapRepo *progresssnap.Repository, periodID int64) error {
 	scope := domain.TenantScope{TenantID: 1} // TODO(tenancy): seed supports single-tenant only
 	teamNames := []string{"Platform", "Payments", "Growth"}
 	teamIDs := make([]int64, 0, len(teamNames))
@@ -88,6 +90,40 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 			return err
 		}
 		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
+	}
+
+	// Seeded teams are «в работе», so they count toward aggregate progress and the
+	// chart (draft/forming teams are excluded from progress calculations).
+	for _, teamID := range teamIDs {
+		if _, err := goalsRepo.DB().Exec(ctx, `
+			INSERT INTO team_period_statuses (team_id, period_id, status, tenant_id, updated_at)
+			VALUES ($1,$2,$3,$4,NOW())
+			ON CONFLICT (team_id, period_id) DO UPDATE SET status=EXCLUDED.status, updated_at=NOW()`,
+			teamID, periodID, domain.TeamPeriodStatusInProgress, scope.TenantID); err != nil {
+			return err
+		}
+	}
+
+	// Demo progress snapshots so the period progress chart is non-empty. Ascending
+	// points across the period; upsert keeps this idempotent across re-seeds.
+	if snapRepo != nil {
+		var start time.Time
+		if err := goalsRepo.DB().QueryRow(ctx,
+			`SELECT start_date FROM periods WHERE id=$1 AND tenant_id=$2`, periodID, scope.TenantID).Scan(&start); err == nil {
+			points := []struct {
+				d time.Time
+				p int
+			}{
+				{start.AddDate(0, 0, 5), 5},
+				{start.AddDate(0, 1, 0), 15},
+				{start.AddDate(0, 2, 0), 30},
+			}
+			for _, teamID := range teamIDs {
+				for _, pt := range points {
+					_ = snapRepo.UpsertSnapshots(ctx, scope, periodID, pt.d, []progresssnap.Snapshot{{TeamID: teamID, Progress: pt.p}})
+				}
+			}
+		}
 	}
 
 	return nil

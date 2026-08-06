@@ -13,6 +13,7 @@ import (
 	"okrs/internal/store/krs"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/periods"
+	"okrs/internal/store/progresssnap"
 	"okrs/internal/store/sessions"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/shares"
@@ -31,18 +32,19 @@ import (
 // Store also implements the auth.authStorage interface via forwarding methods
 // so it can be passed to auth.Manager without changes to the auth layer.
 type Store struct {
-	DB       *pgxpool.Pool
-	Teams    *teams.TeamRepository
-	Goals    *goals.GoalRepository
-	Periods  *periods.PeriodRepository
-	KRs      *krs.KRRepository
-	Shares   *shares.GoalShareRepository
-	Statuses *statuses.TeamStatusRepository
-	Users    *users.UserRepository
-	Sessions *sessions.SessionRepository
-	Grants   *grants.GrantRepository
-	Settings *settings.SettingsRepository
-	Activity *activity.ActivityRepository
+	DB           *pgxpool.Pool
+	Teams        *teams.TeamRepository
+	Goals        *goals.GoalRepository
+	Periods      *periods.PeriodRepository
+	KRs          *krs.KRRepository
+	Shares       *shares.GoalShareRepository
+	Statuses     *statuses.TeamStatusRepository
+	Users        *users.UserRepository
+	Sessions     *sessions.SessionRepository
+	Grants       *grants.GrantRepository
+	Settings     *settings.SettingsRepository
+	Activity     *activity.ActivityRepository
+	ProgressSnap *progresssnap.Repository
 
 	Tenants        *tenants.TenantRepository
 	Memberships    *memberships.MembershipRepository
@@ -55,18 +57,19 @@ type Store struct {
 func New(db *pgxpool.Pool) *Store {
 	krsRepo := krs.NewKRRepository(db)
 	return &Store{
-		DB:       db,
-		Teams:    teams.NewTeamRepository(db),
-		Goals:    goals.NewGoalRepository(db, krsRepo),
-		Periods:  periods.NewPeriodRepository(db),
-		KRs:      krsRepo,
-		Shares:   shares.NewGoalShareRepository(db),
-		Statuses: statuses.NewTeamStatusRepository(db),
-		Users:    users.NewUserRepository(db),
-		Sessions: sessions.NewSessionRepository(db),
-		Grants:   grants.NewGrantRepository(db),
-		Settings: settings.NewSettingsRepository(db),
-		Activity: activity.NewActivityRepository(db),
+		DB:           db,
+		Teams:        teams.NewTeamRepository(db),
+		Goals:        goals.NewGoalRepository(db, krsRepo),
+		Periods:      periods.NewPeriodRepository(db),
+		KRs:          krsRepo,
+		Shares:       shares.NewGoalShareRepository(db),
+		Statuses:     statuses.NewTeamStatusRepository(db),
+		Users:        users.NewUserRepository(db),
+		Sessions:     sessions.NewSessionRepository(db),
+		Grants:       grants.NewGrantRepository(db),
+		Settings:     settings.NewSettingsRepository(db),
+		Activity:     activity.NewActivityRepository(db),
+		ProgressSnap: progresssnap.NewRepository(db),
 
 		Tenants:        tenants.NewTenantRepository(db),
 		Memberships:    memberships.NewMembershipRepository(db),
@@ -129,5 +132,5 @@ func (s *Store) SetSystemAdmin(ctx context.Context, userID int64, v bool) error 
 
 // SeedDemo inserts demo data (used only by the --seed flag in main).
 func (s *Store) SeedDemo(ctx context.Context, periodID int64) error {
-	return seedDemo(ctx, s.Goals, s.KRs, periodID)
+	return seedDemo(ctx, s.Goals, s.KRs, s.ProgressSnap, periodID)
 }

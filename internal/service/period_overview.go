@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"sort"
+	"time"
 
 	"okrs/internal/domain"
 	"okrs/internal/okr"
@@ -28,6 +29,35 @@ type PeriodOverviewSummary struct {
 	TeamsWithGoals   int            `json:"teams_with_goals"`
 	WeightErrorCount int            `json:"weight_error_count"`
 	AvgProgress      int            `json:"avg_progress"`
+	// ProgressTeams is the number of teams averaged into AvgProgress: teams with
+	// goals whose status is not «черновик» (forming). Draft teams are excluded.
+	ProgressTeams int `json:"progress_teams"`
+}
+
+// BalanceBucket is one category of a goal balance (its count and share of the scope).
+type BalanceBucket struct {
+	Key     string `json:"key"`
+	Count   int    `json:"count"`
+	Percent int    `json:"percent"`
+}
+
+// PeriodBalances groups the three goal balances shown as bar charts.
+type PeriodBalances struct {
+	DiscoveryDelivery []BalanceBucket `json:"discovery_delivery"`
+	Focuses           []BalanceBucket `json:"focuses"`
+	Priorities        []BalanceBucket `json:"priorities"`
+}
+
+// PeriodGoalItem is a slim goal row for balance drill-down (client-side filtering).
+type PeriodGoalItem struct {
+	ID        int64  `json:"id"`
+	Title     string `json:"title"`
+	TeamID    int64  `json:"team_id"`
+	TeamName  string `json:"team_name"`
+	WorkType  string `json:"work_type"`
+	FocusType string `json:"focus_type"`
+	Priority  string `json:"priority"`
+	Progress  int    `json:"progress"`
 }
 
 // PeriodOverview is the full response for the management modal.
@@ -35,6 +65,46 @@ type PeriodOverview struct {
 	PeriodID int64                 `json:"period_id"`
 	Summary  PeriodOverviewSummary `json:"summary"`
 	Teams    []PeriodTeamSummary   `json:"teams"`
+	Balances PeriodBalances        `json:"balances"`
+	Goals    []PeriodGoalItem      `json:"goals"`
+	Progress ProgressSeries        `json:"progress"`
+}
+
+// Fixed category orders so bars render consistently (zero categories included).
+var (
+	workTypeOrder = []string{"Delivery", "Discovery"}
+	focusOrder    = []string{"PROFITABILITY", "STABILITY", "SPEED_EFFICIENCY", "TECH_INDEPENDENCE"}
+	priorityOrder = []string{"P0", "P1", "P2", "P3"}
+)
+
+func bucketsFor(order []string, counts map[string]int, total int) []BalanceBucket {
+	out := make([]BalanceBucket, 0, len(order))
+	for _, k := range order {
+		c := counts[k]
+		pct := 0
+		if total > 0 {
+			pct = int(math.Round(float64(c) / float64(total) * 100))
+		}
+		out = append(out, BalanceBucket{Key: k, Count: c, Percent: pct})
+	}
+	return out
+}
+
+// computeBalances tallies goals-in-scope by work type, focus and priority. Percent is
+// the share of all scoped goals; every fixed category is present even when zero.
+func computeBalances(goals []PeriodGoalItem) PeriodBalances {
+	wt, ft, pr := map[string]int{}, map[string]int{}, map[string]int{}
+	for _, g := range goals {
+		wt[g.WorkType]++
+		ft[g.FocusType]++
+		pr[g.Priority]++
+	}
+	total := len(goals)
+	return PeriodBalances{
+		DiscoveryDelivery: bucketsFor(workTypeOrder, wt, total),
+		Focuses:           bucketsFor(focusOrder, ft, total),
+		Priorities:        bucketsFor(priorityOrder, pr, total),
+	}
 }
 
 // PeriodStatsItem is the lightweight per-period row metric (no team composition).
@@ -66,10 +136,15 @@ func bucketStatusWithGoals(s domain.TeamPeriodStatus) string {
 
 // computePeriodOverview aggregates a period's teams into status buckets, weight-error
 // counts and average progress, plus a per-team composition list. Pure — no I/O.
-func computePeriodOverview(data *PeriodData, weightTolerance int) PeriodOverview {
+// When teamFilter is non-nil, only teams whose ID is in the set are counted
+// (my-teams scope); nil counts every team (whole-organization scope).
+func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map[int64]bool) PeriodOverview {
 	teamsByID := make(map[int64]domain.Team, len(data.Teams))
 	for _, t := range data.Teams {
 		if t.DeletedAt != nil {
+			continue
+		}
+		if teamFilter != nil && !teamFilter[t.ID] {
 			continue
 		}
 		teamsByID[t.ID] = t
@@ -78,6 +153,11 @@ func computePeriodOverview(data *PeriodData, weightTolerance int) PeriodOverview
 	byStatus := map[string]int{"in_progress": 0, "ready": 0, "forming": 0, "closed": 0, "no_goals": 0}
 	out := make([]PeriodTeamSummary, 0, len(teamsByID))
 	var progressSum, progressCount, weightErrors, teamsWithGoals int
+
+	// Slim goal list for balance drill-down, deduped by goal ID (a shared goal appears
+	// under several teams). Balances are derived from the same list.
+	seenGoals := make(map[int64]bool)
+	goalItems := make([]PeriodGoalItem, 0)
 
 	for id, team := range teamsByID {
 		// Copy goals so CalculateGoalProgress writes don't mutate shared cache data.
@@ -121,11 +201,33 @@ func computePeriodOverview(data *PeriodData, weightTolerance int) PeriodOverview
 				weightErrors++
 			}
 			row.Progress = okr.PeriodProgress(goals)
-			progressSum += row.Progress
-			progressCount++
+			// Draft (черновик/forming) teams are excluded from the aggregate progress —
+			// their goals are still being shaped. Their own row.Progress is kept.
+			if bucket != "forming" {
+				progressSum += row.Progress
+				progressCount++
+			}
+
+			for i := range goals {
+				if seenGoals[goals[i].ID] {
+					continue
+				}
+				seenGoals[goals[i].ID] = true
+				goalItems = append(goalItems, PeriodGoalItem{
+					ID:        goals[i].ID,
+					Title:     goals[i].Title,
+					TeamID:    id,
+					TeamName:  team.Name,
+					WorkType:  string(goals[i].WorkType),
+					FocusType: string(goals[i].FocusType),
+					Priority:  string(goals[i].Priority),
+					Progress:  goals[i].Progress,
+				})
+			}
 		}
 		out = append(out, row)
 	}
+	sort.Slice(goalItems, func(i, j int) bool { return goalItems[i].ID < goalItems[j].ID })
 
 	avg := 0
 	if progressCount > 0 {
@@ -141,8 +243,11 @@ func computePeriodOverview(data *PeriodData, weightTolerance int) PeriodOverview
 			TeamsWithGoals:   teamsWithGoals,
 			WeightErrorCount: weightErrors,
 			AvgProgress:      avg,
+			ProgressTeams:    progressCount,
 		},
-		Teams: out,
+		Teams:    out,
+		Balances: computeBalances(goalItems),
+		Goals:    goalItems,
 	}
 }
 
@@ -155,7 +260,41 @@ func (s *Service) PeriodOverview(ctx context.Context, scope domain.TenantScope, 
 	if err != nil {
 		return PeriodOverview{}, err
 	}
-	return computePeriodOverview(data, weightTolerance), nil
+	return computePeriodOverview(data, weightTolerance, nil), nil
+}
+
+// PeriodOverviewScoped is PeriodOverview restricted to teamFilter (nil = whole org),
+// enriched with the per-scope progress-over-time series.
+func (s *Service) PeriodOverviewScoped(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int, teamFilter map[int64]bool) (PeriodOverview, error) {
+	if s.hcCache == nil {
+		return PeriodOverview{PeriodID: periodID}, nil
+	}
+	data, err := s.hcCache.Get(ctx, scope, periodID)
+	if err != nil {
+		return PeriodOverview{}, err
+	}
+	ov := computePeriodOverview(data, weightTolerance, teamFilter)
+	if s.progressSnap != nil {
+		rows, err := s.progressSnap.ListSnapshots(ctx, scope, periodID, keysOf(teamFilter))
+		if err != nil {
+			return PeriodOverview{}, err
+		}
+		today := time.Now().Format(dateLayout)
+		ov.Progress = buildProgressSeries(rows, teamFilter, today, ov.Summary.AvgProgress, data.Period.StartDate, data.Period.EndDate)
+	}
+	return ov, nil
+}
+
+// keysOf returns the keys of a team-filter set (nil when the filter is nil = whole org).
+func keysOf(m map[int64]bool) []int64 {
+	if m == nil {
+		return nil
+	}
+	out := make([]int64, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
 
 // PeriodStats returns lightweight per-period metrics for every period (no team lists).
@@ -173,7 +312,7 @@ func (s *Service) PeriodStats(ctx context.Context, scope domain.TenantScope, wei
 		if err != nil {
 			return nil, err
 		}
-		ov := computePeriodOverview(data, weightTolerance)
+		ov := computePeriodOverview(data, weightTolerance, nil)
 		items = append(items, PeriodStatsItem{
 			PeriodID:         p.ID,
 			TotalTeams:       ov.Summary.TotalTeams,

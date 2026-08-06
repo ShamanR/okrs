@@ -116,6 +116,36 @@ func (r *GrantRepository) ListDescendantTeamIDs(ctx context.Context, scope domai
 	return ids, rows.Err()
 }
 
+// ListLeadTeamScope returns team IDs the user leads (teams.lead_udid = userUDID,
+// not soft-deleted, tenant-scoped) plus all their recursive descendants.
+func (r *GrantRepository) ListLeadTeamScope(ctx context.Context, scope domain.TenantScope, userUDID string) ([]int64, error) {
+	if userUDID == "" {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		WITH RECURSIVE tree AS (
+			SELECT id FROM teams
+			WHERE lead_udid = $1 AND deleted_at IS NULL AND tenant_id = $2
+			UNION ALL
+			SELECT t.id FROM teams t JOIN tree p ON t.parent_id = p.id
+			WHERE t.deleted_at IS NULL AND t.tenant_id = $2
+		)
+		SELECT id FROM tree`, userUDID, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // grantsBackend is the persistence contract used by GrantsCache.
 // *GrantRepository satisfies it; tests can inject a fake.
 type grantsBackend interface {
@@ -124,6 +154,7 @@ type grantsBackend interface {
 	removeUserGrant(ctx context.Context, scope domain.TenantScope, userID, teamID int64) error
 	removeAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 	ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error)
+	ListLeadTeamScope(ctx context.Context, scope domain.TenantScope, userUDID string) ([]int64, error)
 }
 
 // storeGrantsBackend adapts *GrantRepository to grantsBackend.
@@ -143,6 +174,9 @@ func (b *storeGrantsBackend) removeAllUserGrants(ctx context.Context, scope doma
 }
 func (b *storeGrantsBackend) ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error) {
 	return b.r.ListDescendantTeamIDs(ctx, scope, rootIDs)
+}
+func (b *storeGrantsBackend) ListLeadTeamScope(ctx context.Context, scope domain.TenantScope, userUDID string) ([]int64, error) {
+	return b.r.ListLeadTeamScope(ctx, scope, userUDID)
 }
 
 // GrantsCache is an in-memory read-through cache for the user_hierarchy_grants table.
@@ -219,6 +253,11 @@ func (c *GrantsCache) RemoveUserGrant(ctx context.Context, scope domain.TenantSc
 // ListDescendantTeamIDs delegates to the backing store (queries the teams table, not grants).
 func (c *GrantsCache) ListDescendantTeamIDs(ctx context.Context, scope domain.TenantScope, rootIDs []int64) ([]int64, error) {
 	return c.backend.ListDescendantTeamIDs(ctx, scope, rootIDs)
+}
+
+// ListLeadTeamScope delegates to the backing store (queries the teams table, not grants).
+func (c *GrantsCache) ListLeadTeamScope(ctx context.Context, scope domain.TenantScope, userUDID string) ([]int64, error) {
+	return c.backend.ListLeadTeamScope(ctx, scope, userUDID)
 }
 
 // AllGrants returns the full cached snapshot of user_hierarchy_grants as a map[userID][]HierarchyGrant.

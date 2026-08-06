@@ -24,13 +24,20 @@ type settingsReader interface {
 	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
 
+// TeamScopeResolver resolves the caller's «my teams» set (teams they lead plus all
+// nested descendants). *grants.GrantsCache satisfies it.
+type TeamScopeResolver interface {
+	ListLeadTeamScope(ctx context.Context, scope domain.TenantScope, userUDID string) ([]int64, error)
+}
+
 type ServiceHandler struct {
 	service  *service.Service
 	settings settingsReader
+	scope    TeamScopeResolver
 }
 
-func NewServiceHandler(svc *service.Service, settings settingsReader) *ServiceHandler {
-	return &ServiceHandler{service: svc, settings: settings}
+func NewServiceHandler(svc *service.Service, settings settingsReader, scope TeamScopeResolver) *ServiceHandler {
+	return &ServiceHandler{service: svc, settings: settings, scope: scope}
 }
 
 // ── PERIODS ───────────────────────────────────────────────────────────────────
@@ -240,6 +247,64 @@ func (h *ServiceHandler) HandlePeriodOverview(w http.ResponseWriter, r *http.Req
 		return
 	}
 	ov, err := h.service.PeriodOverview(r.Context(), scope, periodID, h.weightTolerance(r, scope))
+	if err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load overview", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, ov)
+}
+
+// GET /api/v1/periods/{periodID}/overview?scope=my_teams|org
+// Available to any authenticated member. scope=my_teams (default) restricts the
+// overview to teams the caller leads plus nested descendants; scope=org (whole
+// tenant) requires tenant-admin.
+func (h *ServiceHandler) HandlePeriodOverviewScoped(w http.ResponseWriter, r *http.Request) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
+		return
+	}
+	overviewScope := r.URL.Query().Get("scope")
+	if overviewScope == "" {
+		overviewScope = "my_teams"
+	}
+
+	role, _ := auth.ActiveRoleFromContext(r.Context())
+	isAdmin := role == domain.RoleAdmin
+
+	var teamFilter map[int64]bool
+	switch overviewScope {
+	case "org":
+		if !isAdmin {
+			v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "org scope requires admin", nil)
+			return
+		}
+		teamFilter = nil
+	case "my_teams":
+		udid := ""
+		if user := auth.UserFromContext(r.Context()); user != nil {
+			udid = user.UDID
+		}
+		ids, err := h.scope.ListLeadTeamScope(r.Context(), scope, udid)
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to resolve scope", nil)
+			return
+		}
+		teamFilter = make(map[int64]bool, len(ids))
+		for _, id := range ids {
+			teamFilter[id] = true
+		}
+	default:
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid scope", nil)
+		return
+	}
+
+	ov, err := h.service.PeriodOverviewScoped(r.Context(), scope, periodID, h.weightTolerance(r, scope), teamFilter)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load overview", nil)
 		return

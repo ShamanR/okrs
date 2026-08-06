@@ -56,6 +56,10 @@ func (f *fakeGrantsBackend) ListDescendantTeamIDs(_ context.Context, _ domain.Te
 	return rootIDs, nil
 }
 
+func (f *fakeGrantsBackend) ListLeadTeamScope(_ context.Context, _ domain.TenantScope, _ string) ([]int64, error) {
+	return nil, nil
+}
+
 func newFakeBackend(data map[int64][]HierarchyGrant) *fakeGrantsBackend {
 	if data == nil {
 		data = make(map[int64][]HierarchyGrant)
