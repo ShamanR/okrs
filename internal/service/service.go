@@ -144,10 +144,11 @@ type Deps struct {
 	KRs      KRRepo
 	Statuses TeamStatusRepo
 	Users    UserRepo
-	Grants   GrantsProvider
-	HCCache  *HealthCheckInCache
-	Activity ActivityRepo
-	Logger   *slog.Logger
+	Grants       GrantsProvider
+	HCCache      *HealthCheckInCache
+	Activity     ActivityRepo
+	ProgressSnap ProgressSnapRepo
+	Logger       *slog.Logger
 }
 
 type Service struct {
@@ -158,10 +159,11 @@ type Service struct {
 	krs      KRRepo
 	statuses TeamStatusRepo
 	users    UserRepo
-	grants   GrantsProvider
-	hcCache  *HealthCheckInCache
-	activity ActivityRepo
-	logger   *slog.Logger
+	grants       GrantsProvider
+	hcCache      *HealthCheckInCache
+	activity     ActivityRepo
+	progressSnap ProgressSnapRepo
+	logger       *slog.Logger
 }
 
 var (
@@ -187,10 +189,11 @@ func New(deps Deps) *Service {
 		krs:      deps.KRs,
 		statuses: deps.Statuses,
 		users:    deps.Users,
-		grants:   deps.Grants,
-		hcCache:  deps.HCCache,
-		activity: deps.Activity,
-		logger:   deps.Logger,
+		grants:       deps.Grants,
+		hcCache:      deps.HCCache,
+		activity:     deps.Activity,
+		progressSnap: deps.ProgressSnap,
+		logger:       deps.Logger,
 	}
 }
 
@@ -205,10 +208,11 @@ func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *Healt
 		KRs:      st.KRs,
 		Statuses: st.Statuses,
 		Users:    st.Users,
-		Grants:   grantsProvider,
-		HCCache:  hcCache,
-		Activity: st.Activity,
-		Logger:   logger,
+		Grants:       grantsProvider,
+		HCCache:      hcCache,
+		Activity:     st.Activity,
+		ProgressSnap: st.ProgressSnap,
+		Logger:       logger,
 	})
 }
 

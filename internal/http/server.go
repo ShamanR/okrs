@@ -244,7 +244,9 @@ func (s *Server) Routes() http.Handler {
 	}})
 
 	ctx := context.Background()
-	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, func(ctx context.Context) []service.HCActive {
+	// activePeriods enumerates each tenant's currently-active (date-based) period,
+	// so closed/archived periods are naturally excluded.
+	activePeriods := func(ctx context.Context) []service.HCActive {
 		now := time.Now().In(s.zone)
 		tenants, err := s.store.Tenants.List(ctx)
 		if err != nil {
@@ -260,7 +262,32 @@ func (s *Server) Routes() http.Handler {
 			active = append(active, service.HCActive{Scope: scope, PeriodID: p.ID})
 		}
 		return active
-	})
+	}
+	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, activePeriods)
+
+	// The snapshot job must cover EVERY active (non-archived, date-containing) period,
+	// not just the narrowest one FindPeriodForDate returns — nested periods (year +
+	// quarter) each need their own daily point.
+	snapshotPeriods := func(ctx context.Context) []service.HCActive {
+		now := time.Now().In(s.zone)
+		tenants, err := s.store.Tenants.List(ctx)
+		if err != nil {
+			return nil
+		}
+		var active []service.HCActive
+		for _, tn := range tenants {
+			scope := domain.TenantScope{TenantID: tn.ID}
+			periods, err := s.store.Periods.ListActivePeriodsForDate(ctx, scope, now)
+			if err != nil {
+				continue
+			}
+			for _, p := range periods {
+				active = append(active, service.HCActive{Scope: scope, PeriodID: p.ID})
+			}
+		}
+		return active
+	}
+	s.startProgressSnapshotLoop(ctx, 24*time.Hour, snapshotPeriods)
 
 	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
@@ -392,6 +419,45 @@ func (s *Server) Routes() http.Handler {
 	return r
 }
 
+// progressSnapshotLockKey is a fixed advisory-lock key so that, across K8s replicas,
+// only one instance runs the daily snapshot pass (the upsert is idempotent regardless).
+const progressSnapshotLockKey = 918273645
+
+// startProgressSnapshotLoop runs a background goroutine that materialises each active
+// period's per-team progress once per interval. An initial pass runs at startup.
+func (s *Server) startProgressSnapshotLoop(ctx context.Context, interval time.Duration, activePeriods func(context.Context) []service.HCActive) {
+	run := func() {
+		conn, err := s.store.DB.Acquire(ctx)
+		if err != nil {
+			return
+		}
+		defer conn.Release()
+		var got bool
+		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, progressSnapshotLockKey).Scan(&got); err != nil || !got {
+			return // another replica holds the lock this cycle
+		}
+		defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, progressSnapshotLockKey) }()
+
+		day := time.Now().In(s.zone)
+		if err := s.service.SnapshotActivePeriods(ctx, day, activePeriods(ctx)); err != nil && s.logger != nil {
+			s.logger.Warn("progress snapshot failed", "err", err)
+		}
+	}
+	go func() {
+		run() // capture today at startup
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+}
+
 func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	goalsHandler := goals.New(deps)
 
@@ -408,6 +474,14 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", s.shellData())
+	})
+
+	// Обзор периода — доступен любому аутентифицированному участнику (охват «Мои
+	// команды»); переключатель «Вся организация» и массовые операции — только админам
+	// (гейтятся на клиенте и в API).
+	r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
 	})
 
 	// Страницы-заглушки разделов навигации (гамбургер-меню). Доступны любому
@@ -434,7 +508,7 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding, s.provisioning, s.service)
-	serviceH := apiadmin.NewServiceHandler(s.service, s.settingsSvc)
+	serviceH := apiadmin.NewServiceHandler(s.service, s.settingsSvc, s.grantsCache)
 
 	r.Group(func(r chi.Router) {
 		if !s.auth.Disabled() {
@@ -455,11 +529,6 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Get("/activity-log", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
-		})
-		// Обзор периода — tenant-admin-only раздел основного приложения (собственный shell).
-		r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
 		})
 		// Legacy deep-links → root SPA.
 		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
@@ -588,6 +657,11 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/config", apiconfig.New(s.settingsSvc).HandleConfig)
 	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 	r.Get("/api/v1/health-checkin", apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache).HandleHealthCheckIn)
+
+	// Scope-aware period overview available to any authenticated member (my_teams);
+	// org scope is admin-gated inside the handler.
+	scopedOverviewH := apiadmin.NewServiceHandler(s.service, s.settingsSvc, s.grantsCache)
+	r.Get("/api/v1/periods/{periodID}/overview", scopedOverviewH.HandlePeriodOverviewScoped)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)

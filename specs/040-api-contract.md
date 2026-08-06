@@ -224,7 +224,7 @@ Validation:
 #### Метрики и обзор периодов
 
 - `GET /api/v1/admin/periods/stats` → `{ "items": [ { "period_id", "total_teams", "teams_with_goals", "avg_progress", "weight_error_count" } ] }`. Лёгкие метрики строк по всем периодам, вычисляются агрегатором обзора. Сам список `GET /api/v1/admin/periods` метрик не содержит (остаётся быстрым); метрики грузятся отдельным запросом.
-- `GET /api/v1/admin/periods/{periodID}/overview` → `{ "period_id", "summary": { "by_status": {in_progress, ready, forming, closed, no_goals}, "total_teams", "teams_with_goals", "weight_error_count", "avg_progress" }, "teams": [ { "id", "name", "path", "status", "goals_count", "progress", "weight_sum", "weight_error" } ] }`. Полный обзор для модалки управления периодом; `teams` — источник drill-down состава категорий. `avg_progress` — невзвешенное среднее по командам с целями от их взвешенного прогресса; `weight_error_count` учитывает допуск весов из настроек health-checkin. Легаси-статус `validated` считается в бакете `in_progress`.
+- `GET /api/v1/admin/periods/{periodID}/overview` → `{ "period_id", "summary": { "by_status": {in_progress, ready, forming, closed, no_goals}, "total_teams", "teams_with_goals", "weight_error_count", "avg_progress", "progress_teams" }, "teams": [ { "id", "name", "path", "status", "goals_count", "progress", "weight_sum", "weight_error" } ] }`. Полный обзор для модалки управления периодом; `teams` — источник drill-down состава категорий. `avg_progress` — невзвешенное среднее взвешенного прогресса по командам с целями, **кроме команд в статусе «черновик» (`forming`)** и без целей; `progress_teams` — число команд, вошедших в это среднее. `weight_error_count` учитывает допуск весов из настроек health-checkin. Легаси-статус `validated` считается в бакете `in_progress`.
 - `POST /api/v1/admin/periods/{periodID}/teams/activate` → `{ "affected", "skipped" }`. Переводит все команды с ≥1 целью и статусом ≠ `in_progress` в `in_progress`. `skipped` — команды без целей.
 - `POST /api/v1/admin/periods/{periodID}/teams/close` → `{ "affected", "skipped" }`. Переводит все команды с ≥1 целью и статусом ≠ `closed` в `closed`. Команды без целей пропускаются.
 
@@ -310,11 +310,40 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/teams/{teamID}`
 - `GET /api/v1/teams/{teamID}/okrs`
 - `GET /api/v1/teams/{teamID}/overview`
+- `GET /api/v1/periods/{periodID}/overview?scope=my_teams|org`
 - `GET /api/v1/teams/{teamID}/export`
 - `GET /api/v1/goals/{goalID}`
 - `GET /api/v1/activity`
 - `GET /api/v1/activity/tree-counts`
 - `GET /api/v1/activity/category-counts`
+
+### `GET /api/v1/periods/{periodID}/overview?scope=my_teams|org`
+
+Обзор периода в выбранном охвате, доступен любому аутентифицированному участнику. Параметр `scope` (по умолчанию `my_teams`):
+
+- `my_teams` — команды, где текущий пользователь назначен руководителем (`teams.lead_udid` = его UDID), плюс все вложенные потомки; доступен всем участникам;
+- `org` — весь тенант; **только tenant-admin** (иначе `403 FORBIDDEN`).
+
+Ответ (охват влияет на все секции):
+
+```jsonc
+{
+  "period_id",
+  "summary": { "by_status": {in_progress, ready, forming, closed, no_goals}, "total_teams", "teams_with_goals", "weight_error_count", "avg_progress", "progress_teams" },
+  "teams":   [ { "id", "name", "path", "status", "goals_count", "progress", "weight_sum", "weight_error" } ],
+  "balances": {
+    "discovery_delivery": [ { "key", "count", "percent" } ],   // work_type: Delivery, Discovery
+    "focuses":            [ { "key", "count", "percent" } ],   // focus_type: PROFITABILITY, STABILITY, SPEED_EFFICIENCY, TECH_INDEPENDENCE
+    "priorities":         [ { "key", "count", "percent" } ]    // priority: P0, P1, P2, P3
+  },
+  "goals":    [ { "id", "title", "team_id", "team_name", "work_type", "focus_type", "priority", "progress" } ],
+  "progress": { "period_start", "period_end", "points": [ { "date", "progress" } ] }
+}
+```
+
+`balances` — распределение целей в охвате по work_type / focus_type / priority; каждая корзина всегда содержит все фиксированные категории (в т.ч. нулевые), `percent` — доля от числа целей в охвате. `goals` — тонкий список целей для drill-down по клику на полосу баланса (фильтрация на клиенте). `progress` — ряд среднего прогресса по датам (из суточных снапшотов) плюс «живая» точка на сегодня; точки до `period_start` / после `period_end` рендерятся на краях графика. **В расчёты прогресса** (`avg_progress`, `progress_teams`, ряд `progress`) **не входят команды без целей и команды в статусе «черновик» (`forming`)** — их цели ещё формируются; балансы и `goals` при этом учитывают все цели в охвате.
+
+Легаси admin-only `GET /api/v1/admin/periods/{periodID}/overview` сохранён для админ-модалки (весь тенант, без `balances`/`goals`/`progress`).
 
 ### `GET /api/v1/activity`
 

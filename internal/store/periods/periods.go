@@ -59,6 +59,31 @@ func (r *PeriodRepository) GetPeriod(ctx context.Context, scope domain.TenantSco
 	return period, nil
 }
 
+// ListActivePeriodsForDate returns every non-archived period whose date interval
+// contains the given date (inclusive). Unlike FindPeriodForDate it does not pick the
+// narrowest — nested/overlapping periods (e.g. year + quarter active on the same day)
+// are all returned, so the snapshot job records a point for each.
+func (r *PeriodRepository) ListActivePeriodsForDate(ctx context.Context, scope domain.TenantScope, date time.Time) ([]domain.Period, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, name, start_date, end_date, archived_at, created_at, updated_at
+		FROM periods
+		WHERE tenant_id=$2 AND archived_at IS NULL AND $1::date BETWEEN start_date AND end_date
+		ORDER BY start_date, id`, date, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	periods := make([]domain.Period, 0)
+	for rows.Next() {
+		var period domain.Period
+		if err := rows.Scan(&period.ID, &period.Name, &period.StartDate, &period.EndDate, &period.ArchivedAt, &period.CreatedAt, &period.UpdatedAt); err != nil {
+			return nil, err
+		}
+		periods = append(periods, period)
+	}
+	return periods, rows.Err()
+}
+
 func (r *PeriodRepository) FindPeriodForDate(ctx context.Context, scope domain.TenantScope, date time.Time) (domain.Period, error) {
 	var period domain.Period
 	row := r.db.QueryRow(ctx, `

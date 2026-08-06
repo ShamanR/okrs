@@ -28,6 +28,8 @@ function pickDefaultPeriodId(periods) {
 
 function App() {
   const [me, setMe] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [scopeSel, setScopeSel] = useState('my_teams'); // 'my_teams' | 'org'
   const [periods, setPeriods] = useState([]);
   const [periodId, setPeriodId] = useState(null);
   const [data, setData] = useState(null);
@@ -35,8 +37,9 @@ function App() {
   const [err, setErr] = useState(false);
 
   useEffect(() => {
-    Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods')]).then(([meData, per]) => {
+    Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods'), apiGet('/api/v1/config')]).then(([meData, per, cfg]) => {
       if (meData) setMe(meData);
+      if (cfg) setIsAdmin(!!cfg.is_admin);
       const items = (per && per.items) || [];
       setPeriods(items);
       setPeriodId(pickDefaultPeriodId(items));
@@ -46,14 +49,15 @@ function App() {
   // Текущий выбранный период в ref — чтобы игнорировать ответы (overview и bulk),
   // относящиеся к уже смещённому выбору (гонка при переключении периода).
   const periodIdRef = useRef(null);
-  const load = (pid) => {
+  const scopeRef = useRef('my_teams');
+  const load = (pid, sc) => {
     if (!pid) return;
     setData(null); setErr(false);
-    apiGet(`/api/v1/admin/periods/${pid}/overview`)
-      .then(d => { if (pid === periodIdRef.current) setData(d); })
-      .catch(() => { if (pid === periodIdRef.current) setErr(true); });
+    apiGet(`/api/v1/periods/${pid}/overview?scope=${sc}`)
+      .then(d => { if (pid === periodIdRef.current && sc === scopeRef.current) setData(d); })
+      .catch(() => { if (pid === periodIdRef.current && sc === scopeRef.current) setErr(true); });
   };
-  useEffect(() => { periodIdRef.current = periodId; load(periodId); }, [periodId]);
+  useEffect(() => { periodIdRef.current = periodId; scopeRef.current = scopeSel; load(periodId, scopeSel); }, [periodId, scopeSel]);
 
   async function onApply(ep) {
     if (busy || !periodId) return;
@@ -61,7 +65,7 @@ function App() {
     setBusy(true);
     try {
       await apiPostJSON(`/api/v1/admin/periods/${pid}/teams/${ep}`, {});
-      if (pid === periodIdRef.current) load(pid);
+      if (pid === periodIdRef.current) load(pid, scopeRef.current);
     } catch { alert('Ошибка операции'); }
     finally { setBusy(false); }
   }
@@ -87,12 +91,14 @@ function App() {
           : <>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 18 }}>
                 <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a', letterSpacing: '-.4px' }}>{cur ? cur.name : '—'}</div>
-                {total != null && <div style={{ fontSize: 14, color: '#6b7280' }}>{total} команд в вашем доступе</div>}
+                {total != null && <div style={{ fontSize: 14, color: '#6b7280' }}>{scopeSel === 'org' ? 'вся организация' : 'мои команды'} · {total}</div>}
+                <div style={{ flex: 1 }} />
+                <ScopeToggle isAdmin={isAdmin} value={scopeSel} onChange={setScopeSel} />
               </div>
               {err
                 ? <div style={{ color: '#b91c1c', fontSize: 13 }}>Не удалось загрузить обзор периода.</div>
                 : <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, boxShadow: '0 1px 3px rgba(15,23,42,0.04)', overflow: 'hidden' }}>
-                    <PeriodOverviewContent data={data} busy={busy} onApply={onApply} />
+                    <PeriodOverviewContent data={data} busy={busy} onApply={onApply} isAdmin={isAdmin} />
                   </div>}
             </>}
       </div>
