@@ -159,6 +159,64 @@ func TestFindPeriodForDate_ReturnsNarrowest(t *testing.T) {
 	}
 }
 
+// TestListActivePeriodsForDate проверяет, что для снапшот-джобы возвращаются ВСЕ
+// вложенные/пересекающиеся неархивные периоды, покрывающие дату (а не только самый
+// узкий, как FindPeriodForDate), и что архивные исключаются.
+func TestListActivePeriodsForDate(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := periods.NewPeriodRepository(pool)
+	date := time.Date(2025, 8, 15, 0, 0, 0, 0, time.UTC)
+
+	yearID, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
+		Name: "2025", StartDate: time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2025, 12, 31, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("year: %v", err)
+	}
+	quarterID, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
+		Name: "2025 Q3", StartDate: time.Date(2025, 7, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2025, 9, 30, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("quarter: %v", err)
+	}
+	// Archived period covering the date — must be excluded.
+	archID, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
+		Name: "2025 Q3 arch", StartDate: time.Date(2025, 8, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2025, 8, 31, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("arch: %v", err)
+	}
+	if err := r.ArchivePeriod(ctx, sc1, archID); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	// A period NOT covering the date — must be excluded.
+	if _, err := r.CreatePeriod(ctx, sc1, periods.PeriodInput{
+		Name: "2024", StartDate: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC), EndDate: time.Date(2024, 12, 31, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("2024: %v", err)
+	}
+
+	got, err := r.ListActivePeriodsForDate(ctx, sc1, date)
+	if err != nil {
+		t.Fatalf("ListActivePeriodsForDate: %v", err)
+	}
+	ids := map[int64]bool{}
+	for _, p := range got {
+		ids[p.ID] = true
+	}
+	if !ids[yearID] || !ids[quarterID] {
+		t.Fatalf("want both year %d and quarter %d, got %v", yearID, quarterID, got)
+	}
+	if ids[archID] {
+		t.Fatalf("archived period %d must be excluded, got %v", archID, got)
+	}
+	if len(got) != 2 {
+		t.Fatalf("want exactly 2 active overlapping periods, got %d: %+v", len(got), got)
+	}
+}
+
 // TestFindPeriodForDate_SkipsArchived проверяет, что архивные периоды не выбираются
 // как текущий/дефолтный период (консистентно с /api/v1/periods, который их скрывает).
 func TestFindPeriodForDate_SkipsArchived(t *testing.T) {

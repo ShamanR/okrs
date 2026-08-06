@@ -264,7 +264,30 @@ func (s *Server) Routes() http.Handler {
 		return active
 	}
 	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, activePeriods)
-	s.startProgressSnapshotLoop(ctx, 24*time.Hour, activePeriods)
+
+	// The snapshot job must cover EVERY active (non-archived, date-containing) period,
+	// not just the narrowest one FindPeriodForDate returns — nested periods (year +
+	// quarter) each need their own daily point.
+	snapshotPeriods := func(ctx context.Context) []service.HCActive {
+		now := time.Now().In(s.zone)
+		tenants, err := s.store.Tenants.List(ctx)
+		if err != nil {
+			return nil
+		}
+		var active []service.HCActive
+		for _, tn := range tenants {
+			scope := domain.TenantScope{TenantID: tn.ID}
+			periods, err := s.store.Periods.ListActivePeriodsForDate(ctx, scope, now)
+			if err != nil {
+				continue
+			}
+			for _, p := range periods {
+				active = append(active, service.HCActive{Scope: scope, PeriodID: p.ID})
+			}
+		}
+		return active
+	}
+	s.startProgressSnapshotLoop(ctx, 24*time.Hour, snapshotPeriods)
 
 	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
@@ -453,6 +476,14 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", s.shellData())
 	})
 
+	// Обзор периода — доступен любому аутентифицированному участнику (охват «Мои
+	// команды»); переключатель «Вся организация» и массовые операции — только админам
+	// (гейтятся на клиенте и в API).
+	r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
+	})
+
 	// Страницы-заглушки разделов навигации (гамбургер-меню). Доступны любому
 	// авторизованному пользователю, как /settings.
 	stubShell := func(w http.ResponseWriter, r *http.Request) {
@@ -498,11 +529,6 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		r.Get("/activity-log", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
-		})
-		// Обзор периода — tenant-admin-only раздел основного приложения (собственный shell).
-		r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
 		})
 		// Legacy deep-links → root SPA.
 		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
