@@ -258,7 +258,7 @@ function EventRow({ ev, teamNames, periodNames }) {
   );
 }
 
-function Feed({ periodId, teamId, range, setRange, category, setCategory, actorUDID, actorName, setActor,
+function Feed({ periodId, teamIds, range, setRange, category, setCategory, actorUDID, actorName, setActor,
   favOnly, setFavOnly, q, setQ, favIds, teamNames, periodNames }) {
   const [events, setEvents] = useState([]);
   const [nextCursor, setNextCursor] = useState('');
@@ -272,9 +272,12 @@ function Feed({ periodId, teamId, range, setRange, category, setCategory, actorU
   // Favorites are filtered SERVER-SIDE (before LIMIT/cursor) by scoping team_ids to the favorite
   // teams, so pagination, tab counts and shared-goal matching are all correct.
   const favTeamIds = (favIds || []).map(x => String(x));
-  const effTeamIds = teamId ? [String(teamId)] : (favOnly ? favTeamIds : []);
+  // A selected team expands to its subtree ids (self + nested); that selection wins over favorites.
+  const selTeamIds = (teamIds || []).map(x => String(x));
+  const hasTeamSel = selTeamIds.length > 0;
+  const effTeamIds = hasTeamSel ? selTeamIds : (favOnly ? favTeamIds : []);
   const effTeamKey = effTeamIds.join(',');
-  const noResults = favOnly && !teamId && favTeamIds.length === 0; // favorites on, but none chosen
+  const noResults = favOnly && !hasTeamSel && favTeamIds.length === 0; // favorites on, but none chosen
 
   const baseParams = useCallback(() => {
     const p = new URLSearchParams();
@@ -389,6 +392,25 @@ function flattenTeamNames(nodes, into) {
   return into;
 }
 
+// findTreeNode locates a node by id anywhere in the hierarchy (or null).
+function findTreeNode(nodes, id) {
+  for (const n of nodes || []) {
+    if (n.id === id) return n;
+    const f = findTreeNode(n.children, id);
+    if (f) return f;
+  }
+  return null;
+}
+
+// collectSubtreeIds returns the node id plus every descendant id — the set of teams a team
+// filter must cover, so the feed matches the subtree rollup shown next to the team in the sidebar.
+function collectSubtreeIds(node) {
+  if (!node) return [];
+  const ids = [node.id];
+  (node.children || []).forEach(c => { ids.push(...collectSubtreeIds(c)); });
+  return ids;
+}
+
 function App() {
   const [me, setMe] = useState(null);
   const [periods, setPeriods] = useState([]);
@@ -474,6 +496,12 @@ function App() {
 
   const periodOptions = [{ id: null, name: 'Все периоды', status: 'active', depth: 0 }, ...periods];
 
+  // A selected team filters the feed by its whole subtree (self + nested teams), matching the
+  // rolled-up count shown beside it. Fall back to the bare id while the hierarchy is still loading
+  // or when the team is outside the visible tree.
+  const selNode = selId == null ? null : findTreeNode(hierarchy, selId);
+  const selTeamIds = selId == null ? null : (selNode ? collectSubtreeIds(selNode) : [selId]);
+
   return (
     <div className="app">
       <Sidebar user={me} active="activity-log"
@@ -496,7 +524,7 @@ function App() {
         </div>
       </Sidebar>
       <div className="main">
-        <Feed periodId={periodId} teamId={selId} range={range} setRange={setRange}
+        <Feed periodId={periodId} teamIds={selTeamIds} range={range} setRange={setRange}
           category={category} setCategory={setCategory}
           actorUDID={actorUDID} actorName={actorName} setActor={(udid, nm) => { setActorUDID(udid); setActorName(nm); }}
           favOnly={favOnly} setFavOnly={setFavOnly} q={q} setQ={setQ}
