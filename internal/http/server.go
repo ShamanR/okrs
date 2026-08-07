@@ -266,10 +266,15 @@ func (s *Server) Routes() http.Handler {
 	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, activePeriods)
 
 	// Progress snapshots. The loop polls on a fixed base cadence but only records a
-	// period when the tenant's configured interval (health_checkin_config
-	// .progress_snapshot_interval_days, ≥1) has elapsed since its last point. Covers
-	// EVERY active (non-archived, date-containing) period — nested periods (year +
-	// quarter) each get their own points.
+	// period when the tenant's configured interval (progress_snapshot_interval_days, ≥1)
+	// has elapsed since its last point. Covers EVERY active (non-archived, date-containing)
+	// period — nested periods (year + quarter) each get their own points.
+	//
+	// lastAttempt throttles periods that legitimately produce no snapshots (only no-goal
+	// or forming teams): those never advance LatestSnapshotDate, so without an attempt
+	// record they'd be reprocessed every poll. Only the single advisory-lock holder runs
+	// this per tick, so the in-memory map is mutated by one goroutine.
+	lastAttempt := make(map[[2]int64]time.Time)
 	snapshotDuePeriods := func(ctx context.Context) []service.HCActive {
 		now := time.Now().In(s.zone)
 		tenants, err := s.store.Tenants.List(ctx)
@@ -289,8 +294,15 @@ func (s *Server) Routes() http.Handler {
 				if err != nil {
 					continue
 				}
+				key := [2]int64{tn.ID, p.ID}
+				// Effective "last handled" = the newer of the recorded point and our last
+				// attempt, so empty passes still count toward the interval.
+				if a, ok := lastAttempt[key]; ok && (!has || a.After(latest)) {
+					latest, has = a, true
+				}
 				if !has || daysBetween(latest, now) >= intervalDays {
 					due = append(due, service.HCActive{Scope: scope, PeriodID: p.ID})
+					lastAttempt[key] = now
 				}
 			}
 		}

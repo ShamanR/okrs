@@ -382,10 +382,12 @@ func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Reques
 // POST /api/v1/admin/settings/general  body: {"documentation_url":"https://..."}
 func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Name                         string `json:"name"`
-		DocumentationURL             string `json:"documentation_url"`
-		EmptyHierarchyMessage        string `json:"empty_hierarchy_message"`
-		ProgressSnapshotIntervalDays int    `json:"progress_snapshot_interval_days"`
+		Name                  string `json:"name"`
+		DocumentationURL      string `json:"documentation_url"`
+		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
+		// Optional: omitting it preserves the stored value (a client saving unrelated
+		// general settings must not reset a configured snapshot interval).
+		ProgressSnapshotIntervalDays *int `json:"progress_snapshot_interval_days"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -400,10 +402,6 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 	if link != "" && !isValidHTTPURL(link) {
 		writeError(w, http.StatusBadRequest, "documentation_url must be a valid http(s) URL")
 		return
-	}
-	snapshotDays := body.ProgressSnapshotIntervalDays
-	if snapshotDays < 1 {
-		snapshotDays = 1
 	}
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
@@ -422,9 +420,15 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyProgressSnapshotIntervalDays, snapshotDays); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if body.ProgressSnapshotIntervalDays != nil {
+		snapshotDays := *body.ProgressSnapshotIntervalDays
+		if snapshotDays < 1 {
+			snapshotDays = 1
+		}
+		if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyProgressSnapshotIntervalDays, snapshotDays); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

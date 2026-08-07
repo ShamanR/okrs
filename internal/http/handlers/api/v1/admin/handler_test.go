@@ -185,6 +185,46 @@ func TestHandleUpdateGeneralSettingsStoresValidURL(t *testing.T) {
 	}
 }
 
+func TestHandleUpdateGeneralSettings_OmittedIntervalPreservesStored(t *testing.T) {
+	fs := newFakeSettings()
+	fs.set("progress_snapshot_interval_days", 7)
+	h := New(nil, fs, nil, nil, nil, &fakeRenamer{}, nil)
+
+	// Payload without progress_snapshot_interval_days (e.g. an older client).
+	body := strings.NewReader(`{"name":"Acme","documentation_url":""}`)
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", body))
+	w := httptest.NewRecorder()
+	h.HandleUpdateGeneralSettings(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	raw, _ := fs.get("progress_snapshot_interval_days")
+	var stored int
+	_ = json.Unmarshal(raw, &stored)
+	if stored != 7 {
+		t.Fatalf("interval must be preserved when the field is omitted, got %d", stored)
+	}
+}
+
+func TestHandleUpdateGeneralSettings_IntervalClampedAndStored(t *testing.T) {
+	fs := newFakeSettings()
+	h := New(nil, fs, nil, nil, nil, &fakeRenamer{}, nil)
+
+	body := strings.NewReader(`{"name":"Acme","documentation_url":"","progress_snapshot_interval_days":0}`)
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", body))
+	w := httptest.NewRecorder()
+	h.HandleUpdateGeneralSettings(w, r)
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", w.Code)
+	}
+	raw, _ := fs.get("progress_snapshot_interval_days")
+	var stored int
+	_ = json.Unmarshal(raw, &stored)
+	if stored != 1 {
+		t.Fatalf("interval <1 must clamp to 1, got %d", stored)
+	}
+}
+
 func TestHandleUpdateGeneralSettingsRenamesTenant(t *testing.T) {
 	fs := newFakeSettings()
 	fr := &fakeRenamer{}
