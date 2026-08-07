@@ -124,6 +124,50 @@ func TestListShareAwareAndScope(t *testing.T) {
 	}
 }
 
+// The sidebar team filter expands the selected team to its whole subtree and passes every id in
+// ListFilter.TeamIDs, so a parent selection must return events from the parent AND its nested teams.
+func TestListFilterByTeamIDsSubtree(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+
+	tr := teams.NewTeamRepository(pool)
+	pr := periods.NewPeriodRepository(pool)
+	ar := activity.NewActivityRepository(pool)
+
+	parent, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "Parent", Type: domain.TeamTypeTeam})
+	child, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "Child", Type: domain.TeamTypeTeam, ParentID: &parent})
+	sibling, _ := tr.CreateTeam(ctx, scope, teams.TeamInput{Name: "Sibling", Type: domain.TeamTypeTeam})
+	periodID, _ := pr.CreatePeriod(ctx, scope, q1("Q1"))
+
+	record := func(teamID int64, title string) {
+		gid := makeGoal(t, ctx, pool, scope, teamID, periodID, title)
+		if _, err := ar.Record(ctx, scope, domain.ActivityEvent{
+			ActorUserID: seedUserID, Category: domain.ActivityDiscussion, Action: domain.ActionCommentAdded,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: title,
+		}); err != nil {
+			t.Fatalf("record (%s): %v", title, err)
+		}
+	}
+	record(parent, "Parent goal")
+	record(child, "Child goal")
+	record(sibling, "Sibling goal")
+
+	// Parent selection expands to {parent, child} → both events, not the sibling's.
+	if evs, _, _ := ar.List(ctx, scope, nil, activity.ListFilter{TeamIDs: []int64{parent, child}}); len(evs) != 2 {
+		t.Fatalf("subtree filter: want 2 got %d", len(evs))
+	}
+	// Selecting the leaf child alone → only its event.
+	if evs, _, _ := ar.List(ctx, scope, nil, activity.ListFilter{TeamIDs: []int64{child}}); len(evs) != 1 {
+		t.Fatalf("child-only filter: want 1 got %d", len(evs))
+	}
+	// No team filter → every event.
+	if evs, _, _ := ar.List(ctx, scope, nil, activity.ListFilter{}); len(evs) != 3 {
+		t.Fatalf("no filter: want 3 got %d", len(evs))
+	}
+}
+
 func TestListTargetTeamResolution(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
