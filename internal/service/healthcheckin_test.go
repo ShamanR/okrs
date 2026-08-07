@@ -574,6 +574,21 @@ func TestLoadConfig_CommentDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadProgressSnapshotIntervalDays(t *testing.T) {
+	// Unset → default 1.
+	if got := LoadProgressSnapshotIntervalDays(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: nil}); got != 1 {
+		t.Fatalf("unset: want 1, got %d", got)
+	}
+	// Configured value honored.
+	if got := LoadProgressSnapshotIntervalDays(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: json.RawMessage(`7`)}); got != 7 {
+		t.Fatalf("configured: want 7, got %d", got)
+	}
+	// Invalid (<1) → default 1.
+	if got := LoadProgressSnapshotIntervalDays(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: json.RawMessage(`0`)}); got != 1 {
+		t.Fatalf("invalid: want 1, got %d", got)
+	}
+}
+
 func TestLoadConfig_NormalizesInvalidCommentFields(t *testing.T) {
 	raw := json.RawMessage(`{"comment_depth":-2,"resolved_comments_limit":0,"stale_days":7,"cache_ttl_minutes":5,"green_threshold":80}`)
 	cfg, _ := LoadHealthCheckInConfig(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: raw})

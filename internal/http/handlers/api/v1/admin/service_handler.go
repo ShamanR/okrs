@@ -254,6 +254,45 @@ func (h *ServiceHandler) HandlePeriodOverview(w http.ResponseWriter, r *http.Req
 	v1.WriteJSON(w, http.StatusOK, ov)
 }
 
+// resolveOverviewScope reads ?scope=my_teams|org and returns the team filter to apply
+// (nil = whole organization). On an authorization/validation problem it writes the error
+// response and returns ok=false. Shared by the scoped overview and scoped bulk handlers.
+func (h *ServiceHandler) resolveOverviewScope(w http.ResponseWriter, r *http.Request, scope domain.TenantScope) (map[int64]bool, bool) {
+	overviewScope := r.URL.Query().Get("scope")
+	if overviewScope == "" {
+		overviewScope = "my_teams"
+	}
+	role, _ := auth.ActiveRoleFromContext(r.Context())
+	isAdmin := role == domain.RoleAdmin
+
+	switch overviewScope {
+	case "org":
+		if !isAdmin {
+			v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "org scope requires admin", nil)
+			return nil, false
+		}
+		return nil, true
+	case "my_teams":
+		udid := ""
+		if user := auth.UserFromContext(r.Context()); user != nil {
+			udid = user.UDID
+		}
+		ids, err := h.scope.ListLeadTeamScope(r.Context(), scope, udid)
+		if err != nil {
+			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to resolve scope", nil)
+			return nil, false
+		}
+		filter := make(map[int64]bool, len(ids))
+		for _, id := range ids {
+			filter[id] = true
+		}
+		return filter, true
+	default:
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid scope", nil)
+		return nil, false
+	}
+}
+
 // GET /api/v1/periods/{periodID}/overview?scope=my_teams|org
 // Available to any authenticated member. scope=my_teams (default) restricts the
 // overview to teams the caller leads plus nested descendants; scope=org (whole
@@ -269,41 +308,10 @@ func (h *ServiceHandler) HandlePeriodOverviewScoped(w http.ResponseWriter, r *ht
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
 		return
 	}
-	overviewScope := r.URL.Query().Get("scope")
-	if overviewScope == "" {
-		overviewScope = "my_teams"
-	}
-
-	role, _ := auth.ActiveRoleFromContext(r.Context())
-	isAdmin := role == domain.RoleAdmin
-
-	var teamFilter map[int64]bool
-	switch overviewScope {
-	case "org":
-		if !isAdmin {
-			v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "org scope requires admin", nil)
-			return
-		}
-		teamFilter = nil
-	case "my_teams":
-		udid := ""
-		if user := auth.UserFromContext(r.Context()); user != nil {
-			udid = user.UDID
-		}
-		ids, err := h.scope.ListLeadTeamScope(r.Context(), scope, udid)
-		if err != nil {
-			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to resolve scope", nil)
-			return
-		}
-		teamFilter = make(map[int64]bool, len(ids))
-		for _, id := range ids {
-			teamFilter[id] = true
-		}
-	default:
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid scope", nil)
+	teamFilter, ok := h.resolveOverviewScope(w, r, scope)
+	if !ok {
 		return
 	}
-
 	ov, err := h.service.PeriodOverviewScoped(r.Context(), scope, periodID, h.weightTolerance(r, scope), teamFilter)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load overview", nil)
@@ -312,6 +320,7 @@ func (h *ServiceHandler) HandlePeriodOverviewScoped(w http.ResponseWriter, r *ht
 	v1.WriteJSON(w, http.StatusOK, ov)
 }
 
+// handleBulk applies a bulk status transition over the whole tenant (admin-only path).
 func (h *ServiceHandler) handleBulk(w http.ResponseWriter, r *http.Request, target domain.TeamPeriodStatus) {
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
@@ -323,7 +332,7 @@ func (h *ServiceHandler) handleBulk(w http.ResponseWriter, r *http.Request, targ
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
 		return
 	}
-	res, err := h.service.BulkSetTeamPeriodStatus(r.Context(), scope, periodID, target, auth.UserIDFromContext(r.Context()))
+	res, err := h.service.BulkSetTeamPeriodStatus(r.Context(), scope, periodID, target, auth.UserIDFromContext(r.Context()), nil)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to apply bulk operation", nil)
 		return
@@ -331,14 +340,49 @@ func (h *ServiceHandler) handleBulk(w http.ResponseWriter, r *http.Request, targ
 	v1.WriteJSON(w, http.StatusOK, res)
 }
 
-// POST /api/v1/admin/periods/{periodID}/teams/activate
+// handleBulkScoped applies a bulk status transition within the requested scope:
+// my_teams (teams the caller leads + descendants) or org (whole tenant, admin-only).
+func (h *ServiceHandler) handleBulkScoped(w http.ResponseWriter, r *http.Request, target domain.TeamPeriodStatus) {
+	scope, ok := auth.TenantScopeFromContext(r.Context())
+	if !ok {
+		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
+		return
+	}
+	periodID, err := common.ParseID(chi.URLParam(r, "periodID"))
+	if err != nil {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", nil)
+		return
+	}
+	teamFilter, ok := h.resolveOverviewScope(w, r, scope)
+	if !ok {
+		return
+	}
+	res, err := h.service.BulkSetTeamPeriodStatus(r.Context(), scope, periodID, target, auth.UserIDFromContext(r.Context()), teamFilter)
+	if err != nil {
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to apply bulk operation", nil)
+		return
+	}
+	v1.WriteJSON(w, http.StatusOK, res)
+}
+
+// POST /api/v1/admin/periods/{periodID}/teams/activate (legacy admin-only, whole tenant)
 func (h *ServiceHandler) HandleActivatePeriodTeams(w http.ResponseWriter, r *http.Request) {
 	h.handleBulk(w, r, domain.TeamPeriodStatusInProgress)
 }
 
-// POST /api/v1/admin/periods/{periodID}/teams/close
+// POST /api/v1/admin/periods/{periodID}/teams/close (legacy admin-only, whole tenant)
 func (h *ServiceHandler) HandleClosePeriodTeams(w http.ResponseWriter, r *http.Request) {
 	h.handleBulk(w, r, domain.TeamPeriodStatusClosed)
+}
+
+// POST /api/v1/periods/{periodID}/teams/activate?scope=my_teams|org
+func (h *ServiceHandler) HandleActivatePeriodTeamsScoped(w http.ResponseWriter, r *http.Request) {
+	h.handleBulkScoped(w, r, domain.TeamPeriodStatusInProgress)
+}
+
+// POST /api/v1/periods/{periodID}/teams/close?scope=my_teams|org
+func (h *ServiceHandler) HandleClosePeriodTeamsScoped(w http.ResponseWriter, r *http.Request) {
+	h.handleBulkScoped(w, r, domain.TeamPeriodStatusClosed)
 }
 
 // ── TEAMS ─────────────────────────────────────────────────────────────────────

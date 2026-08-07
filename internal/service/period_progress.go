@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"sort"
 	"time"
@@ -10,6 +11,24 @@ import (
 	"okrs/internal/okr"
 	"okrs/internal/store/progresssnap"
 )
+
+// ProgressSnapshotIntervalDaysKey is the tenant_settings (general) key controlling how
+// often the progress snapshot job records a point for the period chart, in days (≥1).
+const ProgressSnapshotIntervalDaysKey = "progress_snapshot_interval_days"
+
+// LoadProgressSnapshotIntervalDays reads the per-tenant snapshot interval in days,
+// defaulting to 1 (daily) when unset or invalid.
+func LoadProgressSnapshotIntervalDays(ctx context.Context, scope domain.TenantScope, sr SettingsReader) int {
+	raw, err := sr.GetTenant(ctx, scope, ProgressSnapshotIntervalDaysKey)
+	if err != nil || raw == nil {
+		return 1
+	}
+	var n int
+	if json.Unmarshal(raw, &n) != nil || n < 1 {
+		return 1
+	}
+	return n
+}
 
 // ProgressSnapRepo persists and reads daily per-team progress snapshots.
 // *progresssnap.Repository satisfies it.

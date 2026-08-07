@@ -51,4 +51,26 @@ func TestUpsertAndListSnapshots(t *testing.T) {
 	if err != nil || len(all) != 1 {
 		t.Fatalf("list all: want 1 got %d (err %v)", len(all), err)
 	}
+
+	// LatestSnapshotDate reflects the most recent recorded day.
+	latest, has, err := r.LatestSnapshotDate(ctx, scope, periodID)
+	if err != nil || !has {
+		t.Fatalf("latest: want ok, got has=%v err=%v", has, err)
+	}
+	if latest.Format("2006-01-02") != "2026-01-15" {
+		t.Fatalf("latest date: want 2026-01-15, got %s", latest.Format("2006-01-02"))
+	}
+	later := time.Date(2026, 2, 20, 0, 0, 0, 0, time.UTC)
+	if err := r.UpsertSnapshots(ctx, scope, periodID, later, []progresssnap.Snapshot{{TeamID: teamID, Progress: 60}}); err != nil {
+		t.Fatalf("later upsert: %v", err)
+	}
+	latest2, _, _ := r.LatestSnapshotDate(ctx, scope, periodID)
+	if latest2.Format("2006-01-02") != "2026-02-20" {
+		t.Fatalf("latest date after new day: want 2026-02-20, got %s", latest2.Format("2006-01-02"))
+	}
+
+	// No snapshots for an unrelated period → has=false.
+	if _, has2, _ := r.LatestSnapshotDate(ctx, scope, periodID+999); has2 {
+		t.Fatalf("expected no snapshots for unrelated period")
+	}
 }

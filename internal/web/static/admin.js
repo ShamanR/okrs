@@ -435,7 +435,7 @@ function PeriodOverviewModal({period, onEdit, onDelete, reload}) {
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () => apiGet(`/api/v1/admin/periods/${period.id}/overview`).then(r => r && r.json()).then(setData).catch(()=>{});
+  const load = () => apiGet(`/api/v1/periods/${period.id}/overview?scope=org`).then(r => r && r.json()).then(setData).catch(()=>{});
   useEffect(() => { load(); }, [period.id]);
 
   async function onApply(ep) {
@@ -461,7 +461,7 @@ function PeriodOverviewModal({period, onEdit, onDelete, reload}) {
       <Btn onClick={onEdit}>Редактировать</Btn>
       <Btn danger onClick={onDelete}>Удалить</Btn>
     </div>
-    <PeriodOverviewContent data={data} busy={busy} onApply={onApply}/>
+    <PeriodOverviewContent data={data} busy={busy} onApply={onApply} isAdmin={true} scope="org"/>
   </div>;
 }
 
@@ -1209,19 +1209,20 @@ function GeneralSettingsPanel() {
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [emptyMsg, setEmptyMsg] = useState('');
+  const [snapshotDays, setSnapshotDays] = useState(1);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(()=>{
     apiGet('/api/v1/admin/settings/general').then(r=>r&&r.json()).then(data=>{
-      if (data) { setName(data.name||''); setUrl(data.documentation_url||''); setEmptyMsg(data.empty_hierarchy_message||''); }
+      if (data) { setName(data.name||''); setUrl(data.documentation_url||''); setEmptyMsg(data.empty_hierarchy_message||''); if (data.progress_snapshot_interval_days >= 1) setSnapshotDays(data.progress_snapshot_interval_days); }
     });
   },[]);
 
   async function save() {
     if (!name.trim()) { alert('Укажите название пространства.'); return; }
     setSaving(true); setSaved(false);
-    const res = await apiPost('/api/v1/admin/settings/general', {name: name.trim(), documentation_url: url.trim(), empty_hierarchy_message: emptyMsg});
+    const res = await apiPost('/api/v1/admin/settings/general', {name: name.trim(), documentation_url: url.trim(), empty_hierarchy_message: emptyMsg, progress_snapshot_interval_days: Math.max(1, Number(snapshotDays)||1)});
     setSaving(false);
     if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
     else if (res && res.status===400) alert('Проверьте название пространства и ссылку на документацию.');
@@ -1253,6 +1254,18 @@ function GeneralSettingsPanel() {
       </div>
       <div style={{marginBottom:16}}>
         <MarkdownEditor value={emptyMsg} onChange={setEmptyMsg} rows={4} textareaStyle={{...inpStyle,border:'none',borderRadius:0,resize:'vertical',lineHeight:1.5,minHeight:96}}/>
+      </div>
+    </DetailSection>
+    <DetailSection title="График прогресса за период">
+      <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:16,lineHeight:1.6}}>
+        Как часто фоновая задача фиксирует точку прогресса команд для графика за период. 1 — ежедневно.
+      </div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:16}}>
+        <span style={{fontSize:13,color:T.mutedFg}}>Частота снимков (дней):</span>
+        <input type="number" min={1} value={snapshotDays}
+          onChange={e=>setSnapshotDays(e.target.value)}
+          onBlur={()=>setSnapshotDays(d=>Math.max(1, Math.floor(Number(d))||1))}
+          style={{...inpStyle,fontSize:13,width:100}}/>
       </div>
       <div style={{display:'flex',alignItems:'center',gap:10}}>
         <Btn variant="primary" onClick={save} disabled={saving}>

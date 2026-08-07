@@ -265,29 +265,38 @@ func (s *Server) Routes() http.Handler {
 	}
 	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, activePeriods)
 
-	// The snapshot job must cover EVERY active (non-archived, date-containing) period,
-	// not just the narrowest one FindPeriodForDate returns — nested periods (year +
-	// quarter) each need their own daily point.
-	snapshotPeriods := func(ctx context.Context) []service.HCActive {
+	// Progress snapshots. The loop polls on a fixed base cadence but only records a
+	// period when the tenant's configured interval (health_checkin_config
+	// .progress_snapshot_interval_days, ≥1) has elapsed since its last point. Covers
+	// EVERY active (non-archived, date-containing) period — nested periods (year +
+	// quarter) each get their own points.
+	snapshotDuePeriods := func(ctx context.Context) []service.HCActive {
 		now := time.Now().In(s.zone)
 		tenants, err := s.store.Tenants.List(ctx)
 		if err != nil {
 			return nil
 		}
-		var active []service.HCActive
+		var due []service.HCActive
 		for _, tn := range tenants {
 			scope := domain.TenantScope{TenantID: tn.ID}
+			intervalDays := service.LoadProgressSnapshotIntervalDays(ctx, scope, s.settingsSvc)
 			periods, err := s.store.Periods.ListActivePeriodsForDate(ctx, scope, now)
 			if err != nil {
 				continue
 			}
 			for _, p := range periods {
-				active = append(active, service.HCActive{Scope: scope, PeriodID: p.ID})
+				latest, has, err := s.store.ProgressSnap.LatestSnapshotDate(ctx, scope, p.ID)
+				if err != nil {
+					continue
+				}
+				if !has || daysBetween(latest, now) >= intervalDays {
+					due = append(due, service.HCActive{Scope: scope, PeriodID: p.ID})
+				}
 			}
 		}
-		return active
+		return due
 	}
-	s.startProgressSnapshotLoop(ctx, 24*time.Hour, snapshotPeriods)
+	s.startProgressSnapshotLoop(ctx, snapshotCheckInterval, snapshotDuePeriods)
 
 	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
@@ -422,6 +431,18 @@ func (s *Server) Routes() http.Handler {
 // progressSnapshotLockKey is a fixed advisory-lock key so that, across K8s replicas,
 // only one instance runs the daily snapshot pass (the upsert is idempotent regardless).
 const progressSnapshotLockKey = 918273645
+
+// snapshotCheckInterval is how often the loop wakes to check whether any period is due a
+// new snapshot. The actual spacing between recorded points is the per-tenant
+// progress_snapshot_interval_days setting; this is just the polling granularity.
+const snapshotCheckInterval = time.Hour
+
+// daysBetween returns the whole-day difference between two dates (b - a), tz-agnostic.
+func daysBetween(a, b time.Time) int {
+	ad := time.Date(a.Year(), a.Month(), a.Day(), 0, 0, 0, 0, time.UTC)
+	bd := time.Date(b.Year(), b.Month(), b.Day(), 0, 0, 0, 0, time.UTC)
+	return int(bd.Sub(ad).Hours()) / 24
+}
 
 // startProgressSnapshotLoop runs a background goroutine that materialises each active
 // period's per-team progress once per interval. An initial pass runs at startup.
@@ -658,10 +679,12 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
 	r.Get("/api/v1/health-checkin", apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache).HandleHealthCheckIn)
 
-	// Scope-aware period overview available to any authenticated member (my_teams);
-	// org scope is admin-gated inside the handler.
+	// Scope-aware period overview + bulk period control available to any authenticated
+	// member (my_teams — teams they lead); org scope is admin-gated inside the handler.
 	scopedOverviewH := apiadmin.NewServiceHandler(s.service, s.settingsSvc, s.grantsCache)
 	r.Get("/api/v1/periods/{periodID}/overview", scopedOverviewH.HandlePeriodOverviewScoped)
+	r.Post("/api/v1/periods/{periodID}/teams/activate", scopedOverviewH.HandleActivatePeriodTeamsScoped)
+	r.Post("/api/v1/periods/{periodID}/teams/close", scopedOverviewH.HandleClosePeriodTeamsScoped)
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)

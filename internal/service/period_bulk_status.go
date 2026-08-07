@@ -39,19 +39,26 @@ func computeBulkAffected(teams []domain.Team, goalsByTeam map[int64][]domain.Goa
 }
 
 // BulkSetTeamPeriodStatus sets target status for every team that has at least one goal
-// in the period and is not already in target. Writes one op-log entry per affected team
-// and invalidates the period cache. Loads fresh data (not cached) to decide the set.
-func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, periodID int64, target domain.TeamPeriodStatus, actorUserID int64) (BulkStatusResult, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx, scope)
+// in the period and is not already in target. When teamFilter is non-nil, only teams in
+// the set are considered (my-teams scope); nil covers the whole tenant (org scope).
+// Writes one op-log entry per affected team and invalidates the period cache. Loads fresh
+// data (not cached) to decide the set.
+func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, periodID int64, target domain.TeamPeriodStatus, actorUserID int64, teamFilter map[int64]bool) (BulkStatusResult, error) {
+	loaded, err := s.teams.ListAllTeams(ctx, scope)
 	if err != nil {
 		return BulkStatusResult{}, err
 	}
-	teamIDs := make([]int64, 0, len(allTeams))
-	nameByID := make(map[int64]string, len(allTeams))
-	for _, t := range allTeams {
+	allTeams := make([]domain.Team, 0, len(loaded))
+	teamIDs := make([]int64, 0, len(loaded))
+	nameByID := make(map[int64]string, len(loaded))
+	for _, t := range loaded {
 		if t.DeletedAt != nil {
 			continue
 		}
+		if teamFilter != nil && !teamFilter[t.ID] {
+			continue
+		}
+		allTeams = append(allTeams, t)
 		teamIDs = append(teamIDs, t.ID)
 		nameByID[t.ID] = t.Name
 	}
