@@ -77,6 +77,22 @@ func (r *Repository) ListSnapshots(ctx context.Context, scope domain.TenantScope
 	return out, rows.Err()
 }
 
+// LatestSnapshotDate returns the most recent snapshot_date recorded for a period
+// (across all teams). ok=false when the period has no snapshots yet.
+func (r *Repository) LatestSnapshotDate(ctx context.Context, scope domain.TenantScope, periodID int64) (time.Time, bool, error) {
+	var d *time.Time
+	err := r.db.QueryRow(ctx, `
+		SELECT max(snapshot_date) FROM team_period_progress_snapshots
+		WHERE tenant_id = $1 AND period_id = $2`, scope.TenantID, periodID).Scan(&d)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+	if d == nil {
+		return time.Time{}, false, nil
+	}
+	return *d, true, nil
+}
+
 func nilIfEmpty(ids []int64) []int64 {
 	if len(ids) == 0 {
 		return nil

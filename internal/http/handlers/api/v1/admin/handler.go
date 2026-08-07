@@ -27,6 +27,9 @@ const (
 	settingKeyFeedbackMenuLinkEnabled = "feedback_menu_link_enabled"
 	settingKeyFeedbackFrequencyDays   = "feedback_frequency_days"
 	settingKeyEmptyHierarchyMessage   = "empty_hierarchy_message"
+	// settingKeyProgressSnapshotIntervalDays controls how often the background job records
+	// a per-team progress point for the period chart (in days, ≥1; 1 = daily).
+	settingKeyProgressSnapshotIntervalDays = "progress_snapshot_interval_days"
 )
 
 // userAdminStore covers user operations. *store.UserRepository satisfies it.
@@ -369,9 +372,10 @@ func (h *Handler) HandleGetGeneralSettings(w http.ResponseWriter, r *http.Reques
 		name = t.Name
 	}
 	writeJSON(w, map[string]any{
-		"name":                    name,
-		"documentation_url":       h.documentationURL(r.Context(), scope),
-		"empty_hierarchy_message": h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage),
+		"name":                            name,
+		"documentation_url":               h.documentationURL(r.Context(), scope),
+		"empty_hierarchy_message":         h.settingString(r.Context(), scope, settingKeyEmptyHierarchyMessage),
+		"progress_snapshot_interval_days": h.settingInt(r.Context(), scope, settingKeyProgressSnapshotIntervalDays, 1),
 	})
 }
 
@@ -381,6 +385,9 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 		Name                  string `json:"name"`
 		DocumentationURL      string `json:"documentation_url"`
 		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
+		// Optional: omitting it preserves the stored value (a client saving unrelated
+		// general settings must not reset a configured snapshot interval).
+		ProgressSnapshotIntervalDays *int `json:"progress_snapshot_interval_days"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid body")
@@ -412,6 +419,16 @@ func (h *Handler) HandleUpdateGeneralSettings(w http.ResponseWriter, r *http.Req
 	if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyEmptyHierarchyMessage, body.EmptyHierarchyMessage); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if body.ProgressSnapshotIntervalDays != nil {
+		snapshotDays := *body.ProgressSnapshotIntervalDays
+		if snapshotDays < 1 {
+			snapshotDays = 1
+		}
+		if err := h.settings.SetTenantProduct(r.Context(), scope, settingKeyProgressSnapshotIntervalDays, snapshotDays); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

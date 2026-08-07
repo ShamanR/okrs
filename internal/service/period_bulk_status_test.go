@@ -46,7 +46,7 @@ func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
 	act := &fakeActivityRepo{}
 	svc := New(Deps{Teams: store, Goals: store, Shares: store, Periods: store, KRs: store, Statuses: store, Users: store, Activity: act})
 
-	res, err := svc.BulkSetTeamPeriodStatus(context.Background(), domain.TenantScope{TenantID: 1}, 9, domain.TeamPeriodStatusInProgress, 42)
+	res, err := svc.BulkSetTeamPeriodStatus(context.Background(), domain.TenantScope{TenantID: 1}, 9, domain.TeamPeriodStatusInProgress, 42, nil)
 	if err != nil {
 		t.Fatalf("bulk: %v", err)
 	}
@@ -61,5 +61,28 @@ func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
 	}
 	if act.recorded[0].EntityTitle != "A" {
 		t.Fatalf("op-log entity title should be team name, got %q", act.recorded[0].EntityTitle)
+	}
+}
+
+func TestBulkSetTeamPeriodStatus_TeamFilterRestrictsToScope(t *testing.T) {
+	store := newFakeStore()
+	store.teams = []domain.Team{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}}
+	store.goalsByTeam[1] = map[int64][]domain.Goal{9: {{ID: 10}}}
+	store.goalsByTeam[2] = map[int64][]domain.Goal{9: {{ID: 20}}}
+	store.statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
+	store.statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusReady
+	act := &fakeActivityRepo{}
+	svc := New(Deps{Teams: store, Goals: store, Shares: store, Periods: store, KRs: store, Statuses: store, Users: store, Activity: act})
+
+	// Only team 1 is in scope: team 2 must be untouched even though it would qualify.
+	res, err := svc.BulkSetTeamPeriodStatus(context.Background(), domain.TenantScope{TenantID: 1}, 9, domain.TeamPeriodStatusInProgress, 42, map[int64]bool{1: true})
+	if err != nil {
+		t.Fatalf("bulk: %v", err)
+	}
+	if res.Affected != 1 {
+		t.Fatalf("want affected=1 (scoped to team 1), got %+v", res)
+	}
+	if len(store.bulkSetTeamIDs) != 1 || store.bulkSetTeamIDs[0] != 1 {
+		t.Fatalf("out-of-scope team must not be changed: ids=%v", store.bulkSetTeamIDs)
 	}
 }

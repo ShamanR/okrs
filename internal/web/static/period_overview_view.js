@@ -46,7 +46,7 @@ function POPrimaryBtn({ disabled, onClick, children }) {
       whiteSpace: 'nowrap' }}>{children}</button>;
 }
 
-function PeriodOverviewContent({ data, busy, onApply, isAdmin }) {
+function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
   // Храним селектор категории (kind/key), а не снимок команд, чтобы drill-down
   // пересчитывался от актуальных data после массовой операции или смены периода.
   const [drill, setDrill] = useState(null); // {title, kind:'status'|'err'|'goals', key?}
@@ -95,6 +95,36 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin }) {
       {tile('Средний прогресс', `${s.avg_progress}%`, `по ${s.progress_teams} командам с целями (без черновиков)`, PO.accent)}
     </div>
 
+    {/* Drill-down состава по статусам / качеству — сразу под плитками. */}
+    {drill && drill.kind !== 'balance' && (() => { const dt = drillTeams(); return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ padding: '10px 14px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: PO.headingFg }}>{drill.title} · {dt.length}</span>
+        <button onClick={() => setDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: PO.mutedFg, fontSize: 16 }}>×</button>
+      </div>
+      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+        {dt.length === 0
+          ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
+          : dt.map(t => <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
+              <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(t.path || []).join(' › ') || t.name}</span>
+              <span style={{ color: t.weight_error ? PO.danger : PO.mutedFg, flexShrink: 0 }}>{t.goals_count > 0 ? `${t.progress}% · веса ${t.weight_sum}` : 'нет целей'}</span>
+            </div>)}
+      </div>
+    </div>; })()}
+
+    <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '18px 0 10px' }}>Балансы целей · клик по полосе — состав</div>
+    <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+      <BalanceBars title="Discovery / Delivery" subtitle="Соотношение исследовательской и поставочной работы"
+        items={(data.balances && data.balances.discovery_delivery) || []} labels={PO_DD_LABELS} colors={PO_DD_COLORS}
+        onSelect={k => setDrill({ kind: 'balance', field: 'work_type', key: k, title: 'Discovery / Delivery: ' + (PO_DD_LABELS[k] || k) })} />
+      <BalanceBars title="Стратегические фокусы" subtitle="Profitability · Stability · Speed Efficiency · Tech Independency"
+        items={(data.balances && data.balances.focuses) || []} labels={PO_FOCUS_LABELS} colors={PO_FOCUS_COLORS}
+        onSelect={k => setDrill({ kind: 'balance', field: 'focus_type', key: k, title: 'Фокус: ' + (PO_FOCUS_LABELS[k] || k) })} />
+      <BalanceBars title="Приоритеты" subtitle="Распределение целей по приоритету P0–P3"
+        items={(data.balances && data.balances.priorities) || []} labels={PO_PRIO_LABELS} colors={PO_PRIO_COLORS}
+        onSelect={k => setDrill({ kind: 'balance', field: 'priority', key: k, title: 'Приоритет: ' + (PO_PRIO_LABELS[k] || k) })} />
+    </div>
+
+    {/* Drill-down целей баланса — сразу под полосами. */}
     {drill && drill.kind === 'balance' && (() => {
       const dg = (data.goals || []).filter(g => g[drill.field] === drill.key);
       return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
@@ -113,60 +143,37 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin }) {
       </div>;
     })()}
 
-    <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '18px 0 10px' }}>Балансы целей · клик по полосе — состав</div>
-    <div style={{ display: 'flex', gap: 28, flexWrap: 'wrap' }}>
-      <BalanceBars title="Discovery / Delivery" subtitle="Соотношение исследовательской и поставочной работы"
-        items={(data.balances && data.balances.discovery_delivery) || []} labels={PO_DD_LABELS} colors={PO_DD_COLORS}
-        onSelect={k => setDrill({ kind: 'balance', field: 'work_type', key: k, title: 'Discovery / Delivery: ' + (PO_DD_LABELS[k] || k) })} />
-      <BalanceBars title="Стратегические фокусы" subtitle="Profitability · Stability · Speed Efficiency · Tech Independency"
-        items={(data.balances && data.balances.focuses) || []} labels={PO_FOCUS_LABELS} colors={PO_FOCUS_COLORS}
-        onSelect={k => setDrill({ kind: 'balance', field: 'focus_type', key: k, title: 'Фокус: ' + (PO_FOCUS_LABELS[k] || k) })} />
-      <BalanceBars title="Приоритеты" subtitle="Распределение целей по приоритету P0–P3"
-        items={(data.balances && data.balances.priorities) || []} labels={PO_PRIO_LABELS} colors={PO_PRIO_COLORS}
-        onSelect={k => setDrill({ kind: 'balance', field: 'priority', key: k, title: 'Приоритет: ' + (PO_PRIO_LABELS[k] || k) })} />
-    </div>
-
     <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '22px 0 4px' }}>Прогресс целей за период</div>
     <div style={{ fontSize: 12, color: PO.mutedFg, marginBottom: 10 }}>Пунктирная диагональ — ориентир ровного заполнения периода. Ромбы по краям — прогресс, зафиксированный до начала или после окончания периода.</div>
     <div style={{ border: '1px solid ' + PO.cardBorder, borderRadius: 12, padding: '12px 14px' }}>
       <ProgressChart series={data.progress} />
     </div>
 
-    {drill && drill.kind !== 'balance' && (() => { const dt = drillTeams(); return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
-      <div style={{ padding: '10px 14px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: PO.headingFg }}>{drill.title} · {dt.length}</span>
-        <button onClick={() => setDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: PO.mutedFg, fontSize: 16 }}>×</button>
-      </div>
-      <div style={{ maxHeight: 220, overflowY: 'auto' }}>
-        {dt.length === 0
-          ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
-          : dt.map(t => <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
-              <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(t.path || []).join(' › ') || t.name}</span>
-              <span style={{ color: t.weight_error ? PO.danger : PO.mutedFg, flexShrink: 0 }}>{t.goals_count > 0 ? `${t.progress}% · веса ${t.weight_sum}` : 'нет целей'}</span>
-            </div>)}
-      </div>
-    </div>; })()}
-
-    {isAdmin !== false && <>
-    <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '18px 0 10px' }}>Массовые операции · только админ</div>
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <div style={{ border: '1px solid ' + PO.cardBorder, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: PO.headingFg }}>Перевести все команды в «В работе»</div>
-          <div style={{ fontSize: 12, color: PO.mutedFg, marginTop: 3 }}>Затронет только команды, у которых есть хотя бы одна цель в этом периоде. Цели блокируются от редактирования, остаётся обновление прогресса.</div>
+    {/* Массовые операции: для «моих команд» — руководителю над своими; для «всей
+        организации» — только админу. Область действия = текущий охват. */}
+    {(scope !== 'org' || isAdmin) && (() => {
+      const scopeWord = scope === 'org' ? 'всех команд организации' : 'моих команд';
+      return <>
+      <div style={{ fontSize: 11, color: PO.dimFg, fontWeight: 700, textTransform: 'uppercase', letterSpacing: .5, margin: '22px 0 10px' }}>Управление периодом · {scope === 'org' ? 'вся организация' : 'мои команды'}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ border: '1px solid ' + PO.cardBorder, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: PO.headingFg }}>Перевести в «В работе»</div>
+            <div style={{ fontSize: 12, color: PO.mutedFg, marginTop: 3 }}>Затронет только команды {scopeWord}, у которых есть хотя бы одна цель в этом периоде. Цели блокируются от редактирования, остаётся обновление прогресса.</div>
+          </div>
+          <div style={{ fontSize: 11.5, color: PO.dimFg, textAlign: 'right' }}>затронет {affectActivate}<br />пропустим {skipNoGoals} без целей</div>
+          <POPrimaryBtn disabled={busy || affectActivate === 0} onClick={() => onApply('activate')}>Применить</POPrimaryBtn>
         </div>
-        <div style={{ fontSize: 11.5, color: PO.dimFg, textAlign: 'right' }}>затронет {affectActivate}<br />пропустим {skipNoGoals} без целей</div>
-        <POPrimaryBtn disabled={busy || affectActivate === 0} onClick={() => onApply('activate')}>Применить</POPrimaryBtn>
-      </div>
-      <div style={{ border: '1px solid ' + PO.cardBorder, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700, color: PO.headingFg }}>Закрыть цели всех команд периода</div>
-          <div style={{ fontSize: 12, color: PO.mutedFg, marginTop: 3 }}>Команды без целей не трогаем. У остальных статус становится «Закрыто» — доступны только комментарии.</div>
+        <div style={{ border: '1px solid ' + PO.cardBorder, borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: PO.headingFg }}>Закрыть цели периода</div>
+            <div style={{ fontSize: 12, color: PO.mutedFg, marginTop: 3 }}>Команды {scopeWord} без целей не трогаем. У остальных статус становится «Закрыто» — доступны только комментарии.</div>
+          </div>
+          <div style={{ fontSize: 11.5, color: PO.dimFg, textAlign: 'right' }}>затронет {affectClose}<br />пропустим {skipNoGoals} без целей</div>
+          <POPrimaryBtn disabled={busy || affectClose === 0} onClick={() => onApply('close')}>Применить</POPrimaryBtn>
         </div>
-        <div style={{ fontSize: 11.5, color: PO.dimFg, textAlign: 'right' }}>затронет {affectClose}<br />пропустим {skipNoGoals} без целей</div>
-        <POPrimaryBtn disabled={busy || affectClose === 0} onClick={() => onApply('close')}>Применить</POPrimaryBtn>
       </div>
-    </div>
-    </>}
+      </>;
+    })()}
   </div>;
 }

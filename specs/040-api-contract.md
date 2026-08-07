@@ -343,7 +343,14 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 
 `balances` — распределение целей в охвате по work_type / focus_type / priority; каждая корзина всегда содержит все фиксированные категории (в т.ч. нулевые), `percent` — доля от числа целей в охвате. `goals` — тонкий список целей для drill-down по клику на полосу баланса (фильтрация на клиенте). `progress` — ряд среднего прогресса по датам (из суточных снапшотов) плюс «живая» точка на сегодня; точки до `period_start` / после `period_end` рендерятся на краях графика. **В расчёты прогресса** (`avg_progress`, `progress_teams`, ряд `progress`) **не входят команды без целей и команды в статусе «черновик» (`forming`)** — их цели ещё формируются; балансы и `goals` при этом учитывают все цели в охвате.
 
-Легаси admin-only `GET /api/v1/admin/periods/{periodID}/overview` сохранён для админ-модалки (весь тенант, без `balances`/`goals`/`progress`).
+Легаси admin-only `GET /api/v1/admin/periods/{periodID}/overview` сохранён для админ-модалки (весь тенант; ответ той же формы — админ-модалка запрашивает `?scope=org`).
+
+Массовые операции над статусами в том же охвате:
+
+- `POST /api/v1/periods/{periodID}/teams/activate?scope=my_teams|org` → `{ "affected", "skipped" }` — переводит команды в охвате в `in_progress`.
+- `POST /api/v1/periods/{periodID}/teams/close?scope=my_teams|org` → `{ "affected", "skipped" }` — переводит команды в охвате в `closed`.
+
+Доступ и разрешение охвата те же, что у обзора: `my_teams` (по умолчанию) — команды, которыми вызывающий руководит (+ вложенные), доступно любому участнику; `org` — весь тенант, только tenant-admin (`403` иначе). Область действия ограничена разрешённым набором команд. Требуют CSRF token. Легаси admin-only `POST /api/v1/admin/periods/{periodID}/teams/{activate|close}` (весь тенант) сохранён для админ-модалки.
 
 ### `GET /api/v1/activity`
 

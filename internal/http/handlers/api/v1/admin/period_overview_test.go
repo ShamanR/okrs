@@ -46,6 +46,17 @@ func TestHandlePeriodOverviewScoped_MyTeamsResolvesLeadScope(t *testing.T) {
 	}
 }
 
+func TestHandleActivatePeriodTeamsScoped_OrgForbiddenForNonAdmin(t *testing.T) {
+	h := NewServiceHandler(service.New(service.Deps{}), nil, &fakeGrants{})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/periods/1/teams/activate?scope=org", nil)
+	req = withURLParam(withTenant(withUserRole(req, "u-1", false)), "periodID", "1")
+	w := httptest.NewRecorder()
+	h.HandleActivatePeriodTeamsScoped(w, req)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for non-admin org bulk, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
 func TestHandlePeriodOverviewScoped_OrgAllowedForAdmin(t *testing.T) {
 	h := NewServiceHandler(service.New(service.Deps{}), nil, &fakeGrants{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/periods/1/overview?scope=org", nil)

@@ -64,7 +64,7 @@ function App() {
     const pid = periodId;
     setBusy(true);
     try {
-      await apiPostJSON(`/api/v1/admin/periods/${pid}/teams/${ep}`, {});
+      await apiPostJSON(`/api/v1/periods/${pid}/teams/${ep}?scope=${scopeRef.current}`, {});
       if (pid === periodIdRef.current) load(pid, scopeRef.current);
     } catch { alert('Ошибка операции'); }
     finally { setBusy(false); }
@@ -85,7 +85,10 @@ function App() {
           </div>
         }
       />
-      <div className="main" style={{ padding: '24px 28px', overflow: 'auto' }}>
+      {/* .main из tracker.css — flex-колонка; переопределяем на обычный блок со
+          скроллом, иначе карточка-флекс-элемент сжимается по высоте вьюпорта и
+          обрезает нижний контент (управление периодом). */}
+      <div className="main" style={{ display: 'block', padding: '24px 28px', overflow: 'auto' }}>
         {periods.length === 0
           ? <div style={{ color: '#6b7280', fontSize: 14 }}>Периодов пока нет.</div>
           : <>
@@ -98,7 +101,7 @@ function App() {
               {err
                 ? <div style={{ color: '#b91c1c', fontSize: 13 }}>Не удалось загрузить обзор периода.</div>
                 : <div style={{ background: 'white', border: '1px solid #e5e7eb', borderRadius: 14, boxShadow: '0 1px 3px rgba(15,23,42,0.04)', overflow: 'hidden' }}>
-                    <PeriodOverviewContent data={data} busy={busy} onApply={onApply} isAdmin={isAdmin} />
+                    <PeriodOverviewContent data={data} busy={busy} onApply={onApply} isAdmin={isAdmin} scope={scopeSel} />
                   </div>}
             </>}
       </div>

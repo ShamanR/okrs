@@ -31,8 +31,13 @@ function ProgressChart({ series }) {
     edge: Date.parse(pt.date) < start || Date.parse(pt.date) > end,
     p: pt.progress, date: pt.date,
   }));
-  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const area = `${line} L${pts[pts.length - 1].x.toFixed(1)},${y0} L${pts[0].x.toFixed(1)},${y0} Z`;
+  // Линия всегда начинается из левого нижнего угла (старт периода, 0%), а не от
+  // первой точки прогресса.
+  const origin = { x: x0, y: y0 };
+  const linePts = [origin, ...pts];
+  const line = linePts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  const area = `${line} L${last.x.toFixed(1)},${y0} L${x0},${y0} Z`;
   const grid = [0, 25, 50, 75, 100];
 
   const hp = hover != null ? pts[hover] : null;
