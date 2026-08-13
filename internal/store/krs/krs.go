@@ -108,7 +108,7 @@ func (r *KRRepository) CreateKeyResult(ctx context.Context, scope domain.TenantS
 func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.KeyResult, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
-		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria, health_status
 		FROM key_results WHERE goal_id=$1 AND tenant_id=$2 ORDER BY sort_order, id`, goalID, scope.TenantID)
 	if err != nil {
 		return nil, err
@@ -121,7 +121,7 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, scope domain.Te
 		var unit, zeroing *string
 		var checkpointsRaw []byte
 		if err := rows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
-			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
+			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing, &kr.HealthStatus); err != nil {
 			return nil, err
 		}
 		if zeroing != nil {
@@ -383,6 +383,14 @@ func (r *KRRepository) UpdateNumericalCurrent(ctx context.Context, scope domain.
 	return err
 }
 
+func (r *KRRepository) UpdateHealthStatus(ctx context.Context, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error {
+	_, err := r.db.Exec(ctx, `
+		UPDATE key_results
+		SET health_status=$1, updated_at=NOW()
+		WHERE id=$2 AND tenant_id=$3`, string(status), krID, scope.TenantID)
+	return err
+}
+
 func (r *KRRepository) UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
 	if err := r.UpsertBooleanMeta(ctx, scope, krID, done); err != nil {
 		return err
@@ -397,10 +405,10 @@ func (r *KRRepository) GetKeyResult(ctx context.Context, scope domain.TenantScop
 	var checkpointsRaw []byte
 	row := r.db.QueryRow(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
-		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria, health_status
 		FROM key_results WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	if err := row.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
-		&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
+		&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing, &kr.HealthStatus); err != nil {
 		return domain.KeyResult{}, err
 	}
 	if zeroing != nil {

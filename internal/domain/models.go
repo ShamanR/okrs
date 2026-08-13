@@ -48,6 +48,28 @@ func IsValidKRUnit(u string) bool {
 	return false
 }
 
+type KRHealthStatus string
+
+const (
+	KRHealthNotStarted KRHealthStatus = "not_started"
+	KRHealthOnTrack    KRHealthStatus = "on_track"
+	KRHealthAtRisk     KRHealthStatus = "at_risk"
+	KRHealthDone       KRHealthStatus = "done"
+)
+
+// KRHealthStatuses is the closed set of manual health statuses a KR may have.
+var KRHealthStatuses = []KRHealthStatus{KRHealthNotStarted, KRHealthOnTrack, KRHealthAtRisk, KRHealthDone}
+
+// IsValidKRHealthStatus reports whether s is an allowed KR health status.
+func IsValidKRHealthStatus(s string) bool {
+	for _, allowed := range KRHealthStatuses {
+		if string(allowed) == s {
+			return true
+		}
+	}
+	return false
+}
+
 type TeamType string
 
 // Team types form the org hierarchy levels, from broadest to narrowest:
@@ -138,6 +160,7 @@ type KeyResult struct {
 	Weight            int
 	Kind              KRKind
 	Progress          int
+	HealthStatus      KRHealthStatus
 	SortOrder         int
 	Project           *KRProject
 	Numerical         *KRNumerical

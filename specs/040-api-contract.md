@@ -651,7 +651,7 @@ Hierarchy node shape расширен полем:
 
 #### Key Result measure
 
-`key_results[].kind` ∈ `BOOLEAN | PROJECT | NUMERICAL`. Поле `key_results[].zeroing_criteria` — опциональный текстовый критерий обнуления (человекочитаемый, в расчётах не применяется), доступен на уровне KR для любого `kind`. Поле `key_results[].measure` несёт данные по типу:
+`key_results[].kind` ∈ `BOOLEAN | PROJECT | NUMERICAL`. Поле `key_results[].health_status` ∈ `not_started | on_track | at_risk | done` — ручной health-статус KR (по умолчанию `not_started`; в расчёт прогресса не входит). Поле `key_results[].zeroing_criteria` — опциональный текстовый критерий обнуления (человекочитаемый, в расчётах не применяется), доступен на уровне KR для любого `kind`. Поле `key_results[].measure` несёт данные по типу:
 
 - `measure.boolean`: `{ is_done }`
 - `measure.project`: `{ stages: [{ id, title, weight, is_done }] }`
@@ -664,6 +664,14 @@ Hierarchy node shape расширен полем:
 **Create / update KR** (`multipart/form-data`): `title`, `description`, `weight`, `kind`, опциональный `zeroing_criteria` (для любого `kind`). Для `kind=NUMERICAL`: `numerical_unit` (из справочника), `numerical_start`, `numerical_target`, `numerical_current` и повторяющиеся пары `checkpoint_value[]` / `checkpoint_percent[]` (проценты 0..100, значения не дублируются). Для `kind=BOOLEAN`: `boolean_done`. Для `kind=PROJECT`: `step_title[]`, `step_weight[]`, `step_done[]`.
 
 **Update KR progress** `POST /api/v1/krs/{krID}/progress/numerical` принимает `{ "current_value": <number> }`.
+
+Все три progress-эндпоинта (`numerical` / `boolean` / `project`) дополнительно принимают опциональное поле `"health_status"` (`not_started` | `on_track` | `at_risk` | `done`) — ручной health-статус KR:
+
+- поле **опционально** (nullable): не прислано или `null` → health не меняется; невалидное значение → `400 VALIDATION_ERROR`;
+- обработка в два независимых шага: сначала применяется обновление прогресса (которое при переходе прогресса `<100% → =100%` **однократно** авто-выставляет `done`, если статус ещё не `done`), затем — если `health_status` передан — применяется ручной статус, **перекрывающий** авто-`done` (гарантия «ручной побеждает»);
+- доступ — как у обновления прогресса (доступ к команде-владельцу); health-статус в расчёт прогресса не входит.
+
+Ответ KR (`key_results[]`) содержит поле `health_status` (см. ниже).
 
 `key_results[].note` содержит `{ text, author_name, author_udid, updated_at }` или `null`.
 

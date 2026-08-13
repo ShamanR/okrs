@@ -53,6 +53,7 @@ type KeyResult struct {
 	Weight          int       `json:"weight"`
 	Kind            string    `json:"kind"`
 	Progress        int       `json:"progress"`
+	HealthStatus    string    `json:"health_status"`
 	Measure         Measure   `json:"measure"`
 	Note            *KRNote   `json:"note"`
 	CreatedAt       time.Time `json:"created_at"`

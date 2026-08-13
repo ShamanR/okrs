@@ -151,6 +151,7 @@ function mapKR(kr) {
   return {
     id: kr.id, goalId: kr.goal_id, name: kr.title, desc: kr.description,
     weight: kr.weight, krType: kr.kind, progress: kr.progress,
+    healthStatus: kr.health_status || 'not_started',
     start, target, current, done, stages, unit, checkpoints, zeroing,
     note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at) } : null,
     updatedAt: kr.updated_at, updatedDaysAgo: daysAgo(kr.updated_at),
@@ -230,6 +231,17 @@ const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706'
 const KR_UNITS = ['%', 'RPS', 'мс', 'сек', 'мин', 'час', 'дней', 'шт', '₽', 'запросов', 'ошибок', 'пользователей', 'заказов', 'рублей'];
 const KR_TYPE_LABEL = { BOOLEAN: 'Бинарный', PROJECT: 'Проектный', NUMERICAL: 'Числовой' };
 const KR_TYPE_OPTIONS = ['BOOLEAN', 'PROJECT', 'NUMERICAL'];
+// Manual KR health status (not the forecast-based HEALTH_COLOR above).
+const KR_HEALTH_COLOR = { not_started: '#6b7280', on_track: '#16a34a', at_risk: '#d97706', done: '#15803d' };
+const KR_HEALTH_LABEL = { not_started: 'Not Started', on_track: 'On Track', at_risk: 'At Risk', done: 'Closed' };
+const KR_HEALTH_ICON = { not_started: '○', on_track: '●', at_risk: '▲', done: '✓' };
+const KR_HEALTH_OPTIONS = ['not_started', 'on_track', 'at_risk', 'done'];
+const KR_HEALTH_HINT = {
+  not_started: 'Команда не приступила к этому KR',
+  on_track: 'Началась работа, идёт планово',
+  at_risk: 'Фиксируем существенный риск для достижения результата',
+  done: 'Работа над KR завершена',
+};
 const KR_TYPE_HINT = (
   <span className="kr-type-hint">
     <span style={{ display: 'block', marginBottom: 8 }}>
@@ -372,6 +384,16 @@ function Badge({ label, color = '#6b7280', bg }) {
 function PriBadge({ p }) {
   const c = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' }[p] || '#6b7280';
   return <Badge label={p} color={c} />;
+}
+
+function KRHealthBadge({ status }) {
+  const s = KR_HEALTH_LABEL[status] ? status : 'not_started';
+  const color = KR_HEALTH_COLOR[s];
+  const label = `${KR_HEALTH_ICON[s]} ${KR_HEALTH_LABEL[s]}`;
+  // 'done' reads as a solid pill; others use the tinted Badge default.
+  return s === 'done'
+    ? <Badge label={label} color="#ffffff" bg={color} />
+    : <Badge label={label} color={color} />;
 }
 
 function InfoHint({ children, width = 300 }) {
@@ -569,6 +591,9 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
   const [form, setForm] = useState({ ...kr, stages: (kr.stages || []).map(s => ({ ...s })) });
   const [note, setNote] = useState(kr.note?.text ?? ''); const [saving, setSaving] = useState(false);
   const [descDraft, setDescDraft] = useState(''); const [descEditing, setDescEditing] = useState(false);
+  const [health, setHealth] = useState(kr.healthStatus || 'not_started');
+  const [healthTouched, setHealthTouched] = useState(false);
+  const pickHealth = (s) => { setHealth(s); setHealthTouched(true); };
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setStage = (i, k, v) => setForm(f => { const ss = [...f.stages]; ss[i] = { ...ss[i], [k]: v }; return { ...f, stages: ss }; });
   const progress = calcKRProgress(form);
@@ -579,16 +604,19 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     if (form.krType === 'PROJECT') return (form.stages || []).some((s, i) => !!s.done !== !!((kr.stages || [])[i] || {}).done);
     return false;
   })();
-  const isDirty = dirtyProgress || note.trim() !== initialNote.trim() || (descEditing && descDraft.trim() !== '');
+  const isDirty = dirtyProgress || healthTouched || note.trim() !== initialNote.trim() || (descEditing && descDraft.trim() !== '');
+  // Mirror the server's 100%→done rule: if untouched and live progress hits 100%, show Done selected.
+  const displayHealth = (!healthTouched && progress === 100) ? 'done' : health;
   const save = async () => {
     setSaving(true);
     try {
+      const healthField = healthTouched ? { health_status: health } : {};
       if (form.krType === 'NUMERICAL') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0 });
+        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0, ...healthField });
       } else if (form.krType === 'BOOLEAN') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done });
+        await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done, ...healthField });
       } else if (form.krType === 'PROJECT') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })) });
+        await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })), ...healthField });
       }
       const trimmed = note.trim();
       if (trimmed && trimmed !== (kr.note?.text ?? '')) {
@@ -709,6 +737,21 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
               </div>
             </div>
           )}
+          <div className="kr-health-section">
+            <div className="kr-health-section__label">Health статус</div>
+            <div className="kr-health-cards">
+              {KR_HEALTH_OPTIONS.map(s => (
+                <button key={s} type="button" onClick={() => pickHealth(s)}
+                  className={`kr-health-card${displayHealth === s ? ' kr-health-card--active' : ''}`}
+                  style={displayHealth === s ? { borderColor: KR_HEALTH_COLOR[s], background: `${KR_HEALTH_COLOR[s]}0f`, color: KR_HEALTH_COLOR[s] } : undefined}>
+                  <span className="kr-health-card__title" style={{ color: KR_HEALTH_COLOR[s] }}>
+                    {KR_HEALTH_ICON[s]} {KR_HEALTH_LABEL[s]}
+                  </span>
+                  <span className="kr-health-card__hint">{KR_HEALTH_HINT[s]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <div>
             <div className="kr-note-label">Заметка <span className="kr-note-optional">(опционально)</span></div>
             <MarkdownEditor value={note} onChange={setNote} rows={3} placeholder="Контекст, блокеры…"
@@ -964,7 +1007,10 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
 }
 
 // ── KR ROW ────────────────────────────────────────────────────────────────────
-function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7 }) {
+function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7, periodStatus }) {
+  // Closed period is shown as fully done — purely visual (stored health_status is untouched),
+  // so reopening the period restores each KR's original status.
+  const displayHealth = periodStatus === 'closed' ? 'done' : kr.healthStatus;
   const [modal, setModal] = useState(null);
   const [showNote, setShowNote] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -981,6 +1027,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7 }) {
         <div className="kr-row__main">
           <div className="kr-weight-chip">{kr.weight}</div>
           <div className="kr-info">
+            <div className="kr-health-badge-row"><KRHealthBadge status={displayHealth} /></div>
             <div className="kr-name">{kr.name}</div>
             {kr.desc && <Markdown text={kr.desc} className="kr-desc" />}
             <div className="kr-detail-row">
@@ -1541,7 +1588,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
                 onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
                 className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
                 {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
-                <KRRow kr={kr} goalId={goal.id} editMode={editMode} onReload={onReload} accent={accent} staleDays={staleDays} />
+                <KRRow kr={kr} goalId={goal.id} editMode={editMode} onReload={onReload} accent={accent} staleDays={staleDays} periodStatus={periodStatus} />
               </div>
             );
           })}

@@ -255,6 +255,15 @@ INSERT INTO kr_project_stages (id, key_result_id, title, weight, is_done, sort_o
   (60, 48, 'подписан договор с внешним сайтом',       50, false, 3);
 
 -- ----------------------------------------------------------------
+-- KR health status (manual). Completed KRs (progress 100%) are 'done'
+-- to stay consistent with the 100%→done rule; a few others show variety.
+-- The rest keep the column default 'not_started'.
+-- ----------------------------------------------------------------
+UPDATE key_results SET health_status = 'done'     WHERE id IN (8, 17, 43, 10);
+UPDATE key_results SET health_status = 'on_track' WHERE id IN (9, 11, 45, 42, 53, 54);
+UPDATE key_results SET health_status = 'at_risk'  WHERE id IN (50, 51, 60);
+
+-- ----------------------------------------------------------------
 -- Goal comments
 -- ----------------------------------------------------------------
 -- author_user_id = 1 (system:anonymous-local), required NOT NULL since migration 017.

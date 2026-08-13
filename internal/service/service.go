@@ -99,6 +99,7 @@ type KRRepo interface {
 	FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error)
 	FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error)
 	UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error
+	UpdateHealthStatus(ctx context.Context, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error
 	UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error
 	ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error)
 	UpdateProjectStageDone(ctx context.Context, scope domain.TenantScope, stageID int64, done bool) error
@@ -769,8 +770,27 @@ func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.Te
 		beforeProg := okr.NumericalProgress(n.StartValue, n.TargetValue, n.CurrentValue, n.Checkpoints)
 		afterProg := okr.NumericalProgress(n.StartValue, n.TargetValue, current, n.Checkpoints)
 		s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
+		s.autoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
 	}
 	return nil
+}
+
+// UpdateKRHealthStatus sets the manual health status of a KR. Access is checked by the caller
+// (same as progress update). Health status is informational and does not affect progress math.
+func (s *Service) UpdateKRHealthStatus(ctx context.Context, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error {
+	if !domain.IsValidKRHealthStatus(string(status)) {
+		return fmt.Errorf("invalid health status: %s", status)
+	}
+	return s.krs.UpdateHealthStatus(ctx, scope, krID, status)
+}
+
+// autoCompleteHealth sets health=done exactly once, on the progress transition <100 -> =100,
+// and only if the KR is not already done. Never reverts on later drops. kr is the pre-update state.
+func (s *Service) autoCompleteHealth(ctx context.Context, scope domain.TenantScope, krID int64, kr domain.KeyResult, before, after int) {
+	if before < 100 && after == 100 && kr.HealthStatus != domain.KRHealthDone {
+		// best-effort: an auto-complete failure must not fail the progress mutation
+		_ = s.krs.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthDone)
+	}
 }
 
 func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool, actorUserID int64) error {
@@ -788,7 +808,10 @@ func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.Tena
 	if err := s.krs.UpdateBoolean(ctx, scope, krID, done); err != nil {
 		return err
 	}
-	s.recordKRProgress(ctx, scope, krID, kr, okr.BooleanProgress(beforeDone), okr.BooleanProgress(done), actorUserID)
+	beforeProg := okr.BooleanProgress(beforeDone)
+	afterProg := okr.BooleanProgress(done)
+	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
+	s.autoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
 	return nil
 }
 
@@ -830,7 +853,9 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.Tena
 			afterStages[i].IsDone = done
 		}
 	}
-	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, okr.ProjectProgress(afterStages), actorUserID)
+	afterProg := okr.ProjectProgress(afterStages)
+	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
+	s.autoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
 	return nil
 }
 

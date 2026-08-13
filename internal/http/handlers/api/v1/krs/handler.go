@@ -158,14 +158,25 @@ func (h *Handler) HandleUpdateNumericalProgress(w http.ResponseWriter, r *http.R
 	}
 	var req struct {
 		CurrentValue float64 `json:"current_value"`
+		HealthStatus *string `json:"health_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
+	if req.HealthStatus != nil && !domain.IsValidKRHealthStatus(*req.HealthStatus) {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid health_status", map[string]string{"health_status": "invalid"})
+		return
+	}
 	if err := h.service.UpdateKRProgressNumerical(r.Context(), scope, krID, req.CurrentValue, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
+	}
+	if req.HealthStatus != nil {
+		if err := h.service.UpdateKRHealthStatus(r.Context(), scope, krID, domain.KRHealthStatus(*req.HealthStatus)); err != nil {
+			v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
+			return
+		}
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -186,15 +197,26 @@ func (h *Handler) HandleUpdateBooleanProgress(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var req struct {
-		Done bool `json:"done"`
+		Done         bool    `json:"done"`
+		HealthStatus *string `json:"health_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
+	if req.HealthStatus != nil && !domain.IsValidKRHealthStatus(*req.HealthStatus) {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid health_status", map[string]string{"health_status": "invalid"})
+		return
+	}
 	if err := h.service.UpdateKRProgressBoolean(r.Context(), scope, krID, req.Done, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
+	}
+	if req.HealthStatus != nil {
+		if err := h.service.UpdateKRHealthStatus(r.Context(), scope, krID, domain.KRHealthStatus(*req.HealthStatus)); err != nil {
+			v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
+			return
+		}
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -219,9 +241,14 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 			ID   int64 `json:"id"`
 			Done bool  `json:"done"`
 		} `json:"stages"`
+		HealthStatus *string `json:"health_status"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
+		return
+	}
+	if req.HealthStatus != nil && !domain.IsValidKRHealthStatus(*req.HealthStatus) {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid health_status", map[string]string{"health_status": "invalid"})
 		return
 	}
 	if len(req.Stages) == 0 {
@@ -239,6 +266,12 @@ func (h *Handler) HandleUpdateProjectProgress(w http.ResponseWriter, r *http.Req
 	if err := h.service.UpdateKRProgressProject(r.Context(), scope, krID, updates, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
 		return
+	}
+	if req.HealthStatus != nil {
+		if err := h.service.UpdateKRHealthStatus(r.Context(), scope, krID, domain.KRHealthStatus(*req.HealthStatus)); err != nil {
+			v1.WriteError(w, http.StatusConflict, "CONFLICT", err.Error(), nil)
+			return
+		}
 	}
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }

@@ -237,6 +237,7 @@ func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 		Weight:          kr.Weight,
 		Kind:            string(kr.Kind),
 		Progress:        kr.Progress,
+		HealthStatus:    string(kr.HealthStatus),
 		Measure:         buildMeasure(kr),
 		Note:            note,
 		CreatedAt:       kr.CreatedAt,
