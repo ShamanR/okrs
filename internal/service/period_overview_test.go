@@ -219,3 +219,61 @@ func TestServicePeriodOverview_UsesCache(t *testing.T) {
 		t.Fatalf("overview wrong: %+v", ov.Summary)
 	}
 }
+
+// healthKR builds a numerical KR with an explicit health status.
+func healthKR(id int64, h domain.KRHealthStatus) domain.KeyResult {
+	kr := numericKR(id, 100, 0)
+	kr.Title = "KR"
+	kr.HealthStatus = h
+	return kr
+}
+
+func TestComputePeriodOverview_HealthBalanceAndKRList(t *testing.T) {
+	teams := []domain.Team{{ID: 1, Name: "T1"}}
+	goalsByTeam := map[int64][]domain.Goal{
+		1: {
+			{ID: 10, TeamID: 1, Title: "G1", Weight: 50, KeyResults: []domain.KeyResult{
+				healthKR(100, domain.KRHealthAtRisk),
+				healthKR(101, domain.KRHealthOnTrack),
+			}},
+			{ID: 11, TeamID: 1, Title: "G2", Weight: 50, KeyResults: []domain.KeyResult{
+				healthKR(102, domain.KRHealthDone),
+				healthKR(103, ""), // empty defaults to not_started
+			}},
+		},
+	}
+	statuses := map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress}
+	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+
+	ov := computePeriodOverview(data, 0, nil)
+
+	// Health balance buckets, fixed order: not_started, on_track, at_risk, done.
+	h := ov.Balances.Health
+	if len(h) != 4 {
+		t.Fatalf("expected 4 health buckets, got %d", len(h))
+	}
+	want := map[string]int{"not_started": 1, "on_track": 1, "at_risk": 1, "done": 1}
+	for _, b := range h {
+		if b.Count != want[b.Key] {
+			t.Fatalf("health bucket %q count = %d, want %d", b.Key, b.Count, want[b.Key])
+		}
+	}
+	if h[0].Key != "not_started" || h[2].Key != "at_risk" {
+		t.Fatalf("health bucket order wrong: %+v", h)
+	}
+
+	// KR list carries per-KR health + context; empty health normalized to not_started.
+	if len(ov.KRs) != 4 {
+		t.Fatalf("expected 4 KRs, got %d", len(ov.KRs))
+	}
+	byID := map[int64]PeriodKRItem{}
+	for _, kr := range ov.KRs {
+		byID[kr.ID] = kr
+	}
+	if byID[100].HealthStatus != "at_risk" || byID[100].GoalTitle != "G1" || byID[100].TeamName != "T1" {
+		t.Fatalf("KR 100 wrong: %+v", byID[100])
+	}
+	if byID[103].HealthStatus != "not_started" {
+		t.Fatalf("empty health should normalize to not_started, got %q", byID[103].HealthStatus)
+	}
+}

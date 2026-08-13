@@ -37,6 +37,9 @@ const PO_FOCUS_LABELS = { PROFITABILITY: 'Profitability', STABILITY: 'Stability'
 const PO_FOCUS_COLORS = { PROFITABILITY: '#ef4444', STABILITY: '#22c55e', SPEED_EFFICIENCY: '#f59e0b', TECH_INDEPENDENCE: '#7c6cf0' };
 const PO_PRIO_LABELS = { P0: 'P0 · критично', P1: 'P1 · высокий', P2: 'P2 · средний', P3: 'P3 · низкий' };
 const PO_PRIO_COLORS = { P0: '#dc2626', P1: '#f59e0b', P2: '#3b82f6', P3: '#94a3b8' };
+// Health-статусы KR (значения совпадают с трекером; ярлык done — «Closed»).
+const PO_HEALTH_LABELS = { not_started: 'Not Started', on_track: 'On Track', at_risk: 'At Risk', done: 'Closed' };
+const PO_HEALTH_COLORS = { not_started: '#6b7280', on_track: '#16a34a', at_risk: '#d97706', done: '#15803d' };
 
 function POPrimaryBtn({ disabled, onClick, children }) {
   return <button type="button" onClick={onClick} disabled={disabled}
@@ -96,7 +99,7 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
     </div>
 
     {/* Drill-down состава по статусам / качеству — сразу под плитками. */}
-    {drill && drill.kind !== 'balance' && (() => { const dt = drillTeams(); return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
+    {drill && (drill.kind === 'status' || drill.kind === 'err' || drill.kind === 'goals') && (() => { const dt = drillTeams(); return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
       <div style={{ padding: '10px 14px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: 12.5, fontWeight: 700, color: PO.headingFg }}>{drill.title} · {dt.length}</span>
         <button onClick={() => setDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: PO.mutedFg, fontSize: 16 }}>×</button>
@@ -122,6 +125,9 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
       <BalanceBars title="Приоритеты" subtitle="Распределение целей по приоритету P0–P3"
         items={(data.balances && data.balances.priorities) || []} labels={PO_PRIO_LABELS} colors={PO_PRIO_COLORS}
         onSelect={k => setDrill({ kind: 'balance', field: 'priority', key: k, title: 'Приоритет: ' + (PO_PRIO_LABELS[k] || k) })} />
+      <BalanceBars title="Статусы KR" subtitle="Распределение key results по health-статусу"
+        items={(data.balances && data.balances.health) || []} labels={PO_HEALTH_LABELS} colors={PO_HEALTH_COLORS}
+        onSelect={k => setDrill({ kind: 'krhealth', key: k, title: 'Статус KR: ' + (PO_HEALTH_LABELS[k] || k) })} />
     </div>
 
     {/* Drill-down целей баланса — сразу под полосами. */}
@@ -138,6 +144,25 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
             : dg.map(g => <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
                 <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title} <span style={{ color: PO.dimFg }}>· {g.team_name}</span></span>
                 <span style={{ color: PO.mutedFg, flexShrink: 0 }}>{g.progress}%</span>
+              </div>)}
+        </div>
+      </div>;
+    })()}
+
+    {/* Drill-down KR по health-статусу — список key results в выбранном статусе. */}
+    {drill && drill.kind === 'krhealth' && (() => {
+      const dk = (data.krs || []).filter(kr => kr.health_status === drill.key);
+      return <div style={{ marginTop: 14, border: '1px solid ' + PO.cardBorder, borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 14px', background: '#f8fafc', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: PO.headingFg }}>{drill.title} · {dk.length}</span>
+          <button onClick={() => setDrill(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: PO.mutedFg, fontSize: 16 }}>×</button>
+        </div>
+        <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+          {dk.length === 0
+            ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
+            : dk.map(kr => <div key={kr.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
+                <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kr.title} <span style={{ color: PO.dimFg }}>· {kr.goal_title} · {kr.team_name}</span></span>
+                <span style={{ color: PO.mutedFg, flexShrink: 0 }}>{kr.progress}%</span>
               </div>)}
         </div>
       </div>;

@@ -605,8 +605,11 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     return false;
   })();
   const isDirty = dirtyProgress || healthTouched || note.trim() !== initialNote.trim() || (descEditing && descDraft.trim() !== '');
-  // Mirror the server's 100%→done rule: if untouched and live progress hits 100%, show Done selected.
-  const displayHealth = (!healthTouched && progress === 100) ? 'done' : health;
+  // Mirror the server's 100%→done rule, which fires ONLY on a real <100→100 transition: preview
+  // Done only when an unedited-health KR is being pushed from below 100 up to 100 in this modal.
+  // A KR already at 100% (kr.progress === 100) keeps its stored/manual health — matching the badge
+  // and the server, which does not re-touch health on a repeated save at 100%.
+  const displayHealth = (!healthTouched && kr.progress < 100 && progress === 100) ? 'done' : health;
   const save = async () => {
     setSaving(true);
     try {
