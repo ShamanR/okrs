@@ -46,6 +46,7 @@ type PeriodBalances struct {
 	DiscoveryDelivery []BalanceBucket `json:"discovery_delivery"`
 	Focuses           []BalanceBucket `json:"focuses"`
 	Priorities        []BalanceBucket `json:"priorities"`
+	Health            []BalanceBucket `json:"health"`
 }
 
 // PeriodGoalItem is a slim goal row for balance drill-down (client-side filtering).
@@ -60,6 +61,16 @@ type PeriodGoalItem struct {
 	Progress  int    `json:"progress"`
 }
 
+// PeriodKRItem is a slim KR row for the health-status breakdown drill-down.
+type PeriodKRItem struct {
+	ID           int64  `json:"id"`
+	Title        string `json:"title"`
+	GoalTitle    string `json:"goal_title"`
+	TeamName     string `json:"team_name"`
+	HealthStatus string `json:"health_status"`
+	Progress     int    `json:"progress"`
+}
+
 // PeriodOverview is the full response for the management modal.
 type PeriodOverview struct {
 	PeriodID int64                 `json:"period_id"`
@@ -67,6 +78,7 @@ type PeriodOverview struct {
 	Teams    []PeriodTeamSummary   `json:"teams"`
 	Balances PeriodBalances        `json:"balances"`
 	Goals    []PeriodGoalItem      `json:"goals"`
+	KRs      []PeriodKRItem        `json:"krs"`
 	Progress ProgressSeries        `json:"progress"`
 }
 
@@ -75,6 +87,7 @@ var (
 	workTypeOrder = []string{"Delivery", "Discovery"}
 	focusOrder    = []string{"PROFITABILITY", "STABILITY", "SPEED_EFFICIENCY", "TECH_INDEPENDENCE"}
 	priorityOrder = []string{"P0", "P1", "P2", "P3"}
+	krHealthOrder = []string{"not_started", "on_track", "at_risk", "done"}
 )
 
 func bucketsFor(order []string, counts map[string]int, total int) []BalanceBucket {
@@ -158,6 +171,9 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 	// under several teams). Balances are derived from the same list.
 	seenGoals := make(map[int64]bool)
 	goalItems := make([]PeriodGoalItem, 0)
+	// KR-level rows + health-status tally for the "Статусы KR" breakdown drill-down.
+	krItems := make([]PeriodKRItem, 0)
+	healthCounts := map[string]int{}
 
 	for id, team := range teamsByID {
 		// Copy goals so CalculateGoalProgress writes don't mutate shared cache data.
@@ -223,11 +239,30 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 					Priority:  string(goals[i].Priority),
 					Progress:  goals[i].Progress,
 				})
+				for _, kr := range goals[i].KeyResults {
+					hs := string(kr.HealthStatus)
+					if hs == "" {
+						hs = string(domain.KRHealthNotStarted)
+					}
+					healthCounts[hs]++
+					krItems = append(krItems, PeriodKRItem{
+						ID:           kr.ID,
+						Title:        kr.Title,
+						GoalTitle:    goals[i].Title,
+						TeamName:     team.Name,
+						HealthStatus: hs,
+						Progress:     CalculateKRProgress(kr),
+					})
+				}
 			}
 		}
 		out = append(out, row)
 	}
 	sort.Slice(goalItems, func(i, j int) bool { return goalItems[i].ID < goalItems[j].ID })
+	sort.Slice(krItems, func(i, j int) bool { return krItems[i].ID < krItems[j].ID })
+
+	balances := computeBalances(goalItems)
+	balances.Health = bucketsFor(krHealthOrder, healthCounts, len(krItems))
 
 	avg := 0
 	if progressCount > 0 {
@@ -246,8 +281,9 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 			ProgressTeams:    progressCount,
 		},
 		Teams:    out,
-		Balances: computeBalances(goalItems),
+		Balances: balances,
 		Goals:    goalItems,
+		KRs:      krItems,
 	}
 }
 

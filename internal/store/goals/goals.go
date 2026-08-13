@@ -163,7 +163,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, scope domai
 
 	krRows, err := r.db.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at, progress_updated_at,
-		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria, health_status
 		FROM key_results
 		WHERE goal_id = ANY($1) AND tenant_id = $2
 		ORDER BY goal_id, sort_order, id`, goalIDs, scope.TenantID)
@@ -181,7 +181,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, scope domai
 		var unit, zeroing *string
 		var checkpointsRaw []byte
 		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt, &kr.ProgressUpdatedAt,
-			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
+			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing, &kr.HealthStatus); err != nil {
 			return nil, err
 		}
 		kr.ZeroingCriteria = derefString(zeroing)
@@ -431,7 +431,7 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, scope domain.Tenan
 
 	krRows, err := r.db.Query(ctx, `
 		SELECT id, goal_id, title, description, weight, kind, sort_order, created_at, updated_at,
-		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria
+		       start_value, target_value, current_value, unit, checkpoints, zeroing_criteria, health_status
 		FROM key_results
 		WHERE goal_id = ANY($1) AND tenant_id = $2
 		ORDER BY goal_id, sort_order, id`, goalIDs, scope.TenantID)
@@ -447,7 +447,7 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, scope domain.Tenan
 		var unit, zeroing *string
 		var checkpointsRaw []byte
 		if err := krRows.Scan(&kr.ID, &kr.GoalID, &kr.Title, &kr.Description, &kr.Weight, &kr.Kind, &kr.SortOrder, &kr.CreatedAt, &kr.UpdatedAt,
-			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing); err != nil {
+			&startValue, &targetValue, &currentValue, &unit, &checkpointsRaw, &zeroing, &kr.HealthStatus); err != nil {
 			return err
 		}
 		kr.ZeroingCriteria = derefString(zeroing)

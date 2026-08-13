@@ -726,3 +726,16 @@
 .export-menu__item:hover { background: #f8fafc; }
 .export-menu__item-title { display: block; font-size: 13px; font-weight: 700; color: #111827; }
 .export-menu__item-sub { display: block; font-size: 11px; color: #9ca3af; margin-top: 2px; }
+
+/* KR health status — list badge spacing + modal selector cards */
+.kr-health-badge-row { margin-bottom: 4px; }
+.kr-health-section { margin-top: 14px; }
+.kr-health-section__label { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.kr-health-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.kr-health-card { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+  cursor: pointer; text-align: left; }
+.kr-health-card:hover { border-color: #d1d5db; }
+.kr-health-card--active { box-shadow: 0 0 0 1px currentColor inset; }
+.kr-health-card__title { font-size: 13px; font-weight: 700; }
+.kr-health-card__hint { font-size: 11px; color: #6b7280; line-height: 1.3; }

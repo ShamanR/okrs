@@ -225,3 +225,45 @@ func TestZeroingCriteriaAllKinds(t *testing.T) {
 		t.Fatalf("expected updated zeroing, got %q", got.ZeroingCriteria)
 	}
 }
+
+func TestUpdateHealthStatus(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := krs.NewKRRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	var teamID int64
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
+	var periodID int64
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`).Scan(&periodID)
+	var goalID int64
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	var krID int64
+	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order, start_value, target_value, current_value, unit) VALUES ($1,'KR1',100,'NUMERICAL',1,0,100,0,'%') RETURNING id`, goalID).Scan(&krID)
+
+	kr, err := repo.GetKeyResult(ctx, scope, krID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if kr.HealthStatus != domain.KRHealthNotStarted {
+		t.Fatalf("default = %q, want not_started", kr.HealthStatus)
+	}
+
+	if err := repo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthAtRisk); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	kr, _ = repo.GetKeyResult(ctx, scope, krID)
+	if kr.HealthStatus != domain.KRHealthAtRisk {
+		t.Fatalf("after update via GetKeyResult = %q, want at_risk", kr.HealthStatus)
+	}
+
+	list, err := repo.ListKeyResultsByGoal(ctx, scope, goalID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(list) != 1 || list[0].HealthStatus != domain.KRHealthAtRisk {
+		t.Fatalf("after update via ListKeyResultsByGoal = %+v, want at_risk", list)
+	}
+}

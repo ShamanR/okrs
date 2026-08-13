@@ -309,6 +309,9 @@ func (f *goalFakeStore) FindGoalIDByStage(_ context.Context, _ domain.TenantScop
 func (f *goalFakeStore) UpdateNumericalCurrent(_ context.Context, _ domain.TenantScope, _ int64, _ float64) error {
 	return nil
 }
+func (f *goalFakeStore) UpdateHealthStatus(_ context.Context, _ domain.TenantScope, _ int64, _ domain.KRHealthStatus) error {
+	return nil
+}
 func (f *goalFakeStore) UpdateBoolean(_ context.Context, _ domain.TenantScope, _ int64, _ bool) error { return nil }
 func (f *goalFakeStore) ListProjectStages(_ context.Context, _ domain.TenantScope, _ int64) ([]domain.KRProjectStage, error) {
 	return nil, nil

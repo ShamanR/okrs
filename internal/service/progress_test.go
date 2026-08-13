@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"okrs/internal/domain"
@@ -94,5 +95,108 @@ func TestCalculateGoalProgressNoKRsReturnsZero(t *testing.T) {
 	goal := &domain.Goal{}
 	if got := CalculateGoalProgress(goal); got != 0 {
 		t.Fatalf("expected 0, got %d", got)
+	}
+}
+
+// ── KR health status: auto-done rule + manual set ────────────────────────────
+
+func TestNumericalReaching100AutoSetsDone(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{
+		ID: 7, Kind: domain.KRKindNumerical, HealthStatus: domain.KRHealthNotStarted,
+		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 50},
+	}
+	svc := newTestService(store, nil)
+	if err := svc.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 7, 100, 1); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if store.healthUpdates[7] != domain.KRHealthDone {
+		t.Fatalf("expected auto-done, got %q", store.healthUpdates[7])
+	}
+}
+
+func TestResaveAt100DoesNotOverrideManualHealth(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{
+		ID: 7, Kind: domain.KRKindNumerical, HealthStatus: domain.KRHealthAtRisk,
+		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 100},
+	}
+	svc := newTestService(store, nil)
+	if err := svc.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 7, 100, 1); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, ok := store.healthUpdates[7]; ok {
+		t.Fatalf("re-save at 100 must not touch health, got %q", store.healthUpdates[7])
+	}
+}
+
+func TestDroppingBelow100KeepsHealth(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{
+		ID: 7, Kind: domain.KRKindNumerical, HealthStatus: domain.KRHealthDone,
+		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 100},
+	}
+	svc := newTestService(store, nil)
+	if err := svc.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 7, 80, 1); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, ok := store.healthUpdates[7]; ok {
+		t.Fatalf("dropping below 100 must not touch health, got %q", store.healthUpdates[7])
+	}
+}
+
+func TestUpdateKRHealthStatusSets(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{ID: 7, Kind: domain.KRKindNumerical, HealthStatus: domain.KRHealthNotStarted}
+	svc := newTestService(store, nil)
+	if err := svc.UpdateKRHealthStatus(context.Background(), domain.TenantScope{TenantID: 1}, 7, domain.KRHealthOnTrack); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if store.healthUpdates[7] != domain.KRHealthOnTrack {
+		t.Fatalf("expected on_track, got %q", store.healthUpdates[7])
+	}
+}
+
+func TestUpdateKRHealthStatusRejectsInvalid(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{ID: 7, Kind: domain.KRKindNumerical}
+	svc := newTestService(store, nil)
+	if err := svc.UpdateKRHealthStatus(context.Background(), domain.TenantScope{TenantID: 1}, 7, domain.KRHealthStatus("bogus")); err == nil {
+		t.Fatal("expected error for invalid health status")
+	}
+	if _, ok := store.healthUpdates[7]; ok {
+		t.Fatal("invalid status must not be written")
+	}
+}
+
+func TestBooleanDoneAutoSetsHealthDone(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{
+		ID: 7, Kind: domain.KRKindBoolean, HealthStatus: domain.KRHealthNotStarted,
+		Boolean: &domain.KRBoolean{IsDone: false},
+	}
+	svc := newTestService(store, nil)
+	if err := svc.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 7, true, 1); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if store.healthUpdates[7] != domain.KRHealthDone {
+		t.Fatalf("expected auto-done, got %q", store.healthUpdates[7])
+	}
+}
+
+func TestProjectReaching100AutoSetsDone(t *testing.T) {
+	store := newFakeStore()
+	store.keyResults[7] = domain.KeyResult{ID: 7, Kind: domain.KRKindProject, HealthStatus: domain.KRHealthNotStarted}
+	store.projectStages[7] = []domain.KRProjectStage{
+		{ID: 1, Weight: 60, IsDone: false},
+		{ID: 2, Weight: 40, IsDone: false},
+	}
+	svc := newTestService(store, nil)
+	updates := []ProjectStageUpdate{{ID: 1, IsDone: true}, {ID: 2, IsDone: true}}
+	if err := svc.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 7, updates, 1); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if store.healthUpdates[7] != domain.KRHealthDone {
+		t.Fatalf("expected auto-done, got %q", store.healthUpdates[7])
 	}
 }

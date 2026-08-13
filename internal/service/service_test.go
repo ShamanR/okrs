@@ -22,6 +22,7 @@ type fakeStore struct {
 	statuses         map[[2]int64]domain.TeamPeriodStatus
 	keyResults       map[int64]domain.KeyResult
 	numericalUpdates map[int64]float64
+	healthUpdates    map[int64]domain.KRHealthStatus
 	booleanUpdates   map[int64]bool
 	projectStages    map[int64][]domain.KRProjectStage
 	stageUpdates     map[int64]bool
@@ -40,6 +41,7 @@ func newFakeStore() *fakeStore {
 		statuses:         make(map[[2]int64]domain.TeamPeriodStatus),
 		keyResults:       make(map[int64]domain.KeyResult),
 		numericalUpdates: make(map[int64]float64),
+		healthUpdates:    make(map[int64]domain.KRHealthStatus),
 		booleanUpdates:   make(map[int64]bool),
 		projectStages:    make(map[int64][]domain.KRProjectStage),
 		stageUpdates:     make(map[int64]bool),
@@ -216,6 +218,13 @@ func (f *fakeStore) HardDeleteTeam(_ context.Context, _ domain.TenantScope, id i
 }
 func (f *fakeStore) UpdateNumericalCurrent(_ context.Context, _ domain.TenantScope, krID int64, current float64) error {
 	f.numericalUpdates[krID] = current
+	return nil
+}
+func (f *fakeStore) UpdateHealthStatus(_ context.Context, _ domain.TenantScope, krID int64, status domain.KRHealthStatus) error {
+	f.healthUpdates[krID] = status
+	kr := f.keyResults[krID]
+	kr.HealthStatus = status
+	f.keyResults[krID] = kr
 	return nil
 }
 func (f *fakeStore) UpdateBoolean(_ context.Context, _ domain.TenantScope, krID int64, done bool) error {

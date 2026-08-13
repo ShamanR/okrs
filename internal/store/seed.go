@@ -64,6 +64,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		}
 		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
 		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
+		_ = krsRepo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthAtRisk)
 
 		goalID2, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
@@ -90,6 +91,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 			return err
 		}
 		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
+		_ = krsRepo.UpdateHealthStatus(ctx, scope, krID2, domain.KRHealthOnTrack)
 	}
 
 	// Seeded teams are «в работе», so they count toward aggregate progress and the
