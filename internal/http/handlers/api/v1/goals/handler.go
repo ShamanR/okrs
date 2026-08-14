@@ -194,6 +194,8 @@ func (h *Handler) HandleTransferGoal(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, service.ErrPeriodClosed):
 			v1.WriteError(w, http.StatusConflict, "CONFLICT", "target team period is in progress or closed", nil)
+		case errors.Is(err, service.ErrTransferTargetNotFound):
+			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "target team or period not found", nil)
 		case errors.Is(err, service.ErrTransferTargetSameAsSource):
 			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "target equals source", map[string]string{"target": "same_as_source"})
 		default:

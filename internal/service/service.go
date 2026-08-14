@@ -176,6 +176,7 @@ var (
 	ErrShareTargetNotInTenant      = errors.New("share target team is not in the active tenant")
 	ErrPeriodNotClosed             = errors.New("period must be closed to archive")
 	ErrTransferTargetSameAsSource  = errors.New("transfer target equals source team and period")
+	ErrTransferTargetNotFound      = errors.New("transfer target team or period not found in tenant")
 	// ErrForbidden signals an authorization failure the handler maps to HTTP 403.
 	ErrForbidden = errors.New("forbidden")
 	// ErrGoalNotOnTeamBoard signals a goal-scope export where the goal is not on the context team's board.
@@ -1589,6 +1590,15 @@ func (s *Service) CopyGoal(ctx context.Context, scope domain.TenantScope, p Copy
 	if p.Mode == CopyGoalModeMove && p.TargetTeamID == src.TeamID && p.TargetPeriodID == src.PeriodID {
 		return 0, ErrTransferTargetSameAsSource
 	}
+	// Validate both target records live in the caller's tenant. The goals FK only enforces the
+	// global period/team id, so without these scoped lookups a caller could copy into another
+	// tenant's period/team (or a nonexistent one surfaces as an opaque insert error).
+	if _, err := s.teams.GetTeam(ctx, scope, p.TargetTeamID); err != nil {
+		return 0, ErrTransferTargetNotFound
+	}
+	if _, err := s.periods.GetPeriod(ctx, scope, p.TargetPeriodID); err != nil {
+		return 0, ErrTransferTargetNotFound
+	}
 	targetStatus, err := s.statuses.GetTeamPeriodStatus(ctx, scope, p.TargetTeamID, p.TargetPeriodID)
 	if err != nil {
 		return 0, err
@@ -1597,12 +1607,15 @@ func (s *Service) CopyGoal(ctx context.Context, scope domain.TenantScope, p Copy
 		return 0, ErrPeriodClosed
 	}
 
+	// For a move, the copy and the source deletion run in one store transaction so the move
+	// cannot partially succeed (copy committed, source left behind).
 	newGoalID, err := s.goals.CopyGoal(ctx, scope, goals.CopyGoalInput{
 		SourceGoalID:   p.SourceGoalID,
 		TargetTeamID:   p.TargetTeamID,
 		TargetPeriodID: p.TargetPeriodID,
 		WithProgress:   p.WithProgress,
 		WithComments:   p.WithComments,
+		DeleteSource:   p.Mode == CopyGoalModeMove,
 	})
 	if err != nil {
 		return 0, err
@@ -1632,9 +1645,8 @@ func (s *Service) CopyGoal(ctx context.Context, scope domain.TenantScope, p Copy
 	})
 
 	if p.Mode == CopyGoalModeMove {
-		if err := s.goals.DeleteGoal(ctx, scope, p.SourceGoalID); err != nil {
-			return 0, err
-		}
+		// Source already deleted inside the copy transaction above; reset its team status
+		// if that removal left the source team with no goals in the source period.
 		_ = s.resetStatusIfNoGoals(ctx, scope, src.TeamID, src.PeriodID)
 	}
 	return newGoalID, nil

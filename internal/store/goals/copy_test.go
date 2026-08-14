@@ -124,3 +124,42 @@ func TestCopyGoalCarriesProgressNotesAndComments(t *testing.T) {
 		t.Fatalf("reply not carried: %+v", got.Comments)
 	}
 }
+
+func TestCopyGoalDeleteSourceRemovesOriginal(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	krRepo := krs.NewKRRepository(pool)
+	repo := goals.NewGoalRepository(pool, krRepo)
+
+	var srcTeam, dstTeam, period int64
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Src') RETURNING id`).Scan(&srcTeam)
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Dst') RETURNING id`).Scan(&dstTeam)
+	pool.QueryRow(ctx, `INSERT INTO periods (name,start_date,end_date) VALUES ('P','2026-01-01','2026-12-31') RETURNING id`).Scan(&period)
+
+	srcGoal, _ := repo.CreateGoal(ctx, copyScope, goals.GoalInput{
+		TeamID: srcTeam, PeriodID: period, Title: "Src", Priority: domain.Priority("P1"), Weight: 10,
+		WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
+	})
+	krRepo.CreateKeyResult(ctx, copyScope, krs.KeyResultInput{GoalID: srcGoal, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean})
+
+	newID, err := repo.CopyGoal(ctx, copyScope, goals.CopyGoalInput{
+		SourceGoalID: srcGoal, TargetTeamID: dstTeam, TargetPeriodID: period, DeleteSource: true,
+	})
+	if err != nil {
+		t.Fatalf("CopyGoal(move): %v", err)
+	}
+	// Copy exists.
+	if _, err := repo.GetGoal(ctx, copyScope, newID); err != nil {
+		t.Fatalf("copy should exist: %v", err)
+	}
+	// Source is gone (and its KRs cascade).
+	if _, err := repo.GetGoal(ctx, copyScope, srcGoal); err == nil {
+		t.Fatal("source goal should have been deleted by DeleteSource")
+	}
+	var krCount int
+	pool.QueryRow(ctx, `SELECT COUNT(*) FROM key_results WHERE goal_id=$1`, srcGoal).Scan(&krCount)
+	if krCount != 0 {
+		t.Fatalf("source KRs should cascade-delete, got %d", krCount)
+	}
+}

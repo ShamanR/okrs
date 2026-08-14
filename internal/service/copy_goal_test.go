@@ -73,13 +73,44 @@ func TestCopyGoalMoveDeletesSourceAndRejectsSamePair(t *testing.T) {
 		t.Fatalf("expected ErrTransferTargetSameAsSource, got %v", err)
 	}
 
-	// real move deletes source
+	// real move: copy+delete are one store call (DeleteSource), not a separate DeleteGoal.
 	if _, err := svc.CopyGoal(ctx, scope, CopyGoalParams{
 		SourceGoalID: 10, TargetTeamID: 2, TargetPeriodID: 200, Mode: CopyGoalModeMove,
 	}, 7); err != nil {
 		t.Fatalf("move: %v", err)
 	}
-	if len(gf.deleteGoalCalls) != 1 || gf.deleteGoalCalls[0] != 10 {
-		t.Fatalf("move must hard-delete source, got %v", gf.deleteGoalCalls)
+	if len(gf.copyGoalCalls) != 1 || !gf.copyGoalCalls[0].DeleteSource {
+		t.Fatalf("move must delete source atomically via CopyGoal.DeleteSource, got %+v", gf.copyGoalCalls)
+	}
+	if len(gf.deleteGoalCalls) != 0 {
+		t.Fatalf("move must not issue a separate DeleteGoal, got %v", gf.deleteGoalCalls)
+	}
+}
+
+func TestCopyGoalRejectsTargetOutsideTenant(t *testing.T) {
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+
+	// Target team not in tenant.
+	gf := newGoalFakeStore()
+	gf.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 100, Title: "G"}
+	gf.missingTeams = map[int64]bool{2: true}
+	if _, err := newGoalTestService(gf).CopyGoal(ctx, scope, CopyGoalParams{
+		SourceGoalID: 10, TargetTeamID: 2, TargetPeriodID: 200, Mode: CopyGoalModeCopy,
+	}, 7); !errors.Is(err, ErrTransferTargetNotFound) {
+		t.Fatalf("expected ErrTransferTargetNotFound for cross-tenant team, got %v", err)
+	}
+
+	// Target period not in tenant.
+	gf2 := newGoalFakeStore()
+	gf2.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 100, Title: "G"}
+	gf2.missingPeriods = map[int64]bool{200: true}
+	if _, err := newGoalTestService(gf2).CopyGoal(ctx, scope, CopyGoalParams{
+		SourceGoalID: 10, TargetTeamID: 2, TargetPeriodID: 200, Mode: CopyGoalModeCopy,
+	}, 7); !errors.Is(err, ErrTransferTargetNotFound) {
+		t.Fatalf("expected ErrTransferTargetNotFound for cross-tenant period, got %v", err)
+	}
+	if len(gf2.copyGoalCalls) != 0 {
+		t.Fatal("must not copy when the target period is invalid")
 	}
 }

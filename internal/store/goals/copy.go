@@ -16,6 +16,7 @@ type CopyGoalInput struct {
 	TargetPeriodID int64
 	WithProgress   bool // carry KR progress (current_value / is_done / health_status) and KR notes
 	WithComments   bool // carry goal comments (tasks + replies), authors and resolve state preserved
+	DeleteSource   bool // move: hard-delete the source goal in the same transaction as the copy
 }
 
 // CopyGoal deep-copies a goal (goal fields, all KRs with their meta, optionally KR
@@ -172,6 +173,14 @@ func (r *GoalRepository) CopyGoal(ctx context.Context, scope domain.TenantScope,
 	// 3) Optionally copy comments (tasks first, then replies with remapped parent_id).
 	if in.WithComments {
 		if err := copyGoalComments(ctx, tx, scope, in.SourceGoalID, newGoalID); err != nil {
+			return 0, err
+		}
+	}
+
+	// 4) Move: hard-delete the source in the same transaction so a move cannot partially
+	//    succeed (copy without delete). Child rows (KRs, shares, comments, notes) cascade.
+	if in.DeleteSource {
+		if _, err := tx.Exec(ctx, `DELETE FROM goals WHERE id=$1 AND tenant_id=$2`, in.SourceGoalID, scope.TenantID); err != nil {
 			return 0, err
 		}
 	}

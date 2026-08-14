@@ -1494,7 +1494,10 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone }
   const blockedReason = {};
   flat.forEach(t => { if (t.status === 'in_progress') blockedReason[t.id] = 'в работе'; else if (t.status === 'closed') blockedReason[t.id] = 'закрыто'; });
 
-  const sameAsSource = mode === 'move' && targetTeam === teamId && targetPeriod === periodId;
+  // Compare against the goal's OWNER team/period (goal.teamId/periodId), not the current board:
+  // for a shared goal, teamId here is the board team, and moving into it is a valid ownership
+  // transfer the backend allows (it compares against src.TeamID).
+  const sameAsSource = mode === 'move' && targetTeam === goal.teamId && targetPeriod === goal.periodId;
   const targetBlocked = blockedIds.includes(targetTeam);
   const canSubmit = !!targetTeam && !!targetPeriod && !sameAsSource && !targetBlocked && !busy;
 
