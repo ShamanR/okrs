@@ -121,6 +121,10 @@ func (h *Handler) HandleShareGoal(w http.ResponseWriter, r *http.Request) {
 			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team_id", map[string]string{"team_id": "not in tenant"})
 			return
 		}
+		if errors.Is(err, service.ErrCannotShareWithClosedPeriod) {
+			v1.WriteError(w, http.StatusConflict, "PERIOD_STARTED", "cannot add a team whose period is already in progress or closed", map[string]string{"team_id": "period_started"})
+			return
+		}
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to share goal", nil)
 		return
 	}

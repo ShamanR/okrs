@@ -299,7 +299,7 @@ func TestShareGoalRecordsAddedTeams(t *testing.T) {
 	fa := &fakeActivityRepo{}
 	st := newFakeStore()
 	st.teams = []domain.Team{{ID: 2}, {ID: 4}, {ID: 21}}
-	s := New(Deps{Activity: fa, Teams: st, Shares: st, Goals: st})
+	s := New(Deps{Activity: fa, Teams: st, Shares: st, Goals: st, Statuses: st})
 	// fakeStore.ListGoalShares returns empty, so both targets are newly added.
 	if err := s.ShareGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10,
 		[]ShareTarget{{TeamID: 4, Weight: 50}, {TeamID: 21, Weight: 50}}, 5); err != nil {
