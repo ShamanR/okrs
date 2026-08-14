@@ -536,6 +536,17 @@ Body: JSON объект с полями для обновления, включ�
 - `owner_udids`: массив UDID владельцев цели.
 - Validation: все UDID должны существовать в таблице users → `400 VALIDATION_ERROR` иначе.
 
+### `POST /api/v1/goals/{goalID}/share`
+
+Задаёт полный набор команд-участников общей цели (full replace `goal_shares`).
+
+Body: `{ "targets": [{ "team_id": <int64>, "weight": <0..100> }, ...] }`.
+
+- Доступ: доступ к owner-команде цели (`CanAccessTeamFromCtx`), иначе `404 NOT_FOUND`; пустой `targets` → `400 VALIDATION_ERROR`.
+- Каждая target-команда должна принадлежать активному тенанту → `400 VALIDATION_ERROR` (`team_id: not in tenant`) иначе.
+- **Нельзя добавить команду с уже начатым периодом.** Если среди **вновь добавляемых** команд (которых ещё нет в текущем наборе `goal_shares`) есть команда, чей `team_period_status` в периоде цели — `in_progress` или `closed`, запрос отклоняется `409 CONFLICT` (`PERIOD_STARTED`). Проверяются только новые команды: уже участвующая команда, чей период с тех пор перешёл в `in_progress`/`closed`, не блокирует повторное сохранение набора. Это серверная гарантия (source of truth); UI дополнительно показывает такие команды серыми в выпадающем списке и объясняет причину модалкой при попытке выбора.
+- Endpoint делает полный replace набора shares и журналирует добавленные (`goal_shared`) и удалённые (`goal_unshared`) команды раздельно.
+
 ### Admin team endpoints
 
 - `POST /api/v1/admin/teams` — создаёт команду; принимает `lead_udid: "uuid"` (опционально); `lead` для display сохраняется как есть.

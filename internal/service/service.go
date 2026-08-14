@@ -865,6 +865,10 @@ type ShareTarget struct {
 }
 
 func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget, actorUserID int64) error {
+	goal, err := s.goals.GetGoal(ctx, scope, goalID)
+	if err != nil {
+		return err
+	}
 	// Validate every target team belongs to the active tenant before writing shares. The share
 	// repository only scopes the goal, so an unchecked target team_id could attach the goal to a
 	// team in another tenant. One scoped lookup builds the allow-set (no per-target query).
@@ -908,25 +912,40 @@ func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalI
 			removed = append(removed, teamID)
 		}
 	}
+	// Guard: a team whose period is already in_progress or closed cannot be NEWLY added as a share
+	// target — its OKR set for the period is locked, so a shared goal must not appear after the
+	// fact. Only newly added teams are checked (one batched status lookup); teams already sharing
+	// the goal are left untouched even if their period has since advanced. This mirrors the UI,
+	// which greys out such teams and blocks selection, but is enforced server-side as source of truth.
+	if len(added) > 0 {
+		statuses, serr := s.statuses.ListTeamPeriodStatuses(ctx, scope, goal.PeriodID, added)
+		if serr != nil {
+			return serr
+		}
+		for _, teamID := range added {
+			switch statuses[teamID] {
+			case domain.TeamPeriodStatusInProgress, domain.TeamPeriodStatusClosed:
+				return ErrCannotShareWithClosedPeriod
+			}
+		}
+	}
 	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, shareInputs); err != nil {
 		return err
 	}
-	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
-		teamID, periodID := g.TeamID, g.PeriodID
-		if len(added) > 0 {
-			s.recordActivity(ctx, scope, domain.ActivityEvent{
-				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalShared,
-				TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
-				Payload: map[string]any{"shared_with_team_ids": added},
-			})
-		}
-		if len(removed) > 0 {
-			s.recordActivity(ctx, scope, domain.ActivityEvent{
-				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-				TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
-				Payload: map[string]any{"unshared_team_ids": removed},
-			})
-		}
+	teamID, periodID := goal.TeamID, goal.PeriodID
+	if len(added) > 0 {
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalShared,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: goal.Title,
+			Payload: map[string]any{"shared_with_team_ids": added},
+		})
+	}
+	if len(removed) > 0 {
+		s.recordActivity(ctx, scope, domain.ActivityEvent{
+			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
+			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: goal.Title,
+			Payload: map[string]any{"unshared_team_ids": removed},
+		})
 	}
 	return nil
 }

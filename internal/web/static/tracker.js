@@ -483,10 +483,13 @@ function treePathNames(nodes, id, trail = []) {
 
 function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
   const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [hi, setHi] = useState(0);
+  const [blockedTeam, setBlockedTeam] = useState(null);
   const inputRef = useRef(); const wrapRef = useRef();
   const flat = flattenTree(allTeams || []).filter(t => t.id !== excludeId);
   const ql = q.trim().toLowerCase();
-  const filtered = ql ? flat.filter(t => t.name.toLowerCase().includes(ql)) : flat;
+  // Inline-поиск матчит по названию команды ИЛИ по имени руководителя, чтобы команду можно было
+  // найти по её тимлиду.
+  const filtered = ql ? flat.filter(t => t.name.toLowerCase().includes(ql) || (t.lead?.display_name || '').toLowerCase().includes(ql)) : flat;
   const available = filtered.filter(t => !selectedIds.includes(t.id));
   useEffect(() => { setHi(0); }, [q]);
   useEffect(() => {
@@ -494,13 +497,18 @@ function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
+  // Команду, у которой период уже «в работе»/«закрыт», нельзя добавить в общую цель — её набор
+  // OKR на период заблокирован, и сервер тоже отклоняет такой шаринг (ErrCannotShareWithClosedPeriod).
+  // Такие пункты показываются серыми, а при выборе открывают модалку-объяснение вместо добавления.
+  const isBlocked = t => t.status === 'in_progress' || t.status === 'closed';
   const add = t => { onChange([...selectedIds, t.id]); setQ(''); inputRef.current?.focus(); };
+  const choose = t => { if (isBlocked(t)) { setBlockedTeam(t); return; } add(t); };
   const rem = id => onChange(selectedIds.filter(x => x !== id));
   const sel = selectedIds.map(id => flat.find(t => t.id === id)).filter(Boolean);
   const onKey = e => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi(h => Math.min(available.length - 1, h + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (open && available[hi]) add(available[hi]); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (open && available[hi]) choose(available[hi]); }
     else if (e.key === 'Escape') { if (open) { e.preventDefault(); setOpen(false); } }
     else if (e.key === 'Backspace' && !q && sel.length > 0) rem(sel[sel.length - 1].id);
   };
@@ -527,18 +535,50 @@ function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
             ? <div className="team-combobox__empty">{ql ? 'Не найдено' : 'Все добавлены'}</div>
             : available.map((t, i) => {
               const color = TEAM_TYPE_COLOR[t.type] || '#6b7280';
+              const blocked = isBlocked(t);
               return (
-                <div key={t.id} onClick={() => add(t)} onMouseEnter={() => setHi(i)}
-                  className={`team-combobox__option${i === hi ? ' team-combobox__option--hi' : ''}`}
+                <div key={t.id} onClick={() => choose(t)} onMouseEnter={() => setHi(i)}
+                  className={`team-combobox__option${i === hi ? ' team-combobox__option--hi' : ''}${blocked ? ' team-combobox__option--blocked' : ''}`}
                   style={{ padding: `7px 12px 7px ${8 + t.depth * 14}px` }}>
                   <div className="team-combobox__option-stripe" style={{ background: color }} />
                   <span className="team-combobox__option-type" style={{ color, background: `${color}12` }}>{TEAM_TYPE_LABEL[t.type] || t.type}</span>
                   <span className="team-combobox__option-name">{t.name}</span>
+                  {t.lead?.display_name && <span className="team-combobox__option-lead" title={`Руководитель: ${t.lead.display_name}`}>{t.lead.display_name}</span>}
+                  {blocked && <span className="team-combobox__option-locked">🔒</span>}
                 </div>
               );
             })}
         </div>
       )}
+      {blockedTeam && <PeriodStartedTeamModal team={blockedTeam} onClose={() => setBlockedTeam(null)} />}
+    </div>
+  );
+}
+
+// Объясняет, почему команду с уже начатым периодом (в работе/закрыт) нельзя добавить в общую цель,
+// и предлагает написать её руководителю, чтобы он вернул цели в черновик. Серверной гарантией
+// выступает ErrCannotShareWithClosedPeriod в ShareGoal — эта модалка лишь превентивный UX-сигнал.
+function PeriodStartedTeamModal({ team, onClose }) {
+  const { requestClose } = useModalClose({ isDirty: false, onClose });
+  const overlay = useOverlayClose(requestClose);
+  const statusLabel = (STATUS_STEPS.find(s => s.k === team.status) || {}).l || team.status;
+  const lead = team.lead?.display_name;
+  return (
+    <div className="modal-overlay modal-overlay--z600" {...overlay}>
+      <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w380">
+        <div className="confirm-body">
+          <div className="confirm-title">Нельзя добавить общую цель</div>
+          <div className="confirm-message">
+            {`Команда «${team.name}» уже начала период — цели в статусе «${statusLabel}». Добавить общую цель в уже начатый период нельзя. `}
+            {lead
+              ? `Обратитесь к руководителю команды ${lead}, чтобы он перевёл цели в черновик.`
+              : 'Обратитесь к руководителю команды, чтобы он перевёл цели в черновик.'}
+          </div>
+        </div>
+        <div className="confirm-footer">
+          <button onClick={onClose} className="btn btn--primary">Понятно</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -1523,11 +1563,16 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
         {otherTeams.length > 0 && (
           <div className="shared-banner">
             <span className="shared-banner__label">⇄ Общая с:</span>
-            {[...(goal.shareTeams || []).filter(t => t.id === currentTeamId).map(t => ({ ...t, isSelf: true })), ...otherTeams].map(t => (
-              <span key={t.id} className={`shared-pill${t.isSelf ? ' shared-pill--self' : ''}`}>
-                {t.name}{t.isSelf && <span className="shared-pill__you"> · Вы</span>}
-              </span>
-            ))}
+            {[...(goal.shareTeams || []).filter(t => t.id === currentTeamId).map(t => ({ ...t, isSelf: true })), ...otherTeams].map(t => {
+              const isOwner = t.id === goal.teamId;
+              return (
+                <span key={t.id} className={`shared-pill${t.isSelf ? ' shared-pill--self' : ''}${isOwner ? ' shared-pill--owner' : ''}`}
+                  title={isOwner ? 'Владелец цели' : undefined}>
+                  {isOwner && <span className="shared-pill__owner-star" aria-label="Владелец цели">★</span>}
+                  {t.name}
+                </span>
+              );
+            })}
           </div>
         )}
         <div className="goal-card__progress">
