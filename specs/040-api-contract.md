@@ -497,6 +497,7 @@ CSRF token должен быть ротационным (не постоянны
 Обязательные write endpoints:
 
 - share goal — `POST /api/v1/goals/{goalID}/share`
+- transfer goal (copy/move) — `POST /api/v1/goals/{goalID}/transfer`
 - update goal weight
 - add goal comment (таска) — `POST /api/v1/goals/{goalID}/comments`
 - add goal reply (ответ на таску) — `POST /api/v1/goals/{goalID}/comments/{commentID}/replies` (`commentID` должен быть таской, `parent_id IS NULL`, иначе `404`; на ответ ответить нельзя)
@@ -535,6 +536,42 @@ Body: JSON объект с полями для обновления, включ�
 
 - `owner_udids`: массив UDID владельцев цели.
 - Validation: все UDID должны существовать в таблице users → `400 VALIDATION_ERROR` иначе.
+
+### `POST /api/v1/goals/{goalID}/transfer`
+
+Копирует или переносит цель `goalID` в целевую пару (команда, период). Перенос = копия + жёсткое удаление исходной цели. Шеры никогда не переносятся.
+
+Body:
+
+```json
+{
+  "mode": "copy",
+  "target_team_id": 42,
+  "target_period_id": 13,
+  "with_comments": false,
+  "with_progress": false
+}
+```
+
+- `mode` — `copy` | `move`.
+- `with_comments` — переносить таски и ответы (автор и состояние резолва сохраняются).
+- `with_progress` — переносить прогресс KR (`current_value` / `is_done` / `health_status`) и заметки KR. При `false` прогресс сбрасывается (numerical `current_value = start_value`, `is_done = false`, `health_status = not_started`), заметки не переносятся.
+
+Validation:
+
+- `mode` не из набора → `400 VALIDATION_ERROR`;
+- `target_team_id` / `target_period_id` отсутствуют/невалидны → `400 VALIDATION_ERROR`;
+- исходная цель не найдена / owner-команда вне scope → `404 NOT_FOUND`;
+- целевая команда вне scope → `404 NOT_FOUND`;
+- целевая команда или целевой период не принадлежат тенанту вызывающего (или не существуют) → `404 NOT_FOUND` (валидируется scoped-запросами `GetTeam`/`GetPeriod`, чтобы нельзя было создать цель, ссылающуюся на период/команду чужого тенанта);
+- статус целевой команды в целевом периоде `in_progress` / `closed` → `409 CONFLICT`;
+- `mode=move` и целевая пара `(team, period)` совпадает с исходной → `400 VALIDATION_ERROR`.
+
+Success: `201 Created` `{"id": <newGoalID>}`.
+
+Idempotency: не идемпотентен (каждый вызов создаёт новую цель).
+
+Side effects: новая цель с KR (+ опц. заметки/прогресс/комментарии) в целевой паре; статус целевой команды может смениться `no_goals → forming`. При `mode=move`: исходная цель (и её шеры/KR/комментарии) удаляется каскадом; статус исходной команды может смениться на `no_goals`. CSRF обязателен.
 
 ### `POST /api/v1/goals/{goalID}/share`
 

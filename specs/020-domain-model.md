@@ -185,7 +185,7 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 - tenant_id (FK → tenants.id, ON DELETE CASCADE)
 - actor_user_id (FK → users.id) — кто совершил действие; в `auth.mode=disabled` — `anonymous-local` (id=1)
 - category — `progress` | `composition` | `status` | `discussion` (совпадает с табами UI)
-- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
+- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `goal_copied`, `goal_moved`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
 - team_id (FK → teams.id, ON DELETE SET NULL) — команда-контекст на момент события (owner team / команда статуса)
 - period_id (FK → periods.id, ON DELETE SET NULL) — период-контекст
 - goal_id, kr_id, comment_id — ссылки на сущности (**не** FK: журнал переживает удаление сущности)

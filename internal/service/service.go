@@ -49,6 +49,7 @@ type GoalRepo interface {
 	ListGoalsByTeamsPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error)
 	GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error)
 	CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error)
+	CopyGoal(ctx context.Context, scope domain.TenantScope, in goals.CopyGoalInput) (int64, error)
 	DeleteGoal(ctx context.Context, scope domain.TenantScope, id int64) error
 	UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error
 	UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error
@@ -174,6 +175,8 @@ var (
 	ErrCannotShareWithClosedPeriod = errors.New("cannot share goal with team whose period is in_progress or closed")
 	ErrShareTargetNotInTenant      = errors.New("share target team is not in the active tenant")
 	ErrPeriodNotClosed             = errors.New("period must be closed to archive")
+	ErrTransferTargetSameAsSource  = errors.New("transfer target equals source team and period")
+	ErrTransferTargetNotFound      = errors.New("transfer target team or period not found in tenant")
 	// ErrForbidden signals an authorization failure the handler maps to HTTP 403.
 	ErrForbidden = errors.New("forbidden")
 	// ErrGoalNotOnTeamBoard signals a goal-scope export where the goal is not on the context team's board.
@@ -1555,6 +1558,98 @@ func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, inpu
 		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: input.Title,
 	})
 	return goalID, nil
+}
+
+// CopyGoalMode selects copy (keep source) or move (copy then hard-delete source).
+type CopyGoalMode string
+
+const (
+	CopyGoalModeCopy CopyGoalMode = "copy"
+	CopyGoalModeMove CopyGoalMode = "move"
+)
+
+// CopyGoalParams are the inputs for CopyGoal.
+type CopyGoalParams struct {
+	SourceGoalID   int64
+	TargetTeamID   int64
+	TargetPeriodID int64
+	Mode           CopyGoalMode
+	WithProgress   bool
+	WithComments   bool
+}
+
+// CopyGoal copies (or moves) a goal into a target team/period.
+// It rejects a target whose team period status is InProgress/Closed (ErrPeriodClosed),
+// and a move whose target equals the source pair (ErrTransferTargetSameAsSource).
+// Shares are never carried. On move, the source is hard-deleted (cascade).
+func (s *Service) CopyGoal(ctx context.Context, scope domain.TenantScope, p CopyGoalParams, actorUserID int64) (int64, error) {
+	src, err := s.goals.GetGoal(ctx, scope, p.SourceGoalID)
+	if err != nil {
+		return 0, err
+	}
+	if p.Mode == CopyGoalModeMove && p.TargetTeamID == src.TeamID && p.TargetPeriodID == src.PeriodID {
+		return 0, ErrTransferTargetSameAsSource
+	}
+	// Validate both target records live in the caller's tenant. The goals FK only enforces the
+	// global period/team id, so without these scoped lookups a caller could copy into another
+	// tenant's period/team (or a nonexistent one surfaces as an opaque insert error).
+	if _, err := s.teams.GetTeam(ctx, scope, p.TargetTeamID); err != nil {
+		return 0, ErrTransferTargetNotFound
+	}
+	if _, err := s.periods.GetPeriod(ctx, scope, p.TargetPeriodID); err != nil {
+		return 0, ErrTransferTargetNotFound
+	}
+	targetStatus, err := s.statuses.GetTeamPeriodStatus(ctx, scope, p.TargetTeamID, p.TargetPeriodID)
+	if err != nil {
+		return 0, err
+	}
+	if targetStatus == domain.TeamPeriodStatusClosed || targetStatus == domain.TeamPeriodStatusInProgress {
+		return 0, ErrPeriodClosed
+	}
+
+	// For a move, the copy and the source deletion run in one store transaction so the move
+	// cannot partially succeed (copy committed, source left behind).
+	newGoalID, err := s.goals.CopyGoal(ctx, scope, goals.CopyGoalInput{
+		SourceGoalID:   p.SourceGoalID,
+		TargetTeamID:   p.TargetTeamID,
+		TargetPeriodID: p.TargetPeriodID,
+		WithProgress:   p.WithProgress,
+		WithComments:   p.WithComments,
+		DeleteSource:   p.Mode == CopyGoalModeMove,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	if targetStatus == domain.TeamPeriodStatusNoGoals {
+		if err := s.statuses.SetTeamPeriodStatus(ctx, scope, p.TargetTeamID, p.TargetPeriodID, domain.TeamPeriodStatusForming); err != nil {
+			return 0, err
+		}
+	}
+
+	action := domain.ActionGoalCopied
+	if p.Mode == CopyGoalModeMove {
+		action = domain.ActionGoalMoved
+	}
+	tt, tp, ng := p.TargetTeamID, p.TargetPeriodID, newGoalID
+	s.recordActivity(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: action,
+		TeamID: &tt, PeriodID: &tp, GoalID: &ng, EntityTitle: src.Title,
+		Payload: map[string]any{
+			"source_goal_id":   src.ID,
+			"source_team_id":   src.TeamID,
+			"source_period_id": src.PeriodID,
+			"with_progress":    p.WithProgress,
+			"with_comments":    p.WithComments,
+		},
+	})
+
+	if p.Mode == CopyGoalModeMove {
+		// Source already deleted inside the copy transaction above; reset its team status
+		// if that removal left the source team with no goals in the source period.
+		_ = s.resetStatusIfNoGoals(ctx, scope, src.TeamID, src.PeriodID)
+	}
+	return newGoalID, nil
 }
 
 // DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.

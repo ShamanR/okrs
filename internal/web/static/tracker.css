@@ -31,6 +31,15 @@
 .period-select__range { flex: 0 0 auto; width: 118px; text-align: right; color: #94a3b8; font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .period-select__badge-wrap { flex: 0 0 auto; width: 88px; display: flex; justify-content: flex-end; }
 .period-select__badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 5px; font-size: 10px; white-space: nowrap; }
+/* Light theme (opt-in via variant="light"); sidebar uses the dark default above. */
+.period-select--light .period-select__trigger { background: #fff; color: #111827; border-color: #e5e7eb; }
+.period-select--light .period-select__chev { color: #9ca3af; }
+.period-select--light .period-select__menu { background: #fff; border-color: #e5e7eb; box-shadow: 0 12px 32px rgba(0,0,0,0.14); }
+.period-select--light .period-select__group { color: #6b7280; }
+.period-select--light .period-select__item { color: #111827; }
+.period-select--light .period-select__item:hover { background: #f3f4f6; }
+.period-select--light .period-select__item.is-selected { background: #f5f3ff; }
+.period-select--light .period-select__range { color: #9ca3af; }
 .no-access { padding: 24px 16px; text-align: center; color: #6b7280; }
 .no-access__icon { font-size: 28px; margin-bottom: 8px; }
 .no-access__text { font-size: 13px; font-weight: 600; color: #9ca3af; margin-bottom: 4px; }
@@ -203,6 +212,21 @@
 
 .seg-group { display: flex; gap: 6px; }
 .seg-btn { flex: 1; padding: 9px 0; border-radius: 8px; border: 2px solid #e5e7eb; background: white; color: #6b7280; font-size: 13px; font-weight: 700; cursor: pointer; text-transform: capitalize; }
+.seg-btn--active { border-color: var(--accent); color: var(--accent); background: #f5f3ff; }
+
+/* ── TRANSFER (copy/move) MODAL ───────────────────────────────────────────────── */
+.transfer-modal { width: min(560px, 94vw); max-height: 92vh; overflow: auto; }
+.transfer-modal__title { font-weight: 700; font-size: 18px; }
+.transfer-modal__subtitle { color: #6b7280; font-size: 13px; margin-top: 2px; }
+.transfer-modal__mode { margin-bottom: 16px; }
+.transfer-modal__field { margin-bottom: 16px; }
+.transfer-modal__label { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.transfer-modal__hint { color: #9ca3af; font-size: 12px; margin-top: 4px; }
+.transfer-modal__check { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; cursor: pointer; }
+.transfer-modal__error { color: #dc2626; background: #fef2f2; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
+/* .team-combobox__option-lead / --blocked defined above (shared with the share flow). */
+.team-combobox__option--selected { background: rgba(99,102,241,0.08); }
+.team-combobox__option-blocked-tag { margin-left: auto; font-size: 11px; color: #9ca3af; text-transform: lowercase; }
 
 /* ── TOGGLE ──────────────────────────────────────────────────────────────────── */
 .toggle-box { padding: 12px 14px; background: #f9fafb; border-radius: 10px; border: 1px solid #f0f1f3; }

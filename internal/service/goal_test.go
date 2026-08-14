@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -33,6 +34,9 @@ type goalFakeStore struct {
 	upsertNumericalCalls []krs.NumericalMetaInput
 	upsertBoolCalls      []upsertBoolArg
 	replaceStageCalls    []replaceStagesArg
+	copyGoalCalls        []goals.CopyGoalInput
+	missingTeams         map[int64]bool
+	missingPeriods       map[int64]bool
 
 	// comment/reply fakes
 	commentAuthor      int64
@@ -93,6 +97,12 @@ func (f *goalFakeStore) CreateGoal(_ context.Context, _ domain.TenantScope, inpu
 func (f *goalFakeStore) DeleteGoal(_ context.Context, _ domain.TenantScope, id int64) error {
 	f.deleteGoalCalls = append(f.deleteGoalCalls, id)
 	return nil
+}
+func (f *goalFakeStore) CopyGoal(_ context.Context, _ domain.TenantScope, in goals.CopyGoalInput) (int64, error) {
+	f.copyGoalCalls = append(f.copyGoalCalls, in)
+	id := f.nextGoalID
+	f.nextGoalID++
+	return id, nil
 }
 func (f *goalFakeStore) DeleteGoalShare(_ context.Context, _ domain.TenantScope, goalID, teamID int64) error {
 	f.deleteShareCalls = append(f.deleteShareCalls, deleteShareArg{goalID, teamID})
@@ -178,7 +188,10 @@ func (f *goalFakeStore) ListDeletedTeams(_ context.Context, _ domain.TenantScope
 func (f *goalFakeStore) ListAllTeams(_ context.Context, _ domain.TenantScope) ([]domain.Team, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) GetTeam(_ context.Context, _ domain.TenantScope, _ int64) (domain.Team, error) {
+func (f *goalFakeStore) GetTeam(_ context.Context, _ domain.TenantScope, id int64) (domain.Team, error) {
+	if f.missingTeams[id] {
+		return domain.Team{}, errors.New("team not found")
+	}
 	return domain.Team{}, nil
 }
 func (f *goalFakeStore) CreateTeam(_ context.Context, _ domain.TenantScope, _ storeteams.TeamInput) (int64, error) {
@@ -190,7 +203,10 @@ func (f *goalFakeStore) UpdateTeam(_ context.Context, _ domain.TenantScope, _ st
 func (f *goalFakeStore) ListPeriods(_ context.Context, _ domain.TenantScope) ([]domain.Period, error) {
 	return nil, nil
 }
-func (f *goalFakeStore) GetPeriod(_ context.Context, _ domain.TenantScope, _ int64) (domain.Period, error) {
+func (f *goalFakeStore) GetPeriod(_ context.Context, _ domain.TenantScope, id int64) (domain.Period, error) {
+	if f.missingPeriods[id] {
+		return domain.Period{}, errors.New("period not found")
+	}
 	return domain.Period{}, nil
 }
 func (f *goalFakeStore) FindPeriodForDate(_ context.Context, _ domain.TenantScope, _ time.Time) (domain.Period, error) {

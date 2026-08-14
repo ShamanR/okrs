@@ -275,6 +275,8 @@ const (
 	ActionReplyAdded        ActivityAction = "reply_added"
 	ActionCommentDeleted    ActivityAction = "comment_deleted"
 	ActionReplyDeleted      ActivityAction = "reply_deleted"
+	ActionGoalCopied        ActivityAction = "goal_copied"
+	ActionGoalMoved         ActivityAction = "goal_moved"
 )
 
 // ActivityEvent is one append-only journal row. Pointer fields are nullable columns.
