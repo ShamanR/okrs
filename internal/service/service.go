@@ -888,12 +888,17 @@ func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalI
 		}
 	}
 	// The /share endpoint replaces the whole goal_shares set, so diff the current set against the
-	// new targets to log ADDING teams (goal_shared) and REMOVING teams (goal_unshared) separately.
-	beforeSet := map[int64]bool{}
-	if cur, cerr := s.shares.ListGoalShares(ctx, scope, goalID); cerr == nil {
-		for _, sh := range cur {
-			beforeSet[sh.TeamID] = true
-		}
+	// new targets to log ADDING teams (goal_shared) and REMOVING teams (goal_unshared) separately,
+	// and to guard only NEWLY added teams below. The read error must propagate: swallowing it would
+	// leave beforeSet empty, misclassify every target as newly added, and could reject an unchanged
+	// save with 409 just because an existing participant is already in_progress/closed.
+	cur, err := s.shares.ListGoalShares(ctx, scope, goalID)
+	if err != nil {
+		return err
+	}
+	beforeSet := make(map[int64]bool, len(cur))
+	for _, sh := range cur {
+		beforeSet[sh.TeamID] = true
 	}
 	shareInputs := make([]shares.GoalShareInput, 0, len(targets))
 	newSet := map[int64]bool{}
