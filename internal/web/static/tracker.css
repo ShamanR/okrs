@@ -141,6 +141,10 @@
 .team-combobox__option-stripe { width: 3px; height: 18px; border-radius: 2px; flex-shrink: 0; }
 .team-combobox__option-type { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 4px; border-radius: 3px; }
 .team-combobox__option-name { font-size: 13px; color: #111827; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-combobox__option-lead { font-size: 11px; color: #9ca3af; flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-combobox__option-locked { font-size: 11px; flex-shrink: 0; opacity: 0.6; }
+.team-combobox__option--blocked { cursor: not-allowed; opacity: 0.5; }
+.team-combobox__option--blocked .team-combobox__option-name { color: #9ca3af; }
 
 /* ── MODAL SHARED ────────────────────────────────────────────────────────────── */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -220,9 +224,8 @@
 .transfer-modal__hint { color: #9ca3af; font-size: 12px; margin-top: 4px; }
 .transfer-modal__check { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 14px; cursor: pointer; }
 .transfer-modal__error { color: #dc2626; background: #fef2f2; border-radius: 8px; padding: 8px 10px; font-size: 13px; margin-top: 8px; }
-.team-combobox__option-lead { color: #9ca3af; font-size: 12px; margin-left: 8px; }
+/* .team-combobox__option-lead / --blocked defined above (shared with the share flow). */
 .team-combobox__option--selected { background: rgba(99,102,241,0.08); }
-.team-combobox__option--blocked { opacity: 0.5; cursor: not-allowed; }
 .team-combobox__option-blocked-tag { margin-left: auto; font-size: 11px; color: #9ca3af; text-transform: lowercase; }
 
 /* ── TOGGLE ──────────────────────────────────────────────────────────────────── */
@@ -413,7 +416,8 @@
 .shared-banner__label { font-size: 11px; color: #0e7490; font-weight: 600; flex-shrink: 0; }
 .shared-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: white; border: 1px solid rgba(8,145,178,0.38); font-size: 11px; font-weight: 500; color: #164e63; }
 .shared-pill--self { background: #e0f2fe; border-color: #38bdf8; color: #0369a1; }
-.shared-pill__you { color: #0369a1; font-weight: 700; }
+.shared-pill--owner { font-weight: 600; }
+.shared-pill__owner-star { color: #f59e0b; font-size: 12px; line-height: 1; }
 
 .goal-card__progress { margin-bottom: 10px; }
 .goal-card__progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }

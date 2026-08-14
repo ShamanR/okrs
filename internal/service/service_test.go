@@ -420,6 +420,31 @@ func TestShareGoalRejectsForeignTeamTarget(t *testing.T) {
 	}
 }
 
+// A team whose period is already in_progress or closed must not be newly added as a share target —
+// its OKR set for the period is locked. Only newly added teams are guarded; a team already sharing
+// the goal stays untouched even if its period has since advanced.
+func TestShareGoalRejectsStartedPeriodTarget(t *testing.T) {
+	store := newFakeStore()
+	store.teams = []domain.Team{{ID: 1}, {ID: 2}, {ID: 3}}
+	svc := newTestService(store, nil)
+	scope := domain.TenantScope{TenantID: 1}
+	// fakeStore.GetGoal returns a zero goal, so the goal's period is 0; status is keyed on period 0.
+	store.statuses[[2]int64{2, 0}] = domain.TeamPeriodStatusInProgress
+	store.statuses[[2]int64{3, 0}] = domain.TeamPeriodStatusClosed
+
+	if err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 2, Weight: 50}}, 1); err != ErrCannotShareWithClosedPeriod {
+		t.Fatalf("in_progress target must be rejected with ErrCannotShareWithClosedPeriod, got %v", err)
+	}
+	if err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 3, Weight: 50}}, 1); err != ErrCannotShareWithClosedPeriod {
+		t.Fatalf("closed target must be rejected with ErrCannotShareWithClosedPeriod, got %v", err)
+	}
+	// A team with an open (forming) period is still addable.
+	store.statuses[[2]int64{1, 0}] = domain.TeamPeriodStatusForming
+	if err := svc.ShareGoal(context.Background(), scope, 10, []ShareTarget{{TeamID: 1, Weight: 100}}, 1); err != nil {
+		t.Fatalf("forming target must be accepted, got %v", err)
+	}
+}
+
 // ListPeriodViews must filter out archived periods for the public caller (includeArchived=false)
 // before building parent/depth views, so a public parent_id never points at a hidden period,
 // while the admin caller (includeArchived=true) sees everything.
