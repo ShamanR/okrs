@@ -348,6 +348,9 @@ func (f *fakeStore) CreateGoal(context.Context, domain.TenantScope, goals.GoalIn
 	return 0, nil
 }
 func (f *fakeStore) DeleteGoal(context.Context, domain.TenantScope, int64) error { return nil }
+func (f *fakeStore) CopyGoal(context.Context, domain.TenantScope, goals.CopyGoalInput) (int64, error) {
+	return 0, nil
+}
 func (f *fakeStore) UpdateGoalFields(context.Context, domain.TenantScope, goals.GoalFieldsUpdateInput) error {
 	return nil
 }

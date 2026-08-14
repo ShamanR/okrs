@@ -481,34 +481,46 @@ function treePathNames(nodes, id, trail = []) {
   return null;
 }
 
-function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
+function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams, single = false, blockedIds = [], blockedReason = {} }) {
   const [q, setQ] = useState(''); const [open, setOpen] = useState(false); const [hi, setHi] = useState(0);
   const inputRef = useRef(); const wrapRef = useRef();
+  const blocked = new Set(blockedIds || []);
   const flat = flattenTree(allTeams || []).filter(t => t.id !== excludeId);
   const ql = q.trim().toLowerCase();
-  const filtered = ql ? flat.filter(t => t.name.toLowerCase().includes(ql)) : flat;
-  const available = filtered.filter(t => !selectedIds.includes(t.id));
+  const matches = t => {
+    const leadName = ((t.lead && t.lead.display_name) || '').toLowerCase();
+    return t.name.toLowerCase().includes(ql) || leadName.includes(ql);
+  };
+  const filtered = ql ? flat.filter(matches) : flat;
+  // In single mode the currently selected item stays visible in the list (as selected);
+  // in multi mode selected items move to tags and are removed from the dropdown.
+  const available = single ? filtered : filtered.filter(t => !selectedIds.includes(t.id));
   useEffect(() => { setHi(0); }, [q]);
   useEffect(() => {
     const h = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, []);
-  const add = t => { onChange([...selectedIds, t.id]); setQ(''); inputRef.current?.focus(); };
+  const pick = t => {
+    if (blocked.has(t.id)) return;
+    if (single) { onChange([t.id]); setQ(''); setOpen(false); }
+    else { onChange([...selectedIds, t.id]); setQ(''); inputRef.current?.focus(); }
+  };
   const rem = id => onChange(selectedIds.filter(x => x !== id));
   const sel = selectedIds.map(id => flat.find(t => t.id === id)).filter(Boolean);
   const onKey = e => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setHi(h => Math.min(available.length - 1, h + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(0, h - 1)); }
-    else if (e.key === 'Enter') { e.preventDefault(); if (open && available[hi]) add(available[hi]); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (open && available[hi]) pick(available[hi]); }
     else if (e.key === 'Escape') { if (open) { e.preventDefault(); setOpen(false); } }
-    else if (e.key === 'Backspace' && !q && sel.length > 0) rem(sel[sel.length - 1].id);
+    else if (e.key === 'Backspace' && !q && !single && sel.length > 0) rem(sel[sel.length - 1].id);
   };
+  const singleLabel = single && sel[0] ? `${TEAM_TYPE_LABEL[sel[0].type] || sel[0].type} · ${sel[0].name}` : '';
   return (
     <div ref={wrapRef} className="team-combobox">
       <div onClick={() => { setOpen(true); inputRef.current?.focus(); }}
         className={`team-combobox__input-area${open ? ' team-combobox__input-area--open' : ''}`}>
-        {sel.map(t => {
+        {!single && sel.map(t => {
           const color = TEAM_TYPE_COLOR[t.type] || '#6b7280';
           return (
             <div key={t.id} className="team-combobox__tag" style={{ background: `${color}15`, border: `1px solid ${color}40` }}>
@@ -519,21 +531,27 @@ function TeamCombobox({ selectedIds, onChange, excludeId, accent, allTeams }) {
           );
         })}
         <input ref={inputRef} value={q} onChange={e => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onKeyDown={onKey}
-          placeholder={sel.length ? 'Ещё…' : 'Найдите команду'} className="team-combobox__input" />
+          placeholder={single ? (singleLabel || 'Найдите команду') : (sel.length ? 'Ещё…' : 'Найдите команду')}
+          className="team-combobox__input" />
       </div>
       {open && (
         <div className="team-combobox__dropdown">
           {available.length === 0
-            ? <div className="team-combobox__empty">{ql ? 'Не найдено' : 'Все добавлены'}</div>
+            ? <div className="team-combobox__empty">{ql ? 'Не найдено' : 'Нет команд'}</div>
             : available.map((t, i) => {
               const color = TEAM_TYPE_COLOR[t.type] || '#6b7280';
+              const isBlocked = blocked.has(t.id);
+              const isSel = single && selectedIds.includes(t.id);
               return (
-                <div key={t.id} onClick={() => add(t)} onMouseEnter={() => setHi(i)}
-                  className={`team-combobox__option${i === hi ? ' team-combobox__option--hi' : ''}`}
-                  style={{ padding: `7px 12px 7px ${8 + t.depth * 14}px` }}>
+                <div key={t.id} onClick={() => pick(t)} onMouseEnter={() => setHi(i)}
+                  className={`team-combobox__option${i === hi ? ' team-combobox__option--hi' : ''}${isBlocked ? ' team-combobox__option--blocked' : ''}${isSel ? ' team-combobox__option--selected' : ''}`}
+                  style={{ padding: `7px 12px 7px ${8 + t.depth * 14}px` }}
+                  title={isBlocked ? (blockedReason[t.id] || 'Недоступно в выбранном периоде') : ''}>
                   <div className="team-combobox__option-stripe" style={{ background: color }} />
                   <span className="team-combobox__option-type" style={{ color, background: `${color}12` }}>{TEAM_TYPE_LABEL[t.type] || t.type}</span>
                   <span className="team-combobox__option-name">{t.name}</span>
+                  {t.lead && t.lead.display_name && <span className="team-combobox__option-lead">{t.lead.display_name}</span>}
+                  {isBlocked && <span className="team-combobox__option-blocked-tag">{blockedReason[t.id] || 'недоступно'}</span>}
                 </div>
               );
             })}
@@ -1407,10 +1425,117 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
   );
 }
 
+// TransferGoalModal copies or moves a goal into a chosen team + period.
+function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone }) {
+  const [mode, setMode] = useState('copy'); // 'copy' | 'move'
+  const [targetTeam, setTargetTeam] = useState(teamId);
+  const [targetPeriod, setTargetPeriod] = useState(periodId);
+  const [withComments, setWithComments] = useState(false);
+  const [withProgress, setWithProgress] = useState(false);
+  const [periods, setPeriods] = useState([]);
+  const [hierarchy, setHierarchy] = useState(allTeams || []);
+  const [loadingTeams, setLoadingTeams] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => { apiGet('/api/v1/periods').then(d => setPeriods((d && d.items) || [])).catch(() => setPeriods([])); }, []);
+
+  // Reload hierarchy for the selected target period to know per-team status blocking.
+  useEffect(() => {
+    let alive = true;
+    setLoadingTeams(true);
+    apiGet(`/api/v1/hierarchy?period_id=${targetPeriod}`)
+      .then(data => { if (alive) setHierarchy((data && data.items) || []); })
+      .catch(() => { if (alive) setHierarchy([]); })
+      .finally(() => { if (alive) setLoadingTeams(false); });
+    return () => { alive = false; };
+  }, [targetPeriod]);
+
+  // Teams whose status in the target period is in_progress/closed are blocked.
+  const flat = flattenTree(hierarchy || []);
+  const blockedIds = flat.filter(t => t.status === 'in_progress' || t.status === 'closed').map(t => t.id);
+  const blockedReason = {};
+  flat.forEach(t => { if (t.status === 'in_progress') blockedReason[t.id] = 'в работе'; else if (t.status === 'closed') blockedReason[t.id] = 'закрыто'; });
+
+  const sameAsSource = mode === 'move' && targetTeam === teamId && targetPeriod === periodId;
+  const targetBlocked = blockedIds.includes(targetTeam);
+  const canSubmit = !!targetTeam && !!targetPeriod && !sameAsSource && !targetBlocked && !busy;
+
+  const requestClose = () => { if (!busy) onClose(); };
+  const overlay = useOverlayClose(requestClose);
+
+  const submit = async () => {
+    setBusy(true); setErr('');
+    try {
+      await apiPost(`/api/v1/goals/${goal.id}/transfer`, {
+        mode, target_team_id: targetTeam, target_period_id: targetPeriod,
+        with_comments: withComments, with_progress: withProgress,
+      });
+      onDone && onDone();
+      onClose();
+    } catch (e) {
+      setErr('Не удалось выполнить операцию. Возможно, цели целевой команды уже в работе или закрыты.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay modal-overlay--z400" {...overlay}>
+      <div className="modal-box transfer-modal">
+        <div className="modal-header">
+          <div>
+            <div className="transfer-modal__title">Перенести или скопировать цель</div>
+            <div className="transfer-modal__subtitle">{goal.title}</div>
+          </div>
+          <button onClick={requestClose} className="modal-close">×</button>
+        </div>
+        <div className="modal-body">
+          <div className="seg-group transfer-modal__mode">
+            <button type="button" className={`seg-btn${mode === 'copy' ? ' seg-btn--active' : ''}`} onClick={() => setMode('copy')}>⧉ Копировать</button>
+            <button type="button" className={`seg-btn${mode === 'move' ? ' seg-btn--active' : ''}`} onClick={() => setMode('move')}>➡ Перенести</button>
+          </div>
+
+          <div className="transfer-modal__field">
+            <div className="transfer-modal__label">Куда — команда</div>
+            <TeamCombobox single selectedIds={targetTeam ? [targetTeam] : []} onChange={ids => setTargetTeam(ids[0])}
+              allTeams={hierarchy} blockedIds={blockedIds} blockedReason={blockedReason} />
+            {loadingTeams && <div className="transfer-modal__hint">Загрузка команд…</div>}
+          </div>
+
+          <div className="transfer-modal__field">
+            <div className="transfer-modal__label">Куда — период</div>
+            <PeriodSelect periods={periods} periodId={targetPeriod} onChange={setTargetPeriod} width="100%" variant="light" />
+          </div>
+
+          <label className="transfer-modal__check">
+            <input type="checkbox" checked={withComments} onChange={e => setWithComments(e.target.checked)} />
+            <span>Перенести комментарии</span>
+          </label>
+          <label className="transfer-modal__check">
+            <input type="checkbox" checked={withProgress} onChange={e => setWithProgress(e.target.checked)} />
+            <span>Перенести прогресс и заметки KR</span>
+          </label>
+
+          {sameAsSource && <div className="transfer-modal__error">Перенос в ту же команду и период невозможен.</div>}
+          {targetBlocked && !sameAsSource && <div className="transfer-modal__error">Цели выбранной команды в этом периоде уже в работе или закрыты.</div>}
+          {err && <div className="transfer-modal__error">{err}</div>}
+        </div>
+        <div className="modal-footer">
+          <button type="button" className="btn btn--secondary" onClick={requestClose}>Отмена</button>
+          <button type="button" className="btn btn--primary" disabled={!canSubmit} onClick={submit}>
+            {busy ? '…' : (mode === 'move' ? 'Перенести' : 'Скопировать')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ExportMenu is the "···" affordance on a goal card that opens the export modal.
-function ExportMenu({ goal, teamId, periodId, info }) {
+function ExportMenu({ goal, teamId, periodId, info, allTeams, onReloadBoard }) {
   const [open, setOpen] = useState(false);
   const [modal, setModal] = useState(false);
+  const [transfer, setTransfer] = useState(false);
   const wrapRef = useRef();
   useEffect(() => {
     if (!open) return;
@@ -1427,9 +1552,15 @@ function ExportMenu({ goal, teamId, periodId, info }) {
             <span className="export-menu__item-title">↓ Экспорт в Markdown</span>
             <span className="export-menu__item-sub">только эта цель — или шире</span>
           </button>
+          <button type="button" className="export-menu__item" onClick={() => { setOpen(false); setTransfer(true); }}>
+            <span className="export-menu__item-title">➡ Перенести или скопировать</span>
+            <span className="export-menu__item-sub">в другую команду или период</span>
+          </button>
         </div>
       )}
       {modal && <ExportModal goal={goal} teamId={teamId} periodId={periodId} info={info} onClose={() => setModal(false)} />}
+      {transfer && <TransferGoalModal goal={goal} teamId={teamId} periodId={periodId} allTeams={allTeams}
+        onClose={() => setTransfer(false)} onDone={onReloadBoard} />}
     </div>
   );
 }
@@ -1509,7 +1640,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
             </div>
           )}
           <CopyLinkButton teamId={currentTeamId} periodId={periodId} goalId={goal.id} />
-          {exportInfo && <ExportMenu goal={goal} teamId={currentTeamId} periodId={periodId} info={exportInfo} />}
+          {exportInfo && <ExportMenu goal={goal} teamId={currentTeamId} periodId={periodId} info={exportInfo}
+            allTeams={allTeams} onReloadBoard={onReload} />}
         </div>
         <div className="goal-card__title-row">
           <div onClick={canEdit ? () => onEditGoal(goal) : undefined}

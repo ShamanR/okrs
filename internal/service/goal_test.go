@@ -33,6 +33,7 @@ type goalFakeStore struct {
 	upsertNumericalCalls []krs.NumericalMetaInput
 	upsertBoolCalls      []upsertBoolArg
 	replaceStageCalls    []replaceStagesArg
+	copyGoalCalls        []goals.CopyGoalInput
 
 	// comment/reply fakes
 	commentAuthor      int64
@@ -93,6 +94,12 @@ func (f *goalFakeStore) CreateGoal(_ context.Context, _ domain.TenantScope, inpu
 func (f *goalFakeStore) DeleteGoal(_ context.Context, _ domain.TenantScope, id int64) error {
 	f.deleteGoalCalls = append(f.deleteGoalCalls, id)
 	return nil
+}
+func (f *goalFakeStore) CopyGoal(_ context.Context, _ domain.TenantScope, in goals.CopyGoalInput) (int64, error) {
+	f.copyGoalCalls = append(f.copyGoalCalls, in)
+	id := f.nextGoalID
+	f.nextGoalID++
+	return id, nil
 }
 func (f *goalFakeStore) DeleteGoalShare(_ context.Context, _ domain.TenantScope, goalID, teamID int64) error {
 	f.deleteShareCalls = append(f.deleteShareCalls, deleteShareArg{goalID, teamID})
