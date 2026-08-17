@@ -12,6 +12,7 @@ import (
 	"okrs/internal/okr"
 	"okrs/internal/store"
 	"okrs/internal/store/activity"
+	"okrs/internal/store/goallinks"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/krs"
@@ -63,6 +64,7 @@ type GoalRepo interface {
 	ListGoalComments(ctx context.Context, scope domain.TenantScope, goalID int64) ([]domain.GoalComment, error)
 	ListGoalCommentsByGoals(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]domain.GoalComment, error)
 	ListGoalOwnerTeamIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64]int64, error)
+	ListGoalsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) ([]domain.Goal, error)
 	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 }
 
@@ -73,6 +75,13 @@ type GoalShareRepo interface {
 	ReplaceGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64, shares []shares.GoalShareInput) error
 	DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error
 	UpdateGoalTeamWeight(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
+}
+
+// GoalLinkRepo manages goal↔goal parent/child links.
+type GoalLinkRepo interface {
+	ReplaceParents(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, childID int64, parentIDs []int64) (added, removed []int64, err error)
+	ListLinksForGoals(ctx context.Context, scope domain.TenantScope, goalIDs, allowedTeamIDs []int64, adminAll bool) (parents, children map[int64][]domain.GoalRef, err error)
+	ListLinkable(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, periodID *int64, excludeGoalID int64, q string) ([]goallinks.LinkableGoal, error)
 }
 
 type PeriodRepo interface {
@@ -139,13 +148,14 @@ type ActivityRepo interface {
 
 // Deps holds all repository dependencies for the service.
 type Deps struct {
-	Teams    TeamRepo
-	Goals    GoalRepo
-	Shares   GoalShareRepo
-	Periods  PeriodRepo
-	KRs      KRRepo
-	Statuses TeamStatusRepo
-	Users    UserRepo
+	Teams        TeamRepo
+	Goals        GoalRepo
+	Shares       GoalShareRepo
+	GoalLinks    GoalLinkRepo
+	Periods      PeriodRepo
+	KRs          KRRepo
+	Statuses     TeamStatusRepo
+	Users        UserRepo
 	Grants       GrantsProvider
 	HCCache      *HealthCheckInCache
 	Activity     ActivityRepo
@@ -154,13 +164,14 @@ type Deps struct {
 }
 
 type Service struct {
-	teams    TeamRepo
-	goals    GoalRepo
-	shares   GoalShareRepo
-	periods  PeriodRepo
-	krs      KRRepo
-	statuses TeamStatusRepo
-	users    UserRepo
+	teams        TeamRepo
+	goals        GoalRepo
+	shares       GoalShareRepo
+	goalLinks    GoalLinkRepo
+	periods      PeriodRepo
+	krs          KRRepo
+	statuses     TeamStatusRepo
+	users        UserRepo
 	grants       GrantsProvider
 	hcCache      *HealthCheckInCache
 	activity     ActivityRepo
@@ -181,18 +192,23 @@ var (
 	ErrForbidden = errors.New("forbidden")
 	// ErrGoalNotOnTeamBoard signals a goal-scope export where the goal is not on the context team's board.
 	ErrGoalNotOnTeamBoard = errors.New("goal not on team board")
+	// Goal-link errors mapped by handlers to 400 (self/not accessible) and 409 (cycle).
+	ErrGoalLinkSelf          = errors.New("goal cannot link to itself")
+	ErrGoalLinkNotAccessible = errors.New("parent goal not accessible")
+	ErrGoalLinkCycle         = errors.New("goal link would create a cycle")
 )
 
 // New constructs a Service from a Deps bundle.
 func New(deps Deps) *Service {
 	return &Service{
-		teams:    deps.Teams,
-		goals:    deps.Goals,
-		shares:   deps.Shares,
-		periods:  deps.Periods,
-		krs:      deps.KRs,
-		statuses: deps.Statuses,
-		users:    deps.Users,
+		teams:        deps.Teams,
+		goals:        deps.Goals,
+		shares:       deps.Shares,
+		goalLinks:    deps.GoalLinks,
+		periods:      deps.Periods,
+		krs:          deps.KRs,
+		statuses:     deps.Statuses,
+		users:        deps.Users,
 		grants:       deps.Grants,
 		hcCache:      deps.HCCache,
 		activity:     deps.Activity,
@@ -205,13 +221,14 @@ func New(deps Deps) *Service {
 // Use this at the wiring layer instead of building Deps manually.
 func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *HealthCheckInCache, logger *slog.Logger) *Service {
 	return New(Deps{
-		Teams:    st.Teams,
-		Goals:    st.Goals,
-		Shares:   st.Shares,
-		Periods:  st.Periods,
-		KRs:      st.KRs,
-		Statuses: st.Statuses,
-		Users:    st.Users,
+		Teams:        st.Teams,
+		Goals:        st.Goals,
+		Shares:       st.Shares,
+		GoalLinks:    st.GoalLinks,
+		Periods:      st.Periods,
+		KRs:          st.KRs,
+		Statuses:     st.Statuses,
+		Users:        st.Users,
 		Grants:       grantsProvider,
 		HCCache:      hcCache,
 		Activity:     st.Activity,
@@ -996,7 +1013,7 @@ func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.Tenan
 			ActorUserID: userID, Category: domain.ActivityDiscussion, Action: action,
 			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
 			EntityTitle: g.Title,
-			Payload: map[string]any{"before": map[string]any{"resolved": !resolved}, "after": map[string]any{"resolved": resolved}},
+			Payload:     map[string]any{"before": map[string]any{"resolved": !resolved}, "after": map[string]any{"resolved": resolved}},
 		})
 	}
 	return nil

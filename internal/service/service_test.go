@@ -363,6 +363,9 @@ func (f *fakeStore) ListGoalCommentsByGoals(context.Context, domain.TenantScope,
 func (f *fakeStore) ListGoalOwnerTeamIDs(context.Context, domain.TenantScope, []int64) (map[int64]int64, error) {
 	return nil, nil
 }
+func (f *fakeStore) ListGoalsByIDs(context.Context, domain.TenantScope, []int64) ([]domain.Goal, error) {
+	return nil, nil
+}
 func (f *fakeStore) ListGoalComments(context.Context, domain.TenantScope, int64) ([]domain.GoalComment, error) {
 	return nil, nil
 }

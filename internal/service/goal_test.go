@@ -258,6 +258,9 @@ func (f *goalFakeStore) ListGoalCommentsByGoals(_ context.Context, _ domain.Tena
 func (f *goalFakeStore) ListGoalOwnerTeamIDs(_ context.Context, _ domain.TenantScope, _ []int64) (map[int64]int64, error) {
 	return nil, nil
 }
+func (f *goalFakeStore) ListGoalsByIDs(_ context.Context, _ domain.TenantScope, _ []int64) ([]domain.Goal, error) {
+	return nil, nil
+}
 func (f *goalFakeStore) AddGoalReply(_ context.Context, _ domain.TenantScope, _, _ int64, _ string, _ int64) (int64, error) {
 	if f.addReplyErr != nil {
 		return 0, f.addReplyErr

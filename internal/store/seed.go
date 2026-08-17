@@ -37,7 +37,10 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		teamIDs = append(teamIDs, id)
 	}
 
-	for _, teamID := range teamIDs {
+	// Collected per team to seed demo goal links after all goals exist.
+	reliabilityIDs := make([]int64, 0, len(teamIDs))
+	var platformAdoptionID int64
+	for i, teamID := range teamIDs {
 		goalID, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
 			PeriodID:    periodID,
@@ -65,6 +68,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Audit", Weight: 40, SortOrder: 1, IsDone: true})
 		_ = krsRepo.AddProjectStage(ctx, scope, krs.ProjectStageInput{KeyResultID: krID, Title: "Remediations", Weight: 60, SortOrder: 2, IsDone: false})
 		_ = krsRepo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthAtRisk)
+		reliabilityIDs = append(reliabilityIDs, goalID)
 
 		goalID2, err := goalsRepo.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID:      teamID,
@@ -92,6 +96,28 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		}
 		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
 		_ = krsRepo.UpdateHealthStatus(ctx, scope, krID2, domain.KRHealthOnTrack)
+		if i == 0 {
+			platformAdoptionID = goalID2
+		}
+	}
+
+	// Demo goal links: the first team's reliability goal is the parent; the other teams'
+	// reliability goals and the first team's adoption goal are children (shows ↑/↓ labels).
+	// Idempotent across re-seeds via ON CONFLICT DO NOTHING.
+	if len(reliabilityIDs) > 0 {
+		parentGoalID := reliabilityIDs[0]
+		children := append([]int64{}, reliabilityIDs[1:]...)
+		if platformAdoptionID != 0 {
+			children = append(children, platformAdoptionID)
+		}
+		for _, childID := range children {
+			if _, err := goalsRepo.DB().Exec(ctx, `
+				INSERT INTO goal_links (tenant_id, child_goal_id, parent_goal_id)
+				VALUES ($1,$2,$3)
+				ON CONFLICT DO NOTHING`, scope.TenantID, childID, parentGoalID); err != nil {
+				return err
+			}
+		}
 	}
 
 	// Seeded teams are «в работе», so they count toward aggregate progress and the

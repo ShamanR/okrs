@@ -31,6 +31,24 @@ type GoalComment struct {
 	Replies        []GoalReply `json:"replies"`
 }
 
+// GoalRef — компактная сводка связанной цели (родитель/ребёнок).
+type GoalRef struct {
+	ID         int64  `json:"id"`
+	Title      string `json:"title"`
+	PeriodID   int64  `json:"period_id"`
+	PeriodName string `json:"period_name"`
+	TeamID     int64  `json:"team_id"`
+	TeamName   string `json:"team_name"`
+	TeamType   string `json:"team_type"`
+	Progress   int    `json:"progress"`
+}
+
+// LinkableGoal — кандидат в родители для пикера связи.
+type LinkableGoal struct {
+	GoalRef
+	Lead string `json:"lead"`
+}
+
 type GoalDetails struct {
 	ID           int64           `json:"id"`
 	TeamID       int64           `json:"team_id"`
@@ -46,6 +64,8 @@ type GoalDetails struct {
 	ProgressMeta ProgressBarInfo `json:"progress_meta"`
 	KeyResults   []KeyResult     `json:"key_results"`
 	ShareTeams   []ShareTeam     `json:"share_teams"`
+	Parents      []GoalRef       `json:"parents"`
+	Children     []GoalRef       `json:"children"`
 	Comments     []GoalComment   `json:"comments"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`

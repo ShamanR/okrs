@@ -3,7 +3,9 @@ package goals
 import "github.com/go-chi/chi/v5"
 
 func RegisterRoutes(r chi.Router, h *Handler) {
+	r.Get("/api/v1/goals/linkable", h.HandleLinkableGoals)
 	r.Get("/api/v1/goals/{goalID}", h.HandleGoal)
+	r.Post("/api/v1/goals/{goalID}/links", h.HandleSetGoalParents)
 	r.Post("/api/v1/goals/{goalID}/share", h.HandleShareGoal)
 	r.Post("/api/v1/goals/{goalID}/transfer", h.HandleTransferGoal)
 	r.Post("/api/v1/goals/{goalID}/weight", h.HandleUpdateGoalWeight)

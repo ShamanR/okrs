@@ -783,6 +783,41 @@ func (r *GoalRepository) GetGoal(ctx context.Context, scope domain.TenantScope, 
 	return goal, nil
 }
 
+// ListGoalsByIDs batch-loads goals (with key results) by id, tenant-scoped. Used to compute
+// progress of linked goals (parents/children) that may live off the current board — one query
+// for the goals plus the shared KR batch loader, no per-goal round trips.
+func (r *GoalRepository) ListGoalsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) ([]domain.Goal, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, created_at, updated_at
+		FROM goals WHERE id = ANY($1) AND tenant_id = $2`, ids, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	goals := make([]domain.Goal, 0, len(ids))
+	for rows.Next() {
+		var goal domain.Goal
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+			return nil, err
+		}
+		goals = append(goals, goal)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	goalIDs := make([]int64, len(goals))
+	for i := range goals {
+		goalIDs[i] = goals[i].ID
+	}
+	if err := r.loadKRsForGoals(ctx, scope, goals, goalIDs); err != nil {
+		return nil, err
+	}
+	return goals, nil
+}
+
 func (r *GoalRepository) DeleteGoal(ctx context.Context, scope domain.TenantScope, id int64) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM goals WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	return err

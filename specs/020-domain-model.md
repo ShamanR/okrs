@@ -175,6 +175,44 @@
 - для каждой shared team хранится собственный weight и собственный sort_order — порядок общей цели можно менять в каждой команде независимо; при шаринге sort_order инициализируется значением `goals.sort_order` владельца;
 - pair (goal_id, team_id) уникален.
 
+### GoalLink
+
+Связь между двумя целями отношением «дочерняя → родительская» (таблица `goal_links`,
+миграция `043_goal_links`). Позволяет декомпозировать цель руководителя/годовую цель на
+цели команды/квартала. Связь **не** делает цель общей (это отдельная механика `GoalShare`).
+
+**Поля:**
+
+- tenant_id (FK → tenants.id, ON DELETE CASCADE) — тенант; обе цели ребра всегда в нём;
+- child_goal_id (FK → goals.id, ON DELETE CASCADE) — дочерняя цель;
+- parent_goal_id (FK → goals.id, ON DELETE CASCADE) — родительская цель;
+- created_at.
+
+**Инварианты:**
+
+- пара `(tenant_id, child_goal_id, parent_goal_id)` уникальна (PK);
+- `child_goal_id <> parent_goal_id` (запрет самоссылки, DB CHECK `goal_links_no_self`);
+- обе цели принадлежат одному тенанту (проверяется в service-слое tenant-scoped запросами;
+  кросс-тенантные связи невозможны);
+- граф связей **ацикличен** (DAG): добавление ребра, замыкающего цикл (прямой `A→B→A` или
+  транзитивный), отклоняется на сервере — проверка одним рекурсивным CTE по предкам набора
+  родителей (см. `040-api-contract.md`);
+- цель может иметь **несколько** родителей и несколько детей (M:N);
+- связи каскадно удаляются при удалении любой из двух целей (`ON DELETE CASCADE`), в т.ч. при
+  переносе цели `mode=move` (жёсткое удаление исходной цели удаляет её связи);
+- связи **не копируются** при `POST /goals/{id}/transfer` (как и шеры) — новая цель без связей;
+- связь **навигационная**: не влияет на расчёт прогресса (rollup по связям нет), не меняет
+  видимость цели командами и не зависит от `team period status`.
+
+**Вычисляемые сводки (не хранятся):**
+
+- `GoalRef` — компактная сводка связанной цели для лейблов/popover: `id`, `title`,
+  `period_id`, `period_name`, `team_id`, `team_name`, `team_type`, `progress` (прогресс
+  вычисляется на чтении по KR связанной цели).
+- `Goal.Parents` / `Goal.Children` — массивы `GoalRef`, заполняются на чтении и
+  **фильтруются по scope читателя**: связанная цель попадает в выборку только если её
+  команда-владелец доступна читателю (grant/админ). Связь на недоступную команду скрыта.
+
 ### ActivityEvent
 
 Append-only журнал событий OKR (таблица `activity_events`, миграция `039_activity_events`).
@@ -185,7 +223,7 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 - tenant_id (FK → tenants.id, ON DELETE CASCADE)
 - actor_user_id (FK → users.id) — кто совершил действие; в `auth.mode=disabled` — `anonymous-local` (id=1)
 - category — `progress` | `composition` | `status` | `discussion` (совпадает с табами UI)
-- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `goal_copied`, `goal_moved`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
+- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `goal_copied`, `goal_moved`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_linked`, `goal_unlinked`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
 - team_id (FK → teams.id, ON DELETE SET NULL) — команда-контекст на момент события (owner team / команда статуса)
 - period_id (FK → periods.id, ON DELETE SET NULL) — период-контекст
 - goal_id, kr_id, comment_id — ссылки на сущности (**не** FK: журнал переживает удаление сущности)
