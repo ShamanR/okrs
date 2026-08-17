@@ -126,6 +126,28 @@ type Goal struct {
 	UpdatedAt   time.Time
 	KeyResults  []KeyResult
 	Comments    []GoalComment
+	Parents     []GoalRef // родительские цели (вычисляется на чтении, scope-filtered)
+	Children    []GoalRef // дочерние цели (вычисляется на чтении, scope-filtered)
+}
+
+// GoalRef — компактная сводка связанной цели для лейблов/popover (вычисляется на чтении).
+type GoalRef struct {
+	ID         int64
+	Title      string
+	PeriodID   int64
+	PeriodName string
+	TeamID     int64
+	TeamName   string
+	TeamType   string
+	Progress   int
+}
+
+// GoalLink — ребро графа связей "дочерняя → родительская".
+type GoalLink struct {
+	TenantID     int64
+	ChildGoalID  int64
+	ParentGoalID int64
+	CreatedAt    time.Time
 }
 
 type GoalComment struct {
@@ -277,6 +299,8 @@ const (
 	ActionReplyDeleted      ActivityAction = "reply_deleted"
 	ActionGoalCopied        ActivityAction = "goal_copied"
 	ActionGoalMoved         ActivityAction = "goal_moved"
+	ActionGoalLinked        ActivityAction = "goal_linked"
+	ActionGoalUnlinked      ActivityAction = "goal_unlinked"
 )
 
 // ActivityEvent is one append-only journal row. Pointer fields are nullable columns.

@@ -7,6 +7,7 @@ import (
 
 	"okrs/internal/domain"
 	"okrs/internal/store/activity"
+	"okrs/internal/store/goallinks"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
@@ -35,6 +36,7 @@ type Store struct {
 	DB           *pgxpool.Pool
 	Teams        *teams.TeamRepository
 	Goals        *goals.GoalRepository
+	GoalLinks    *goallinks.GoalLinkRepository
 	Periods      *periods.PeriodRepository
 	KRs          *krs.KRRepository
 	Shares       *shares.GoalShareRepository
@@ -60,6 +62,7 @@ func New(db *pgxpool.Pool) *Store {
 		DB:           db,
 		Teams:        teams.NewTeamRepository(db),
 		Goals:        goals.NewGoalRepository(db, krsRepo),
+		GoalLinks:    goallinks.NewGoalLinkRepository(db),
 		Periods:      periods.NewPeriodRepository(db),
 		KRs:          krsRepo,
 		Shares:       shares.NewGoalShareRepository(db),

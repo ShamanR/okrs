@@ -313,6 +313,7 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/periods/{periodID}/overview?scope=my_teams|org`
 - `GET /api/v1/teams/{teamID}/export`
 - `GET /api/v1/goals/{goalID}`
+- `GET /api/v1/goals/linkable`
 - `GET /api/v1/activity`
 - `GET /api/v1/activity/tree-counts`
 - `GET /api/v1/activity/category-counts`
@@ -497,6 +498,7 @@ CSRF token должен быть ротационным (не постоянны
 Обязательные write endpoints:
 
 - share goal — `POST /api/v1/goals/{goalID}/share`
+- set goal parents (связи) — `POST /api/v1/goals/{goalID}/links`
 - transfer goal (copy/move) — `POST /api/v1/goals/{goalID}/transfer`
 - update goal weight
 - add goal comment (таска) — `POST /api/v1/goals/{goalID}/comments`
@@ -583,6 +585,62 @@ Body: `{ "targets": [{ "team_id": <int64>, "weight": <0..100> }, ...] }`.
 - Каждая target-команда должна принадлежать активному тенанту → `400 VALIDATION_ERROR` (`team_id: not in tenant`) иначе.
 - **Нельзя добавить команду с уже начатым периодом.** Если среди **вновь добавляемых** команд (которых ещё нет в текущем наборе `goal_shares`) есть команда, чей `team_period_status` в периоде цели — `in_progress` или `closed`, запрос отклоняется `409 CONFLICT` (`PERIOD_STARTED`). Проверяются только новые команды: уже участвующая команда, чей период с тех пор перешёл в `in_progress`/`closed`, не блокирует повторное сохранение набора. Это серверная гарантия (source of truth); UI дополнительно показывает такие команды серыми в выпадающем списке и объясняет причину модалкой при попытке выбора.
 - Endpoint делает полный replace набора shares и журналирует добавленные (`goal_shared`) и удалённые (`goal_unshared`) команды раздельно.
+
+### Связи целей (parent/child)
+
+Связь соединяет две цели отношением «дочерняя → родительская» (`goal_links`, см.
+`020-domain-model.md`). Управляется со стороны дочерней цели её владельцем. Навигационная:
+не влияет на прогресс, видимость и `team period status`.
+
+#### `GET /api/v1/goals/linkable`
+
+Источник кандидатов для пикера родительской цели.
+
+- **method + path:** `GET /api/v1/goals/linkable`
+- **request (query):**
+  - `exclude_goal_id` (int64, опц.) — исключить редактируемую цель (нельзя привязать себя);
+  - `period_id` (int64 или `all`, опц.) — фильтр периода; значение `all` (или отсутствие
+    параметра) — без фильтра периода; клиент по умолчанию подставляет текущий период;
+  - `q` (string, опц.) — регистронезависимый поиск по названию цели / названию команды /
+    имени лида команды.
+- **validation:** `period_id` не int64 и не `all` → `400 VALIDATION_ERROR`.
+- **success (200, массив):** `[{ id, title, team_id, team_name, team_type, period_id, period_name, progress, lead }]`,
+  только цели **доступных** команд тенанта (админ — все), отсортировано по DFS иерархии команд
+  (`team_type`, `team_name`), внутри команды — по `sort_order` цели.
+- **idempotency:** read-only, без side effects, CSRF не требуется (GET).
+- **side effects:** нет.
+
+#### `POST /api/v1/goals/{goalID}/links`
+
+Полная замена набора родителей дочерней цели `goalID` (full replace, как `.../share`).
+
+- **method + path:** `POST /api/v1/goals/{goalID}/links`
+- **request:** `{ "parent_goal_ids": [<int64>, ...] }` — целевой набор родителей; пустой
+  массив снимает все связи; дубликаты схлопываются.
+- **validation:**
+  - `goalID` не найдена / команда-владелец вне scope вызывающего → `404 NOT_FOUND`;
+  - `parent_goal_ids` содержит `goalID` (самоссылка) → `400 VALIDATION_ERROR` (`parent: self`);
+  - какой-либо `parent_goal_id` не существует в тенанте или его команда-владелец вне scope →
+    `400 VALIDATION_ERROR` (`parent: not accessible`);
+  - набор замыкает цикл в графе связей → `409 CONFLICT` (`GOAL_LINK_CYCLE`).
+- **success:** `204 No Content`.
+- **idempotency:** идемпотентно — замена на текущий набор ничего не меняет и не пишет в журнал.
+- **side effects:** строки `goal_links` для `child_goal_id = goalID` заменяются; прогресс/статусы/
+  веса не меняются. Журнал: `goal_linked` (добавленные) / `goal_unlinked` (снятые) раздельно,
+  категория `composition`, best-effort после мутации. CSRF обязателен.
+
+**Проверка цикла (реализация).** Цикл может создать только новое ребро `C→Pᵢ`; удаление старых
+родителей `C` безопасно. Сервер одним рекурсивным CTE вычисляет предков набора `{Pᵢ}` по
+`goal_links`, **исключив исходящие рёбра самого `C`**, и отклоняет запрос, если `C` попал в
+предки. CTE tenant-scoped и защищён от runaway path-массивом (`NOT parent = ANY(path)`) —
+совместимо с PostgreSQL 11 (без SQL-стандартной клаузы `CYCLE`). Это одна проверка на операцию,
+без запросов в цикле.
+
+**Расширение чтения.** Ответы `GET /api/v1/teams/{teamID}/okrs` и `GET /api/v1/goals/{goalID}`
+дополнены у каждой цели полями `parents[]` / `children[]`
+(`{ id, title, period_id, period_name, team_id, team_name, team_type, progress }`),
+**отфильтрованными по scope читателя** (связь на недоступную команду скрыта). Счётчик лейбла =
+длина массива; данные грузятся батчем (без N+1), прогресс связанной цели вычисляется по её KR.
 
 ### Admin team endpoints
 

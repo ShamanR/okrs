@@ -67,6 +67,12 @@ func (h *Handler) HandleGoal(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "goal not found", nil)
 		return
 	}
+	// Attach scope-filtered parent/child links (navigation-only).
+	allowed, _ := auth.AllowedTeamIDsFromCtx(r.Context())
+	if parents, children, err := h.service.ListLinksForGoals(r.Context(), scope, []int64{goal.ID}, allowed, allowed == nil); err == nil {
+		goal.Parents = parents[goal.ID]
+		goal.Children = children[goal.ID]
+	}
 	var userRefs map[string]*dto.UserRef
 	if len(goal.OwnerUDIDs) > 0 {
 		users, _ := h.service.GetUsersByUDIDs(r.Context(), goal.OwnerUDIDs)

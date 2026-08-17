@@ -171,8 +171,19 @@ function mapGoal(g) {
     comments: (g.comments || []).map(c => ({ id: c.id, author: c.author_name, authorUdid: c.author_udid, date: fmtDate(c.created_at), text: c.text, resolved: !!c.resolved, resolvedBy: c.resolved_by_name, resolvedByUdid: c.resolved_by_udid, resolvedAt: c.resolved_at ? fmtDate(c.resolved_at) : null, replies: (c.replies || []).map(rp => ({ id: rp.id, author: rp.author_name, authorUdid: rp.author_udid, date: fmtDate(rp.created_at), text: rp.text })) })),
     shareTeams: g.share_teams || [],
     shared: (g.share_teams || []).length > 0,
+    parents: (g.parents || []).map(mapGoalRef),
+    children: (g.children || []).map(mapGoalRef),
     updatedAt: g.updated_at,
     updatedDaysAgo: daysAgo(g.updated_at),
+  };
+}
+// Компактная сводка связанной цели (родитель/ребёнок) для лейблов и popover.
+function mapGoalRef(r) {
+  return {
+    id: r.id, title: r.title,
+    periodId: r.period_id, periodName: r.period_name,
+    teamId: r.team_id, teamName: r.team_name, teamType: r.team_type,
+    progress: r.progress || 0,
   };
 }
 
@@ -1669,6 +1680,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
           <PriBadge p={goal.priority} />
           <span className="goal-card__weight">вес {goal.weight}%</span>
           {otherTeams.length > 0 && <Badge label={`⇄ Общая · ${otherTeams.length + 1} команд`} color="#0891b2" />}
+          <GoalLinksPopover dir="up" items={goal.parents} />
+          <GoalLinksPopover dir="down" items={goal.children} />
           <div className="goal-card__spacer" />
           {isStale && <Badge label={`⚠ ${goal.updatedDaysAgo}д без обновлений`} color="#d97706" bg="#fffbeb" />}
           {goal.owners.length > 0 && (
@@ -2022,6 +2035,52 @@ function UserInfo({ userRef, name: nameProp, udid: udidProp, size = 22 }) {
   );
 }
 
+// GoalLinksPopover — лейбл ↑N (родители «Вклад в») / ↓N (дети) с всплывающим списком
+// связанных целей (название, период, команда, прогресс). Клик по строке — deep-link на цель.
+// Паттерн портала/таймера повторяет UserInfo.
+function GoalLinksPopover({ dir, items }) {
+  const [popup, setPopup] = useState(null);
+  const ref = useRef();
+  const timer = useRef();
+  if (!items || items.length === 0) return null;
+  const isUp = dir === 'up';
+  const label = `${isUp ? '↑' : '↓'} ${items.length}`;
+  const title = isUp ? `↑ ВКЛАД В · ${items.length}` : `↓ ${items.length}`;
+  const show = () => {
+    clearTimeout(timer.current);
+    if (!ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - 328));
+    setPopup({ top: r.bottom + 6, left });
+  };
+  const hide = () => { timer.current = setTimeout(() => setPopup(null), 150); };
+  const openGoal = it => {
+    const url = buildTargetURL({ team_id: it.teamId, period_id: it.periodId, goal_id: it.id });
+    if (url) location.assign(url);
+  };
+  const popupEl = popup && ReactDOM.createPortal(
+    <div className="goal-links-popup" style={{ top: popup.top, left: popup.left }}
+      onMouseEnter={() => clearTimeout(timer.current)} onMouseLeave={hide}>
+      <div className="goal-links-popup__head">{title}</div>
+      {items.map(it => (
+        <button key={it.id} type="button" className="goal-links-popup__row" onClick={() => openGoal(it)}>
+          <span className="goal-links-popup__row-title">{it.title}</span>
+          <span className="goal-links-popup__row-meta">{it.periodName} · {it.teamName}</span>
+          <span className="goal-links-popup__row-progress">{it.progress}%</span>
+        </button>
+      ))}
+    </div>,
+    document.body
+  );
+  return (
+    <span ref={ref} className={`goal-link-label goal-link-label--${isUp ? 'up' : 'down'}`}
+      onMouseEnter={show} onMouseLeave={hide}>
+      {label}
+      {popupEl}
+    </span>
+  );
+}
+
 // Builds the multipart payload for goal create/update from the modal form.
 // Shared by the edit path and the create-retry path so both persist the same fields.
 function goalFormData(form, teamId) {
@@ -2067,15 +2126,109 @@ function shareTeamsChanged(form, goal, teamId) {
   return false;
 }
 
-function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals, me, onSave, onClose, accent, allTeams }) {
+// GoalParentPicker — выбор родительской цели: селектор периода (по умолчанию текущий,
+// плюс «Все периоды»), inline-поиск по названию цели/команде/лиду и список кандидатов,
+// сгруппированный по командам (из /api/v1/goals/linkable). Переиспользует PeriodSelect.
+function GoalParentPicker({ excludeGoalId, currentPeriodId, periods, selectedIds, allTeams, onPick, onClose }) {
+  const [periodSel, setPeriodSel] = useState(currentPeriodId);
+  const [q, setQ] = useState('');
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const selected = new Set(selectedIds || []);
+  // Порядок и глубина команд — из той же иерархии, что и в сайдбаре (DFS с depth),
+  // чтобы команды (и цели под ними) шли вложенно. Команды вне текущей иерархии
+  // (напр. при «Все периоды») отображаются после, без отступа.
+  const teamMeta = new Map();
+  flattenTree(allTeams || []).forEach((t, i) => teamMeta.set(t.id, { depth: t.depth, order: i }));
+  // Селектор периода: синтетический пункт «Все периоды» без правки общего компонента.
+  const pickerPeriods = [{ id: 'all', name: 'Все периоды', status: 'active', depth: 0 }, ...(periods || [])];
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    const params = new URLSearchParams();
+    params.set('period_id', periodSel === 'all' ? 'all' : String(periodSel));
+    if (q.trim()) params.set('q', q.trim());
+    if (excludeGoalId) params.set('exclude_goal_id', String(excludeGoalId));
+    apiGet(`/api/v1/goals/linkable?${params.toString()}`)
+      .then(rows => { if (alive) setItems((rows || []).map(mapGoalRef)); })
+      .catch(() => { if (alive) setItems([]); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [periodSel, q, excludeGoalId]);
+
+  // Группировка по команде, затем упорядочивание по оргиерархии (DFS-порядок из allTeams).
+  const byTeam = new Map();
+  items.forEach(it => {
+    let g = byTeam.get(it.teamId);
+    if (!g) { g = { teamId: it.teamId, teamName: it.teamName, teamType: it.teamType, rows: [] }; byTeam.set(it.teamId, g); }
+    g.rows.push(it);
+  });
+  const groups = [...byTeam.values()].sort((a, b) => {
+    const ma = teamMeta.get(a.teamId), mb = teamMeta.get(b.teamId);
+    if (ma && mb) return ma.order - mb.order;   // обе в иерархии → порядок сайдбара
+    if (ma) return -1;                          // известные команды выше
+    if (mb) return 1;
+    return 0;                                   // обе вне иерархии → серверный порядок
+  });
+
+  const overlay = useOverlayClose(onClose);
+  return (
+    <div className="modal-overlay modal-overlay--z400" {...overlay}>
+      <div className="modal-box goal-parent-picker">
+        <div className="modal-header">
+          <div className="goal-parent-picker__title">Выбрать родительскую цель</div>
+          <button onClick={onClose} className="modal-close">×</button>
+        </div>
+        <div className="goal-parent-picker__filters">
+          <PeriodSelect periods={pickerPeriods} periodId={periodSel} onChange={setPeriodSel} variant="light" />
+          <input className="goal-parent-picker__search" placeholder="Поиск по названию или команде…"
+            value={q} onChange={e => setQ(e.target.value)} autoFocus />
+        </div>
+        <div className="goal-parent-picker__list">
+          {loading && <div className="goal-parent-picker__empty">Загрузка…</div>}
+          {!loading && groups.length === 0 && <div className="goal-parent-picker__empty">Ничего не найдено</div>}
+          {!loading && groups.map(g => {
+            const depth = (teamMeta.get(g.teamId) || {}).depth || 0;
+            return (
+              <div key={g.teamId} className="goal-parent-picker__group">
+                <div className="goal-parent-picker__group-head" style={{ paddingLeft: 8 + depth * 18 }}>
+                  <span className="goal-parent-picker__group-dot" style={{ background: TEAM_TYPE_COLOR[g.teamType] || '#6b7280' }} />
+                  {g.teamName}
+                  <span className="goal-parent-picker__group-type">{(TEAM_TYPE_LABEL[g.teamType] || g.teamType || '').toUpperCase()}</span>
+                </div>
+                {g.rows.map(it => {
+                  const isSel = selected.has(it.id);
+                  return (
+                    <button key={it.id} type="button" disabled={isSel}
+                      className={`goal-parent-picker__row${isSel ? ' goal-parent-picker__row--selected' : ''}`}
+                      style={{ paddingLeft: 26 + depth * 18 }}
+                      onClick={() => { onPick(it); onClose(); }}>
+                      <span className="goal-parent-picker__row-title">{it.title}</span>
+                      <span className="goal-parent-picker__row-meta">{it.periodName} · {it.teamName} · {it.progress}%</span>
+                      {isSel && <span className="goal-parent-picker__row-check">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals, me, onSave, onClose, accent, allTeams, periods }) {
   const isEdit = !!goal;
   const usedWeight = (existingGoals || []).filter(g => !isEdit || g.id !== goal?.id).reduce((s, g) => s + g.weight, 0);
   const wasShared = isEdit && (goal.shareTeams || []).filter(t => t.id !== teamId).length > 0;
   const [form, setForm] = useState(goal
-    ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean) }
-    : { title: '', desc: '', priority: 'P1', weight: Math.max(0, Math.min(20, 100 - usedWeight)), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [] });
+    ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean), parents: goal.parents || [] }
+    : { title: '', desc: '', priority: 'P1', weight: Math.max(0, Math.min(20, 100 - usedWeight)), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [], parents: [] });
   const [saving, setSaving] = useState(false);
   const [confirmUnshare, setConfirmUnshare] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Remembers the goal created in this modal session so that, if the optional
   // share step fails after the goal was already created, a retry only re-runs
   // the share instead of creating a duplicate goal.
@@ -2092,6 +2245,25 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   // Turning the "Общая цель" toggle off on an already-shared goal removes the goal from THIS
   // team's list (leaves the share), so it needs explicit confirmation before saving.
   const leavingShare = isEdit && wasShared && !form.shared;
+  // saveLinks commits the parent set (full replace). Maps cycle/access errors to friendly text.
+  // parentsChanged compares the current parent set against the goal's original (as loaded).
+  // The visible set is scope-filtered, so re-saving an unchanged set would be a redundant
+  // full-replace; skipping it also avoids touching links on unrelated edits.
+  const parentsChanged = () => {
+    const a = (goal?.parents || []).map(p => p.id).sort((x, y) => x - y);
+    const b = (form.parents || []).map(p => p.id).sort((x, y) => x - y);
+    return a.length !== b.length || a.some((id, i) => id !== b[i]);
+  };
+  const saveLinks = async goalIdForLinks => {
+    try {
+      await apiPost(`/api/v1/goals/${goalIdForLinks}/links`, { parent_goal_ids: (form.parents || []).map(p => p.id) });
+    } catch (e) {
+      const m = String(e.message || '');
+      if (m.includes('409')) throw new Error('Нельзя создать циклическую связь целей');
+      if (m.includes('400')) throw new Error('Одна из выбранных родительских целей недоступна');
+      throw e;
+    }
+  };
   const performSave = async () => {
     if (!valid || saving) return;
     setSaving(true);
@@ -2105,6 +2277,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
         if (form.shared && (form.shareTeamIds || []).length > 0 && shareTeamsChanged(form, goal, teamId)) {
           await apiPost(`/api/v1/goals/${goal.id}/share`, { targets: goalShareTargets(form, goal, teamId) });
         }
+        if (parentsChanged()) await saveLinks(goal.id);
       } else {
         let newGoalId = createdGoalIdRef.current;
         if (!newGoalId) {
@@ -2125,6 +2298,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
         if (form.shared && (form.shareTeamIds || []).length > 0) {
           await apiPost(`/api/v1/goals/${newGoalId}/share`, { targets: (form.shareTeamIds || []).map(id => ({ team_id: id, weight: 100 })) });
         }
+        if ((form.parents || []).length > 0) await saveLinks(newGoalId);
       }
       onSave();
     } catch (e) { alert('Ошибка: ' + e.message); }
@@ -2233,6 +2407,23 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
               </div>
             )}
           </div>
+          <div className="goal-links-section">
+            <div className="goal-links-section__head">
+              🔗 Связанные цели
+              <InfoHint width={320}>Связь привязывает эту цель к верхнеуровневой (цель руководителя, годовая цель, цель юнита/кластера). Это <b>не</b> делает цель общей — общие цели (⇄) видны нескольким командам, а связь соединяет две <b>разные</b> цели отношением «дочерняя → родительская».</InfoHint>
+            </div>
+            <div className="goal-links-section__hint">К какой верхнеуровневой цели относится эта цель. Можно указать несколько.</div>
+            {(form.parents || []).map(p => (
+              <div key={p.id} className="goal-link-card">
+                <span className="goal-link-card__arrow">↑</span>
+                <span className="goal-link-card__title">{p.title}</span>
+                <span className="goal-link-card__meta">{p.periodName} · {p.teamName} · {p.progress}%</span>
+                <button type="button" className="goal-link-card__remove" title="Убрать связь"
+                  onClick={() => set('parents', (form.parents || []).filter(x => x.id !== p.id))}>✕</button>
+              </div>
+            ))}
+            <button type="button" className="goal-link-add" onClick={() => setPickerOpen(true)}>+ Добавить связь</button>
+          </div>
         </div>
         <div className="modal-footer modal-footer--goal">
           <button onClick={onClose} className="btn btn--secondary" style={{ padding: '10px 20px', fontSize: 14 }}>Отмена</button>
@@ -2242,6 +2433,16 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           </button>
         </div>
       </div>
+      {pickerOpen && (
+        <GoalParentPicker
+          excludeGoalId={goal?.id}
+          currentPeriodId={periodId}
+          periods={periods || []}
+          selectedIds={(form.parents || []).map(p => p.id)}
+          allTeams={allTeams}
+          onPick={g => { if (!(form.parents || []).some(x => x.id === g.id)) set('parents', [...(form.parents || []), g]); }}
+          onClose={() => setPickerOpen(false)} />
+      )}
       {confirmUnshare && (
         <ConfirmModal
           title="Сделать цель не общей?"
@@ -2993,7 +3194,7 @@ function App() {
         existingGoals={goals} me={me}
         onSave={() => { setGoalModal(null); reload(); }}
         onClose={() => setGoalModal(null)}
-        accent={accent} allTeams={hierarchy} />}
+        accent={accent} allTeams={hierarchy} periods={periods} />}
       <HealthCheckInPanel
         data={hciData}
         open={hciOpen}

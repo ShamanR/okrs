@@ -86,6 +86,11 @@ func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
 		return
 	}
+	// Attach scope-filtered parent/child links to each goal (navigation-only). Best-effort:
+	// links are decoration, so a failure here degrades to a board without labels rather than
+	// breaking the whole view (mirrors HandleGoal).
+	allowed, _ := auth.AllowedTeamIDsFromCtx(r.Context())
+	_ = h.service.AttachGoalLinks(r.Context(), scope, okr.Goals, allowed, allowed == nil)
 	udids := collectOKRUserUDIDs(okr)
 	users, _ := h.service.GetUsersByUDIDs(r.Context(), udids)
 	v1.WriteJSON(w, http.StatusOK, newTeamOKRResponse(okr, v1.BuildUserRefMap(users)))

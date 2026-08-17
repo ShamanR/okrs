@@ -187,10 +187,24 @@ func MapGoalDetails(detail service.GoalDetails, period domain.Period, userRefs m
 		ProgressMeta: BuildProgressBarInfo(goal.Progress, period),
 		KeyResults:   krList,
 		ShareTeams:   shareTeams,
+		Parents:      MapGoalRefs(goal.Parents),
+		Children:     MapGoalRefs(goal.Children),
 		Comments:     comments,
 		CreatedAt:    goal.CreatedAt,
 		UpdatedAt:    goal.UpdatedAt,
 	}
+}
+
+// MapGoalRefs converts domain goal-link summaries to their DTO shape.
+func MapGoalRefs(refs []domain.GoalRef) []dto.GoalRef {
+	out := make([]dto.GoalRef, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, dto.GoalRef{
+			ID: r.ID, Title: r.Title, PeriodID: r.PeriodID, PeriodName: r.PeriodName,
+			TeamID: r.TeamID, TeamName: r.TeamName, TeamType: r.TeamType, Progress: r.Progress,
+		})
+	}
+	return out
 }
 
 func MapGoalComment(c domain.GoalComment) dto.GoalComment {
