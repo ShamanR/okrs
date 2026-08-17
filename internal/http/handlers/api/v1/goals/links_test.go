@@ -148,6 +148,16 @@ func TestLinkableGoals_Contract(t *testing.T) {
 	self := newGoal("self")
 	other := newGoal("Снизить Time-to-Deploy")
 
+	// Give `other` a fully-done KR so the picker must report 100% progress (the store query
+	// returns navigation fields only; the service fills progress from KRs).
+	var boolKR int64
+	if err := pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order, tenant_id) VALUES ($1,'bool',100,'BOOLEAN',1,$2) RETURNING id`, other, scope.TenantID).Scan(&boolKR); err != nil {
+		t.Fatalf("kr: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO kr_boolean_meta (key_result_id, is_done) VALUES ($1, true)`, boolKR); err != nil {
+		t.Fatalf("kr meta: %v", err)
+	}
+
 	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
 	admin := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
 	defer admin.Close()
@@ -164,6 +174,7 @@ func TestLinkableGoals_Contract(t *testing.T) {
 		ID       int64  `json:"id"`
 		Title    string `json:"title"`
 		TeamName string `json:"team_name"`
+		Progress int    `json:"progress"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
 		t.Fatalf("decode linkable: %v", err)
@@ -173,5 +184,8 @@ func TestLinkableGoals_Contract(t *testing.T) {
 	}
 	if items[0].TeamName != "Платформа" {
 		t.Fatalf("linkable team = %q, want Платформа", items[0].TeamName)
+	}
+	if items[0].Progress != 100 {
+		t.Fatalf("linkable progress = %d, want 100", items[0].Progress)
 	}
 }
