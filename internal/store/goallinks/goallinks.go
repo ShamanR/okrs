@@ -22,7 +22,17 @@ var ErrCycle = errors.New("goallinks: cycle")
 // linkMutationLockClass namespaces the per-tenant advisory lock that serializes goal-link
 // mutations (see ReplaceParents). The two-int advisory-lock space is disjoint from the
 // single-bigint space used elsewhere (progress snapshots), so keys never collide.
-const linkMutationLockClass = 0x474c4e4b // 'GLNK'
+const linkMutationLockClass int32 = 0x474c4e4b // 'GLNK'
+
+// tenantLockKey folds a bigint tenant id into the int32 objid taken by the two-int
+// pg_advisory_xact_lock. A direct ::int cast would raise "integer out of range" for tenant
+// ids beyond int32 (tenant_id is BIGINT); XOR-folding the high and low halves is total over
+// the full bigint range. Distinct tenants collide only at ~1/2^32 — harmless, since a shared
+// key only adds occasional cross-tenant serialization, never a wrong result.
+func tenantLockKey(tenantID int64) int32 {
+	u := uint64(tenantID)
+	return int32(uint32(u) ^ uint32(u>>32))
+}
 
 // GoalLinkRepository persists goal_links rows.
 type GoalLinkRepository struct {
@@ -65,8 +75,9 @@ func (r *GoalLinkRepository) ReplaceParents(ctx context.Context, scope domain.Te
 	// pre-write graph, both pass, then insert distinct rows and both commit — closing a cycle.
 	// A transaction-scoped advisory lock keyed by tenant makes check-then-insert atomic per
 	// tenant; it releases automatically on commit/rollback. Link mutations are rare (a user
-	// editing a goal's parents), so per-tenant serialization is cheap.
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1::int, $2::int)`, linkMutationLockClass, scope.TenantID); err != nil {
+	// editing a goal's parents), so per-tenant serialization is cheap. Both args are int4
+	// (linkMutationLockClass and the folded key), selecting the two-int lock overload.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, linkMutationLockClass, tenantLockKey(scope.TenantID)); err != nil {
 		return nil, nil, err
 	}
 
