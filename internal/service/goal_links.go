@@ -111,6 +111,23 @@ func (s *Service) AttachGoalLinks(ctx context.Context, scope domain.TenantScope,
 	return nil
 }
 
+// goalProgressByIDs batch-loads the given goals once (no N+1) and computes each one's progress
+// from its KRs via the shared formula (goals has no stored progress column).
+func (s *Service) goalProgressByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) (map[int64]int, error) {
+	if len(ids) == 0 {
+		return map[int64]int{}, nil
+	}
+	linked, err := s.goals.ListGoalsByIDs(ctx, scope, ids)
+	if err != nil {
+		return nil, err
+	}
+	progressByID := make(map[int64]int, len(linked))
+	for i := range linked {
+		progressByID[linked[i].ID] = CalculateGoalProgress(&linked[i])
+	}
+	return progressByID, nil
+}
+
 // fillGoalRefProgress computes Progress for every distinct linked goal referenced in the maps,
 // batch-loading their KRs once (no N+1) and applying the shared progress formula.
 func (s *Service) fillGoalRefProgress(ctx context.Context, scope domain.TenantScope, refMaps ...map[int64][]domain.GoalRef) error {
@@ -129,13 +146,9 @@ func (s *Service) fillGoalRefProgress(ctx context.Context, scope domain.TenantSc
 	for id := range idSet {
 		ids = append(ids, id)
 	}
-	linked, err := s.goals.ListGoalsByIDs(ctx, scope, ids)
+	progressByID, err := s.goalProgressByIDs(ctx, scope, ids)
 	if err != nil {
 		return err
-	}
-	progressByID := make(map[int64]int, len(linked))
-	for i := range linked {
-		progressByID[linked[i].ID] = CalculateGoalProgress(&linked[i])
 	}
 	for _, m := range refMaps {
 		for key := range m {
@@ -147,9 +160,29 @@ func (s *Service) fillGoalRefProgress(ctx context.Context, scope domain.TenantSc
 	return nil
 }
 
-// ListLinkableGoals returns candidate goals for the parent picker.
+// ListLinkableGoals returns candidate goals for the parent picker, each with its Progress
+// computed from KRs (the store query returns navigation fields only; progress is filled here,
+// batch-loaded, so the picker shows real percentages instead of 0%).
 func (s *Service) ListLinkableGoals(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, periodID *int64, excludeGoalID int64, q string) ([]goallinks.LinkableGoal, error) {
-	return s.goalLinks.ListLinkable(ctx, scope, allowedTeamIDs, adminAll, periodID, excludeGoalID, q)
+	items, err := s.goalLinks.ListLinkable(ctx, scope, allowedTeamIDs, adminAll, periodID, excludeGoalID, q)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return items, nil
+	}
+	ids := make([]int64, len(items))
+	for i := range items {
+		ids[i] = items[i].ID
+	}
+	progressByID, err := s.goalProgressByIDs(ctx, scope, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].Progress = progressByID[items[i].ID]
+	}
+	return items, nil
 }
 
 func containsID(ids []int64, id int64) bool {
