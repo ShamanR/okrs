@@ -381,6 +381,23 @@ join-request).
 - **проверяется ли на сервере** — да: доступ ограничен активным тенантом (`TenantScopeFromContext`) и grant-scope (`AllowedTeamIDsFromCtx`/`CanAccessTeamFromCtx`). Для `scope=tree` вывод и счётчики строятся по пересечению поддерева со scope — недоступные ветки исключаются; для `scope=goal` цель должна быть на доске команды-контекста (владелец или расшарена в неё). Endpoint read-only, без side effects, CSRF не требуется (GET);
 - **зависит ли от будущих permissions / roles** — нет; опирается только на текущую модель tenant + hierarchy grants.
 
+### Дерево целей (read-only)
+
+`GET /api/v1/goal-tree` — не mutation-фича (агрегатный источник данных для раздела
+`/goal-tree`, см. `060-goal-tree.md` и `040-api-contract.md`), но проходит те же вопросы:
+
+- **зависит ли от `team period status`** — нет; граф строится по целям и связям независимо от
+  статуса команды в периоде;
+- **разрешён ли в `validated`** — да;
+- **разрешён ли в `closed`** — да;
+- **проверяется ли на сервере** — да: выборка ограничена активным тенантом
+  (`TenantScopeFromContext`) и hierarchy scope (`AllowedTeamIDsFromCtx`); цели недоступных команд
+  и связи на них исключаются из ответа (скрытая связь = «связи нет»); флаг `led_by_me` считает
+  сервер по UDID вызывающего. Endpoint read-only, без side effects, CSRF не требуется (GET);
+- **зависит ли от будущих permissions / roles** — нет; доступен любому аутентифицированному
+  участнику, ограничение — только hierarchy grants, не роль; опирается на текущую модель
+  tenant + hierarchy grants.
+
 ## Team deletion lifecycle
 
 Для оргструктуры сервер теперь обязан применять отдельные lifecycle/visibility правила:

@@ -17,6 +17,7 @@ import (
 	apiadmin "okrs/internal/http/handlers/api/v1/admin"
 	apiconfig "okrs/internal/http/handlers/api/v1/config"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
+	apigoaltree "okrs/internal/http/handlers/api/v1/goaltree"
 	apihealthcheckin "okrs/internal/http/handlers/api/v1/healthcheckin"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
@@ -50,21 +51,21 @@ func parseTemplates() (*template.Template, error) {
 }
 
 type Server struct {
-	store       *store.Store
-	logger      *slog.Logger
-	tmpl        *template.Template
-	zone        *time.Location
-	service     *service.Service
-	auth        *auth.Manager
-	policy      *auth.PolicyEvaluator
-	grantsCache *grants.GrantsCache
-	hcCache     *service.HealthCheckInCache
-	tenantResolver *auth.TenantResolver
-	tenantCache     *tenants.TenantCache
-	membershipCache *memberships.MembershipCache
-	settingsSvc     *service.SettingsService
-	provisioning    *service.ProvisioningService
-	onboarding      *service.OnboardingService
+	store            *store.Store
+	logger           *slog.Logger
+	tmpl             *template.Template
+	zone             *time.Location
+	service          *service.Service
+	auth             *auth.Manager
+	policy           *auth.PolicyEvaluator
+	grantsCache      *grants.GrantsCache
+	hcCache          *service.HealthCheckInCache
+	tenantResolver   *auth.TenantResolver
+	tenantCache      *tenants.TenantCache
+	membershipCache  *memberships.MembershipCache
+	settingsSvc      *service.SettingsService
+	provisioning     *service.ProvisioningService
+	onboarding       *service.OnboardingService
 	entitlements     entitlements.Entitlements
 	noMembershipName string
 	assetsDev        bool
@@ -207,21 +208,21 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	}
 
 	return &Server{
-		store:       st,
-		logger:      logger,
-		tmpl:        tmpl,
-		zone:        zone,
-		service:     service.NewFromStore(st, grantsCache, hcCache, logger),
-		auth:        authMgr,
-		policy:      auth.NewPolicyEvaluator(grantsCache, logger),
-		grantsCache: grantsCache,
-		hcCache:     hcCache,
-		tenantResolver:  resolver,
-		tenantCache:     tenantCache,
-		membershipCache: membershipCache,
-		settingsSvc:     settingsSvc,
-		provisioning:    provisioning,
-		onboarding:      onboardingSvc,
+		store:            st,
+		logger:           logger,
+		tmpl:             tmpl,
+		zone:             zone,
+		service:          service.NewFromStore(st, grantsCache, hcCache, logger),
+		auth:             authMgr,
+		policy:           auth.NewPolicyEvaluator(grantsCache, logger),
+		grantsCache:      grantsCache,
+		hcCache:          hcCache,
+		tenantResolver:   resolver,
+		tenantCache:      tenantCache,
+		membershipCache:  membershipCache,
+		settingsSvc:      settingsSvc,
+		provisioning:     provisioning,
+		onboarding:       onboardingSvc,
 		entitlements:     ent,
 		noMembershipName: noMembership,
 		assetsDev:        opts.AssetsDev,
@@ -517,14 +518,12 @@ func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 		_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
 	})
 
-	// Страницы-заглушки разделов навигации (гамбургер-меню). Доступны любому
-	// авторизованному пользователю, как /settings.
-	stubShell := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "stub-shell", s.shellData())
-	}
+	// Дерево целей — доступно любому аутентифицированному участнику, как /settings.
 	// /activity-log — под tenant-admin гейтом, регистрируется в registerAdminRoutes.
-	r.Get("/goal-tree", stubShell)
+	r.Get("/goal-tree", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_ = s.tmpl.ExecuteTemplate(w, "goal-tree-shell", s.shellData())
+	})
 
 	// Legacy redirect for bookmarks — the tracker now lives at the root.
 	r.Get("/teamOkrs", func(w http.ResponseWriter, r *http.Request) {
@@ -685,6 +684,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	apiperiods.RegisterRoutes(r, apiperiods.New(s.service))
 	apiteams.RegisterRoutes(r, apiteams.New(s.service))
 	apigoals.RegisterRoutes(r, apigoals.New(s.service))
+	apigoaltree.RegisterRoutes(r, apigoaltree.New(s.service))
 	apikrs.RegisterRoutes(r, apikrs.New(s.service))
 
 	r.Get("/api/v1/config", apiconfig.New(s.settingsSvc).HandleConfig)

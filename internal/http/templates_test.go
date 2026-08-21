@@ -41,7 +41,7 @@ func TestPeriodOverviewShellRenders(t *testing.T) {
 // TestShellSharedPartials verifies every SPA shell pulls in the shared head partial
 // (tokens + shell stylesheets) and the shared vendor block, so the DRY extraction stays wired.
 func TestShellSharedPartials(t *testing.T) {
-	shells := []string{"tracker-shell", "settings-shell", "admin-shell", "system-shell", "stub-shell", "activity-shell", "period-overview-shell"}
+	shells := []string{"tracker-shell", "settings-shell", "admin-shell", "system-shell", "stub-shell", "activity-shell", "period-overview-shell", "goal-tree-shell"}
 	for _, name := range shells {
 		out := renderShell(t, name, shellData{})
 		for _, want := range []string{`/static/tokens.css`, `/static/shell.css`, `/static/vendor/babel.min.js`, `class="loading-screen"`} {
