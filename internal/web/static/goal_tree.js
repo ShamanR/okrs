@@ -679,9 +679,8 @@ function GoalTreeApp() {
         const items = (periodsResp && periodsResp.items) || [];
         setPeriods(items);
         if (items.length) {
-          const stored = readJSON(GT_KEYS.period, null);
-          const valid = stored != null && items.some(p => p.id === stored);
-          setPeriodId(valid ? stored : items[0].id);
+          // Приоритет: ?period в URL → сохранённый локально → первый доступный (см. period_url.js).
+          setPeriodId(pickPeriodFromURL(items, readJSON(GT_KEYS.period, null), items[0].id));
         }
         setPeriodsLoaded(true);
       })
@@ -708,7 +707,12 @@ function GoalTreeApp() {
     setCollapsed(new Set());
   }, [data, periodId]);
 
-  // Сохранять выбранный период между перезагрузками.
+  // Период — в URL (?period=<id>, общий контракт из period_url.js): ссылка на дерево
+  // открывается в том же периоде, Back/Forward возвращает предыдущий выбор.
+  // localStorage остаётся fallback'ом для захода без параметра.
+  usePeriodURLSync(periodId, periodId != null, useCallback(v => {
+    if (typeof v === 'number') setPeriodId(v);
+  }, []));
   useEffect(() => { if (periodId != null) writeJSON(GT_KEYS.period, periodId); }, [periodId]);
 
   const onSelect = useCallback(id => setSel(prev => (prev === id ? null : id)), []);
@@ -775,7 +779,7 @@ function GoalTreeApp() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar user={me} active="goal-tree" beforeSections={periods.length > 0 ? (
+      <Sidebar user={me} active="goal-tree" linkParams={periodLinkParams(periodId)} beforeSections={periods.length > 0 ? (
         <div className="gt-sidebar-period">
           <div className="gt-controls__label">Период</div>
           <GtPeriodSelect periods={periods} value={periodId} onChange={setPeriodId} />

@@ -125,8 +125,9 @@ const SIDEBAR_SECTIONS = [
   { id: 'period-overview', label: 'Обзор периода', href: '/period-overview', icon: '📊' },
   { id: 'activity-log', label: 'Лог активностей', href: '/activity-log', icon: '🕑', adminOnly: true },
 ];
-// linkParams optionally appends a query string per section id (e.g. carrying the current
-// period from the tracker to the activity log so it opens for the same period).
+// linkParams optionally appends a query string per section id — страницы с выбором периода
+// передают сюда periodLinkParams(period) из period_url.js, чтобы переход между разделами
+// («Цели» → «Дерево целей» → «Обзор периода» → «Лог активностей») сохранял выбранный период.
 // isAdmin скрывает admin-only разделы у обычных пользователей.
 function SidebarSections({ active, linkParams, isAdmin }) {
   return (
