@@ -429,13 +429,10 @@ function App() {
   const [favOnly, setFavOnly] = useState(false);
   const [q, setQ] = useState('');
 
-  // #5: arriving from the tracker with ?period=<id> opens the log for that period (read once).
-  const urlPeriodRef = useRef(null);
-  if (urlPeriodRef.current === null) {
-    const raw = new URLSearchParams(location.search).get('period');
-    const n = raw ? Number(raw) : 0;
-    urlPeriodRef.current = Number.isFinite(n) ? n : 0;
-  }
+  // #5: период берётся из URL (?period=<id> | ?period=all) — общий контракт period_url.js.
+  // Читается один раз при загрузке; дальше выбор синхронизируется в обе стороны (см. ниже).
+  const urlPeriodRef = useRef(undefined);
+  if (urlPeriodRef.current === undefined) urlPeriodRef.current = readPeriodURL();
 
   useEffect(() => {
     Promise.all([apiGet('/api/v1/me'), apiGet('/api/v1/periods')]).then(([meData, per]) => {
@@ -457,11 +454,17 @@ function App() {
     if (typeof f.range === 'string') setRange(f.range);
     if (typeof f.q === 'string') setQ(f.q);
     if (f.selId != null) setSelId(f.selId);
-    if (urlPeriodRef.current) setPeriodId(urlPeriodRef.current);
+    // URL важнее сохранённого фильтра; 'all' в URL — явные «Все периоды» (periodId = null).
+    if (urlPeriodRef.current !== null) setPeriodId(urlPeriodRef.current === PERIOD_URL_ALL ? null : urlPeriodRef.current);
     else if (f.periodId != null) setPeriodId(f.periodId);
     setFavorites(readFavorites(me.id));
     setRestored(true);
   }, [me, restored]);
+
+  // Период — в URL (?period=<id>|all): лог можно переслать ссылкой, Back/Forward
+  // возвращает предыдущий выбор. Остальные фильтры остаются в localStorage.
+  usePeriodURLSync(periodId == null ? PERIOD_URL_ALL : periodId, restored,
+    v => { if (v !== null) setPeriodId(v === PERIOD_URL_ALL ? null : v); });
 
   // #3: persist filters on change.
   useEffect(() => {
@@ -505,6 +508,7 @@ function App() {
   return (
     <div className="app">
       <Sidebar user={me} active="activity-log"
+        linkParams={periodLinkParams(periodId == null ? PERIOD_URL_ALL : periodId)}
         beforeSections={
           <div className="sidebar__period">
             <div className="sidebar__period-label">Период</div>

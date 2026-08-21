@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -69,5 +70,36 @@ func TestShellReactBuildSwitch(t *testing.T) {
 	}
 	if strings.Contains(dev, "react.production.min.js") {
 		t.Error("dev shell must not load the production React build")
+	}
+}
+
+// TestPeriodSelectionShellsLoadPeriodURL verifies every page with a period selector wires
+// the shared period-in-URL contract (period_url.js) before its own app script, so
+// readPeriodURL/usePeriodURLSync/periodLinkParams are defined when the app runs.
+func TestPeriodSelectionShellsLoadPeriodURL(t *testing.T) {
+	const shared = `/static/period_url.js`
+	if _, err := os.Stat("../web/static/period_url.js"); err != nil {
+		t.Fatalf("shared period_url.js missing: %v", err)
+	}
+	shells := map[string]string{
+		"tracker-shell":         `/static/tracker.js`,
+		"goal-tree-shell":       `/static/goal_tree.js`,
+		"period-overview-shell": `/static/period-overview.js`,
+		"activity-shell":        `/static/activity.js`,
+	}
+	for name, app := range shells {
+		out := renderShell(t, name, shellData{})
+		i, j := strings.Index(out, shared), strings.Index(out, app)
+		if i < 0 {
+			t.Errorf("%s does not load %s", name, shared)
+			continue
+		}
+		if j < 0 {
+			t.Errorf("%s does not load %s", name, app)
+			continue
+		}
+		if i > j {
+			t.Errorf("%s loads %s after %s", name, shared, app)
+		}
 	}
 }

@@ -42,9 +42,14 @@ function App() {
       if (cfg) setIsAdmin(!!cfg.is_admin);
       const items = (per && per.items) || [];
       setPeriods(items);
-      setPeriodId(pickDefaultPeriodId(items));
+      // Приоритет: ?period в URL → текущий активный период (см. period_url.js).
+      setPeriodId(pickPeriodFromURL(items, pickDefaultPeriodId(items)));
     }).catch(() => setErr(true));
   }, []);
+
+  // Период — в URL (?period=<id>, общий контракт из period_url.js): обзор можно
+  // переслать ссылкой, Back/Forward возвращает предыдущий выбор.
+  usePeriodURLSync(periodId, periodId != null, v => { if (typeof v === 'number') setPeriodId(v); });
 
   // Текущий выбранный период в ref — чтобы игнорировать ответы (overview и bulk),
   // относящиеся к уже смещённому выбору (гонка при переключении периода).
@@ -78,6 +83,7 @@ function App() {
       <Sidebar
         user={me}
         active="period-overview"
+        linkParams={periodLinkParams(periodId)}
         beforeSections={
           <div className="sidebar__period">
             <div className="sidebar__period-label">Период</div>

@@ -34,14 +34,11 @@ function writeLastNav(teamId, periodId) {
   const exp = new Date(Date.now() + 30 * 864e5).toUTCString();
   document.cookie = 'okr_last=' + val + ';path=/;expires=' + exp;
 }
+// team+period пишутся общим writeNavURL (period_url.js) в режиме reset: остальные
+// параметры (deep-link ?goal/?kr/?comment) валидны только при открытии страницы и
+// после первой навигации выбрасываются.
 function updateURL(teamId, periodId, replace = false) {
-  const p = new URLSearchParams();
-  if (teamId) p.set('team', teamId);
-  if (periodId) p.set('period', periodId);
-  const qs = p.toString();
-  const url = location.pathname + (qs ? '?' + qs : '');
-  if (replace) history.replaceState(null, '', url);
-  else history.pushState(null, '', url);
+  writeNavURL({ team: teamId || null, period: periodId || null }, { replace, reset: true });
 }
 
 // ── SIDEBAR TREE EXPANSION PERSISTENCE ────────────────────────────────────────
@@ -3085,7 +3082,7 @@ function App() {
       <Sidebar
         user={me}
         active="tracker"
-        linkParams={{ 'activity-log': periodId ? `?period=${periodId}` : '' }}
+        linkParams={periodLinkParams(periodId)}
         bell={hciData && hciData.has_scope
           ? <SidebarBell count={hciData.total_problems + hciUnseenResolved(hciData, me?.id)} onClick={() => setHciOpen(true)} />
           : null}
