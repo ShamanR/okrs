@@ -726,6 +726,22 @@ function GoalTreeApp() {
     return filterByPeriod(data, periodId, periods, crossPeriod);
   }, [data, periodId, periods, crossPeriod]);
 
+  // Данные для селектора корней: после фильтра периода + «Мои цели»/«Скрыть без связи», но ДО
+  // root-фильтра — чтобы пикер предлагал только реально доступные корни (иначе выбор корня из
+  // чужого периода/скрытой ветки пересечётся с текущим набором и даст пустой экран).
+  const pickerData = useMemo(() => {
+    if (!periodData) return null;
+    return filterTreeData(periodData, { hideUnlinked, myGoals, onlyRoots: false }, null);
+  }, [periodData, hideUnlinked, myGoals]);
+
+  // Если выбранный корень выпал из доступного набора (сменили период/«Мои цели») — сбросить,
+  // иначе root-фильтр пересечётся с пустым множеством и граф станет пустым.
+  useEffect(() => {
+    if (selectedRootId != null && pickerData && !pickerData.goals.some(g => g.id === selectedRootId)) {
+      setSelectedRootId(null);
+    }
+  }, [pickerData, selectedRootId]);
+
   // Фильтры 2–5 (без свёрнутых поддеревьев — см. spec §«Порядок применения фильтров»).
   const preCollapseData = useMemo(() => {
     if (!periodData) return null;
@@ -778,10 +794,10 @@ function GoalTreeApp() {
             <input type="checkbox" checked={myGoals} onChange={e => setMyGoals(e.target.checked)} />
             Мои цели
           </label>
-          {data && (
+          {pickerData && (
             <div className="gt-controls__root">
               <div className="gt-controls__label">Корневая цель</div>
-              <RootPicker data={data} value={selectedRootId} onChange={setSelectedRootId} />
+              <RootPicker data={pickerData} value={selectedRootId} onChange={setSelectedRootId} />
             </div>
           )}
         </div>
