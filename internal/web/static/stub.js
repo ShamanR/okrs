@@ -1,8 +1,7 @@
-// Страницы-заглушки «в разработке» (/activity-log, /goal-tree).
+// Страницы-заглушки «в разработке» (/activity-log).
 // Рендерят тот же общий Sidebar из sidebar.js + плейсхолдер контента.
 const STUB_SECTIONS = {
   '/activity-log': { id: 'activity-log', title: 'Лог активностей', icon: '🕑' },
-  '/goal-tree':    { id: 'goal-tree',    title: 'Дерево целей',    icon: '🕸' },
 };
 
 function StubApp() {

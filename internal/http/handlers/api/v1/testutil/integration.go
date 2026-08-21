@@ -15,6 +15,7 @@ import (
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiactivity "okrs/internal/http/handlers/api/v1/activity"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
+	apigoaltree "okrs/internal/http/handlers/api/v1/goaltree"
 	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
@@ -53,10 +54,25 @@ func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.
 	apiperiods.RegisterRoutes(router, periodsHandler)
 	apiteams.RegisterRoutes(router, teamsHandler)
 	apigoals.RegisterRoutes(router, goalsHandler)
+	apigoaltree.RegisterRoutes(router, apigoaltree.New(svc))
 	apikrs.RegisterRoutes(router, krsHandler)
 	apiactivity.RegisterRoutes(router, apiactivity.New(svc))
 	v1.RegisterMethodNotAllowed(router)
 	return router
+}
+
+// NewAPIV1RouterWithUser — как NewAPIV1RouterWithScope, но дополнительно кладёт пользователя в
+// контекст (для эндпоинтов, зависящих от UDID вызывающего, напр. led_by_me в goal-tree).
+func NewAPIV1RouterWithUser(svc *service.Service, allowedTeamIDs []int64, user *domain.User) *chi.Mux {
+	router := NewAPIV1RouterWithScope(svc, allowedTeamIDs)
+	wrapped := chi.NewRouter()
+	wrapped.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(auth.WithUser(r.Context(), user)))
+		})
+	})
+	wrapped.Mount("/", router)
+	return wrapped
 }
 
 func RunMigrations(databaseURL string) error {

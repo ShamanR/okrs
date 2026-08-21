@@ -314,6 +314,7 @@ UI плоскости — React-панель `/system` (тенанты / уча�
 - `GET /api/v1/teams/{teamID}/export`
 - `GET /api/v1/goals/{goalID}`
 - `GET /api/v1/goals/linkable`
+- `GET /api/v1/goal-tree`
 - `GET /api/v1/activity`
 - `GET /api/v1/activity/tree-counts`
 - `GET /api/v1/activity/category-counts`
@@ -645,6 +646,60 @@ Body: `{ "targets": [{ "team_id": <int64>, "weight": <0..100> }, ...] }`.
 (`{ id, title, period_id, period_name, team_id, team_name, team_type, progress }`),
 **отфильтрованными по scope читателя** (связь на недоступную команду скрыта). Счётчик лейбла =
 длина массива; данные грузятся батчем (без N+1), прогресс связанной цели вычисляется по её KR.
+
+### Дерево целей (goal tree)
+
+Агрегатный read-only источник данных для раздела «Дерево целей» (`/goal-tree`, см.
+`060-goal-tree.md`). Возвращает **весь граф целей и связей в scope одним запросом** (без N+1),
+чтобы клиент построил layered-граф без множества per-team вызовов.
+
+#### `GET /api/v1/goal-tree`
+
+- **method + path:** `GET /api/v1/goal-tree`
+- **request (query):**
+  - `period_id` (int64, опц.) — текущий выбранный период; при `cross_period=0` ограничивает
+    выборку этим периодом;
+  - `cross_period` (`0`|`1`, опц., по умолчанию `0`):
+    - `0` — только цели периода `period_id`;
+    - `1` — цели **всех непархивированных периодов** тенанта (архивные не включаются, как в
+      `GET /api/v1/periods`); `period_id` в этом режиме не ограничивает выборку.
+- **validation:** `period_id` не int64 → `400 VALIDATION_ERROR`; при `cross_period=0` без
+  валидного `period_id` — пустой набор целей (не ошибка).
+- **success (200):**
+
+  ```json
+  {
+    "periods": [
+      { "id": 1, "name": "2026", "depth": 0, "status": "active" }
+    ],
+    "teams": [
+      { "id": 10, "name": "Platform", "type": "unit", "type_label": "Юнит",
+        "parent_id": 3, "led_by_me": true }
+    ],
+    "goals": [
+      { "id": 100, "title": "…", "team_id": 10, "period_id": 1,
+        "progress": 42, "priority": "P1", "weight": 30,
+        "work_type": "DELIVERY", "focus_type": "PROFITABILITY", "owner_text": "…",
+        "parent_goal_ids": [80], "child_goal_ids": [120, 121] }
+    ]
+  }
+  ```
+
+  - `periods[].depth` — гранулярность (бэнд/слой): 0 — годовой, 1 — квартальный, глубже — свои;
+  - `teams[].led_by_me` — вычисляется сервером сравнением `teams.lead_udid` с UDID вызывающего
+    (для контрола «Мои цели»); это единственное поле, отражающее лидерство команды — сырой
+    `lead_udid` (и резолвнутый `lead`) на провод не выносится (PII руководителя не утекает,
+    в т.ч. для команд-предков, к целям которых у вызывающего нет доступа);
+  - `goals[].parent_goal_ids` / `child_goal_ids` — рёбра связей, **отфильтрованные по scope
+    читателя**: id-ссылки только на цели доступных команд (связь на недоступную команду скрыта);
+  - в набор `goals` попадают только цели **доступных** команд тенанта (админ — все); `teams`
+    содержит команды, встречающиеся среди целей и их видимых связей, плюс их предков (для
+    древовидного отступа в выпадающем списке корней);
+  - `progress` цели вычисляется на чтении по её KR (у целей нет хранимого столбца прогресса).
+- **idempotency:** read-only, без side effects, CSRF не требуется (GET).
+- **side effects:** нет.
+- **доступ:** любой аутентифицированный участник тенанта; ограничение — только hierarchy
+  scope (`AllowedTeamIDsFromCtx`), не роль. Всё tenant-scoped.
 
 ### Admin team endpoints
 

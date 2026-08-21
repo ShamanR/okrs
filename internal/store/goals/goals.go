@@ -818,6 +818,46 @@ func (r *GoalRepository) ListGoalsByIDs(ctx context.Context, scope domain.Tenant
 	return goals, nil
 }
 
+// ListGoalsForPeriods returns owner goals of the tenant for the given periods, filtered to
+// teams the caller can access (adminAll=true → all teams), with key results loaded so callers
+// can compute progress. Owner rows only (one per goal), unlike the board loader which duplicates
+// shared goals. Empty periodIDs → empty slice.
+func (r *GoalRepository) ListGoalsForPeriods(ctx context.Context, scope domain.TenantScope, periodIDs []int64, allowedTeamIDs []int64, adminAll bool) ([]domain.Goal, error) {
+	if len(periodIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, created_at, updated_at
+		FROM goals
+		WHERE tenant_id = $1
+		  AND period_id = ANY($2)
+		  AND ($3 OR team_id = ANY($4))`,
+		scope.TenantID, periodIDs, adminAll, allowedTeamIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.Goal, 0)
+	for rows.Next() {
+		var g domain.Goal
+		if err := rows.Scan(&g.ID, &g.TeamID, &g.PeriodID, &g.Title, &g.Description, &g.Priority, &g.Weight, &g.WorkType, &g.FocusType, &g.OwnerText, &g.OwnerUDIDs, &g.CreatedAt, &g.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	goalIDs := make([]int64, len(out))
+	for i := range out {
+		goalIDs[i] = out[i].ID
+	}
+	if err := r.loadKRsForGoals(ctx, scope, out, goalIDs); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (r *GoalRepository) DeleteGoal(ctx context.Context, scope domain.TenantScope, id int64) error {
 	_, err := r.db.Exec(ctx, `DELETE FROM goals WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
 	return err
