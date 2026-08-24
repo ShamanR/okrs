@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 type Format string

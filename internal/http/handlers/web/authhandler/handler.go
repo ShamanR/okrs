@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -28,10 +28,10 @@ type sessionWriter interface {
 }
 
 type Handler struct {
-	mgr     *auth.Manager
-	tmpl    *template.Template
-	logger  *slog.Logger
-	onboard Onboarder
+	mgr      *auth.Manager
+	tmpl     *template.Template
+	logger   *slog.Logger
+	onboard  Onboarder
 	sessions sessionWriter
 }
 

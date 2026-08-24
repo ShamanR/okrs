@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"embed"
 	"encoding/json"
 	"html/template"
 	"log/slog"
@@ -10,8 +9,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
-	"okrs/internal/entitlements"
+	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiactivity "okrs/internal/http/handlers/api/v1/activity"
 	apiadmin "okrs/internal/http/handlers/api/v1/admin"
@@ -31,7 +29,8 @@ import (
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/http/handlers/web/goals"
 	"okrs/internal/http/middleware"
-	"okrs/internal/onboarding"
+	"okrs/internal/platform/entitlements"
+	"okrs/internal/platform/nomembership"
 	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
@@ -39,15 +38,13 @@ import (
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
 	"okrs/internal/store/tenantsettings"
+	"okrs/web"
 
 	"github.com/go-chi/chi/v5"
 )
 
-//go:embed templates/*.html
-var templatesFS embed.FS
-
 func parseTemplates() (*template.Template, error) {
-	return template.New("").ParseFS(templatesFS, "templates/*.html")
+	return template.New("").ParseFS(web.TemplatesFS, "templates/*.html")
 }
 
 type Server struct {
@@ -98,7 +95,7 @@ type Options struct {
 	MembershipCache *memberships.MembershipCache
 	// Entitlements, if nil, defaults to entitlements.UnlimitedEntitlements{}.
 	Entitlements entitlements.Entitlements
-	// NoMembershipName selects the registered onboarding.NoMembershipHandler; "" → "stub".
+	// NoMembershipName selects the registered nomembership.NoMembershipHandler; "" → "stub".
 	NoMembershipName string
 	// AssetsDev serves the development (unminified) vendored React build instead of the
 	// production one; false (the OSS default) ships production React. Driven by WEB_ASSETS_DEV.
@@ -235,7 +232,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 func (s *Server) Routes() http.Handler {
 	// OSS no-membership page (pluggable seam): the box ships the "stub" page; a SaaS build
 	// registers its own and selects it via Options.NoMembershipName.
-	onboarding.Register("stub", onboarding.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
+	nomembership.Register("stub", nomembership.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
 		// Inject the customizable (markdown) no-access message; the page renders it client-side.
 		var msg string
 		if raw, _ := s.settingsSvc.SystemGet(r.Context(), "no_access_message"); raw != nil {
@@ -322,7 +319,7 @@ func (s *Server) Routes() http.Handler {
 	// a stale bundle after a deploy. no-cache is deploy-safe across K8s instances: it needs
 	// no server-side state. (Vendored files are not content-hashed, so long-lived immutable
 	// caching would risk serving a stale library after an in-place version bump.)
-	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("internal/web/static")))
+	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("web/static")))
 	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
 		staticFiles.ServeHTTP(w, req)
@@ -377,7 +374,7 @@ func (s *Server) Routes() http.Handler {
 			r.Use(csrf.Handler)
 
 			r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
-				h, ok := onboarding.Get(s.noMembershipName)
+				h, ok := nomembership.Get(s.noMembershipName)
 				if !ok {
 					http.Error(w, "no-membership handler not registered", http.StatusInternalServerError)
 					return

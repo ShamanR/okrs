@@ -8,8 +8,8 @@ import (
 	"sort"
 	"time"
 
-	"okrs/internal/domain"
-	"okrs/internal/okr"
+	"okrs/internal/core/domain"
+	"okrs/internal/core/progress"
 	"okrs/internal/store"
 	"okrs/internal/store/activity"
 	"okrs/internal/store/goallinks"
@@ -479,7 +479,7 @@ func (s *Service) appendTeamSummaryFromBatch(rows *[]TeamSummary, team domain.Te
 			Type:           team.Type,
 			Indent:         level * 24,
 			Status:         status,
-			PeriodProgress: okr.PeriodProgress(goalsList),
+			PeriodProgress: progress.PeriodProgress(goalsList),
 			GoalsCount:     len(goalsList),
 			GoalsWeight:    goalsWeight,
 			Goals:          goalRows,
@@ -543,7 +543,7 @@ func (s *Service) GetTeamOKR(ctx context.Context, scope domain.TenantScope, team
 		})
 	}
 
-	periodProgress := okr.PeriodProgress(goalsList)
+	periodProgress := progress.PeriodProgress(goalsList)
 	status, statusChangedAt, err := s.statuses.GetTeamPeriodStatusWithTime(ctx, scope, teamID, periodID)
 	if err != nil {
 		return TeamOKR{}, err
@@ -640,7 +640,7 @@ func (s *Service) buildDirectChildrenSummary(ctx context.Context, scope domain.T
 			for i := range goalsList {
 				goalsList[i].Progress = CalculateGoalProgress(&goalsList[i])
 			}
-			item.Progress = okr.PeriodProgress(goalsList)
+			item.Progress = progress.PeriodProgress(goalsList)
 			for _, g := range goalsList {
 				if g.Priority == domain.PriorityP0 || g.Priority == domain.PriorityP1 {
 					item.HighPriorityCount++
@@ -683,7 +683,7 @@ func (s *Service) GetTeamOverview(ctx context.Context, scope domain.TenantScope,
 		summaryByID[id] = TeamSummary{
 			ID:             id,
 			GoalsCount:     len(goalsList),
-			PeriodProgress: okr.PeriodProgress(goalsList),
+			PeriodProgress: progress.PeriodProgress(goalsList),
 		}
 	}
 	childrenSummary := []TeamChildSummary{}
@@ -788,8 +788,8 @@ func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.Te
 		return err
 	}
 	if n := kr.Numerical; n != nil {
-		beforeProg := okr.NumericalProgress(n.StartValue, n.TargetValue, n.CurrentValue, n.Checkpoints)
-		afterProg := okr.NumericalProgress(n.StartValue, n.TargetValue, current, n.Checkpoints)
+		beforeProg := progress.NumericalProgress(n.StartValue, n.TargetValue, n.CurrentValue, n.Checkpoints)
+		afterProg := progress.NumericalProgress(n.StartValue, n.TargetValue, current, n.Checkpoints)
 		s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
 		s.autoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
 	}
@@ -829,8 +829,8 @@ func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.Tena
 	if err := s.krs.UpdateBoolean(ctx, scope, krID, done); err != nil {
 		return err
 	}
-	beforeProg := okr.BooleanProgress(beforeDone)
-	afterProg := okr.BooleanProgress(done)
+	beforeProg := progress.BooleanProgress(beforeDone)
+	afterProg := progress.BooleanProgress(done)
 	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
 	s.autoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
 	return nil
@@ -863,7 +863,7 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.Tena
 			validUpdates[stage.ID] = done
 		}
 	}
-	beforeProg := okr.ProjectProgress(stages)
+	beforeProg := progress.ProjectProgress(stages)
 	if err := s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, validUpdates); err != nil {
 		return err
 	}
@@ -874,7 +874,7 @@ func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.Tena
 			afterStages[i].IsDone = done
 		}
 	}
-	afterProg := okr.ProjectProgress(afterStages)
+	afterProg := progress.ProjectProgress(afterStages)
 	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
 	s.autoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
 	return nil

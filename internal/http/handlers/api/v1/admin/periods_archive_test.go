@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/service"
 	"okrs/internal/store/periods"
 

@@ -7,7 +7,7 @@ package entitlements
 import (
 	"sync"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // Unlimited is the sentinel returned by Limit when a feature has no cap.

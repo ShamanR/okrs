@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // HealthCheckInConfig controls thresholds and counter membership for each category.

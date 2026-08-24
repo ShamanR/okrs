@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func teamPtr(id int64) *int64        { return &id }

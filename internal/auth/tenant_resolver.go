@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 var (

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"

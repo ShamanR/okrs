@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func TestCalculateKRProgressNumericalLinear(t *testing.T) {

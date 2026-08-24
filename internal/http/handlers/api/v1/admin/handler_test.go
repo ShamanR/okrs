@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
 )
@@ -463,8 +463,12 @@ func (f *fakeGrants) ListDescendantTeamIDs(_ context.Context, _ domain.TenantSco
 	}
 	return out, nil
 }
-func (f *fakeGrants) AddUserGrant(context.Context, domain.TenantScope, int64, int64, int64) error { return nil }
-func (f *fakeGrants) RemoveUserGrant(context.Context, domain.TenantScope, int64, int64) error     { return nil }
+func (f *fakeGrants) AddUserGrant(context.Context, domain.TenantScope, int64, int64, int64) error {
+	return nil
+}
+func (f *fakeGrants) RemoveUserGrant(context.Context, domain.TenantScope, int64, int64) error {
+	return nil
+}
 
 // The users list is tenant-scoped (members + requesters), each item carries Status, and
 // GrantedNodeCount counts only grants to still-active teams (requesters have none).

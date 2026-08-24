@@ -3,7 +3,7 @@ package krs
 import (
 	"fmt"
 	"net/http"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 	"okrs/internal/store/krs"

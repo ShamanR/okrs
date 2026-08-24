@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 type fakeTenants struct{ m map[int64]*domain.Tenant }

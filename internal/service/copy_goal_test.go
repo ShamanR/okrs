@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func TestCopyGoalCopyFlipsTargetStatusAndRecordsCopied(t *testing.T) {

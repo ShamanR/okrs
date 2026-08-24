@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 )

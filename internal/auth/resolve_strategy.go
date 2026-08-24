@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // ResolveStrategy resolves the active tenant for a request. The bool reports whether this

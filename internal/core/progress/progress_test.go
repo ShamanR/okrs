@@ -1,9 +1,9 @@
-package okr
+package progress
 
 import (
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func TestGoalProgress(t *testing.T) {
@@ -123,4 +123,3 @@ func TestProjectProgressNoneDone(t *testing.T) {
 		t.Fatalf("expected 0, got %d", got)
 	}
 }
-

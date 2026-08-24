@@ -1,7 +1,7 @@
-// Package onboarding holds the pluggable no-membership seam. The box defines the
+// Package nomembership holds the pluggable no-membership seam. The box defines the
 // interface + registry and ships an OSS stub; a SaaS module registers its own
 // "create organization / join" page. This package stays free of internal/store imports.
-package onboarding
+package nomembership
 
 import (
 	"net/http"

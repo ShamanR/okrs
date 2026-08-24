@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // ts0 is the zero tenant scope; the cache tests seed grants with TenantID 0.

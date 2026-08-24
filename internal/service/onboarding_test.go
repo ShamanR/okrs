@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/service"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"

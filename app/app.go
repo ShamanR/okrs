@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/entitlements"
 	httpserver "okrs/internal/http"
+	"okrs/internal/platform/entitlements"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"

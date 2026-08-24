@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // tenantBackend is the read contract TenantCache needs. *TenantRepository satisfies it.

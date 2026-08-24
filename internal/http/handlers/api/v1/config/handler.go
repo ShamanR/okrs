@@ -9,7 +9,7 @@ import (
 	"net/http"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/service"
 )
 

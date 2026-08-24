@@ -1,21 +1,21 @@
-package onboarding_test
+package nomembership_test
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"okrs/internal/onboarding"
+	"okrs/internal/platform/nomembership"
 )
 
 func TestNoMembershipRegistryAndStub(t *testing.T) {
 	called := false
-	onboarding.Register("stub", onboarding.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
+	nomembership.Register("stub", nomembership.StubHandler{Render: func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
 	}})
 
-	h, ok := onboarding.Get("stub")
+	h, ok := nomembership.Get("stub")
 	if !ok {
 		t.Fatal("registered handler not found")
 	}

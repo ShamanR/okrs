@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // membershipBackend is the read contract MembershipCache needs. *MembershipRepository satisfies it.

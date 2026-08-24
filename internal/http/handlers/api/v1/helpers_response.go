@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
-	"okrs/internal/export"
+	"okrs/internal/core/domain"
 	apitestutil "okrs/internal/http/handlers/api/v1/testutil"
+	"okrs/internal/render/export"
 	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/goals"

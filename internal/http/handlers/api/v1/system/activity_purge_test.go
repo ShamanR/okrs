@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 
 	"github.com/go-chi/chi/v5"
 )

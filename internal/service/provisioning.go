@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
 )

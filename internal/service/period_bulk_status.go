@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // BulkStatusResult reports the outcome of a bulk team-period-status transition.

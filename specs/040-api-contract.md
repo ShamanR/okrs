@@ -911,7 +911,7 @@ Idempotency / side effects:
 ### `GET /api/v1/teams/{teamID}/export`
 
 Назначение: выгрузка OKR в Markdown для последующего копирования/скачивания в трекере.
-Генерация — на сервере (пакет `internal/export`, единый источник форматирования).
+Генерация — на сервере (пакет `internal/render/export`, единый источник форматирования).
 
 **Method + path:** `GET /api/v1/teams/{teamID}/export`
 

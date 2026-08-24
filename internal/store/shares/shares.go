@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"

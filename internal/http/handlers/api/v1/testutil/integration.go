@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiactivity "okrs/internal/http/handlers/api/v1/activity"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"

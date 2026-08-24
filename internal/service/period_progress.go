@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"okrs/internal/domain"
-	"okrs/internal/okr"
+	"okrs/internal/core/domain"
+	"okrs/internal/core/progress"
 	"okrs/internal/store/progresssnap"
 )
 
@@ -113,7 +113,7 @@ func computeTeamSnapshots(data *PeriodData) []progresssnap.Snapshot {
 		for i := range goals {
 			goals[i].Progress = CalculateGoalProgress(&goals[i])
 		}
-		out = append(out, progresssnap.Snapshot{TeamID: team.ID, Progress: okr.PeriodProgress(goals)})
+		out = append(out, progresssnap.Snapshot{TeamID: team.ID, Progress: progress.PeriodProgress(goals)})
 	}
 	return out
 }

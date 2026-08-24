@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/web/common"
 
 	"github.com/go-chi/chi/v5"

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // periodLoader loads raw data for a period (within a tenant) from the DB.

@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/tenantsettings"
 	"okrs/internal/store/testutil"
 )

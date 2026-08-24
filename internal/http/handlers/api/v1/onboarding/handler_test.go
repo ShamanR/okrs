@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	apionboarding "okrs/internal/http/handlers/api/v1/onboarding"
 	"okrs/internal/service"
 	"okrs/internal/store/grants"

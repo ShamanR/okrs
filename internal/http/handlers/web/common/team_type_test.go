@@ -3,7 +3,7 @@ package common
 import (
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func TestValidTeamType(t *testing.T) {

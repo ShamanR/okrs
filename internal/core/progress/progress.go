@@ -1,10 +1,10 @@
-package okr
+package progress
 
 import (
 	"math"
 	"sort"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func GoalProgress(keyResults []domain.KeyResult) int {

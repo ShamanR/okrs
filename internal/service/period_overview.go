@@ -6,8 +6,8 @@ import (
 	"sort"
 	"time"
 
-	"okrs/internal/domain"
-	"okrs/internal/okr"
+	"okrs/internal/core/domain"
+	"okrs/internal/core/progress"
 )
 
 // PeriodTeamSummary is one team's row in the period overview (drill-down source).
@@ -216,7 +216,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 			if row.WeightError {
 				weightErrors++
 			}
-			row.Progress = okr.PeriodProgress(goals)
+			row.Progress = progress.PeriodProgress(goals)
 			// Draft (черновик/forming) teams are excluded from the aggregate progress —
 			// their goals are still being shaped. Their own row.Progress is kept.
 			if bucket != "forming" {

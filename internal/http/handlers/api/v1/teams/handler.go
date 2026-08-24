@@ -9,10 +9,10 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
-	"okrs/internal/export"
+	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
+	"okrs/internal/render/export"
 	"okrs/internal/service"
 	"okrs/internal/store/goals"
 

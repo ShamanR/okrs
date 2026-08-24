@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"okrs/internal/domain"
-	"okrs/internal/export"
+	"okrs/internal/core/domain"
+	"okrs/internal/render/export"
 )
 
 type ExportParams struct {

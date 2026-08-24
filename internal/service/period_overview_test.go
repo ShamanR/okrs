@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // numericKR builds a numerical KR with a known progress (current/target of 100%).

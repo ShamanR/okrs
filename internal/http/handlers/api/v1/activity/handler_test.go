@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	apiv1testutil "okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/service"
 	"okrs/internal/store"

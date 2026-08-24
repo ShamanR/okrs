@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"

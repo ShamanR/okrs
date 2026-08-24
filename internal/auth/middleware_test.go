@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 func TestRequireSystemAdminAllowsSystemAdminUser(t *testing.T) {

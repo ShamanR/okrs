@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
 

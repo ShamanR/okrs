@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 type GoalTreeTeam struct {

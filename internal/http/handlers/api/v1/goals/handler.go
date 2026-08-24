@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
-	v1 "okrs/internal/http/handlers/api/v1"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
+	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/service"
 	"okrs/internal/store/goals"

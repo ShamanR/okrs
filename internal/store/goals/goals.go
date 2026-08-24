@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/krs"
 
 	"github.com/jackc/pgx/v5"

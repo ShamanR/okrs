@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	storeactivity "okrs/internal/store/activity"
 )

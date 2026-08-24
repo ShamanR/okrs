@@ -3,8 +3,8 @@ package entitlements_test
 import (
 	"testing"
 
-	"okrs/internal/domain"
-	"okrs/internal/entitlements"
+	"okrs/internal/core/domain"
+	"okrs/internal/platform/entitlements"
 )
 
 func TestUnlimitedEntitlements(t *testing.T) {
