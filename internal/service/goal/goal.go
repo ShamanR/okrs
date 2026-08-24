@@ -74,3 +74,74 @@ func (s *Service) ProgressByIDs(ctx context.Context, scope domain.TenantScope, i
 	}
 	return progressByID, nil
 }
+
+// — Однострочные операции над сущностью, нужные сценариям слоя usecase. —
+
+func (s *Service) AddComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) (int64, error) {
+	return s.repo.AddGoalComment(ctx, scope, goalID, text, authorUserID)
+}
+
+func (s *Service) AddReply(ctx context.Context, scope domain.TenantScope, goalID, parentID int64, text string, authorUserID int64) (int64, error) {
+	return s.repo.AddGoalReply(ctx, scope, goalID, parentID, text, authorUserID)
+}
+
+func (s *Service) Copy(ctx context.Context, scope domain.TenantScope, in goals.CopyGoalInput) (int64, error) {
+	return s.repo.CopyGoal(ctx, scope, in)
+}
+
+func (s *Service) Create(ctx context.Context, scope domain.TenantScope, input goals.GoalInput) (int64, error) {
+	return s.repo.CreateGoal(ctx, scope, input)
+}
+
+func (s *Service) Delete(ctx context.Context, scope domain.TenantScope, id int64) error {
+	return s.repo.DeleteGoal(ctx, scope, id)
+}
+
+func (s *Service) DeleteComment(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) error {
+	return s.repo.DeleteGoalComment(ctx, scope, goalID, commentID)
+}
+
+func (s *Service) GetCommentMeta(ctx context.Context, scope domain.TenantScope, goalID, commentID int64) (int64, bool, error) {
+	return s.repo.GetGoalCommentMeta(ctx, scope, goalID, commentID)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) ListByTeamsPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64][]domain.Goal, error) {
+	return s.repo.ListGoalsByTeamsPeriod(ctx, scope, periodID, teamIDs)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) ListCommentsByGoals(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
+	return s.repo.ListGoalCommentsByGoals(ctx, scope, goalIDs)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) ListForPeriods(ctx context.Context, scope domain.TenantScope, periodIDs []int64, allowedTeamIDs []int64, adminAll bool) ([]domain.Goal, error) {
+	return s.repo.ListGoalsForPeriods(ctx, scope, periodIDs, allowedTeamIDs, adminAll)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) ListOwnerTeamIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64]int64, error) {
+	return s.repo.ListGoalOwnerTeamIDs(ctx, scope, goalIDs)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) ListTeamLastUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
+	return s.repo.ListTeamLastGoalUpdateInPeriod(ctx, scope, periodID, teamIDs)
+}
+
+func (s *Service) SetCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error) {
+	return s.repo.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
+}
+
+func (s *Service) Update(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput) error {
+	return s.repo.UpdateGoal(ctx, scope, input)
+}
+
+func (s *Service) UpdateFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput) error {
+	return s.repo.UpdateGoalFields(ctx, scope, input)
+}
+
+func (s *Service) UpdateOwner(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error {
+	return s.repo.UpdateGoalOwner(ctx, scope, goalID, teamID, weight)
+}

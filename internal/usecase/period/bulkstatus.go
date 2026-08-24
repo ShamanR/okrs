@@ -1,4 +1,4 @@
-package service
+package period
 
 import (
 	"context"
@@ -43,8 +43,8 @@ func computeBulkAffected(teams []domain.Team, goalsByTeam map[int64][]domain.Goa
 // the set are considered (my-teams scope); nil covers the whole tenant (org scope).
 // Writes one op-log entry per affected team and invalidates the period cache. Loads fresh
 // data (not cached) to decide the set.
-func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, periodID int64, target domain.TeamPeriodStatus, actorUserID int64, teamFilter map[int64]bool) (BulkStatusResult, error) {
-	loaded, err := s.teams.ListAllTeams(ctx, scope)
+func (s *UseCase) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, periodID int64, target domain.TeamPeriodStatus, actorUserID int64, teamFilter map[int64]bool) (BulkStatusResult, error) {
+	loaded, err := s.teams.ListAll(ctx, scope)
 	if err != nil {
 		return BulkStatusResult{}, err
 	}
@@ -63,11 +63,11 @@ func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.Tena
 		nameByID[t.ID] = t.Name
 	}
 
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, teamIDs)
+	goalsByTeam, err := s.goals.ListByTeamsPeriod(ctx, scope, periodID, teamIDs)
 	if err != nil {
 		return BulkStatusResult{}, err
 	}
-	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, scope, periodID, teamIDs)
+	statuses, err := s.statuses.List(ctx, scope, periodID, teamIDs)
 	if err != nil {
 		return BulkStatusResult{}, err
 	}
@@ -77,7 +77,7 @@ func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.Tena
 		return BulkStatusResult{Affected: 0, Skipped: skipped}, nil
 	}
 
-	if err := s.statuses.SetTeamPeriodStatuses(ctx, scope, periodID, affected, target); err != nil {
+	if err := s.statuses.SetMany(ctx, scope, periodID, affected, target); err != nil {
 		return BulkStatusResult{}, err
 	}
 
@@ -110,4 +110,22 @@ func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.Tena
 		s.hcCache.InvalidateAll()
 	}
 	return BulkStatusResult{Affected: len(affected), Skipped: skipped}, nil
+}
+
+func (s *UseCase) UpdateTeamStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus, actorUserID int64) error {
+	before, _ := s.statuses.Get(ctx, scope, teamID, periodID)
+	if err := s.statuses.Set(ctx, scope, teamID, periodID, status); err != nil {
+		return err
+	}
+	title := ""
+	if team, terr := s.teams.Get(ctx, scope, teamID); terr == nil {
+		title = team.Name
+	}
+	tID, pID := teamID, periodID
+	s.activity.Record(ctx, scope, domain.ActivityEvent{
+		ActorUserID: actorUserID, Category: domain.ActivityStatus, Action: domain.ActionStatusChanged,
+		TeamID: &tID, PeriodID: &pID, EntityTitle: title,
+		Payload: map[string]any{"before": map[string]any{"status": string(before)}, "after": map[string]any{"status": string(status)}},
+	})
+	return nil
 }

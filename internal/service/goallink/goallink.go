@@ -94,3 +94,9 @@ func (s *Service) fillGoalRefProgress(ctx context.Context, scope domain.TenantSc
 	}
 	return nil
 }
+
+// — Однострочные операции над сущностью, нужные сценариям слоя usecase. —
+
+func (s *Service) ReplaceParents(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, childID int64, parentIDs []int64) (added, removed []int64, err error) {
+	return s.repo.ReplaceParents(ctx, scope, allowedTeamIDs, adminAll, childID, parentIDs)
+}

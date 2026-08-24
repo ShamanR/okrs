@@ -1,4 +1,4 @@
-package service
+package period
 
 import (
 	"context"
@@ -44,8 +44,8 @@ func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
 	// team 3: no goals -> skipped
 	store.Statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
 	store.Statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusInProgress
-	act := &fakeActivityRepo{}
-	svc := New(Deps{Teams: store, Goals: store, Shares: store, Periods: store, KRs: store, Statuses: store, Users: store, Activity: act})
+	act := &servicetest.ActivityRepo{}
+	svc := newTestUC(store, act)
 
 	res, err := svc.BulkSetTeamPeriodStatus(context.Background(), domain.TenantScope{TenantID: 1}, 9, domain.TeamPeriodStatusInProgress, 42, nil)
 	if err != nil {
@@ -57,11 +57,11 @@ func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
 	if len(store.BulkSetTeamIDs) != 1 || store.BulkSetTeamIDs[0] != 1 || store.BulkSetStatus != domain.TeamPeriodStatusInProgress {
 		t.Fatalf("set call wrong: ids=%v status=%s", store.BulkSetTeamIDs, store.BulkSetStatus)
 	}
-	if len(act.recorded) != 1 {
-		t.Fatalf("expected one op-log entry per affected team, got %d", len(act.recorded))
+	if len(act.Recorded) != 1 {
+		t.Fatalf("expected one op-log entry per affected team, got %d", len(act.Recorded))
 	}
-	if act.recorded[0].EntityTitle != "A" {
-		t.Fatalf("op-log entity title should be team name, got %q", act.recorded[0].EntityTitle)
+	if act.Recorded[0].EntityTitle != "A" {
+		t.Fatalf("op-log entity title should be team name, got %q", act.Recorded[0].EntityTitle)
 	}
 }
 
@@ -72,8 +72,8 @@ func TestBulkSetTeamPeriodStatus_TeamFilterRestrictsToScope(t *testing.T) {
 	store.GoalsByTeam[2] = map[int64][]domain.Goal{9: {{ID: 20}}}
 	store.Statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
 	store.Statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusReady
-	act := &fakeActivityRepo{}
-	svc := New(Deps{Teams: store, Goals: store, Shares: store, Periods: store, KRs: store, Statuses: store, Users: store, Activity: act})
+	act := &servicetest.ActivityRepo{}
+	svc := newTestUC(store, act)
 
 	// Only team 1 is in scope: team 2 must be untouched even though it would qualify.
 	res, err := svc.BulkSetTeamPeriodStatus(context.Background(), domain.TenantScope{TenantID: 1}, 9, domain.TeamPeriodStatusInProgress, 42, map[int64]bool{1: true})

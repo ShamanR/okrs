@@ -20,7 +20,7 @@ type Repo interface {
 	ListGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64) ([]shares.GoalShare, error)
 	ListGoalSharesByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error)
 	GetGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) (shares.GoalShare, error)
-	ReplaceGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64, shares []shares.GoalShareInput) error
+	ReplaceGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64, list []shares.GoalShareInput) error
 	DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error
 	UpdateGoalTeamWeight(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error
 }
@@ -33,4 +33,19 @@ func (s *Service) List(ctx context.Context, scope domain.TenantScope, goalID int
 }
 func (s *Service) UpdateWeight(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, weight int) error {
 	return s.repo.UpdateGoalTeamWeight(ctx, scope, goalID, teamID, weight)
+}
+
+// — Однострочные операции над сущностью, нужные сценариям слоя usecase. —
+
+func (s *Service) Delete(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error {
+	return s.repo.DeleteGoalShare(ctx, scope, goalID, teamID)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) ListByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
+	return s.repo.ListGoalSharesByGoalIDs(ctx, scope, goalIDs)
+}
+
+func (s *Service) Replace(ctx context.Context, scope domain.TenantScope, goalID int64, list []shares.GoalShareInput) error {
+	return s.repo.ReplaceGoalShares(ctx, scope, goalID, list)
 }

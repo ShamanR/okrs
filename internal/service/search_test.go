@@ -199,3 +199,5 @@ func TestSearchUsersInScopeExcludesDeletedTeamLeads(t *testing.T) {
 		t.Fatalf("expected no lead names for deleted team, got %v", st.lastLeadNames)
 	}
 }
+
+func ptr(id int64) *int64 { return &id }

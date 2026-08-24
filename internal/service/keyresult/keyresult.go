@@ -98,3 +98,51 @@ func (s *Service) AutoCompleteHealth(ctx context.Context, scope domain.TenantSco
 		_ = s.repo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthDone)
 	}
 }
+
+// — Однострочные операции над сущностью, нужные сценариям слоя usecase. —
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) BatchLoadNotes(ctx context.Context, scope domain.TenantScope, krIDs []int64) (map[int64]*domain.KeyResultNote, error) {
+	return s.repo.BatchLoadNotes(ctx, scope, krIDs)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) BatchUpdateProjectStagesDone(ctx context.Context, scope domain.TenantScope, krID int64, updates map[int64]bool) error {
+	return s.repo.BatchUpdateProjectStagesDone(ctx, scope, krID, updates)
+}
+
+func (s *Service) Create(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput) (int64, error) {
+	return s.repo.CreateKeyResult(ctx, scope, input)
+}
+
+func (s *Service) Delete(ctx context.Context, scope domain.TenantScope, id int64) error {
+	return s.repo.DeleteKeyResult(ctx, scope, id)
+}
+
+func (s *Service) GetBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KRBoolean, error) {
+	return s.repo.GetBooleanMeta(ctx, scope, krID)
+}
+
+func (s *Service) GetNote(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KeyResultNote, error) {
+	return s.repo.GetKeyResultNote(ctx, scope, krID)
+}
+
+func (s *Service) ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error) {
+	return s.repo.ListProjectStages(ctx, scope, krID)
+}
+
+func (s *Service) Update(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput) error {
+	return s.repo.UpdateKeyResult(ctx, scope, input)
+}
+
+func (s *Service) UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
+	return s.repo.UpdateBoolean(ctx, scope, krID, done)
+}
+
+func (s *Service) UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
+	return s.repo.UpdateNumericalCurrent(ctx, scope, krID, current)
+}
+
+func (s *Service) UpsertNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	return s.repo.UpsertKeyResultNote(ctx, scope, krID, text, authorUserID)
+}

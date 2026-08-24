@@ -12,6 +12,7 @@ import (
 	"okrs/internal/store/goals"
 	"okrs/internal/store/krs"
 	"okrs/internal/store/periods"
+	"okrs/internal/store/progresssnap"
 	"okrs/internal/store/shares"
 	storeteams "okrs/internal/store/teams"
 )
@@ -35,6 +36,13 @@ type Store struct {
 	HardDeleted      []int64
 	BulkSetTeamIDs   []int64
 	BulkSetStatus    domain.TeamPeriodStatus
+
+	// Снимки прогресса
+	Snapshots        []progresssnap.Snapshot
+	SnapshotPeriodID int64
+	SnapshotDay      time.Time
+	SeriesRows       []progresssnap.SeriesRow
+	LatestSnapshot   time.Time
 }
 
 func NewStore() *Store {
@@ -404,4 +412,21 @@ func (f *Store) ListUserLeadTeams(context.Context) (map[string]string, error) {
 }
 func (f *Store) ValidateUDIDsExist(_ context.Context, _ []string) ([]string, error) {
 	return nil, nil
+}
+
+// — Снимки прогресса. Store их не хранит: сценариям, которые их читают, достаточно
+// пустой серии, а пишущие проверяются через Snapshots. —
+
+func (f *Store) UpsertSnapshots(_ context.Context, _ domain.TenantScope, periodID int64, day time.Time, snaps []progresssnap.Snapshot) error {
+	f.Snapshots = append(f.Snapshots, snaps...)
+	f.SnapshotPeriodID, f.SnapshotDay = periodID, day
+	return nil
+}
+
+func (f *Store) ListSnapshots(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) ([]progresssnap.SeriesRow, error) {
+	return f.SeriesRows, nil
+}
+
+func (f *Store) LatestSnapshotDate(_ context.Context, _ domain.TenantScope, _ int64) (time.Time, bool, error) {
+	return f.LatestSnapshot, !f.LatestSnapshot.IsZero(), nil
 }

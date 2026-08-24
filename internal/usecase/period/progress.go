@@ -1,4 +1,4 @@
-package service
+package period
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/progress"
+	hcsvc "okrs/internal/service/healthcheckin"
 	"okrs/internal/store/progresssnap"
 )
 
@@ -75,7 +76,7 @@ func buildProgressSeries(rows []progresssnap.SeriesRow, teamFilter map[int64]boo
 // computeTeamSnapshots computes current progress for each active team that has goals.
 // Soft-deleted teams, teams without goals, and draft (черновик/forming) teams are
 // skipped — the last so the progress chart matches the aggregate progress. Pure — no I/O.
-func computeTeamSnapshots(data *PeriodData) []progresssnap.Snapshot {
+func computeTeamSnapshots(data *hcsvc.PeriodData) []progresssnap.Snapshot {
 	out := make([]progresssnap.Snapshot, 0, len(data.Teams))
 	for _, team := range data.Teams {
 		if team.DeletedAt != nil {
@@ -101,8 +102,8 @@ func computeTeamSnapshots(data *PeriodData) []progresssnap.Snapshot {
 
 // SnapshotActivePeriods materialises the given day's per-team progress for each active
 // period. Best-effort: a period whose data fails to load is skipped, not fatal.
-func (s *Service) SnapshotActivePeriods(ctx context.Context, day time.Time, actives []HCActive) error {
-	if s.hcCache == nil || s.progressSnap == nil {
+func (s *UseCase) SnapshotActivePeriods(ctx context.Context, day time.Time, actives []hcsvc.Active) error {
+	if s.hcCache == nil || s.snaps == nil {
 		return nil
 	}
 	for _, a := range actives {
@@ -114,7 +115,7 @@ func (s *Service) SnapshotActivePeriods(ctx context.Context, day time.Time, acti
 			continue
 		}
 		snaps := computeTeamSnapshots(data)
-		if err := s.progressSnap.UpsertSnapshots(ctx, a.Scope, a.PeriodID, day, snaps); err != nil {
+		if err := s.snaps.Upsert(ctx, a.Scope, a.PeriodID, day, snaps); err != nil {
 			return err
 		}
 	}

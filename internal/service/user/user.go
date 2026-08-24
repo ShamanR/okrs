@@ -36,3 +36,13 @@ func (s *Service) ListLeadTeams(ctx context.Context) (map[string]string, error) 
 func (s *Service) ValidateUDIDsExist(ctx context.Context, udids []string) ([]string, error) {
 	return s.repo.ValidateUDIDsExist(ctx, udids)
 }
+
+// — Однострочные операции над сущностью, нужные сценариям слоя usecase. —
+
+func (s *Service) SearchInSet(ctx context.Context, userIDs []int64, leadUDIDs []string, q string, limit int) ([]*domain.User, error) {
+	return s.repo.SearchUsersInSet(ctx, userIDs, leadUDIDs, q, limit)
+}
+
+func (s *Service) SearchUnrestricted(ctx context.Context, q string, limit int) ([]*domain.User, error) {
+	return s.repo.SearchUsersUnrestricted(ctx, q, limit)
+}

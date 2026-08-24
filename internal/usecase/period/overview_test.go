@@ -1,4 +1,4 @@
-package service
+package period
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	hcsvc "okrs/internal/service/healthcheckin"
 )
 
 // numericKR builds a numerical KR with a known progress (current/target of 100%).
@@ -35,7 +36,7 @@ func TestComputePeriodOverview_CountsWeightsProgress(t *testing.T) {
 		1: domain.TeamPeriodStatusInProgress,
 		2: domain.TeamPeriodStatusReady,
 	}
-	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+	data := &hcsvc.PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
 	ov := computePeriodOverview(data, 0, nil)
 
@@ -87,7 +88,7 @@ func TestComputePeriodOverview_EmitsBalancesAndGoals(t *testing.T) {
 		},
 	}
 	statuses := map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress}
-	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+	data := &hcsvc.PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
 	ov := computePeriodOverview(data, 0, nil)
 	if len(ov.Goals) != 2 {
@@ -115,7 +116,7 @@ func TestComputePeriodOverview_TeamFilterScopesCounts(t *testing.T) {
 		1: domain.TeamPeriodStatusInProgress,
 		2: domain.TeamPeriodStatusInProgress,
 	}
-	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+	data := &hcsvc.PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
 	filter := map[int64]bool{1: true} // only Alpha in scope
 	ov := computePeriodOverview(data, 0, filter)
@@ -143,7 +144,7 @@ func TestComputePeriodOverview_DraftTeamsExcludedFromProgress(t *testing.T) {
 		1: domain.TeamPeriodStatusInProgress,
 		2: domain.TeamPeriodStatusForming, // черновик — excluded from progress
 	}
-	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+	data := &hcsvc.PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
 	ov := computePeriodOverview(data, 0, nil)
 	// Both teams have goals, but only the working team feeds AvgProgress.
@@ -159,7 +160,7 @@ func TestComputePeriodOverview_DraftTeamsExcludedFromProgress(t *testing.T) {
 }
 
 func TestComputePeriodOverview_ValidatedCountsAsInProgress(t *testing.T) {
-	data := &PeriodData{
+	data := &hcsvc.PeriodData{
 		PeriodID: 1,
 		Teams:    []domain.Team{{ID: 1, Name: "A"}},
 		GoalsByTeam: map[int64][]domain.Goal{
@@ -177,7 +178,7 @@ func TestComputePeriodOverview_ValidatedCountsAsInProgress(t *testing.T) {
 // no_goals while carrying a goal. It must bucket (and its row must serialize) as
 // forming, so the Forming tile count and its drill-down agree.
 func TestComputePeriodOverview_GoalsButNoGoalsStatusBucketsForming(t *testing.T) {
-	data := &PeriodData{
+	data := &hcsvc.PeriodData{
 		PeriodID: 1,
 		Teams:    []domain.Team{{ID: 1, Name: "Sharee"}},
 		GoalsByTeam: map[int64][]domain.Goal{
@@ -198,7 +199,7 @@ func TestComputePeriodOverview_GoalsButNoGoalsStatusBucketsForming(t *testing.T)
 }
 
 func TestServicePeriodOverview_UsesCache(t *testing.T) {
-	data := &PeriodData{
+	data := &hcsvc.PeriodData{
 		PeriodID: 5,
 		Teams:    []domain.Team{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}},
 		GoalsByTeam: map[int64][]domain.Goal{
@@ -207,9 +208,9 @@ func TestServicePeriodOverview_UsesCache(t *testing.T) {
 		Statuses: map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress},
 		CachedAt: time.Now(),
 	}
-	loader := func(_ context.Context, _ domain.TenantScope, _ int64) (*PeriodData, error) { return data, nil }
-	cache := NewHealthCheckInCache(loader, time.Minute, nil)
-	s := &Service{hcCache: cache}
+	loader := func(_ context.Context, _ domain.TenantScope, _ int64) (*hcsvc.PeriodData, error) { return data, nil }
+	cache := hcsvc.NewCache(loader, time.Minute, nil)
+	s := &UseCase{hcCache: cache}
 
 	ov, err := s.PeriodOverview(context.Background(), domain.TenantScope{TenantID: 1}, 5, 0)
 	if err != nil {
@@ -243,7 +244,7 @@ func TestComputePeriodOverview_HealthBalanceAndKRList(t *testing.T) {
 		},
 	}
 	statuses := map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress}
-	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+	data := &hcsvc.PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
 	ov := computePeriodOverview(data, 0, nil)
 

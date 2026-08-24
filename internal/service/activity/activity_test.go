@@ -73,3 +73,23 @@ func TestRecordWithNilRepoIsNoOp(t *testing.T) {
 	svc := activity.New(nil, nil)
 	svc.Record(context.Background(), domain.TenantScope{TenantID: 1}, domain.ActivityEvent{Action: domain.ActionStatusChanged})
 }
+
+func TestDiffFieldsOnlyChanged(t *testing.T) {
+	changed := activity.DiffFields(map[string][2]any{
+		"title":       {"old", "new"},
+		"description": {"same", "same"},
+		"weight":      {10, 20},
+	})
+	if len(changed) != 2 {
+		t.Fatalf("want 2 changed, got %d: %+v", len(changed), changed)
+	}
+	if _, ok := changed["description"]; ok {
+		t.Fatalf("unchanged field leaked: %+v", changed)
+	}
+	if changed["title"].(map[string]any)["after"] != "new" {
+		t.Fatalf("title diff wrong: %+v", changed["title"])
+	}
+	if len(activity.DiffFields(map[string][2]any{"a": {1, 1}})) != 0 {
+		t.Fatalf("no-op edit should produce empty diff")
+	}
+}

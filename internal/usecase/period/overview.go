@@ -1,15 +1,55 @@
-package service
+// Package period holds the period-level scenarios: the cross-team overview the admin
+// panel renders, bulk activate/close of team boards, and the dated progress snapshots
+// that back the period chart. All of them span several entities.
+//
+// Every read here is batched across teams on purpose — one query per collection.
+package period
 
 import (
 	"context"
+	"log/slog"
 	"math"
 	"sort"
 	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/progress"
-	"okrs/internal/service/healthcheckin"
+	activitysvc "okrs/internal/service/activity"
+	goalsvc "okrs/internal/service/goal"
+	hcsvc "okrs/internal/service/healthcheckin"
+	periodsvc "okrs/internal/service/period"
+	progresssnapsvc "okrs/internal/service/progresssnap"
+	teamsvc "okrs/internal/service/team"
+	teamstatussvc "okrs/internal/service/teamstatus"
 )
+
+// Deps are the entity services this usecase orchestrates.
+type Deps struct {
+	Periods  *periodsvc.Service
+	Teams    *teamsvc.Service
+	Goals    *goalsvc.Service
+	Statuses *teamstatussvc.Service
+	Snaps    *progresssnapsvc.Service
+	Activity *activitysvc.Service
+	HCCache  *hcsvc.Cache
+	Logger   *slog.Logger
+}
+
+type UseCase struct {
+	periods  *periodsvc.Service
+	teams    *teamsvc.Service
+	goals    *goalsvc.Service
+	statuses *teamstatussvc.Service
+	snaps    *progresssnapsvc.Service
+	activity *activitysvc.Service
+	hcCache  *hcsvc.Cache
+	logger   *slog.Logger
+}
+
+func New(deps Deps) *UseCase {
+	return &UseCase{periods: deps.Periods, teams: deps.Teams, goals: deps.Goals,
+		statuses: deps.Statuses, snaps: deps.Snaps, activity: deps.Activity, hcCache: deps.HCCache, logger: deps.Logger}
+}
 
 // PeriodTeamSummary is one team's row in the period overview (drill-down source).
 type PeriodTeamSummary struct {
@@ -152,7 +192,7 @@ func bucketStatusWithGoals(s domain.TeamPeriodStatus) string {
 // counts and average progress, plus a per-team composition list. Pure — no I/O.
 // When teamFilter is non-nil, only teams whose ID is in the set are counted
 // (my-teams scope); nil counts every team (whole-organization scope).
-func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map[int64]bool) PeriodOverview {
+func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilter map[int64]bool) PeriodOverview {
 	teamsByID := make(map[int64]domain.Team, len(data.Teams))
 	for _, t := range data.Teams {
 		if t.DeletedAt != nil {
@@ -199,7 +239,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 		row := PeriodTeamSummary{
 			TeamID:     id,
 			TeamName:   team.Name,
-			TeamPath:   healthcheckin.BuildTeamPath(id, teamsByID),
+			TeamPath:   hcsvc.BuildTeamPath(id, teamsByID),
 			Status:     bucket,
 			GoalsCount: len(goals),
 		}
@@ -213,7 +253,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 				weightSum += goals[i].Weight
 			}
 			row.WeightSum = weightSum
-			row.WeightError = healthcheckin.Abs(weightSum-100) > weightTolerance
+			row.WeightError = hcsvc.Abs(weightSum-100) > weightTolerance
 			if row.WeightError {
 				weightErrors++
 			}
@@ -289,7 +329,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 }
 
 // PeriodOverview returns the full overview (summary + team composition) for one period.
-func (s *Service) PeriodOverview(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int) (PeriodOverview, error) {
+func (s *UseCase) PeriodOverview(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int) (PeriodOverview, error) {
 	if s.hcCache == nil {
 		return PeriodOverview{PeriodID: periodID}, nil
 	}
@@ -302,7 +342,7 @@ func (s *Service) PeriodOverview(ctx context.Context, scope domain.TenantScope, 
 
 // PeriodOverviewScoped is PeriodOverview restricted to teamFilter (nil = whole org),
 // enriched with the per-scope progress-over-time series.
-func (s *Service) PeriodOverviewScoped(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int, teamFilter map[int64]bool) (PeriodOverview, error) {
+func (s *UseCase) PeriodOverviewScoped(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int, teamFilter map[int64]bool) (PeriodOverview, error) {
 	if s.hcCache == nil {
 		return PeriodOverview{PeriodID: periodID}, nil
 	}
@@ -311,8 +351,8 @@ func (s *Service) PeriodOverviewScoped(ctx context.Context, scope domain.TenantS
 		return PeriodOverview{}, err
 	}
 	ov := computePeriodOverview(data, weightTolerance, teamFilter)
-	if s.progressSnap != nil {
-		rows, err := s.progressSnap.ListSnapshots(ctx, scope, periodID, keysOf(teamFilter))
+	if s.snaps != nil {
+		rows, err := s.snaps.List(ctx, scope, periodID, keysOf(teamFilter))
 		if err != nil {
 			return PeriodOverview{}, err
 		}
@@ -335,11 +375,11 @@ func keysOf(m map[int64]bool) []int64 {
 }
 
 // PeriodStats returns lightweight per-period metrics for every period (no team lists).
-func (s *Service) PeriodStats(ctx context.Context, scope domain.TenantScope, weightTolerance int) ([]PeriodStatsItem, error) {
+func (s *UseCase) PeriodStats(ctx context.Context, scope domain.TenantScope, weightTolerance int) ([]PeriodStatsItem, error) {
 	if s.hcCache == nil {
 		return []PeriodStatsItem{}, nil
 	}
-	periods, err := s.periods.ListPeriods(ctx, scope)
+	periods, err := s.periods.List(ctx, scope)
 	if err != nil {
 		return nil, err
 	}

@@ -27,3 +27,23 @@ type Repo interface {
 func (s *Service) Get(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
 	return s.repo.GetTeamPeriodStatus(ctx, scope, teamID, periodID)
 }
+
+// — Однострочные операции над сущностью, нужные сценариям слоя usecase. —
+
+func (s *Service) GetWithTime(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, *time.Time, error) {
+	return s.repo.GetTeamPeriodStatusWithTime(ctx, scope, teamID, periodID)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) List(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]domain.TeamPeriodStatus, error) {
+	return s.repo.ListTeamPeriodStatuses(ctx, scope, periodID, teamIDs)
+}
+
+func (s *Service) Set(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus) error {
+	return s.repo.SetTeamPeriodStatus(ctx, scope, teamID, periodID, status)
+}
+
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) SetMany(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64, status domain.TeamPeriodStatus) error {
+	return s.repo.SetTeamPeriodStatuses(ctx, scope, periodID, teamIDs, status)
+}

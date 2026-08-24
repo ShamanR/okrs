@@ -1,10 +1,11 @@
-package service
+package period
 
 import (
 	"testing"
 	"time"
 
 	"okrs/internal/core/domain"
+	hcsvc "okrs/internal/service/healthcheckin"
 	"okrs/internal/store/progresssnap"
 )
 
@@ -64,7 +65,7 @@ func TestComputeTeamSnapshots_SkipsNoGoalDeletedAndDraftTeams(t *testing.T) {
 		1: domain.TeamPeriodStatusInProgress,
 		3: domain.TeamPeriodStatusForming,
 	}
-	data := &PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
+	data := &hcsvc.PeriodData{PeriodID: 7, Teams: teams, GoalsByTeam: goalsByTeam, Statuses: statuses}
 
 	snaps := computeTeamSnapshots(data)
 	if len(snaps) != 1 {

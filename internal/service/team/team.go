@@ -190,3 +190,8 @@ func CollectDescendantIDs(targetID int64, nodes []Node) []int64 {
 	walk(nodes, false)
 	return descendants
 }
+
+// Батчевая операция: один запрос на весь период. Не превращать в цикл — это N+1.
+func (s *Service) ListTeamIDsWithGoalsInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (map[int64]struct{}, error) {
+	return s.repo.ListTeamIDsWithGoalsInPeriod(ctx, scope, periodID)
+}

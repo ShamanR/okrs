@@ -2,13 +2,10 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
-	"sort"
 	"time"
 
 	"okrs/internal/core/domain"
-	"okrs/internal/core/progress"
 	serviceactivity "okrs/internal/service/activity"
 	"okrs/internal/service/goal"
 	"okrs/internal/service/goallink"
@@ -17,6 +14,7 @@ import (
 	"okrs/internal/service/keyresult"
 	"okrs/internal/service/onboarding"
 	"okrs/internal/service/period"
+	"okrs/internal/service/progresssnap"
 	"okrs/internal/service/provisioning"
 	"okrs/internal/service/settings"
 	"okrs/internal/service/team"
@@ -36,6 +34,10 @@ import (
 	"okrs/internal/store/teams"
 	"okrs/internal/store/tenants"
 	"okrs/internal/store/tenantsettings"
+	goaluc "okrs/internal/usecase/goal"
+	kruc "okrs/internal/usecase/keyresult"
+	"okrs/internal/usecase/okrboard"
+	perioduc "okrs/internal/usecase/period"
 )
 
 // GrantsProvider gives the service access to the cached user_hierarchy_grants snapshot.
@@ -80,7 +82,7 @@ type Deps struct {
 	Grants       GrantsProvider
 	HCCache      *HealthCheckInCache
 	Activity     ActivityRepo
-	ProgressSnap ProgressSnapRepo
+	ProgressSnap progresssnap.Repo
 	Logger       *slog.Logger
 }
 
@@ -96,7 +98,7 @@ type Service struct {
 	grants       GrantsProvider
 	hcCache      *HealthCheckInCache
 	activity     ActivityRepo
-	progressSnap ProgressSnapRepo
+	progressSnap progresssnap.Repo
 	logger       *slog.Logger
 
 	teamSvc       *team.Service
@@ -109,6 +111,11 @@ type Service struct {
 	keyresultSvc  *keyresult.Service
 	activitySvc   *serviceactivity.Service
 	hcSvc         *healthcheckin.Service
+
+	okrboardUC  *okrboard.UseCase
+	goalUC      *goaluc.UseCase
+	keyresultUC *kruc.UseCase
+	periodUC    *perioduc.UseCase
 }
 
 // Доменные ошибки переехали в core/domain — единый дом для service, usecase и handler.
@@ -134,7 +141,17 @@ var (
 func New(deps Deps) *Service {
 	// Сервисы сущностей строятся до литерала: goallink получает уже созданный
 	// goalSvc через порт GoalProgressReader, а не собственную вторую копию.
+	// Сервисы сущностей строятся до литерала: их переиспользуют и поля Service,
+	// и usecase, которым они нужны как collaborators. Одна инстанция на сервис.
+	teamSvc := team.New(deps.Teams)
 	goalSvc := goal.New(deps.Goals)
+	shareSvc := goalshare.New(deps.Shares)
+	linkSvc := goallink.New(deps.GoalLinks, goalSvc)
+	statusSvc := teamstatus.New(deps.Statuses)
+	periodSvc := period.New(deps.Periods)
+	krSvc := keyresult.New(deps.KRs)
+	userSvc := user.New(deps.Users)
+	activitySvc := serviceactivity.New(deps.Activity, deps.Logger)
 
 	return &Service{
 		teams:        deps.Teams,
@@ -151,16 +168,21 @@ func New(deps Deps) *Service {
 		progressSnap: deps.ProgressSnap,
 		logger:       deps.Logger,
 
-		teamSvc:       team.New(deps.Teams),
-		userSvc:       user.New(deps.Users),
+		teamSvc:       teamSvc,
+		userSvc:       userSvc,
 		goalSvc:       goalSvc,
-		goalshareSvc:  goalshare.New(deps.Shares),
-		goallinkSvc:   goallink.New(deps.GoalLinks, goalSvc),
-		teamstatusSvc: teamstatus.New(deps.Statuses),
-		periodSvc:     period.New(deps.Periods),
-		keyresultSvc:  keyresult.New(deps.KRs),
-		activitySvc:   serviceactivity.New(deps.Activity, deps.Logger),
+		goalshareSvc:  shareSvc,
+		goallinkSvc:   linkSvc,
+		teamstatusSvc: statusSvc,
+		periodSvc:     periodSvc,
+		keyresultSvc:  krSvc,
+		activitySvc:   activitySvc,
 		hcSvc:         healthcheckin.New(deps.HCCache),
+
+		okrboardUC:  okrboard.New(okrboard.Deps{Teams: teamSvc, Goals: goalSvc, Shares: shareSvc, Statuses: statusSvc, Periods: periodSvc, Links: linkSvc}),
+		goalUC:      goaluc.New(goaluc.Deps{Goals: goalSvc, Shares: shareSvc, Links: linkSvc, Statuses: statusSvc, Periods: periodSvc, Teams: teamSvc, KRs: krSvc, Activity: activitySvc}),
+		keyresultUC: kruc.New(kruc.Deps{KRs: krSvc, Goals: goalSvc, Activity: activitySvc}),
+		periodUC:    perioduc.New(perioduc.Deps{Periods: periodSvc, Teams: teamSvc, Goals: goalSvc, Statuses: statusSvc, Snaps: progresssnap.New(deps.ProgressSnap), Activity: activitySvc, HCCache: deps.HCCache, Logger: deps.Logger}),
 	}
 }
 
@@ -187,453 +209,28 @@ func NewFromStore(st *store.Store, grantsProvider GrantsProvider, hcCache *Healt
 // TeamNode is an alias so handlers keep compiling against service.TeamNode until stage E.
 type TeamNode = team.Node
 
-type TeamSummary struct {
-	ID             int64
-	Name           string
-	Type           domain.TeamType
-	Indent         int
-	Status         domain.TeamPeriodStatus
-	PeriodProgress int
-	GoalsCount     int
-	GoalsWeight    int
-	Goals          []TeamGoalSummary
-}
+type TeamSummary = okrboard.TeamSummary
 
-type TeamGoalSummary struct {
-	ID         int64
-	Title      string
-	Weight     int
-	Progress   int
-	ShareTeams []TeamShareInfo
-	Priority   string
-	WorkType   domain.WorkType
-}
+type TeamGoalSummary = okrboard.TeamGoalSummary
 
-type TeamShareInfo struct {
-	ID     int64
-	Name   string
-	Type   domain.TeamType
-	Weight int
-}
+type TeamShareInfo = okrboard.TeamShareInfo
 
-type TeamChildSummary struct {
-	Team              domain.Team
-	Status            domain.TeamPeriodStatus
-	HasGoals          bool
-	Progress          int
-	GoalsCount        int
-	HighPriorityCount int
-	LastUpdateAt      *time.Time
-}
+type TeamChildSummary = okrboard.TeamChildSummary
 
-type TeamOverview struct {
-	AverageProgress int
-	TeamsWithGoals  int
-	ChildrenSummary []TeamChildSummary
-}
+type TeamOverview = okrboard.TeamOverview
 
-type TeamOKR struct {
-	Team            domain.Team
-	Period          domain.Period
-	PeriodStatus    domain.TeamPeriodStatus
-	StatusChangedAt *time.Time
-	PeriodProgress  int
-	GoalsCount      int
-	GoalsWeight     int
-	Goals           []GoalDetails
-}
+type TeamOKR = okrboard.TeamOKR
 
-type GoalDetails struct {
-	Goal       domain.Goal
-	ShareTeams []TeamShareInfo
-}
+type GoalDetails = okrboard.GoalDetails
 
 // ListPeriodViews returns periods enriched with parent/depth/status via domain.BuildPeriodViews.
 // When includeArchived is false, archived periods are filtered out before building the views, so
 // a visible period's ParentID never points at a period the caller can't see.
 
-func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, scope domain.TenantScope, periodID int64, orgID *int64) ([]TeamSummary, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx, scope)
-	if err != nil {
-		return nil, err
-	}
-	return s.getTeamsWithPeriodSummaryFromTeams(ctx, scope, allTeams, periodID, orgID)
-}
-
 // teamSummaryBatch holds pre-loaded data for building TeamSummary without per-team DB queries.
-type teamSummaryBatch struct {
-	teamIDsWithGoals map[int64]struct{}
-	goalsByTeam      map[int64][]domain.Goal
-	statuses         map[int64]domain.TeamPeriodStatus
-	sharesByGoal     map[int64][]shares.GoalShare
-}
-
-func (s *Service) getTeamsWithPeriodSummaryFromTeams(ctx context.Context, scope domain.TenantScope, allTeams []domain.Team, periodID int64, orgID *int64) ([]TeamSummary, error) {
-	teamsByID, childrenMap, roots := team.BuildHierarchy(allTeams)
-
-	allTeamIDs := make([]int64, len(allTeams))
-	for i, t := range allTeams {
-		allTeamIDs[i] = t.ID
-	}
-
-	teamIDsWithGoals, err := s.teams.ListTeamIDsWithGoalsInPeriod(ctx, scope, periodID)
-	if err != nil {
-		return nil, err
-	}
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, allTeamIDs)
-	if err != nil {
-		return nil, err
-	}
-	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, scope, periodID, allTeamIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	allGoalIDs := make([]int64, 0)
-	for _, gList := range goalsByTeam {
-		for _, g := range gList {
-			allGoalIDs = append(allGoalIDs, g.ID)
-		}
-	}
-	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, scope, allGoalIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	batch := &teamSummaryBatch{
-		teamIDsWithGoals: teamIDsWithGoals,
-		goalsByTeam:      goalsByTeam,
-		statuses:         statuses,
-		sharesByGoal:     sharesByGoal,
-	}
-
-	filteredRoots := roots
-	if orgID != nil {
-		if team, ok := teamsByID[*orgID]; ok {
-			filteredRoots = []domain.Team{team}
-		}
-	}
-	rows := make([]TeamSummary, 0, len(allTeams))
-	for _, team := range filteredRoots {
-		s.appendTeamSummaryFromBatch(&rows, team, 0, childrenMap, teamsByID, batch)
-	}
-	return rows, nil
-}
-
-func (s *Service) appendTeamSummaryFromBatch(rows *[]TeamSummary, team domain.Team, level int, childrenMap map[int64][]domain.Team, teamsByID map[int64]domain.Team, batch *teamSummaryBatch) {
-	_, hasGoals := batch.teamIDsWithGoals[team.ID]
-	visible := team.DeletedAt == nil || hasGoals
-
-	if visible {
-		goalsList := batch.goalsByTeam[team.ID]
-
-		status := domain.TeamPeriodStatusNoGoals
-		if s, ok := batch.statuses[team.ID]; ok {
-			status = s
-		}
-
-		goalRows := make([]TeamGoalSummary, 0, len(goalsList))
-		goalsWeight := 0
-		for i := range goalsList {
-			goalsList[i].Progress = progress.ForGoal(&goalsList[i])
-			goalsWeight += goalsList[i].Weight
-			shareTeams := buildShareInfosFromBatch(goalsList[i], batch.sharesByGoal[goalsList[i].ID], teamsByID)
-			goalRows = append(goalRows, TeamGoalSummary{
-				ID:         goalsList[i].ID,
-				Title:      goalsList[i].Title,
-				Weight:     goalsList[i].Weight,
-				Progress:   goalsList[i].Progress,
-				ShareTeams: shareTeams,
-				Priority:   string(goalsList[i].Priority),
-				WorkType:   goalsList[i].WorkType,
-			})
-		}
-
-		*rows = append(*rows, TeamSummary{
-			ID:             team.ID,
-			Name:           team.Name,
-			Type:           team.Type,
-			Indent:         level * 24,
-			Status:         status,
-			PeriodProgress: progress.PeriodProgress(goalsList),
-			GoalsCount:     len(goalsList),
-			GoalsWeight:    goalsWeight,
-			Goals:          goalRows,
-		})
-	}
-
-	nextLevel := level
-	if visible {
-		nextLevel = level + 1
-	}
-	children := childrenMap[team.ID]
-	sort.Slice(children, func(i, j int) bool { return children[i].Name < children[j].Name })
-	for _, child := range children {
-		s.appendTeamSummaryFromBatch(rows, child, nextLevel, childrenMap, teamsByID, batch)
-	}
-}
-
-func (s *Service) GetTeamOKR(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, period domain.Period) (TeamOKR, error) {
-	team, err := s.teams.GetTeam(ctx, scope, teamID)
-	if err != nil {
-		return TeamOKR{}, err
-	}
-	visible, err := s.isTeamVisibleInPeriod(ctx, scope, team, periodID)
-	if err != nil {
-		return TeamOKR{}, err
-	}
-	if !visible {
-		return TeamOKR{}, ErrTeamNotVisibleInPeriod
-	}
-	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
-	if err != nil {
-		return TeamOKR{}, err
-	}
-
-	goalIDs := make([]int64, len(goalsList))
-	for i, g := range goalsList {
-		goalIDs[i] = g.ID
-	}
-	sharesByGoal, err := s.shares.ListGoalSharesByGoalIDs(ctx, scope, goalIDs)
-	if err != nil {
-		return TeamOKR{}, err
-	}
-	allTeams, err := s.teams.ListAllTeams(ctx, scope)
-	if err != nil {
-		return TeamOKR{}, err
-	}
-	teamsByID := make(map[int64]domain.Team, len(allTeams))
-	for _, t := range allTeams {
-		teamsByID[t.ID] = t
-	}
-
-	goalsWeight := 0
-	goalDetails := make([]GoalDetails, 0, len(goalsList))
-	for i := range goalsList {
-		goalsList[i].Progress = progress.ForGoal(&goalsList[i])
-		goalsWeight += goalsList[i].Weight
-		shareTeams := buildShareInfosFromBatch(goalsList[i], sharesByGoal[goalsList[i].ID], teamsByID)
-		goalDetails = append(goalDetails, GoalDetails{
-			Goal:       goalsList[i],
-			ShareTeams: shareTeams,
-		})
-	}
-
-	periodProgress := progress.PeriodProgress(goalsList)
-	status, statusChangedAt, err := s.statuses.GetTeamPeriodStatusWithTime(ctx, scope, teamID, periodID)
-	if err != nil {
-		return TeamOKR{}, err
-	}
-	return TeamOKR{
-		Team:            team,
-		Period:          period,
-		PeriodStatus:    status,
-		StatusChangedAt: statusChangedAt,
-		PeriodProgress:  periodProgress,
-		GoalsCount:      len(goalsList),
-		GoalsWeight:     goalsWeight,
-		Goals:           goalDetails,
-	}, nil
-}
 
 // buildShareInfosFromBatch builds TeamShareInfo slice from pre-loaded shares and teams.
 // This avoids per-goal DB calls in loops.
-func buildShareInfosFromBatch(goal domain.Goal, shareList []shares.GoalShare, teamsByID map[int64]domain.Team) []TeamShareInfo {
-	teamIDs := make(map[int64]struct{}, len(shareList)+1)
-	teamIDs[goal.TeamID] = struct{}{}
-	for _, share := range shareList {
-		teamIDs[share.TeamID] = struct{}{}
-	}
-	teamInfos := make([]TeamShareInfo, 0, len(teamIDs))
-	for teamID := range teamIDs {
-		team, ok := teamsByID[teamID]
-		if !ok {
-			continue
-		}
-		weight := goal.Weight
-		for _, share := range shareList {
-			if share.TeamID == teamID {
-				weight = share.Weight
-				break
-			}
-		}
-		teamInfos = append(teamInfos, TeamShareInfo{ID: team.ID, Name: team.Name, Type: team.Type, Weight: weight})
-	}
-	sort.Slice(teamInfos, func(i, j int) bool { return teamInfos[i].Name < teamInfos[j].Name })
-	return teamInfos
-}
-
-func (s *Service) GetDirectChildrenSummary(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]TeamChildSummary, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx, scope)
-	if err != nil {
-		return nil, err
-	}
-	hierarchy, err := s.teamSvc.HierarchyFromTeams(ctx, scope, allTeams, &periodID)
-	if err != nil {
-		return nil, err
-	}
-	children := team.FindDirectChildren(teamID, hierarchy)
-	if len(children) == 0 {
-		return []TeamChildSummary{}, nil
-	}
-	return s.buildDirectChildrenSummary(ctx, scope, periodID, children, nil)
-}
-
-func (s *Service) buildDirectChildrenSummary(ctx context.Context, scope domain.TenantScope, periodID int64, children []TeamNode, goalsByTeam map[int64][]domain.Goal) ([]TeamChildSummary, error) {
-	childIDs := make([]int64, 0, len(children))
-	for _, child := range children {
-		childIDs = append(childIDs, child.Team.ID)
-	}
-	statuses, err := s.statuses.ListTeamPeriodStatuses(ctx, scope, periodID, childIDs)
-	if err != nil {
-		return nil, err
-	}
-	lastUpdates, err := s.goals.ListTeamLastGoalUpdateInPeriod(ctx, scope, periodID, childIDs)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]TeamChildSummary, 0, len(childIDs))
-	for _, child := range children {
-		item := TeamChildSummary{
-			Team:   child.Team,
-			Status: domain.TeamPeriodStatusNoGoals,
-		}
-		if status, ok := statuses[child.Team.ID]; ok {
-			item.Status = status
-		}
-		var goalsList []domain.Goal
-		if goalsByTeam != nil {
-			goalsList = goalsByTeam[child.Team.ID]
-		} else {
-			goalsList, err = s.goals.ListGoalsByTeamPeriod(ctx, scope, child.Team.ID, periodID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		item.GoalsCount = len(goalsList)
-		item.HasGoals = item.GoalsCount > 0
-		if item.HasGoals {
-			for i := range goalsList {
-				goalsList[i].Progress = progress.ForGoal(&goalsList[i])
-			}
-			item.Progress = progress.PeriodProgress(goalsList)
-			for _, g := range goalsList {
-				if g.Priority == domain.PriorityP0 || g.Priority == domain.PriorityP1 {
-					item.HighPriorityCount++
-				}
-			}
-		}
-		if updatedAt, ok := lastUpdates[child.Team.ID]; ok {
-			value := updatedAt
-			item.LastUpdateAt = &value
-		}
-		result = append(result, item)
-	}
-	return result, nil
-}
-
-func (s *Service) GetTeamOverview(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (TeamOverview, error) {
-	allTeams, err := s.teams.ListAllTeams(ctx, scope)
-	if err != nil {
-		return TeamOverview{}, err
-	}
-	hierarchy, err := s.teamSvc.HierarchyFromTeams(ctx, scope, allTeams, &periodID)
-	if err != nil {
-		return TeamOverview{}, err
-	}
-	children := team.FindDirectChildren(teamID, hierarchy)
-	descendantIDs := team.CollectDescendantIDs(teamID, hierarchy)
-	goalsByTeam, err := s.goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, descendantIDs)
-	if err != nil {
-		return TeamOverview{}, err
-	}
-	summaryByID := make(map[int64]TeamSummary, len(descendantIDs))
-	for _, id := range descendantIDs {
-		goalsList := goalsByTeam[id]
-		if len(goalsList) == 0 {
-			continue
-		}
-		for i := range goalsList {
-			goalsList[i].Progress = progress.ForGoal(&goalsList[i])
-		}
-		summaryByID[id] = TeamSummary{
-			ID:             id,
-			GoalsCount:     len(goalsList),
-			PeriodProgress: progress.PeriodProgress(goalsList),
-		}
-	}
-	childrenSummary := []TeamChildSummary{}
-	if len(children) > 0 {
-		childrenSummary, err = s.buildDirectChildrenSummary(ctx, scope, periodID, children, goalsByTeam)
-		if err != nil {
-			return TeamOverview{}, err
-		}
-	}
-
-	totalProgress := 0
-	teamsWithGoals := 0
-
-	for _, id := range descendantIDs {
-		summary, ok := summaryByID[id]
-		if !ok || summary.GoalsCount == 0 {
-			continue
-		}
-		teamsWithGoals++
-		totalProgress += summary.PeriodProgress
-	}
-
-	avgProgress := 0
-	if teamsWithGoals > 0 {
-		avgProgress = totalProgress / teamsWithGoals
-	}
-
-	return TeamOverview{
-		AverageProgress: avgProgress,
-		TeamsWithGoals:  teamsWithGoals,
-		ChildrenSummary: childrenSummary,
-	}, nil
-}
-
-// recordKRProgress records a progress event with explicit before/after percent (0..100).
-// The caller computes the percentages from the KR's meta because store.GetKeyResult does not
-// populate the computed KeyResult.Progress field.
-func (s *Service) recordKRProgress(ctx context.Context, scope domain.TenantScope, krID int64, kr domain.KeyResult, beforeProg, afterProg int, actorUserID int64) {
-	g, gerr := s.goals.GetGoal(ctx, scope, kr.GoalID)
-	if gerr != nil {
-		return
-	}
-	teamID, periodID, goalID, krRef := g.TeamID, g.PeriodID, g.ID, krID
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityProgress, Action: domain.ActionKRProgress,
-		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krRef, EntityTitle: kr.Title,
-		Payload: map[string]any{
-			"before":     map[string]any{"progress": beforeProg},
-			"after":      map[string]any{"progress": afterProg},
-			"kind":       string(kr.Kind),
-			"goal_title": g.Title,
-		},
-	})
-}
-
-func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.TenantScope, krID int64, current float64, actorUserID int64) error {
-	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
-	if err != nil {
-		return err
-	}
-	if kr.Kind != domain.KRKindNumerical {
-		return fmt.Errorf("unsupported kr kind for numerical update: %s", kr.Kind)
-	}
-	if err := s.krs.UpdateNumericalCurrent(ctx, scope, krID, current); err != nil {
-		return err
-	}
-	if n := kr.Numerical; n != nil {
-		beforeProg := progress.NumericalProgress(n.StartValue, n.TargetValue, n.CurrentValue, n.Checkpoints)
-		afterProg := progress.NumericalProgress(n.StartValue, n.TargetValue, current, n.Checkpoints)
-		s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
-		s.keyresultSvc.AutoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
-	}
-	return nil
-}
 
 // UpdateKRHealthStatus sets the manual health status of a KR. Access is checked by the caller
 // (same as progress update). Health status is informational and does not affect progress math.
@@ -641,369 +238,12 @@ func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.Te
 // autoCompleteHealth sets health=done exactly once, on the progress transition <100 -> =100,
 // and only if the KR is not already done. Never reverts on later drops. kr is the pre-update state.
 
-func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool, actorUserID int64) error {
-	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
-	if err != nil {
-		return err
-	}
-	if kr.Kind != domain.KRKindBoolean {
-		return fmt.Errorf("unsupported kr kind for boolean update: %s", kr.Kind)
-	}
-	beforeDone := false
-	if bm, berr := s.krs.GetBooleanMeta(ctx, scope, krID); berr == nil && bm != nil {
-		beforeDone = bm.IsDone
-	}
-	if err := s.krs.UpdateBoolean(ctx, scope, krID, done); err != nil {
-		return err
-	}
-	beforeProg := progress.BooleanProgress(beforeDone)
-	afterProg := progress.BooleanProgress(done)
-	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
-	s.keyresultSvc.AutoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
-	return nil
-}
+type ProjectStageUpdate = kruc.ProjectStageUpdate
 
-type ProjectStageUpdate struct {
-	ID     int64
-	IsDone bool
-}
-
-func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.TenantScope, krID int64, updates []ProjectStageUpdate, actorUserID int64) error {
-	kr, err := s.krs.GetKeyResult(ctx, scope, krID)
-	if err != nil {
-		return err
-	}
-	if kr.Kind != domain.KRKindProject {
-		return fmt.Errorf("unsupported kr kind for project update: %s", kr.Kind)
-	}
-	stages, err := s.krs.ListProjectStages(ctx, scope, krID)
-	if err != nil {
-		return err
-	}
-	updatesByID := make(map[int64]bool, len(updates))
-	for _, u := range updates {
-		updatesByID[u.ID] = u.IsDone
-	}
-	validUpdates := make(map[int64]bool, len(updates))
-	for _, stage := range stages {
-		if done, ok := updatesByID[stage.ID]; ok {
-			validUpdates[stage.ID] = done
-		}
-	}
-	beforeProg := progress.ProjectProgress(stages)
-	if err := s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, validUpdates); err != nil {
-		return err
-	}
-	afterStages := make([]domain.KRProjectStage, len(stages))
-	copy(afterStages, stages)
-	for i := range afterStages {
-		if done, ok := validUpdates[afterStages[i].ID]; ok {
-			afterStages[i].IsDone = done
-		}
-	}
-	afterProg := progress.ProjectProgress(afterStages)
-	s.recordKRProgress(ctx, scope, krID, kr, beforeProg, afterProg, actorUserID)
-	s.keyresultSvc.AutoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg)
-	return nil
-}
-
-type ShareTarget struct {
-	TeamID int64
-	Weight int
-}
-
-func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget, actorUserID int64) error {
-	goal, err := s.goals.GetGoal(ctx, scope, goalID)
-	if err != nil {
-		return err
-	}
-	// Validate every target team belongs to the active tenant before writing shares. The share
-	// repository only scopes the goal, so an unchecked target team_id could attach the goal to a
-	// team in another tenant. One scoped lookup builds the allow-set (no per-target query).
-	if len(targets) > 0 {
-		tenantTeams, err := s.teams.ListAllTeams(ctx, scope)
-		if err != nil {
-			return err
-		}
-		valid := make(map[int64]struct{}, len(tenantTeams))
-		for _, t := range tenantTeams {
-			valid[t.ID] = struct{}{}
-		}
-		for _, target := range targets {
-			if _, ok := valid[target.TeamID]; !ok {
-				return ErrShareTargetNotInTenant
-			}
-		}
-	}
-	// The /share endpoint replaces the whole goal_shares set, so diff the current set against the
-	// new targets to log ADDING teams (goal_shared) and REMOVING teams (goal_unshared) separately,
-	// and to guard only NEWLY added teams below. The read error must propagate: swallowing it would
-	// leave beforeSet empty, misclassify every target as newly added, and could reject an unchanged
-	// save with 409 just because an existing participant is already in_progress/closed.
-	cur, err := s.shares.ListGoalShares(ctx, scope, goalID)
-	if err != nil {
-		return err
-	}
-	beforeSet := make(map[int64]bool, len(cur))
-	for _, sh := range cur {
-		beforeSet[sh.TeamID] = true
-	}
-	shareInputs := make([]shares.GoalShareInput, 0, len(targets))
-	newSet := map[int64]bool{}
-	for _, target := range targets {
-		shareInputs = append(shareInputs, shares.GoalShareInput{TeamID: target.TeamID, Weight: target.Weight})
-		newSet[target.TeamID] = true
-	}
-	var added, removed []int64
-	for _, target := range targets {
-		if !beforeSet[target.TeamID] {
-			added = append(added, target.TeamID)
-		}
-	}
-	for teamID := range beforeSet {
-		if !newSet[teamID] {
-			removed = append(removed, teamID)
-		}
-	}
-	// Guard: a team whose period is already in_progress or closed cannot be NEWLY added as a share
-	// target — its OKR set for the period is locked, so a shared goal must not appear after the
-	// fact. Only newly added teams are checked (one batched status lookup); teams already sharing
-	// the goal are left untouched even if their period has since advanced. This mirrors the UI,
-	// which greys out such teams and blocks selection, but is enforced server-side as source of truth.
-	if len(added) > 0 {
-		statuses, serr := s.statuses.ListTeamPeriodStatuses(ctx, scope, goal.PeriodID, added)
-		if serr != nil {
-			return serr
-		}
-		for _, teamID := range added {
-			switch statuses[teamID] {
-			case domain.TeamPeriodStatusInProgress, domain.TeamPeriodStatusClosed:
-				return ErrCannotShareWithClosedPeriod
-			}
-		}
-	}
-	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, shareInputs); err != nil {
-		return err
-	}
-	teamID, periodID := goal.TeamID, goal.PeriodID
-	if len(added) > 0 {
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalShared,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: goal.Title,
-			Payload: map[string]any{"shared_with_team_ids": added},
-		})
-	}
-	if len(removed) > 0 {
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: goal.Title,
-			Payload: map[string]any{"unshared_team_ids": removed},
-		})
-	}
-	return nil
-}
-
-func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
-	commentID, err := s.goals.AddGoalComment(ctx, scope, goalID, text, authorUserID)
-	if err != nil {
-		return err
-	}
-	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
-		teamID, periodID := g.TeamID, g.PeriodID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionCommentAdded,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
-			EntityTitle: g.Title, Payload: map[string]any{"text": text},
-		})
-	}
-	return nil
-}
-
-func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
-	changed, err := s.goals.SetGoalCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
-	if err != nil {
-		return err
-	}
-	if !changed {
-		return nil // already in the target state → no event, no re-stamp
-	}
-	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
-		action := domain.ActionCommentReopened
-		if resolved {
-			action = domain.ActionCommentResolved
-		}
-		teamID, periodID := g.TeamID, g.PeriodID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: userID, Category: domain.ActivityDiscussion, Action: action,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
-			EntityTitle: g.Title,
-			Payload:     map[string]any{"before": map[string]any{"resolved": !resolved}, "after": map[string]any{"resolved": resolved}},
-		})
-	}
-	return nil
-}
-
-func (s *Service) AddGoalReply(ctx context.Context, scope domain.TenantScope, goalID, parentID int64, text string, authorUserID int64) error {
-	replyID, err := s.goals.AddGoalReply(ctx, scope, goalID, parentID, text, authorUserID)
-	if err != nil {
-		return err // includes goals.ErrNotFound for a bad/non-task parent
-	}
-	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
-		teamID, periodID := g.TeamID, g.PeriodID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionReplyAdded,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &replyID,
-			EntityTitle: g.Title, Payload: map[string]any{"text": text},
-		})
-	}
-	return nil
-}
-
-// DeleteGoalComment removes a task (cascading its replies) or a reply. Authorization:
-// the requesting user must be the author, or a tenant admin. Returns isTask so the
-// caller/log distinguishes a task deletion (comment_deleted) from a reply (reply_deleted).
-// A cascaded task deletion logs a single comment_deleted event (replies vanish silently).
-func (s *Service) DeleteGoalComment(ctx context.Context, scope domain.TenantScope, goalID, commentID, requestingUserID int64, isAdmin bool) (bool, error) {
-	author, isTask, err := s.goals.GetGoalCommentMeta(ctx, scope, goalID, commentID)
-	if err != nil {
-		return false, err // goals.ErrNotFound if absent
-	}
-	if author != requestingUserID && !isAdmin {
-		return false, ErrForbidden
-	}
-	if err := s.goals.DeleteGoalComment(ctx, scope, goalID, commentID); err != nil {
-		return false, err
-	}
-	action := domain.ActionReplyDeleted
-	if isTask {
-		action = domain.ActionCommentDeleted
-	}
-	// The goal is not deleted by removing a comment, so it is still readable for the
-	// team/period/title snapshot of the journal entry.
-	if g, gerr := s.goals.GetGoal(ctx, scope, goalID); gerr == nil {
-		teamID, periodID := g.TeamID, g.PeriodID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: requestingUserID, Category: domain.ActivityDiscussion, Action: action,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
-			EntityTitle: g.Title,
-		})
-	}
-	return isTask, nil
-}
-
-func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
-	beforeText := ""
-	if before, berr := s.krs.GetKeyResultNote(ctx, scope, krID); berr == nil && before != nil {
-		beforeText = before.Text
-	}
-	if err := s.krs.UpsertKeyResultNote(ctx, scope, krID, text, authorUserID); err != nil {
-		return err
-	}
-	if beforeText != text {
-		if kr, kerr := s.krs.GetKeyResult(ctx, scope, krID); kerr == nil {
-			if g, gerr := s.goals.GetGoal(ctx, scope, kr.GoalID); gerr == nil {
-				teamID, periodID, goalID, krRef := g.TeamID, g.PeriodID, g.ID, krID
-				s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-					ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionKRNoteUpdated,
-					TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krRef, EntityTitle: kr.Title,
-					Payload: map[string]any{"before": map[string]any{"note": beforeText}, "after": map[string]any{"note": text}},
-				})
-			}
-		}
-	}
-	return nil
-}
+type ShareTarget = goaluc.ShareTarget
 
 // KeyResultMetaInput is an alias so handlers keep compiling until stage E.
 type KeyResultMetaInput = keyresult.MetaInput
-
-func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput, actorUserID int64) error {
-	before, _ := s.goals.GetGoal(ctx, scope, input.ID)
-	if err := s.goals.UpdateGoal(ctx, scope, input); err != nil {
-		return err
-	}
-	if after, aerr := s.goals.GetGoal(ctx, scope, input.ID); aerr == nil {
-		changed := diffFields(map[string][2]any{
-			"title":       {before.Title, after.Title},
-			"description": {before.Description, after.Description},
-			"priority":    {string(before.Priority), string(after.Priority)},
-			"weight":      {before.Weight, after.Weight},
-		})
-		if len(changed) > 0 {
-			teamID, periodID, gid := after.TeamID, after.PeriodID, after.ID
-			s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalFieldsChanged,
-				TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: after.Title,
-				Payload: map[string]any{"changed": changed},
-			})
-		}
-	}
-	return nil
-}
-
-func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta KeyResultMetaInput, actorUserID int64) (int64, error) {
-	krID, err := s.krs.CreateKeyResult(ctx, scope, input)
-	if err != nil {
-		return 0, err
-	}
-	if err := s.keyresultSvc.ApplyMeta(ctx, scope, krID, input.Kind, meta); err != nil {
-		return 0, err
-	}
-	if g, gerr := s.goals.GetGoal(ctx, scope, input.GoalID); gerr == nil {
-		teamID, periodID, goalID := g.TeamID, g.PeriodID, input.GoalID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionKRCreated,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krID, EntityTitle: input.Title,
-		})
-	}
-	return krID, nil
-}
-
-func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta KeyResultMetaInput, actorUserID int64) error {
-	before, _ := s.krs.GetKeyResult(ctx, scope, input.ID)
-	if err := s.krs.UpdateKeyResult(ctx, scope, input); err != nil {
-		return err
-	}
-	if err := s.keyresultSvc.ApplyMeta(ctx, scope, input.ID, input.Kind, meta); err != nil {
-		return err
-	}
-	if after, aerr := s.krs.GetKeyResult(ctx, scope, input.ID); aerr == nil {
-		changed := diffFields(map[string][2]any{
-			"title":       {before.Title, after.Title},
-			"description": {before.Description, after.Description},
-			"weight":      {before.Weight, after.Weight},
-		})
-		if len(changed) > 0 {
-			if g, gerr := s.goals.GetGoal(ctx, scope, after.GoalID); gerr == nil {
-				teamID, periodID, gid, krID := g.TeamID, g.PeriodID, g.ID, input.ID
-				s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-					ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionKRFieldsChanged,
-					TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, KRID: &krID, EntityTitle: after.Title,
-					Payload: map[string]any{"changed": changed},
-				})
-			}
-		}
-	}
-	return nil
-}
-
-func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus, actorUserID int64) error {
-	before, _ := s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, periodID)
-	if err := s.statuses.SetTeamPeriodStatus(ctx, scope, teamID, periodID, status); err != nil {
-		return err
-	}
-	title := ""
-	if team, terr := s.teams.GetTeam(ctx, scope, teamID); terr == nil {
-		title = team.Name
-	}
-	tID, pID := teamID, periodID
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityStatus, Action: domain.ActionStatusChanged,
-		TeamID: &tID, PeriodID: &pID, EntityTitle: title,
-		Payload: map[string]any{"before": map[string]any{"status": string(before)}, "after": map[string]any{"status": string(status)}},
-	})
-	return nil
-}
 
 // — Team passthroughs —
 
@@ -1103,342 +343,20 @@ func (s *Service) SearchUsersInScope(ctx context.Context, scope domain.TenantSco
 
 // — Goal passthroughs —
 
-func (s *Service) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput, actorUserID int64) error {
-	before, _ := s.goals.GetGoal(ctx, scope, input.ID)
-	if err := s.goals.UpdateGoalFields(ctx, scope, input); err != nil {
-		return err
-	}
-	if after, aerr := s.goals.GetGoal(ctx, scope, input.ID); aerr == nil {
-		changed := diffFields(map[string][2]any{
-			"title":       {before.Title, after.Title},
-			"description": {before.Description, after.Description},
-			"priority":    {string(before.Priority), string(after.Priority)},
-		})
-		if len(changed) > 0 {
-			teamID, periodID, gid := after.TeamID, after.PeriodID, after.ID
-			s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalFieldsChanged,
-				TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: after.Title,
-				Payload: map[string]any{"changed": changed},
-			})
-		}
-	}
-	return nil
-}
-
-func (s *Service) DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, actorUserID int64) error {
-	g, _ := s.goals.GetGoal(ctx, scope, goalID)
-	if err := s.shares.DeleteGoalShare(ctx, scope, goalID, teamID); err != nil {
-		return err
-	}
-	ownerTeam, periodID, shareTeam := g.TeamID, g.PeriodID, teamID
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-		TeamID: &ownerTeam, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
-		Payload: map[string]any{"unshared_team_id": shareTeam},
-	})
-	return nil
-}
-
 // — Key result passthroughs —
-
-func (s *Service) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64, actorUserID int64) error {
-	kr, _ := s.krs.GetKeyResult(ctx, scope, id)
-	if err := s.krs.DeleteKeyResult(ctx, scope, id); err != nil {
-		return err
-	}
-	var g domain.Goal
-	if kr.GoalID != 0 {
-		g, _ = s.goals.GetGoal(ctx, scope, kr.GoalID)
-	}
-	teamID, periodID, goalID, krID := g.TeamID, g.PeriodID, g.ID, id
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionKRDeleted,
-		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, KRID: &krID, EntityTitle: kr.Title,
-	})
-	return nil
-}
 
 // — Business logic —
 
-// CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
-// Returns ErrPeriodClosed if the team's period status is InProgress or Closed.
-func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput, actorUserID int64) (int64, error) {
-	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, input.TeamID, input.PeriodID)
-	if err != nil {
-		return 0, err
-	}
-	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
-		return 0, ErrPeriodClosed
-	}
-	goalID, err := s.goals.CreateGoal(ctx, scope, input)
-	if err != nil {
-		return 0, err
-	}
-	if status == domain.TeamPeriodStatusNoGoals {
-		if err := s.statuses.SetTeamPeriodStatus(ctx, scope, input.TeamID, input.PeriodID, domain.TeamPeriodStatusForming); err != nil {
-			return 0, err
-		}
-	}
-	teamID, periodID := input.TeamID, input.PeriodID
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalCreated,
-		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: input.Title,
-	})
-	return goalID, nil
-}
-
-// CopyGoalMode selects copy (keep source) or move (copy then hard-delete source).
-type CopyGoalMode string
+type CopyGoalMode = goaluc.CopyGoalMode
 
 const (
-	CopyGoalModeCopy CopyGoalMode = "copy"
-	CopyGoalModeMove CopyGoalMode = "move"
+	CopyGoalModeCopy = goaluc.CopyGoalModeCopy
+	CopyGoalModeMove = goaluc.CopyGoalModeMove
 )
 
-// CopyGoalParams are the inputs for CopyGoal.
-type CopyGoalParams struct {
-	SourceGoalID   int64
-	TargetTeamID   int64
-	TargetPeriodID int64
-	Mode           CopyGoalMode
-	WithProgress   bool
-	WithComments   bool
-}
-
-// CopyGoal copies (or moves) a goal into a target team/period.
-// It rejects a target whose team period status is InProgress/Closed (ErrPeriodClosed),
-// and a move whose target equals the source pair (ErrTransferTargetSameAsSource).
-// Shares are never carried. On move, the source is hard-deleted (cascade).
-func (s *Service) CopyGoal(ctx context.Context, scope domain.TenantScope, p CopyGoalParams, actorUserID int64) (int64, error) {
-	src, err := s.goals.GetGoal(ctx, scope, p.SourceGoalID)
-	if err != nil {
-		return 0, err
-	}
-	if p.Mode == CopyGoalModeMove && p.TargetTeamID == src.TeamID && p.TargetPeriodID == src.PeriodID {
-		return 0, ErrTransferTargetSameAsSource
-	}
-	// Validate both target records live in the caller's tenant. The goals FK only enforces the
-	// global period/team id, so without these scoped lookups a caller could copy into another
-	// tenant's period/team (or a nonexistent one surfaces as an opaque insert error).
-	if _, err := s.teams.GetTeam(ctx, scope, p.TargetTeamID); err != nil {
-		return 0, ErrTransferTargetNotFound
-	}
-	if _, err := s.periods.GetPeriod(ctx, scope, p.TargetPeriodID); err != nil {
-		return 0, ErrTransferTargetNotFound
-	}
-	targetStatus, err := s.statuses.GetTeamPeriodStatus(ctx, scope, p.TargetTeamID, p.TargetPeriodID)
-	if err != nil {
-		return 0, err
-	}
-	if targetStatus == domain.TeamPeriodStatusClosed || targetStatus == domain.TeamPeriodStatusInProgress {
-		return 0, ErrPeriodClosed
-	}
-
-	// For a move, the copy and the source deletion run in one store transaction so the move
-	// cannot partially succeed (copy committed, source left behind).
-	newGoalID, err := s.goals.CopyGoal(ctx, scope, goals.CopyGoalInput{
-		SourceGoalID:   p.SourceGoalID,
-		TargetTeamID:   p.TargetTeamID,
-		TargetPeriodID: p.TargetPeriodID,
-		WithProgress:   p.WithProgress,
-		WithComments:   p.WithComments,
-		DeleteSource:   p.Mode == CopyGoalModeMove,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	if targetStatus == domain.TeamPeriodStatusNoGoals {
-		if err := s.statuses.SetTeamPeriodStatus(ctx, scope, p.TargetTeamID, p.TargetPeriodID, domain.TeamPeriodStatusForming); err != nil {
-			return 0, err
-		}
-	}
-
-	action := domain.ActionGoalCopied
-	if p.Mode == CopyGoalModeMove {
-		action = domain.ActionGoalMoved
-	}
-	tt, tp, ng := p.TargetTeamID, p.TargetPeriodID, newGoalID
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: action,
-		TeamID: &tt, PeriodID: &tp, GoalID: &ng, EntityTitle: src.Title,
-		Payload: map[string]any{
-			"source_goal_id":   src.ID,
-			"source_team_id":   src.TeamID,
-			"source_period_id": src.PeriodID,
-			"with_progress":    p.WithProgress,
-			"with_comments":    p.WithComments,
-		},
-	})
-
-	if p.Mode == CopyGoalModeMove {
-		// Source already deleted inside the copy transaction above; reset its team status
-		// if that removal left the source team with no goals in the source period.
-		_ = s.resetStatusIfNoGoals(ctx, scope, src.TeamID, src.PeriodID)
-	}
-	return newGoalID, nil
-}
-
-// DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.
-// Returns the effective requesting teamID and the goal's periodID for redirect.
-// Returns ErrPeriodClosed if the owner tries to delete in a closed period with no shares.
-func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64, actorUserID int64) (effectiveTeamID, periodID int64, err error) {
-	goal, err := s.goals.GetGoal(ctx, scope, goalID)
-	if err != nil {
-		return 0, 0, err
-	}
-	if requestingTeamID == 0 {
-		requestingTeamID = goal.TeamID
-	}
-	if requestingTeamID != goal.TeamID {
-		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, requestingTeamID); err != nil {
-			return 0, 0, err
-		}
-		// A shared team declined the goal — record it (anchored to the owner team, whose feed
-		// the owner watches; payload carries the team that left).
-		ownerTeam, pID, gid, decliner := goal.TeamID, goal.PeriodID, goalID, requestingTeamID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-			TeamID: &ownerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-			Payload: map[string]any{"declined_by_team_id": decliner},
-		})
-		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
-		return requestingTeamID, goal.PeriodID, nil
-	}
-	shareList, err := s.shares.ListGoalShares(ctx, scope, goalID)
-	if err != nil {
-		return 0, 0, err
-	}
-	if len(shareList) > 0 {
-		newOwner := shareList[0]
-		if err := s.goals.UpdateGoalOwner(ctx, scope, goalID, newOwner.TeamID, newOwner.Weight); err != nil {
-			return 0, 0, err
-		}
-		if err := s.shares.DeleteGoalShare(ctx, scope, goalID, newOwner.TeamID); err != nil {
-			return 0, 0, err
-		}
-		// Owner "deleted" a shared goal → ownership transferred to a shared team; log the composition change.
-		oldOwner, pID, gid, newOwnerTeam := goal.TeamID, goal.PeriodID, goalID, newOwner.TeamID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
-			TeamID: &newOwnerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": newOwnerTeam}},
-		})
-		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
-		return requestingTeamID, goal.PeriodID, nil
-	}
-	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, goal.TeamID, goal.PeriodID)
-	if err != nil {
-		return 0, 0, err
-	}
-	if status == domain.TeamPeriodStatusClosed || status == domain.TeamPeriodStatusInProgress {
-		return 0, 0, ErrPeriodClosed
-	}
-	if err := s.goals.DeleteGoal(ctx, scope, goalID); err != nil {
-		return 0, 0, err
-	}
-	teamID, pID := goal.TeamID, goal.PeriodID
-	s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalDeleted,
-		TeamID: &teamID, PeriodID: &pID, GoalID: &goalID, EntityTitle: goal.Title,
-	})
-	_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
-	return requestingTeamID, goal.PeriodID, nil
-}
-
-func (s *Service) resetStatusIfNoGoals(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) error {
-	goalsList, err := s.goals.ListGoalsByTeamPeriod(ctx, scope, teamID, periodID)
-	if err != nil || len(goalsList) > 0 {
-		return err
-	}
-	status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, periodID)
-	if err != nil || status == domain.TeamPeriodStatusNoGoals {
-		return nil
-	}
-	return s.statuses.SetTeamPeriodStatus(ctx, scope, teamID, periodID, domain.TeamPeriodStatusNoGoals)
-}
-
-// UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
-// Returns ErrCannotShareWithClosedPeriod if any selected team has an in_progress or closed period.
-func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64, actorUserID int64) (ownerID, periodID int64, err error) {
-	goal, err := s.goals.GetGoal(ctx, scope, goalID)
-	if err != nil {
-		return 0, 0, err
-	}
-	oldOwner := goal.TeamID
-	shareList, err := s.shares.ListGoalShares(ctx, scope, goalID)
-	if err != nil {
-		return 0, 0, err
-	}
-	shareWeights := make(map[int64]int, len(shareList))
-	for _, share := range shareList {
-		shareWeights[share.TeamID] = share.Weight
-	}
-	selectedSet := make(map[int64]struct{}, len(selectedTeamIDs))
-	for _, id := range selectedTeamIDs {
-		selectedSet[id] = struct{}{}
-	}
-	ownerID = goal.TeamID
-	if _, ok := selectedSet[ownerID]; !ok && len(selectedTeamIDs) > 0 {
-		ownerID = selectedTeamIDs[0]
-	}
-	newShares := make([]shares.GoalShareInput, 0, len(selectedTeamIDs))
-	for _, teamID := range selectedTeamIDs {
-		status, err := s.statuses.GetTeamPeriodStatus(ctx, scope, teamID, goal.PeriodID)
-		if err != nil {
-			return 0, 0, err
-		}
-		if status == domain.TeamPeriodStatusInProgress || status == domain.TeamPeriodStatusClosed {
-			return 0, 0, ErrCannotShareWithClosedPeriod
-		}
-		if teamID == ownerID {
-			ownerWeight := goal.Weight
-			if ownerID != goal.TeamID {
-				if w, ok := shareWeights[ownerID]; ok {
-					ownerWeight = w
-				} else {
-					ownerWeight = 0
-				}
-			}
-			if err := s.goals.UpdateGoalOwner(ctx, scope, goalID, ownerID, ownerWeight); err != nil {
-				return 0, 0, err
-			}
-			continue
-		}
-		weight := 0
-		if w, ok := shareWeights[teamID]; ok {
-			weight = w
-		}
-		newShares = append(newShares, shares.GoalShareInput{TeamID: teamID, Weight: weight})
-	}
-	if err := s.shares.ReplaceGoalShares(ctx, scope, goalID, newShares); err != nil {
-		return 0, 0, err
-	}
-	// Only log an owner change when the owner actually changed (avoid X→X noise).
-	if ownerID != oldOwner {
-		gid, pID := goalID, goal.PeriodID
-		s.activitySvc.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
-			TeamID: &ownerID, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": ownerID}},
-		})
-	}
-	return ownerID, goal.PeriodID, nil
-}
+type CopyGoalParams = goaluc.CopyGoalParams
 
 // ── Activity journal ─────────────────────────────────────────────────────────
-
-// diffFields returns only the entries whose before != after, as {field: {"before":x,"after":y}}.
-func diffFields(pairs map[string][2]any) map[string]any {
-	out := map[string]any{}
-	for field, ba := range pairs {
-		if ba[0] != ba[1] {
-			out[field] = map[string]any{"before": ba[0], "after": ba[1]}
-		}
-	}
-	return out
-}
 
 // — Делегирование в service/team. Фасад сохраняет старые имена, чтобы handlers
 // не менялись до этапа E; сами реализации живут в пакете сущности.
@@ -1705,4 +623,152 @@ func NewProvisioningService(
 	users provisioning.SystemAdminStore,
 ) *provisioning.Service {
 	return provisioning.New(tnRepo, tenantCache, memRepo, memberCache, st, grants, defaultAccess, users)
+}
+
+// — Делегирование в usecase/okrboard (фасад, удаляется на этапе E). —
+
+func (s *Service) GetTeamsWithPeriodSummary(ctx context.Context, scope domain.TenantScope, periodID int64, orgID *int64) ([]TeamSummary, error) {
+	return s.okrboardUC.TeamsWithPeriodSummary(ctx, scope, periodID, orgID)
+}
+
+func (s *Service) GetTeamOKR(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, period domain.Period) (TeamOKR, error) {
+	return s.okrboardUC.TeamOKRFor(ctx, scope, teamID, periodID, period)
+}
+
+func (s *Service) GetDirectChildrenSummary(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) ([]TeamChildSummary, error) {
+	return s.okrboardUC.DirectChildrenSummary(ctx, scope, teamID, periodID)
+}
+
+func (s *Service) GetTeamOverview(ctx context.Context, scope domain.TenantScope, teamID, periodID int64) (TeamOverview, error) {
+	return s.okrboardUC.TeamOverviewFor(ctx, scope, teamID, periodID)
+}
+
+// — Делегирование в usecase/goal (фасад, удаляется на этапе E). —
+
+func (s *Service) CreateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalInput, actorUserID int64) (int64, error) {
+	return s.goalUC.Create(ctx, scope, input, actorUserID)
+}
+
+func (s *Service) UpdateGoal(ctx context.Context, scope domain.TenantScope, input goals.GoalUpdateInput, actorUserID int64) error {
+	return s.goalUC.Update(ctx, scope, input, actorUserID)
+}
+
+func (s *Service) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input goals.GoalFieldsUpdateInput, actorUserID int64) error {
+	return s.goalUC.UpdateFields(ctx, scope, input, actorUserID)
+}
+
+func (s *Service) DeleteGoal(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64, actorUserID int64) (int64, int64, error) {
+	return s.goalUC.Delete(ctx, scope, goalID, requestingTeamID, actorUserID)
+}
+
+func (s *Service) CopyGoal(ctx context.Context, scope domain.TenantScope, p CopyGoalParams, actorUserID int64) (int64, error) {
+	return s.goalUC.Copy(ctx, scope, p, actorUserID)
+}
+
+func (s *Service) ShareGoal(ctx context.Context, scope domain.TenantScope, goalID int64, targets []ShareTarget, actorUserID int64) error {
+	return s.goalUC.Share(ctx, scope, goalID, targets, actorUserID)
+}
+
+func (s *Service) UpdateGoalOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64, actorUserID int64) (int64, int64, error) {
+	return s.goalUC.UpdateOwnerAndShares(ctx, scope, goalID, selectedTeamIDs, actorUserID)
+}
+
+func (s *Service) DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64, actorUserID int64) error {
+	return s.goalUC.DeleteShare(ctx, scope, goalID, teamID, actorUserID)
+}
+
+func (s *Service) AddGoalComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
+	return s.goalUC.AddComment(ctx, scope, goalID, text, authorUserID)
+}
+
+func (s *Service) AddGoalReply(ctx context.Context, scope domain.TenantScope, goalID, parentID int64, text string, authorUserID int64) error {
+	return s.goalUC.AddReply(ctx, scope, goalID, parentID, text, authorUserID)
+}
+
+func (s *Service) SetGoalCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) error {
+	return s.goalUC.SetCommentResolved(ctx, scope, goalID, commentID, resolved, userID)
+}
+
+func (s *Service) DeleteGoalComment(ctx context.Context, scope domain.TenantScope, goalID, commentID, requestingUserID int64, isAdmin bool) (bool, error) {
+	return s.goalUC.DeleteComment(ctx, scope, goalID, commentID, requestingUserID, isAdmin)
+}
+
+func (s *Service) SetGoalParents(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, childID int64, parentIDs []int64, actorUserID int64) error {
+	return s.goalUC.SetParents(ctx, scope, allowedTeamIDs, adminAll, childID, parentIDs, actorUserID)
+}
+
+func (s *Service) AttachGoalLinks(ctx context.Context, scope domain.TenantScope, details []GoalDetails, allowedTeamIDs []int64, adminAll bool) error {
+	return s.okrboardUC.AttachLinks(ctx, scope, details, allowedTeamIDs, adminAll)
+}
+
+// — Делегирование в usecase/keyresult (фасад, удаляется на этапе E). —
+
+func (s *Service) UpdateKRProgressNumerical(ctx context.Context, scope domain.TenantScope, krID int64, current float64, actorUserID int64) error {
+	return s.keyresultUC.UpdateProgressNumerical(ctx, scope, krID, current, actorUserID)
+}
+
+func (s *Service) UpdateKRProgressBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool, actorUserID int64) error {
+	return s.keyresultUC.UpdateProgressBoolean(ctx, scope, krID, done, actorUserID)
+}
+
+func (s *Service) UpdateKRProgressProject(ctx context.Context, scope domain.TenantScope, krID int64, updates []ProjectStageUpdate, actorUserID int64) error {
+	return s.keyresultUC.UpdateProgressProject(ctx, scope, krID, updates, actorUserID)
+}
+
+func (s *Service) CreateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta KeyResultMetaInput, actorUserID int64) (int64, error) {
+	return s.keyresultUC.CreateWithMeta(ctx, scope, input, meta, actorUserID)
+}
+
+func (s *Service) UpdateKeyResultWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta KeyResultMetaInput, actorUserID int64) error {
+	return s.keyresultUC.UpdateWithMeta(ctx, scope, input, meta, actorUserID)
+}
+
+func (s *Service) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64, actorUserID int64) error {
+	return s.keyresultUC.Delete(ctx, scope, id, actorUserID)
+}
+
+func (s *Service) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	return s.keyresultUC.UpsertNote(ctx, scope, krID, text, authorUserID)
+}
+
+// — Алиасы read-model типов usecase/period (удаляются на этапе E). —
+
+type (
+	PeriodTeamSummary     = perioduc.PeriodTeamSummary
+	PeriodOverviewSummary = perioduc.PeriodOverviewSummary
+	BalanceBucket         = perioduc.BalanceBucket
+	PeriodBalances        = perioduc.PeriodBalances
+	PeriodGoalItem        = perioduc.PeriodGoalItem
+	PeriodKRItem          = perioduc.PeriodKRItem
+	PeriodOverview        = perioduc.PeriodOverview
+	PeriodStatsItem       = perioduc.PeriodStatsItem
+	BulkStatusResult      = perioduc.BulkStatusResult
+	SeriesPoint           = perioduc.SeriesPoint
+	ProgressSeries        = perioduc.ProgressSeries
+)
+
+// — Делегирование в usecase/period (фасад, удаляется на этапе E). —
+
+func (s *Service) PeriodOverview(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int) (PeriodOverview, error) {
+	return s.periodUC.PeriodOverview(ctx, scope, periodID, weightTolerance)
+}
+
+func (s *Service) PeriodOverviewScoped(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int, teamFilter map[int64]bool) (PeriodOverview, error) {
+	return s.periodUC.PeriodOverviewScoped(ctx, scope, periodID, weightTolerance, teamFilter)
+}
+
+func (s *Service) PeriodStats(ctx context.Context, scope domain.TenantScope, weightTolerance int) ([]PeriodStatsItem, error) {
+	return s.periodUC.PeriodStats(ctx, scope, weightTolerance)
+}
+
+func (s *Service) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, periodID int64, target domain.TeamPeriodStatus, actorUserID int64, teamFilter map[int64]bool) (BulkStatusResult, error) {
+	return s.periodUC.BulkSetTeamPeriodStatus(ctx, scope, periodID, target, actorUserID, teamFilter)
+}
+
+func (s *Service) SnapshotActivePeriods(ctx context.Context, day time.Time, actives []HCActive) error {
+	return s.periodUC.SnapshotActivePeriods(ctx, day, actives)
+}
+
+func (s *Service) UpdateTeamPeriodStatus(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, status domain.TeamPeriodStatus, actorUserID int64) error {
+	return s.periodUC.UpdateTeamStatus(ctx, scope, teamID, periodID, status, actorUserID)
 }
