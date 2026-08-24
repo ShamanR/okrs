@@ -1,4 +1,4 @@
-package service
+package healthcheckin
 
 import (
 	"context"
@@ -98,8 +98,8 @@ func makePeriodData(teams []domain.Team, goals map[int64][]domain.Goal, statuses
 	}
 }
 
-func makeCfg() HealthCheckInConfig {
-	return HealthCheckInConfig{
+func makeCfg() Config {
+	return Config{
 		StaleDays: 7, BehindMargin: 10, WeightTolerance: 0,
 		CommentDepth: 1, ResolvedCommentsLimit: 5,
 		InCounter: map[string]bool{
@@ -559,7 +559,7 @@ func (s stubSettingsReader) GetTenant(_ context.Context, _ domain.TenantScope, _
 }
 
 func TestLoadConfig_CommentDefaults(t *testing.T) {
-	cfg, err := LoadHealthCheckInConfig(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: nil})
+	cfg, err := LoadConfig(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: nil})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,7 +591,7 @@ func TestLoadProgressSnapshotIntervalDays(t *testing.T) {
 
 func TestLoadConfig_NormalizesInvalidCommentFields(t *testing.T) {
 	raw := json.RawMessage(`{"comment_depth":-2,"resolved_comments_limit":0,"stale_days":7,"cache_ttl_minutes":5,"green_threshold":80}`)
-	cfg, _ := LoadHealthCheckInConfig(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: raw})
+	cfg, _ := LoadConfig(context.Background(), domain.TenantScope{TenantID: 1}, stubSettingsReader{raw: raw})
 	if cfg.CommentDepth != 0 {
 		t.Errorf("negative comment_depth should clamp to 0, got %d", cfg.CommentDepth)
 	}

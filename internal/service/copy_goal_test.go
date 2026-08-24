@@ -45,7 +45,7 @@ func TestCopyGoalCopyFlipsTargetStatusAndRecordsCopied(t *testing.T) {
 func TestCopyGoalRejectsClosedTarget(t *testing.T) {
 	gf := newGoalFakeStore()
 	gf.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 100, Title: "G"}
-	gf.statuses[[2]int64{2, 200}] = domain.TeamPeriodStatusInProgress
+	gf.Statuses[[2]int64{2, 200}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(gf)
 
 	_, err := svc.CopyGoal(context.Background(), domain.TenantScope{TenantID: 1}, CopyGoalParams{

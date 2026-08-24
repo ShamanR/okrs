@@ -115,7 +115,14 @@ var TemplatesFS embed.FS
 
 ## 5. Слой service
 
-**Определение:** операции над **одной** сущностью через **один** репозиторий. Валидация полей, CRUD, сортировка. Сервис не читает чужие агрегаты и не пишет в журнал активности.
+**Определение (операционное правило):** метод принадлежит сервису сущности, если трогает **не более одного** репозитория **и** не пишет в журнал активности. Иначе это usecase. Правило проверяется механически — карта «метод → репозитории» строится скриптом, а не вкусом.
+
+Правило, применённое к фактическому коду, уточнило §6 в двух местах:
+
+- **`usecase/team` не нужен.** Guard `ErrTeamHasGoals` висит на `HardDeleteTeam`, а не на `DeleteTeam`, и оба читают только `TeamRepo` → это инвариант одной сущности, `service/team`. Попутно: `DeleteTeam` ошибку не возвращает вовсе — он выбирает вид удаления (soft при наличии целей, hard при их отсутствии), поэтому в пакете называется `Delete`.
+- **`GetHierarchy` — не usecase.** Читает только `TeamRepo` и строит дерево в памяти → `service/team`. При этом `GetTeamsWithPeriodSummary` и `GetDirectChildrenSummary` действительно usecase: обёртки над хелперами на 4 и 2 репозитория.
+
+Ещё одно уточнение, вскрывшееся при реализации: **`AttachGoalLinks` и `SetGoalParents` остаются usecase**, хотя §6 отправлял первый в `service/goallink`. `AttachGoalLinks` принимает read-model `GoalDetails` (перенос дал бы цикл импорта) и оркестрирует два сервиса. А `goallink.ListForGoals`/`ListLinkable` всё же остались сервисом — им нужен прогресс связанных целей, и он приходит через узкий порт `GoalProgressReader`, объявленный на стороне потребителя и реализуемый `*goal.Service`.
 
 | Пакет | Источник | Содержимое |
 |---|---|---|
@@ -144,11 +151,10 @@ var TemplatesFS embed.FS
 
 | Пакет | Сценарии |
 |---|---|
-| `usecase/okrboard` | `GetTeamOKR`, `GetTeamOverview`, `GetDirectChildrenSummary`, `GetTeamsWithPeriodSummary`, `GetHierarchy` |
+| `usecase/okrboard` | `GetTeamOKR`, `GetTeamOverview`, `GetDirectChildrenSummary`, `GetTeamsWithPeriodSummary` |
 | `usecase/goal` | `Copy`, `Delete`, `Share`, `Transfer` (`UpdateGoalOwnerAndShares`), `SetParents` (проверка цикла), `Update` с записью activity, `resetStatusIfNoGoals` |
 | `usecase/keyresult` | `UpdateProgressNumerical`/`Boolean`/`Project` (пересчёт цели + activity + auto-complete health), `UpdateHealthStatus`, `Delete` |
 | `usecase/period` | `Overview`, `OverviewScoped`, `BulkSetTeamPeriodStatus`, `Archive`, `Unarchive`, `Stats` |
-| `usecase/team` | `Delete` (guard `ErrTeamHasGoals`) |
 | `usecase/goaltree` | `GoalTree` |
 | `usecase/healthcheckin` | сценарий расчёта + `LoadPeriodData` (бывший `hcLoader` из server.go) |
 | `usecase/export` | `ExportOKR` и его помощники |
@@ -158,7 +164,7 @@ Read-model типы (`TeamOKR`, `TeamSummary`, `TeamNode`, `TeamOverview`, `Team
 
 ### 6.1. Одноимённые методы в service и usecase
 
-`service/goal.Update` и `usecase/goal.Update` — не дубль, а два уровня одной операции: сервис пишет поля цели в свой репозиторий, usecase вызывает сервис и добавляет то, что выходит за границу сущности (запись в журнал активности, пересчёт статуса команды, инварианты периода). То же для `service/team.SoftDelete` ↔ `usecase/team.Delete` и `service/keyresult.*` ↔ `usecase/keyresult.*`.
+`service/goal.Update` и `usecase/goal.Update` — не дубль, а два уровня одной операции: сервис пишет поля цели в свой репозиторий, usecase вызывает сервис и добавляет то, что выходит за границу сущности (запись в журнал активности, пересчёт статуса команды, инварианты периода). То же для `service/keyresult.*` ↔ `usecase/keyresult.*`. Для команд такой пары нет: удаление команды целиком укладывается в один репозиторий и живёт только в `service/team`.
 
 Правило для handler'а: если для URI существует usecase — handler зовёт **только** его и никогда не зовёт сервис напрямую в обход. Сервис вызывается напрямую лишь там, где usecase не заведён (чистый read или CRUD одной сущности).
 

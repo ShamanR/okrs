@@ -1,4 +1,4 @@
-package service
+package healthcheckin
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func TestHealthCheckInCacheKeysByTenant(t *testing.T) {
 		calls = append(calls, hcKeyProbe{scope.TenantID, periodID})
 		return &PeriodData{PeriodID: periodID, CachedAt: time.Now()}, nil
 	}
-	c := NewHealthCheckInCache(loader, time.Minute, nil)
+	c := NewCache(loader, time.Minute, nil)
 	ctx := context.Background()
 
 	// Same periodID, different tenants → two distinct loads (no cross-tenant cache hit).

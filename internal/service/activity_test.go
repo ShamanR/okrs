@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/service/servicetest"
 	"okrs/internal/store/activity"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/shares"
@@ -170,8 +171,8 @@ func TestDeleteGoalCommentMissingReturnsNotFound(t *testing.T) {
 
 func TestUpdateStatusRecordsEvent(t *testing.T) {
 	fa := &fakeActivityRepo{}
-	st := newFakeStore()
-	st.teams = []domain.Team{{ID: 10, Name: "PaaS / Infra"}}
+	st := servicetest.NewStore()
+	st.Teams = []domain.Team{{ID: 10, Name: "PaaS / Infra"}}
 	s := New(Deps{Activity: fa, Teams: st, Statuses: st})
 	if err := s.UpdateTeamPeriodStatus(context.Background(), domain.TenantScope{TenantID: 1}, 10, 3, domain.TeamPeriodStatusInProgress, 5); err != nil {
 		t.Fatalf("update: %v", err)
@@ -190,9 +191,9 @@ func TestUpdateStatusRecordsEvent(t *testing.T) {
 
 func TestKRProgressRecordsBeforeAfterNumbers(t *testing.T) {
 	fa := &fakeActivityRepo{}
-	st := newFakeStore()
+	st := servicetest.NewStore()
 	// Numerical KR: 0→100, currently at 30 (=30%). Update current to 80 (=80%).
-	st.keyResults[55] = domain.KeyResult{ID: 55, GoalID: 7, Kind: domain.KRKindNumerical, Title: "P95 latency",
+	st.KeyResults[55] = domain.KeyResult{ID: 55, GoalID: 7, Kind: domain.KRKindNumerical, Title: "P95 latency",
 		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 30}}
 	s := New(Deps{Activity: fa, KRs: st, Goals: st})
 	if err := s.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 55, 80, 5); err != nil {
@@ -216,8 +217,8 @@ func TestKRProgressRecordsBeforeAfterNumbers(t *testing.T) {
 
 func TestKRNoteUpdateRecordsEvent(t *testing.T) {
 	fa := &fakeActivityRepo{}
-	st := newFakeStore()
-	st.keyResults[55] = domain.KeyResult{ID: 55, GoalID: 7, Kind: domain.KRKindNumerical, Title: "P95 latency"}
+	st := servicetest.NewStore()
+	st.KeyResults[55] = domain.KeyResult{ID: 55, GoalID: 7, Kind: domain.KRKindNumerical, Title: "P95 latency"}
 	s := New(Deps{Activity: fa, KRs: st, Goals: st})
 	// GetKeyResultNote returns nil (no prior note) → beforeText "" != "circuit breaker" → records.
 	if err := s.UpsertKeyResultNote(context.Background(), domain.TenantScope{TenantID: 1}, 55, "добавили circuit breaker", 5); err != nil {
@@ -258,7 +259,7 @@ func TestUpdateGoalRecordsFieldChange(t *testing.T) {
 
 func TestCreateGoalRecordsEvent(t *testing.T) {
 	fa := &fakeActivityRepo{}
-	st := newFakeStore()
+	st := servicetest.NewStore()
 	s := New(Deps{Activity: fa, Goals: st, Statuses: st})
 	if _, err := s.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 5, PeriodID: 2, Title: "ML-биддинг"}, 9); err != nil {
 		t.Fatalf("create: %v", err)
@@ -297,10 +298,10 @@ func TestDiffFieldsOnlyChanged(t *testing.T) {
 
 func TestShareGoalRecordsAddedTeams(t *testing.T) {
 	fa := &fakeActivityRepo{}
-	st := newFakeStore()
-	st.teams = []domain.Team{{ID: 2}, {ID: 4}, {ID: 21}}
+	st := servicetest.NewStore()
+	st.Teams = []domain.Team{{ID: 2}, {ID: 4}, {ID: 21}}
 	s := New(Deps{Activity: fa, Teams: st, Shares: st, Goals: st, Statuses: st})
-	// fakeStore.ListGoalShares returns empty, so both targets are newly added.
+	// servicetest.Store.ListGoalShares returns empty, so both targets are newly added.
 	if err := s.ShareGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10,
 		[]ShareTarget{{TeamID: 4, Weight: 50}, {TeamID: 21, Weight: 50}}, 5); err != nil {
 		t.Fatalf("share: %v", err)
@@ -360,19 +361,5 @@ func TestLeaveSharedGoalRecordsEvent(t *testing.T) {
 	}
 	if int(ev.Payload["declined_by_team_id"].(int64)) != 5 {
 		t.Fatalf("declined_by wrong: %+v", ev.Payload)
-	}
-}
-
-func TestRecordActivityIsBestEffort(t *testing.T) {
-	fa := &fakeActivityRepo{failNext: true}
-	s := New(Deps{Activity: fa}) // logger nil → must not panic
-	s.recordActivity(context.Background(), domain.TenantScope{TenantID: 1}, domain.ActivityEvent{Action: domain.ActionStatusChanged})
-	if len(fa.recorded) != 0 {
-		t.Fatalf("expected no recorded event on failure")
-	}
-	fa.failNext = false
-	s.recordActivity(context.Background(), domain.TenantScope{TenantID: 1}, domain.ActivityEvent{Action: domain.ActionStatusChanged})
-	if len(fa.recorded) != 1 {
-		t.Fatalf("expected 1 recorded event, got %d", len(fa.recorded))
 	}
 }

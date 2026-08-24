@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/service/servicetest"
 )
 
 func TestComputeBulkAffected_SkipsNoGoalsAndAlreadyTarget(t *testing.T) {
@@ -36,13 +37,13 @@ func TestComputeBulkAffected_SkipsNoGoalsAndAlreadyTarget(t *testing.T) {
 }
 
 func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
-	store := newFakeStore()
-	store.teams = []domain.Team{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}, {ID: 3, Name: "C"}}
-	store.goalsByTeam[1] = map[int64][]domain.Goal{9: {{ID: 10}}} // ready -> affected
-	store.goalsByTeam[2] = map[int64][]domain.Goal{9: {{ID: 20}}} // already in_progress -> skip (no change)
+	store := servicetest.NewStore()
+	store.Teams = []domain.Team{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}, {ID: 3, Name: "C"}}
+	store.GoalsByTeam[1] = map[int64][]domain.Goal{9: {{ID: 10}}} // ready -> affected
+	store.GoalsByTeam[2] = map[int64][]domain.Goal{9: {{ID: 20}}} // already in_progress -> skip (no change)
 	// team 3: no goals -> skipped
-	store.statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
-	store.statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusInProgress
+	store.Statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
+	store.Statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusInProgress
 	act := &fakeActivityRepo{}
 	svc := New(Deps{Teams: store, Goals: store, Shares: store, Periods: store, KRs: store, Statuses: store, Users: store, Activity: act})
 
@@ -53,8 +54,8 @@ func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
 	if res.Affected != 1 || res.Skipped != 1 {
 		t.Fatalf("result: want affected=1 skipped=1, got %+v", res)
 	}
-	if len(store.bulkSetTeamIDs) != 1 || store.bulkSetTeamIDs[0] != 1 || store.bulkSetStatus != domain.TeamPeriodStatusInProgress {
-		t.Fatalf("set call wrong: ids=%v status=%s", store.bulkSetTeamIDs, store.bulkSetStatus)
+	if len(store.BulkSetTeamIDs) != 1 || store.BulkSetTeamIDs[0] != 1 || store.BulkSetStatus != domain.TeamPeriodStatusInProgress {
+		t.Fatalf("set call wrong: ids=%v status=%s", store.BulkSetTeamIDs, store.BulkSetStatus)
 	}
 	if len(act.recorded) != 1 {
 		t.Fatalf("expected one op-log entry per affected team, got %d", len(act.recorded))
@@ -65,12 +66,12 @@ func TestBulkSetTeamPeriodStatus_ActivatesAndLogsPerTeam(t *testing.T) {
 }
 
 func TestBulkSetTeamPeriodStatus_TeamFilterRestrictsToScope(t *testing.T) {
-	store := newFakeStore()
-	store.teams = []domain.Team{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}}
-	store.goalsByTeam[1] = map[int64][]domain.Goal{9: {{ID: 10}}}
-	store.goalsByTeam[2] = map[int64][]domain.Goal{9: {{ID: 20}}}
-	store.statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
-	store.statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusReady
+	store := servicetest.NewStore()
+	store.Teams = []domain.Team{{ID: 1, Name: "A"}, {ID: 2, Name: "B"}}
+	store.GoalsByTeam[1] = map[int64][]domain.Goal{9: {{ID: 10}}}
+	store.GoalsByTeam[2] = map[int64][]domain.Goal{9: {{ID: 20}}}
+	store.Statuses[[2]int64{1, 9}] = domain.TeamPeriodStatusReady
+	store.Statuses[[2]int64{2, 9}] = domain.TeamPeriodStatusReady
 	act := &fakeActivityRepo{}
 	svc := New(Deps{Teams: store, Goals: store, Shares: store, Periods: store, KRs: store, Statuses: store, Users: store, Activity: act})
 
@@ -82,7 +83,7 @@ func TestBulkSetTeamPeriodStatus_TeamFilterRestrictsToScope(t *testing.T) {
 	if res.Affected != 1 {
 		t.Fatalf("want affected=1 (scoped to team 1), got %+v", res)
 	}
-	if len(store.bulkSetTeamIDs) != 1 || store.bulkSetTeamIDs[0] != 1 {
-		t.Fatalf("out-of-scope team must not be changed: ids=%v", store.bulkSetTeamIDs)
+	if len(store.BulkSetTeamIDs) != 1 || store.BulkSetTeamIDs[0] != 1 {
+		t.Fatalf("out-of-scope team must not be changed: ids=%v", store.BulkSetTeamIDs)
 	}
 }

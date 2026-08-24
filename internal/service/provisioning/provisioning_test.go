@@ -1,13 +1,18 @@
-package service_test
+package provisioning_test
 
 import (
 	"context"
 	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"okrs/internal/core/domain"
-	"okrs/internal/service"
+	"okrs/internal/service/onboarding"
+	"okrs/internal/service/provisioning"
+	settingssvc "okrs/internal/service/settings"
 	"okrs/internal/store/grants"
+	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
@@ -15,6 +20,25 @@ import (
 	"okrs/internal/store/testutil"
 	"okrs/internal/store/users"
 )
+
+// newOnboardingForTest builds the onboarding service against a real pool. Duplicated
+// from the onboarding package's own test: Go cannot share _test.go helpers across
+// packages, and provisioning genuinely needs a live onboarding service as its
+// defaultAccessApplier collaborator.
+func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *onboarding.Service {
+	t.Helper()
+	invRepo := invitations.NewInvitationRepository(pool)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tnRepo := tenants.NewTenantRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := settingssvc.New(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
+	return onboarding.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
+}
 
 func TestAttachMemberAppliesDefaultAccess(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
@@ -24,12 +48,12 @@ func TestAttachMemberAppliesDefaultAccess(t *testing.T) {
 	memRepo := memberships.NewMembershipRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	grantRepo := grants.NewGrantRepository(pool)
-	prov := service.NewProvisioningService(
+	prov := provisioning.New(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grantRepo), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
@@ -70,12 +94,12 @@ func TestUpdateTenantInvalidatesCache(t *testing.T) {
 	memRepo := memberships.NewMembershipRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	grantRepo := grants.NewGrantRepository(pool)
-	prov := service.NewProvisioningService(
+	prov := provisioning.New(
 		tnRepo, tnCache,
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grantRepo), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
@@ -122,11 +146,11 @@ func TestSetMemberRoleLastAdminGuard(t *testing.T) {
 	memRepo := memberships.NewMembershipRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(
+	prov := provisioning.New(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
@@ -138,7 +162,7 @@ func TestSetMemberRoleLastAdminGuard(t *testing.T) {
 	_, _ = memRepo.Upsert(ctx, domain.Membership{UserID: admin, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive})
 
 	// Demoting the only admin must be refused.
-	if err := prov.SetMemberRole(ctx, 1, admin, domain.RoleUser); !errors.Is(err, service.ErrLastAdmin) {
+	if err := prov.SetMemberRole(ctx, 1, admin, domain.RoleUser); !errors.Is(err, provisioning.ErrLastAdmin) {
 		t.Fatalf("err = %v, want ErrLastAdmin", err)
 	}
 
@@ -169,11 +193,11 @@ func TestSetSystemAdminGuards(t *testing.T) {
 	memRepo := memberships.NewMembershipRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(
+	prov := provisioning.New(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
@@ -193,14 +217,14 @@ func TestSetSystemAdminGuards(t *testing.T) {
 		t.Fatalf("grant b: %v", err)
 	}
 	// Revoke sole system-admin b (caller a) → last-admin guard.
-	if err := prov.SetSystemAdmin(ctx, a, b, false); !errors.Is(err, service.ErrLastSystemAdmin) {
+	if err := prov.SetSystemAdmin(ctx, a, b, false); !errors.Is(err, provisioning.ErrLastSystemAdmin) {
 		t.Fatalf("err = %v, want ErrLastSystemAdmin", err)
 	}
 	// Grant a too, then a revoking self → self-lockout guard.
 	if err := prov.SetSystemAdmin(ctx, a, a, true); err != nil {
 		t.Fatalf("grant a: %v", err)
 	}
-	if err := prov.SetSystemAdmin(ctx, a, a, false); !errors.Is(err, service.ErrSelfLockout) {
+	if err := prov.SetSystemAdmin(ctx, a, a, false); !errors.Is(err, provisioning.ErrSelfLockout) {
 		t.Fatalf("err = %v, want ErrSelfLockout", err)
 	}
 	// Now a can revoke b (two admins, not self).
@@ -230,11 +254,11 @@ func TestProvisioningRemoveMember(t *testing.T) {
 	grantsCache := grants.NewGrantsCache(grantRepo)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grantsCache, newOnboardingForTest(t, pool), users.NewUserRepository(pool))
+	prov := provisioning.New(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grantsCache, newOnboardingForTest(t, pool), users.NewUserRepository(pool))
 
 	scope := domain.TenantScope{TenantID: 1}
 	var teamID int64
@@ -268,11 +292,11 @@ func TestProvisioningDenyMember(t *testing.T) {
 	memRepo := memberships.NewMembershipRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool))
+	prov := provisioning.New(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool))
 
 	if _, err := memRepo.Upsert(ctx, domain.Membership{UserID: 1, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipRequested}); err != nil {
 		t.Fatalf("seed requested: %v", err)
@@ -294,11 +318,11 @@ func TestProvisioningLifecycle(t *testing.T) {
 	memRepo := memberships.NewMembershipRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := service.NewProvisioningService(
+	prov := provisioning.New(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),

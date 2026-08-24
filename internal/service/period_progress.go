@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"math"
 	"sort"
 	"time"
@@ -11,24 +10,6 @@ import (
 	"okrs/internal/core/progress"
 	"okrs/internal/store/progresssnap"
 )
-
-// ProgressSnapshotIntervalDaysKey is the tenant_settings (general) key controlling how
-// often the progress snapshot job records a point for the period chart, in days (≥1).
-const ProgressSnapshotIntervalDaysKey = "progress_snapshot_interval_days"
-
-// LoadProgressSnapshotIntervalDays reads the per-tenant snapshot interval in days,
-// defaulting to 1 (daily) when unset or invalid.
-func LoadProgressSnapshotIntervalDays(ctx context.Context, scope domain.TenantScope, sr SettingsReader) int {
-	raw, err := sr.GetTenant(ctx, scope, ProgressSnapshotIntervalDaysKey)
-	if err != nil || raw == nil {
-		return 1
-	}
-	var n int
-	if json.Unmarshal(raw, &n) != nil || n < 1 {
-		return 1
-	}
-	return n
-}
 
 // ProgressSnapRepo persists and reads daily per-team progress snapshots.
 // *progresssnap.Repository satisfies it.
@@ -111,7 +92,7 @@ func computeTeamSnapshots(data *PeriodData) []progresssnap.Snapshot {
 		goals := make([]domain.Goal, len(src))
 		copy(goals, src)
 		for i := range goals {
-			goals[i].Progress = CalculateGoalProgress(&goals[i])
+			goals[i].Progress = progress.ForGoal(&goals[i])
 		}
 		out = append(out, progresssnap.Snapshot{TeamID: team.ID, Progress: progress.PeriodProgress(goals)})
 	}

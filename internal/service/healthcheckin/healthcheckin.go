@@ -1,4 +1,4 @@
-package service
+package healthcheckin
 
 import (
 	"context"
@@ -8,11 +8,12 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/progress"
 )
 
-// HealthCheckInConfig controls thresholds and counter membership for each category.
+// Config controls thresholds and counter membership for each category.
 // Loaded from system_settings key "health_checkin_config"; defaults apply when key is absent.
-type HealthCheckInConfig struct {
+type Config struct {
 	StaleDays       int `json:"stale_days"`
 	BehindMargin    int `json:"behind_margin"`
 	WeightTolerance int `json:"weight_tolerance"`
@@ -29,7 +30,7 @@ type HealthCheckInConfig struct {
 	InCounter             map[string]bool `json:"in_counter"`
 }
 
-var defaultHealthCheckInConfig = HealthCheckInConfig{
+var defaultHealthCheckInConfig = Config{
 	StaleDays:             7,
 	BehindMargin:          10,
 	WeightTolerance:       0,
@@ -52,8 +53,8 @@ type SettingsReader interface {
 	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
 
-// LoadHealthCheckInConfig reads config from the tenant's settings, falling back to defaults.
-func LoadHealthCheckInConfig(ctx context.Context, scope domain.TenantScope, sr SettingsReader) (HealthCheckInConfig, error) {
+// LoadConfig reads config from the tenant's settings, falling back to defaults.
+func LoadConfig(ctx context.Context, scope domain.TenantScope, sr SettingsReader) (Config, error) {
 	raw, err := sr.GetTenant(ctx, scope, "health_checkin_config")
 	if err != nil || raw == nil {
 		return defaultHealthCheckInConfig, err
@@ -119,14 +120,14 @@ type HealthCheckInCategory struct {
 	Resolved   []HealthCheckInCommentItem `json:"resolved,omitempty"`
 }
 
-type HealthCheckInResult struct {
+type Result struct {
 	HasScope      bool                              `json:"has_scope"`
 	PeriodID      int64                             `json:"period_id"`
 	TotalProblems int                               `json:"total_problems"`
 	Categories    map[string]*HealthCheckInCategory `json:"categories"`
 }
 
-// PeriodData is the pre-loaded data for one period, held in HealthCheckInCache.
+// PeriodData is the pre-loaded data for one period, held in Cache.
 type PeriodData struct {
 	PeriodID    int64
 	Period      domain.Period
@@ -245,7 +246,7 @@ func computeCommentScope(teams []domain.Team, goalsByTeam map[int64][]domain.Goa
 
 // ── Category computation ──────────────────────────────────────────────────────
 
-func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg HealthCheckInConfig, now time.Time) *HealthCheckInResult {
+func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg Config, now time.Time) *Result {
 	scopeSet := make(map[int64]struct{}, len(scopeIDs))
 	for _, id := range scopeIDs {
 		scopeSet[id] = struct{}{}
@@ -272,7 +273,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 		if !ok {
 			continue
 		}
-		path := buildTeamPath(teamID, teamsByID)
+		path := BuildTeamPath(teamID, teamsByID)
 		goals := data.GoalsByTeam[teamID]
 		status := data.Statuses[teamID]
 
@@ -298,7 +299,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 			for _, g := range goals {
 				weightSum += g.Weight
 			}
-			if abs(weightSum-100) > cfg.WeightTolerance {
+			if Abs(weightSum-100) > cfg.WeightTolerance {
 				cats["formation_errors"].Items = append(cats["formation_errors"].Items, HealthCheckInItem{
 					TeamID: teamID, TeamName: team.Name, TeamPath: path,
 					EntityType: "team", ErrorType: "weight_sum_not_100",
@@ -311,7 +312,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 			if g.TeamID != teamID {
 				continue
 			}
-			goalProgress := CalculateGoalProgress(&g)
+			goalProgress := progress.ForGoal(&g)
 			lastProgress := goalLastProgressAt(g)
 			// Точка отсчёта «дней без обновления»: последнее обновление прогресса, а если
 			// его не было — начало периода. От неё отмеряется StaleDays. Для ещё не
@@ -371,7 +372,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 		if !ok {
 			continue
 		}
-		path := buildTeamPath(teamID, teamsByID)
+		path := BuildTeamPath(teamID, teamsByID)
 		for _, g := range data.GoalsByTeam[teamID] {
 			for _, c := range g.Comments {
 				if c.ResolvedAt != nil {
@@ -399,7 +400,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 			if !ok {
 				continue
 			}
-			path := buildTeamPath(teamID, teamsByID)
+			path := BuildTeamPath(teamID, teamsByID)
 			for _, g := range goals {
 				for _, c := range g.Comments {
 					if c.ResolvedAt == nil || c.AuthorUDID != userUDID || c.ResolvedByUDID == userUDID {
@@ -440,7 +441,7 @@ func computeCategories(data *PeriodData, scopeIDs []int64, userUDID string, cfg 
 		}
 	}
 
-	return &HealthCheckInResult{
+	return &Result{
 		HasScope:      true,
 		PeriodID:      data.PeriodID,
 		TotalProblems: total,
@@ -496,14 +497,14 @@ func checkGoalFormationErrors(g domain.Goal, weightTolerance int) []HealthCheckI
 				for _, s := range kr.Project.Stages {
 					stageWeightSum += s.Weight
 				}
-				if abs(stageWeightSum-100) > weightTolerance {
+				if Abs(stageWeightSum-100) > weightTolerance {
 					errs = append(errs, item("project_stage_weight_sum_not_100", "kr"))
 				}
 			}
 		}
 	}
 
-	if abs(krWeightSum-100) > weightTolerance {
+	if Abs(krWeightSum-100) > weightTolerance {
 		errs = append(errs, item("kr_weight_sum_not_100", "goal"))
 	}
 
@@ -526,7 +527,7 @@ func calcExpectedPace(p domain.Period, now time.Time) int {
 	return int(frac * 100)
 }
 
-func buildTeamPath(teamID int64, teamsByID map[int64]domain.Team) []string {
+func BuildTeamPath(teamID int64, teamsByID map[int64]domain.Team) []string {
 	var path []string
 	visited := make(map[int64]struct{})
 	cur, ok := teamsByID[teamID]
@@ -544,14 +545,14 @@ func buildTeamPath(teamID int64, teamsByID map[int64]domain.Team) []string {
 	return path
 }
 
-func abs(x int) int {
+func Abs(x int) int {
 	if x < 0 {
 		return -x
 	}
 	return x
 }
 
-func emptyCategories(cfg HealthCheckInConfig) map[string]*HealthCheckInCategory {
+func emptyCategories(cfg Config) map[string]*HealthCheckInCategory {
 	names := []string{"stale", "no_goals", "awaiting_validation", "formation_errors", "lagging", "comments"}
 	cats := make(map[string]*HealthCheckInCategory, len(names))
 	for _, n := range names {
@@ -560,13 +561,20 @@ func emptyCategories(cfg HealthCheckInConfig) map[string]*HealthCheckInCategory 
 	return cats
 }
 
-// GetHealthCheckIn computes the health check-in for the given user and period.
+// Service computes the health check-in on top of the cached period snapshot.
+type Service struct {
+	cache *Cache
+}
+
+func New(cache *Cache) *Service { return &Service{cache: cache} }
+
+// Get computes the health check-in for the given user and period.
 // Uses cached period data; loads from DB on first call or after TTL.
-func (s *Service) GetHealthCheckIn(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg HealthCheckInConfig) (*HealthCheckInResult, error) {
-	if s.hcCache == nil {
-		return &HealthCheckInResult{HasScope: false}, nil
+func (s *Service) Get(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg Config) (*Result, error) {
+	if s.cache == nil {
+		return &Result{HasScope: false}, nil
 	}
-	data, err := s.hcCache.Get(ctx, scope, periodID)
+	data, err := s.cache.Get(ctx, scope, periodID)
 	if err != nil {
 		return nil, err
 	}
@@ -580,8 +588,26 @@ func (s *Service) GetHealthCheckIn(ctx context.Context, scope domain.TenantScope
 	} else {
 		scopeIDs = computeScope(data.Teams, data.GoalsByTeam, userUDID)
 		if scopeIDs == nil {
-			return &HealthCheckInResult{HasScope: false, PeriodID: periodID, Categories: emptyCategories(cfg)}, nil
+			return &Result{HasScope: false, PeriodID: periodID, Categories: emptyCategories(cfg)}, nil
 		}
 	}
 	return computeCategories(data, scopeIDs, userUDID, cfg, time.Now()), nil
+}
+
+// LoadProgressSnapshotIntervalDays reads the per-tenant snapshot interval in days,
+// defaulting to 1 (daily) when unset or invalid.
+// ProgressSnapshotIntervalDaysKey is the tenant_settings (general) key controlling how
+// often the progress snapshot job records a point for the period chart, in days (≥1).
+const ProgressSnapshotIntervalDaysKey = "progress_snapshot_interval_days"
+
+func LoadProgressSnapshotIntervalDays(ctx context.Context, scope domain.TenantScope, sr SettingsReader) int {
+	raw, err := sr.GetTenant(ctx, scope, ProgressSnapshotIntervalDaysKey)
+	if err != nil || raw == nil {
+		return 1
+	}
+	var n int
+	if json.Unmarshal(raw, &n) != nil || n < 1 {
+		return 1
+	}
+	return n
 }

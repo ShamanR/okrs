@@ -1,4 +1,4 @@
-package service_test
+package onboarding_test
 
 import (
 	"context"
@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"okrs/internal/core/domain"
-	"okrs/internal/service"
+	"okrs/internal/service/onboarding"
+	"okrs/internal/service/provisioning"
+	settingssvc "okrs/internal/service/settings"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"
@@ -18,26 +20,26 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *service.OnboardingService {
+func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *onboarding.Service {
 	t.Helper()
 	invRepo := invitations.NewInvitationRepository(pool)
 	memRepo := memberships.NewMembershipRepository(pool)
 	tnRepo := tenants.NewTenantRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
-	return service.NewOnboardingService(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
+	return onboarding.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
 }
 
-func newSettingsForTest(t *testing.T, pool *pgxpool.Pool) *service.SettingsService {
+func newSettingsForTest(t *testing.T, pool *pgxpool.Pool) *settingssvc.Service {
 	t.Helper()
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	return service.NewSettingsService(
+	return settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
@@ -132,7 +134,7 @@ func TestLeaveTenantLastAdminGuard(t *testing.T) {
 	_, _ = mem.Upsert(ctx, domain.Membership{UserID: admin, TenantID: 1, Role: domain.RoleAdmin, Status: domain.MembershipActive})
 
 	// Sole admin cannot leave.
-	if err := svc.LeaveTenant(ctx, 1, admin); !errors.Is(err, service.ErrLastAdmin) {
+	if err := svc.LeaveTenant(ctx, 1, admin); !errors.Is(err, provisioning.ErrLastAdmin) {
 		t.Fatalf("err = %v, want ErrLastAdmin", err)
 	}
 
@@ -184,12 +186,12 @@ func TestJoinRequestApproveDeny(t *testing.T) {
 	}
 
 	// Re-requesting when already active → ErrAlreadyMember.
-	if err := svc.RequestAccess(ctx, "default", uid); err != service.ErrAlreadyMember {
+	if err := svc.RequestAccess(ctx, "default", uid); err != onboarding.ErrAlreadyMember {
 		t.Fatalf("expected ErrAlreadyMember, got %v", err)
 	}
 
 	// Unknown slug → ErrTenantNotFound.
-	if err := svc.RequestAccess(ctx, "nope", uid); err != service.ErrTenantNotFound {
+	if err := svc.RequestAccess(ctx, "nope", uid); err != onboarding.ErrTenantNotFound {
 		t.Fatalf("expected ErrTenantNotFound, got %v", err)
 	}
 }
@@ -307,7 +309,7 @@ func TestClaimInvitationAppliesNewUserPolicy(t *testing.T) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	raw, hash, _ := service.GenerateInviteToken()
+	raw, hash, _ := onboarding.GenerateInviteToken()
 	inv := invitations.NewInvitationRepository(pool)
 	if _, err := inv.Create(ctx, domain.TenantScope{TenantID: 1}, domain.RoleUser, hash, 1, intp(1), nil); err != nil {
 		t.Fatalf("seed invite: %v", err)
@@ -419,7 +421,7 @@ func TestClaimInvitationSingleUseBindsToIdentity(t *testing.T) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	raw, hash, _ := service.GenerateInviteToken()
+	raw, hash, _ := onboarding.GenerateInviteToken()
 	inv := invitations.NewInvitationRepository(pool)
 	if _, err := inv.Create(ctx, domain.TenantScope{TenantID: 2}, domain.RoleAdmin, hash, 1, intp(1), nil); err != nil {
 		t.Fatalf("seed invite: %v", err)
@@ -433,11 +435,11 @@ func TestClaimInvitationSingleUseBindsToIdentity(t *testing.T) {
 		t.Fatalf("membership = %+v", m)
 	}
 	// Replay rejected.
-	if _, err := svc.ClaimInvitation(ctx, raw, uid); err != service.ErrInvalidInvitation {
+	if _, err := svc.ClaimInvitation(ctx, raw, uid); err != onboarding.ErrInvalidInvitation {
 		t.Fatalf("replay must fail, got %v", err)
 	}
 	// Unknown token rejected.
-	if _, err := svc.ClaimInvitation(ctx, "deadbeef", uid); err != service.ErrInvalidInvitation {
+	if _, err := svc.ClaimInvitation(ctx, "deadbeef", uid); err != onboarding.ErrInvalidInvitation {
 		t.Fatalf("unknown token must fail, got %v", err)
 	}
 }

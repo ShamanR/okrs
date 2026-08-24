@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/service/servicetest"
 	"okrs/internal/store/grants"
 )
 
@@ -18,9 +19,9 @@ func (f *fakeGrantsProvider) AllGrants(_ context.Context) (map[int64][]grants.Hi
 	return f.data, nil
 }
 
-// searchCapturingStore embeds fakeStore and captures SearchUsersInSet/SearchUsersUnrestricted calls.
+// searchCapturingStore embeds servicetest.Store and captures SearchUsersInSet/SearchUsersUnrestricted calls.
 type searchCapturingStore struct {
-	*fakeStore
+	*servicetest.Store
 	unrestrictedCalls int
 	lastUserIDs       []int64
 	lastLeadNames     []string
@@ -39,7 +40,7 @@ func (s *searchCapturingStore) SearchUsersInSet(_ context.Context, userIDs []int
 }
 
 func newSearchStore() *searchCapturingStore {
-	return &searchCapturingStore{fakeStore: newFakeStore()}
+	return &searchCapturingStore{Store: servicetest.NewStore()}
 }
 
 func newSearchTestService(st *searchCapturingStore, grants GrantsProvider) *Service {
@@ -81,7 +82,7 @@ func TestSearchUsersInScopeEmptyGrantsReturnsNil(t *testing.T) {
 func TestSearchUsersInScopeFiltersGrantsByAncestor(t *testing.T) {
 	// Tree: root(1) → child(2) → grandchild(3)
 	st := newSearchStore()
-	st.teams = []domain.Team{
+	st.Teams = []domain.Team{
 		{ID: 1, Name: "Root", Type: domain.TeamTypeUnit},
 		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1)},
 		{ID: 3, Name: "Grandchild", Type: domain.TeamTypeTeam, ParentID: ptr(2)},
@@ -110,7 +111,7 @@ func TestSearchUsersInScopeFiltersGrantsByAncestor(t *testing.T) {
 func TestSearchUsersInScopeIncludesTeamLeads(t *testing.T) {
 	aliceUDID := "udid-alice"
 	st := newSearchStore()
-	st.teams = []domain.Team{
+	st.Teams = []domain.Team{
 		{ID: 5, Name: "TeamA", Type: domain.TeamTypeTeam, Lead: "Alice", LeadUDID: &aliceUDID},
 	}
 	// No grants at all — but Alice is a lead of scope team 5.
@@ -129,7 +130,7 @@ func TestSearchUsersInScopeIncludesTeamLeads(t *testing.T) {
 func TestSearchUsersInScopeFiltersGrantsByDescendant(t *testing.T) {
 	// Tree: root(1) → child(2) → grandchild(3)
 	st := newSearchStore()
-	st.teams = []domain.Team{
+	st.Teams = []domain.Team{
 		{ID: 1, Name: "Root", Type: domain.TeamTypeUnit},
 		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1)},
 		{ID: 3, Name: "Grandchild", Type: domain.TeamTypeTeam, ParentID: ptr(2)},
@@ -158,7 +159,7 @@ func TestSearchUsersInScopeFiltersGrantsByDescendant(t *testing.T) {
 func TestSearchUsersInScopeIncludesDescendantTeamLeads(t *testing.T) {
 	charlieUDID := "udid-charlie"
 	st := newSearchStore()
-	st.teams = []domain.Team{
+	st.Teams = []domain.Team{
 		{ID: 1, Name: "Parent", Type: domain.TeamTypeUnit},
 		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1), Lead: "Charlie", LeadUDID: &charlieUDID},
 	}
@@ -184,7 +185,7 @@ func TestSearchUsersInScopeIncludesDescendantTeamLeads(t *testing.T) {
 func TestSearchUsersInScopeExcludesDeletedTeamLeads(t *testing.T) {
 	deletedAt := time.Now()
 	st := newSearchStore()
-	st.teams = []domain.Team{
+	st.Teams = []domain.Team{
 		{ID: 5, Name: "Deleted", Type: domain.TeamTypeTeam, Lead: "Bob", DeletedAt: &deletedAt},
 	}
 	svc := newSearchTestService(st, &fakeGrantsProvider{data: make(map[int64][]grants.HierarchyGrant)})

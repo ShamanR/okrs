@@ -1,4 +1,4 @@
-package service
+package provisioning
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/service/settings"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
 )
@@ -20,44 +21,44 @@ var (
 	ErrSelfLockout = errors.New("service: cannot revoke your own system-admin")
 )
 
-// ProvisioningService is the cross-tenant control surface used by the system-admin
+// Service is the cross-tenant control surface used by the system-admin
 // plane and (later) SaaS/service-desk control planes. It wraps the tenant and
 // membership repositories, invalidating the resolve-hot-path caches after each write.
-// grantRemover removes all of a user's grants in a tenant. *grants.GrantsCache satisfies it.
-type grantRemover interface {
+// GrantRemover removes all of a user's grants in a tenant. *grants.GrantsCache satisfies it.
+type GrantRemover interface {
 	RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
-// defaultAccessApplier applies a tenant's new-user policy to a member. *OnboardingService satisfies it.
-type defaultAccessApplier interface {
+// DefaultAccessApplier applies a tenant's new-user policy to a member. *OnboardingService satisfies it.
+type DefaultAccessApplier interface {
 	ApplyDefaultAccess(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
-// systemAdminStore toggles/counts/reads the instance system-admin flag. *users.UserRepository satisfies it.
-type systemAdminStore interface {
+// SystemAdminStore toggles/counts/reads the instance system-admin flag. *users.UserRepository satisfies it.
+type SystemAdminStore interface {
 	SetSystemAdmin(ctx context.Context, userID int64, v bool) error
 	CountSystemAdmins(ctx context.Context) (int, error)
 	IsSystemAdmin(ctx context.Context, userID int64) (bool, error)
 }
 
-type ProvisioningService struct {
+type Service struct {
 	tenants       *tenants.TenantRepository
 	tenantCache   *tenants.TenantCache
 	members       *memberships.MembershipRepository
 	memberCache   *memberships.MembershipCache
-	settings      *SettingsService
-	grants        grantRemover
-	defaultAccess defaultAccessApplier
-	users         systemAdminStore
+	settings      *settings.Service
+	grants        GrantRemover
+	defaultAccess DefaultAccessApplier
+	users         SystemAdminStore
 }
 
-func NewProvisioningService(
+func New(
 	tnRepo *tenants.TenantRepository, tenantCache *tenants.TenantCache,
 	memRepo *memberships.MembershipRepository, memberCache *memberships.MembershipCache,
-	settings *SettingsService, grants grantRemover, defaultAccess defaultAccessApplier,
-	users systemAdminStore,
-) *ProvisioningService {
-	return &ProvisioningService{
+	settings *settings.Service, grants GrantRemover, defaultAccess DefaultAccessApplier,
+	users SystemAdminStore,
+) *Service {
+	return &Service{
 		tenants:       tnRepo,
 		tenantCache:   tenantCache,
 		members:       memRepo,
@@ -70,12 +71,12 @@ func NewProvisioningService(
 }
 
 // CreateTenant provisions a new tenant (slug validated by the repository).
-func (p *ProvisioningService) CreateTenant(ctx context.Context, name, slug string) (*domain.Tenant, error) {
+func (p *Service) CreateTenant(ctx context.Context, name, slug string) (*domain.Tenant, error) {
 	return p.tenants.Create(ctx, slug, name)
 }
 
 // RenameTenant changes only the tenant's display name (tenant-admin path) and invalidates the cache.
-func (p *ProvisioningService) RenameTenant(ctx context.Context, id int64, name string) error {
+func (p *Service) RenameTenant(ctx context.Context, id int64, name string) error {
 	if err := p.tenants.Rename(ctx, id, name); err != nil {
 		return err
 	}
@@ -84,7 +85,7 @@ func (p *ProvisioningService) RenameTenant(ctx context.Context, id int64, name s
 }
 
 // UpdateTenant changes name and slug (system-admin path) and invalidates the cache.
-func (p *ProvisioningService) UpdateTenant(ctx context.Context, id int64, name, slug string) (*domain.Tenant, error) {
+func (p *Service) UpdateTenant(ctx context.Context, id int64, name, slug string) (*domain.Tenant, error) {
 	t, err := p.tenants.Update(ctx, id, name, slug)
 	if err != nil {
 		return nil, err
@@ -95,7 +96,7 @@ func (p *ProvisioningService) UpdateTenant(ctx context.Context, id int64, name, 
 
 // AttachMember gives an existing global user an active membership in a tenant.
 // Email→invitation onboarding is Plan 4; here the caller supplies a concrete user id.
-func (p *ProvisioningService) AttachMember(ctx context.Context, tenantID, userID int64, role domain.Role) (*domain.Membership, error) {
+func (p *Service) AttachMember(ctx context.Context, tenantID, userID int64, role domain.Role) (*domain.Membership, error) {
 	// Apply the default-access grant before creating the active membership so a failing grant
 	// (e.g. a stale default_hierarchy_node_id) does not leave an active membership without access.
 	if err := p.defaultAccess.ApplyDefaultAccess(ctx, domain.TenantScope{TenantID: tenantID}, userID); err != nil {
@@ -116,7 +117,7 @@ func (p *ProvisioningService) AttachMember(ctx context.Context, tenantID, userID
 
 // SetMemberRole changes a member's tenant role. Refuses to demote the tenant's last active admin
 // (ErrLastAdmin) so a tenant never ends up with zero admins. Unknown membership → memberships.ErrNotFound.
-func (p *ProvisioningService) SetMemberRole(ctx context.Context, tenantID, userID int64, role domain.Role) error {
+func (p *Service) SetMemberRole(ctx context.Context, tenantID, userID int64, role domain.Role) error {
 	scope := domain.TenantScope{TenantID: tenantID}
 	cur, err := p.members.Get(ctx, userID, tenantID)
 	if err != nil {
@@ -143,7 +144,7 @@ func (p *ProvisioningService) SetMemberRole(ctx context.Context, tenantID, userI
 // current value is an idempotent no-op, and revoking a user who is not an admin never triggers the
 // last-admin guard. Refuses to revoke the last remaining system-admin (ErrLastSystemAdmin) or the
 // caller's own flag (ErrSelfLockout). callerID may be 0 for a machine (provisioning-token) caller.
-func (p *ProvisioningService) SetSystemAdmin(ctx context.Context, callerID, targetID int64, v bool) error {
+func (p *Service) SetSystemAdmin(ctx context.Context, callerID, targetID int64, v bool) error {
 	cur, err := p.users.IsSystemAdmin(ctx, targetID)
 	if err != nil {
 		return err // users.ErrNotFound bubbles up (404)
@@ -168,11 +169,11 @@ func (p *ProvisioningService) SetSystemAdmin(ctx context.Context, callerID, targ
 
 // SetEntitlements writes entitlement.* keys for a tenant (system/provisioning authority).
 // Bare keys (e.g. "sso") are namespaced to "entitlement.sso".
-func (p *ProvisioningService) SetEntitlements(ctx context.Context, tenantID int64, entitlements map[string]any) error {
+func (p *Service) SetEntitlements(ctx context.Context, tenantID int64, entitlements map[string]any) error {
 	scope := domain.TenantScope{TenantID: tenantID}
 	for key, val := range entitlements {
-		if !strings.HasPrefix(key, EntitlementPrefix) {
-			key = EntitlementPrefix + key
+		if !strings.HasPrefix(key, settings.EntitlementPrefix) {
+			key = settings.EntitlementPrefix + key
 		}
 		if err := p.settings.SetTenantEntitlement(ctx, scope, key, val); err != nil {
 			return err
@@ -183,7 +184,7 @@ func (p *ProvisioningService) SetEntitlements(ctx context.Context, tenantID int6
 
 // RemoveMember severs a user's access to a tenant: delete their grants there, then their
 // membership (any status). Idempotent.
-func (p *ProvisioningService) RemoveMember(ctx context.Context, tenantID, userID int64) error {
+func (p *Service) RemoveMember(ctx context.Context, tenantID, userID int64) error {
 	scope := domain.TenantScope{TenantID: tenantID}
 	if err := p.grants.RemoveAllUserGrants(ctx, scope, userID); err != nil {
 		return err
@@ -196,7 +197,7 @@ func (p *ProvisioningService) RemoveMember(ctx context.Context, tenantID, userID
 }
 
 // DenyMember removes a pending (requested) membership in a tenant.
-func (p *ProvisioningService) DenyMember(ctx context.Context, tenantID, userID int64) error {
+func (p *Service) DenyMember(ctx context.Context, tenantID, userID int64) error {
 	scope := domain.TenantScope{TenantID: tenantID}
 	if err := p.members.DeleteRequested(ctx, scope, userID); err != nil {
 		return err
@@ -206,16 +207,16 @@ func (p *ProvisioningService) DenyMember(ctx context.Context, tenantID, userID i
 }
 
 // Suspend blocks access to a tenant (data is retained).
-func (p *ProvisioningService) Suspend(ctx context.Context, tenantID int64) error {
+func (p *Service) Suspend(ctx context.Context, tenantID int64) error {
 	return p.setStatus(ctx, tenantID, domain.TenantSuspended)
 }
 
 // Restore re-activates a suspended tenant.
-func (p *ProvisioningService) Restore(ctx context.Context, tenantID int64) error {
+func (p *Service) Restore(ctx context.Context, tenantID int64) error {
 	return p.setStatus(ctx, tenantID, domain.TenantActive)
 }
 
-func (p *ProvisioningService) setStatus(ctx context.Context, tenantID int64, status domain.TenantStatus) error {
+func (p *Service) setStatus(ctx context.Context, tenantID int64, status domain.TenantStatus) error {
 	if err := p.tenants.SetStatus(ctx, tenantID, status); err != nil {
 		return err
 	}

@@ -1,11 +1,11 @@
-package service_test
+package settings_test
 
 import (
 	"context"
 	"testing"
 
 	"okrs/internal/core/domain"
-	"okrs/internal/service"
+	settingssvc "okrs/internal/service/settings"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenantsettings"
 	"okrs/internal/store/testutil"
@@ -17,7 +17,7 @@ func TestTenantEntitlementsStripsPrefix(t *testing.T) {
 	ctx := context.Background()
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	svc := service.NewSettingsService(
+	svc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
@@ -48,7 +48,7 @@ func TestSettingsServiceWriteAuthority(t *testing.T) {
 	ctx := context.Background()
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	svc := service.NewSettingsService(
+	svc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
@@ -63,7 +63,7 @@ func TestSettingsServiceWriteAuthority(t *testing.T) {
 	}
 
 	// Tenant-admin cannot write entitlement.* via the product path.
-	if err := svc.SetTenantProduct(ctx, scope, "entitlement.sso", true); err != service.ErrEntitlementNamespace {
+	if err := svc.SetTenantProduct(ctx, scope, "entitlement.sso", true); err != settingssvc.ErrEntitlementNamespace {
 		t.Fatalf("expected ErrEntitlementNamespace, got %v", err)
 	}
 

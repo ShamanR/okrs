@@ -19,10 +19,10 @@ import (
 type goalFakeStore struct {
 	goals      map[int64]domain.Goal
 	goalShares map[int64][]shares.GoalShare
-	statuses   map[[2]int64]domain.TeamPeriodStatus
+	Statuses   map[[2]int64]domain.TeamPeriodStatus
 	// goals remaining after a delete (used to drive resetStatusIfNoGoals)
 	goalsAfterDelete map[int64]map[int64][]domain.Goal
-	keyResults       map[int64]domain.KeyResult
+	KeyResults       map[int64]domain.KeyResult
 	nextGoalID       int64
 
 	// call tracking
@@ -73,9 +73,9 @@ func newGoalFakeStore() *goalFakeStore {
 	return &goalFakeStore{
 		goals:            make(map[int64]domain.Goal),
 		goalShares:       make(map[int64][]shares.GoalShare),
-		statuses:         make(map[[2]int64]domain.TeamPeriodStatus),
+		Statuses:         make(map[[2]int64]domain.TeamPeriodStatus),
 		goalsAfterDelete: make(map[int64]map[int64][]domain.Goal),
-		keyResults:       make(map[int64]domain.KeyResult),
+		KeyResults:       make(map[int64]domain.KeyResult),
 		nextGoalID:       1,
 	}
 }
@@ -136,7 +136,7 @@ func (f *goalFakeStore) ReplaceProjectStages(_ context.Context, _ domain.TenantS
 	return nil
 }
 func (f *goalFakeStore) GetTeamPeriodStatus(_ context.Context, _ domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
-	if s, ok := f.statuses[[2]int64{teamID, periodID}]; ok {
+	if s, ok := f.Statuses[[2]int64{teamID, periodID}]; ok {
 		return s, nil
 	}
 	return domain.TeamPeriodStatusNoGoals, nil
@@ -160,7 +160,7 @@ func (f *goalFakeStore) ListGoalsByTeamPeriod(_ context.Context, _ domain.Tenant
 	return nil, nil
 }
 func (f *goalFakeStore) GetKeyResult(_ context.Context, _ domain.TenantScope, id int64) (domain.KeyResult, error) {
-	return f.keyResults[id], nil
+	return f.KeyResults[id], nil
 }
 func (f *goalFakeStore) GetBooleanMeta(context.Context, domain.TenantScope, int64) (*domain.KRBoolean, error) {
 	return nil, nil
@@ -379,7 +379,7 @@ func (f *goalFakeStore) ValidateUDIDsExist(_ context.Context, _ []string) ([]str
 
 func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 	st := newGoalFakeStore()
-	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
+	st.Statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusClosed
 	svc := newGoalTestService(st)
 
 	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10}, 1)
@@ -390,7 +390,7 @@ func TestCreateGoalBlockedByClosedPeriod(t *testing.T) {
 
 func TestCreateGoalBlockedByInProgressPeriod(t *testing.T) {
 	st := newGoalFakeStore()
-	st.statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
+	st.Statuses[[2]int64{1, 10}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(st)
 
 	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 1, PeriodID: 10}, 1)
@@ -422,7 +422,7 @@ func TestCreateGoalAdvancesStatusFromNoGoals(t *testing.T) {
 
 func TestCreateGoalKeepsStatusWhenAlreadyForming(t *testing.T) {
 	st := newGoalFakeStore()
-	st.statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
+	st.Statuses[[2]int64{2, 5}] = domain.TeamPeriodStatusForming
 	svc := newGoalTestService(st)
 
 	_, err := svc.CreateGoal(context.Background(), domain.TenantScope{TenantID: 1}, goals.GoalInput{TeamID: 2, PeriodID: 5}, 1)
@@ -498,7 +498,7 @@ func TestDeleteGoalByOwnerDeletesGoalWhenNoSharesAndPeriodOpen(t *testing.T) {
 func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[10] = domain.Goal{ID: 10, TeamID: 1, PeriodID: 5}
-	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
+	st.Statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusClosed
 	svc := newGoalTestService(st)
 
 	_, _, err := svc.DeleteGoal(context.Background(), domain.TenantScope{TenantID: 1}, 10, 1, 1)
@@ -513,7 +513,7 @@ func TestDeleteGoalByOwnerBlockedByClosedPeriodWithNoShares(t *testing.T) {
 func TestDeleteGoalResetsStatusWhenLastGoalRemoved(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[11] = domain.Goal{ID: 11, TeamID: 1, PeriodID: 5}
-	st.statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusForming
+	st.Statuses[[2]int64{1, 5}] = domain.TeamPeriodStatusForming
 	// goalsAfterDelete is empty → no goals remain after deletion
 	svc := newGoalTestService(st)
 
@@ -539,7 +539,7 @@ func TestUpdateGoalOwnerAndSharesBlockedByInProgressPeriod(t *testing.T) {
 	st := newGoalFakeStore()
 	st.goals[20] = domain.Goal{ID: 20, TeamID: 1, PeriodID: 10, Weight: 40}
 	// team 2 is in_progress
-	st.statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
+	st.Statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
 	svc := newGoalTestService(st)
 
 	_, _, err := svc.UpdateGoalOwnerAndShares(context.Background(), domain.TenantScope{TenantID: 1}, 20, []int64{2}, 1)
@@ -573,7 +573,7 @@ func TestUpdateGoalOwnerAndSharesChangesOwnerWhenCurrentOwnerNotSelected(t *test
 
 func TestUpdateKRProgressNumericalRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
-	st.keyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
+	st.KeyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
 	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 50, 1); err == nil {
@@ -583,7 +583,7 @@ func TestUpdateKRProgressNumericalRejectsUnsupportedKind(t *testing.T) {
 
 func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
-	st.keyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindNumerical}
+	st.KeyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 2, true, 1); err == nil {
@@ -593,7 +593,7 @@ func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 
 func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 	st := newGoalFakeStore()
-	st.keyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindNumerical}
+	st.KeyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
 	if err := svc.UpdateKRProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 3, nil, 1); err == nil {

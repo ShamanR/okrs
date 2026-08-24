@@ -1,4 +1,4 @@
-package service
+package healthcheckin
 
 import (
 	"context"
@@ -20,14 +20,14 @@ type hcKey struct {
 	periodID int64
 }
 
-// HCActive is one tenant's active period, used by the refresh loop.
-type HCActive struct {
+// Active is one tenant's active period, used by the refresh loop.
+type Active struct {
 	Scope    domain.TenantScope
 	PeriodID int64
 }
 
-// HealthCheckInCache holds PeriodData per (tenant, period) with TTL-based expiry.
-type HealthCheckInCache struct {
+// Cache holds PeriodData per (tenant, period) with TTL-based expiry.
+type Cache struct {
 	mu      sync.RWMutex
 	periods map[hcKey]*PeriodData
 	ttl     time.Duration
@@ -35,9 +35,9 @@ type HealthCheckInCache struct {
 	logger  *slog.Logger
 }
 
-// NewHealthCheckInCache creates a new cache with the given loader and TTL.
-func NewHealthCheckInCache(loader periodLoader, ttl time.Duration, logger *slog.Logger) *HealthCheckInCache {
-	return &HealthCheckInCache{
+// NewCache creates a new cache with the given loader and TTL.
+func NewCache(loader periodLoader, ttl time.Duration, logger *slog.Logger) *Cache {
+	return &Cache{
 		periods: make(map[hcKey]*PeriodData),
 		ttl:     ttl,
 		loader:  loader,
@@ -46,7 +46,7 @@ func NewHealthCheckInCache(loader periodLoader, ttl time.Duration, logger *slog.
 }
 
 // Get returns cached PeriodData for the given tenant+period, loading from DB if stale or absent.
-func (c *HealthCheckInCache) Get(ctx context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
+func (c *Cache) Get(ctx context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
 	key := hcKey{tenantID: scope.TenantID, periodID: periodID}
 	c.mu.RLock()
 	entry := c.periods[key]
@@ -58,7 +58,7 @@ func (c *HealthCheckInCache) Get(ctx context.Context, scope domain.TenantScope, 
 	return c.reload(ctx, scope, periodID)
 }
 
-func (c *HealthCheckInCache) reload(ctx context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
+func (c *Cache) reload(ctx context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
 	data, err := c.loader(ctx, scope, periodID)
 	if err != nil {
 		return nil, err
@@ -70,7 +70,7 @@ func (c *HealthCheckInCache) reload(ctx context.Context, scope domain.TenantScop
 }
 
 // InvalidateAll clears all cached entries; next Get will reload from DB.
-func (c *HealthCheckInCache) InvalidateAll() {
+func (c *Cache) InvalidateAll() {
 	c.mu.Lock()
 	c.periods = make(map[hcKey]*PeriodData)
 	c.mu.Unlock()
@@ -78,7 +78,7 @@ func (c *HealthCheckInCache) InvalidateAll() {
 
 // StartRefreshLoop runs a background goroutine that proactively refreshes the active period
 // of every tenant. activePeriodsFn returns one entry per tenant that has an active period.
-func (c *HealthCheckInCache) StartRefreshLoop(ctx context.Context, interval time.Duration, activePeriodsFn func(ctx context.Context) []HCActive) {
+func (c *Cache) StartRefreshLoop(ctx context.Context, interval time.Duration, activePeriodsFn func(ctx context.Context) []Active) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()

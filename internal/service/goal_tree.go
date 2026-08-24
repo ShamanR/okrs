@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/progress"
 )
 
 type GoalTreeTeam struct {
@@ -48,7 +49,7 @@ func (s *Service) GoalTree(ctx context.Context, scope domain.TenantScope, allowe
 	teamIDSet := make(map[int64]bool)
 	for i := range goalsList {
 		g := goalsList[i]
-		g.Progress = CalculateGoalProgress(&g)
+		g.Progress = progress.ForGoal(&g)
 		teamIDSet[g.TeamID] = true
 		var pIDs, cIDs []int64
 		for _, ref := range parents[g.ID] {

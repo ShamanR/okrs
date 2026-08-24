@@ -8,6 +8,7 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/progress"
+	"okrs/internal/service/healthcheckin"
 )
 
 // PeriodTeamSummary is one team's row in the period overview (drill-down source).
@@ -176,7 +177,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 	healthCounts := map[string]int{}
 
 	for id, team := range teamsByID {
-		// Copy goals so CalculateGoalProgress writes don't mutate shared cache data.
+		// Copy goals so progress.ForGoal writes don't mutate shared cache data.
 		src := data.GoalsByTeam[id]
 		goals := make([]domain.Goal, len(src))
 		copy(goals, src)
@@ -198,7 +199,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 		row := PeriodTeamSummary{
 			TeamID:     id,
 			TeamName:   team.Name,
-			TeamPath:   buildTeamPath(id, teamsByID),
+			TeamPath:   healthcheckin.BuildTeamPath(id, teamsByID),
 			Status:     bucket,
 			GoalsCount: len(goals),
 		}
@@ -208,11 +209,11 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 			teamsWithGoals++
 			weightSum := 0
 			for i := range goals {
-				goals[i].Progress = CalculateGoalProgress(&goals[i])
+				goals[i].Progress = progress.ForGoal(&goals[i])
 				weightSum += goals[i].Weight
 			}
 			row.WeightSum = weightSum
-			row.WeightError = abs(weightSum-100) > weightTolerance
+			row.WeightError = healthcheckin.Abs(weightSum-100) > weightTolerance
 			if row.WeightError {
 				weightErrors++
 			}
@@ -251,7 +252,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 						GoalTitle:    goals[i].Title,
 						TeamName:     team.Name,
 						HealthStatus: hs,
-						Progress:     CalculateKRProgress(kr),
+						Progress:     progress.ForKR(kr),
 					})
 				}
 			}

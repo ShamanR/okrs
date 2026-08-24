@@ -1,4 +1,4 @@
-package service
+package onboarding
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"errors"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/service/provisioning"
+	"okrs/internal/service/settings"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"
@@ -33,26 +35,26 @@ type NewUserGranter interface {
 	RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
-// OnboardingService decides post-login outcomes: invitation claim, self-service join-request,
+// Service decides post-login outcomes: invitation claim, self-service join-request,
 // and new-user registration. It takes explicit scope where a tenant is in play.
-type OnboardingService struct {
+type Service struct {
 	inv      *invitations.InvitationRepository
 	mem      *memberships.MembershipRepository
 	memCache *memberships.MembershipCache
 	tenants  *tenants.TenantRepository
-	settings *SettingsService
+	settings *settings.Service
 	granter  NewUserGranter
 }
 
-func NewOnboardingService(
+func New(
 	inv *invitations.InvitationRepository,
 	mem *memberships.MembershipRepository,
 	memCache *memberships.MembershipCache,
 	tn *tenants.TenantRepository,
-	settings *SettingsService,
+	settings *settings.Service,
 	granter NewUserGranter,
-) *OnboardingService {
-	return &OnboardingService{inv: inv, mem: mem, memCache: memCache, tenants: tn, settings: settings, granter: granter}
+) *Service {
+	return &Service{inv: inv, mem: mem, memCache: memCache, tenants: tn, settings: settings, granter: granter}
 }
 
 // GenerateInviteToken returns a random raw token and its sha256 hex hash. Only the hash is stored.
@@ -76,7 +78,7 @@ func HashInviteToken(raw string) string {
 // user who joins via a link gets the same baseline access as one auto-registered. Repeat claims
 // of a multi-use link by an already-active member are idempotent (Upsert + grant no-op).
 // Invalid/expired/revoked/exhausted → ErrInvalidInvitation.
-func (s *OnboardingService) ClaimInvitation(ctx context.Context, rawToken string, userID int64) (*domain.Membership, error) {
+func (s *Service) ClaimInvitation(ctx context.Context, rawToken string, userID int64) (*domain.Membership, error) {
 	res, err := s.inv.Consume(ctx, HashInviteToken(rawToken))
 	if errors.Is(err, invitations.ErrNotFound) {
 		return nil, ErrInvalidInvitation
@@ -103,7 +105,7 @@ func (s *OnboardingService) ClaimInvitation(ctx context.Context, rawToken string
 
 // RequestAccess records a self-service join request (status=requested) for a tenant by slug.
 // An existing active membership → ErrAlreadyMember; unknown slug → ErrTenantNotFound.
-func (s *OnboardingService) RequestAccess(ctx context.Context, slug string, userID int64) error {
+func (s *Service) RequestAccess(ctx context.Context, slug string, userID int64) error {
 	tn, err := s.tenants.GetBySlug(ctx, slug)
 	if errors.Is(err, tenants.ErrNotFound) {
 		return ErrTenantNotFound
@@ -131,14 +133,14 @@ func (s *OnboardingService) RequestAccess(ctx context.Context, slug string, user
 }
 
 // ListAccessRequests returns the tenant's pending join requests.
-func (s *OnboardingService) ListAccessRequests(ctx context.Context, scope domain.TenantScope) ([]memberships.AccessRequest, error) {
+func (s *Service) ListAccessRequests(ctx context.Context, scope domain.TenantScope) ([]memberships.AccessRequest, error) {
 	return s.mem.ListAccessRequests(ctx, scope)
 }
 
 // ApplyDefaultAccess applies the tenant's new-user policy (default-node grant) to a user if they
 // have no grant there yet. Exported so the system-admin plane (ProvisioningService) can reuse the
 // exact same rule when it activates/attaches a member.
-func (s *OnboardingService) ApplyDefaultAccess(ctx context.Context, scope domain.TenantScope, userID int64) error {
+func (s *Service) ApplyDefaultAccess(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	return s.applyNewUserPolicy(ctx, scope, userID)
 }
 
@@ -147,7 +149,7 @@ func (s *OnboardingService) ApplyDefaultAccess(ctx context.Context, scope domain
 // The default grant is applied BEFORE activation so a failing grant (e.g. a stale
 // default_hierarchy_node_id whose team was hard-deleted) leaves the request pending and retryable,
 // rather than committing an active membership without the intended access.
-func (s *OnboardingService) ApproveRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
+func (s *Service) ApproveRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	if err := s.applyNewUserPolicy(ctx, scope, userID); err != nil {
 		return err
 	}
@@ -159,7 +161,7 @@ func (s *OnboardingService) ApproveRequest(ctx context.Context, scope domain.Ten
 }
 
 // DenyRequest removes a pending membership.
-func (s *OnboardingService) DenyRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
+func (s *Service) DenyRequest(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	if err := s.mem.DeleteRequested(ctx, scope, userID); err != nil {
 		return err
 	}
@@ -170,7 +172,7 @@ func (s *OnboardingService) DenyRequest(ctx context.Context, scope domain.Tenant
 // SetMemberRole changes a user's role (user/admin) within the scoped tenant and invalidates the
 // membership cache so the new role takes effect (incl. the access scope) on the next request.
 // This is the tenant-scoped admin toggle (memberships.role); instance-level system-admin is separate.
-func (s *OnboardingService) SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error {
+func (s *Service) SetMemberRole(ctx context.Context, scope domain.TenantScope, userID int64, role domain.Role) error {
 	if err := s.mem.SetRole(ctx, scope, userID, role); err != nil {
 		return err
 	}
@@ -181,7 +183,7 @@ func (s *OnboardingService) SetMemberRole(ctx context.Context, scope domain.Tena
 // RemoveMember unlinks a user from the scoped tenant: it revokes all their hierarchy grants
 // there, deletes their membership (any status), and invalidates the membership cache so the
 // change takes effect on the next request. Idempotent — a non-member removal is a no-op.
-func (s *OnboardingService) RemoveMember(ctx context.Context, scope domain.TenantScope, userID int64) error {
+func (s *Service) RemoveMember(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	if err := s.granter.RemoveAllUserGrants(ctx, scope, userID); err != nil {
 		return err
 	}
@@ -193,9 +195,9 @@ func (s *OnboardingService) RemoveMember(ctx context.Context, scope domain.Tenan
 }
 
 // LeaveTenant removes the caller's own membership in a tenant (any status) plus their grants there.
-// Refuses if the caller is the tenant's last active admin (ErrLastAdmin, from provisioning.go).
+// Refuses if the caller is the tenant's last active admin (provisioning.ErrLastAdmin, from provisioning.go).
 // Not a member → no-op (nil), so it doubles as "cancel my pending request".
-func (s *OnboardingService) LeaveTenant(ctx context.Context, tenantID, userID int64) error {
+func (s *Service) LeaveTenant(ctx context.Context, tenantID, userID int64) error {
 	scope := domain.TenantScope{TenantID: tenantID}
 	cur, err := s.mem.Get(ctx, userID, tenantID)
 	if errors.Is(err, memberships.ErrNotFound) {
@@ -210,7 +212,7 @@ func (s *OnboardingService) LeaveTenant(ctx context.Context, tenantID, userID in
 			return err
 		}
 		if n <= 1 {
-			return ErrLastAdmin
+			return provisioning.ErrLastAdmin
 		}
 	}
 	return s.RemoveMember(ctx, scope, userID)
@@ -221,7 +223,7 @@ func (s *OnboardingService) LeaveTenant(ctx context.Context, tenantID, userID in
 // membership and applying that tenant's new_user_policy. Returns (true, nil) if a membership
 // was created; (false, nil) if the user already has one or no default tenant is configured
 // (caller then routes to the no-membership page).
-func (s *OnboardingService) EnsureRegistration(ctx context.Context, userID int64) (bool, error) {
+func (s *Service) EnsureRegistration(ctx context.Context, userID int64) (bool, error) {
 	existing, err := s.mem.ListByUser(ctx, userID) // active-only
 	if err != nil {
 		return false, err
@@ -250,7 +252,7 @@ func (s *OnboardingService) EnsureRegistration(ctx context.Context, userID int64
 }
 
 // defaultRegistrationTenant reads the global default_registration_tenant_id system setting.
-func (s *OnboardingService) defaultRegistrationTenant(ctx context.Context) (int64, bool, error) {
+func (s *Service) defaultRegistrationTenant(ctx context.Context) (int64, bool, error) {
 	raw, err := s.settings.SystemGet(ctx, "default_registration_tenant_id")
 	if err != nil || raw == nil {
 		return 0, false, err
@@ -265,7 +267,7 @@ func (s *OnboardingService) defaultRegistrationTenant(ctx context.Context) (int6
 // applyNewUserPolicy grants the registration tenant's default hierarchy node to a new member
 // (policy "default_node"), if the user has no grant there yet. Moved here from auth.Manager so
 // it targets the resolved registration tenant, not a hardcoded one.
-func (s *OnboardingService) applyNewUserPolicy(ctx context.Context, scope domain.TenantScope, userID int64) error {
+func (s *Service) applyNewUserPolicy(ctx context.Context, scope domain.TenantScope, userID int64) error {
 	policyRaw, _ := s.settings.GetTenant(ctx, scope, "new_user_policy")
 	var policy string
 	if policyRaw != nil {

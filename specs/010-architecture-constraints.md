@@ -20,12 +20,12 @@
 AI должен сохранять разделение ответственности:
 
 - `internal/core/domain` — доменные типы и enum, включая `User`, `AuthSession`;
-- `internal/core/progress` — расчёты прогресса (бывший `internal/okr`);
+- `internal/core/progress` — расчёты прогресса (бывший `internal/okr`): формулы по типам KR плюс `ForKR`/`ForGoal`, диспетчеризующие по виду KR и агрегирующие цель. Чистые функции над доменными типами, без I/O;
 - `internal/platform/entitlements` — интерфейс `Entitlements` и его реестр;
 - `internal/platform/nomembership` — реестр страницы «нет доступа» (бывший `internal/onboarding`);
 - `internal/render/export` — рендер OKR в Markdown;
 - `internal/store` — SQL и persistence; каждый тип сущности имеет свой отдельный repository-тип; `store.Store` — composite-фабрика; auth-методы (users, sessions, grants, settings) живут здесь;
-- `internal/service` — доменные сценарии и orchestration; использует репозитории через интерфейсы (`TeamRepo`, `GoalRepo`, `KRRepo` и т.д.); инициализируется через `service.Deps`;
+- `internal/service` — сервисы по сущностям, по пакету на сущность: `team`, `goal`, `keyresult`, `period`, `goalshare`, `goallink`, `teamstatus`, `user`, `activity`, плюс `settings`, `provisioning`, `onboarding`, `healthcheckin`. Каждый работает **с одной** сущностью через **один** репозиторий, объявленный интерфейсом на стороне потребителя (`team.Repo`, `goal.Repo` и т.д.), и не пишет в журнал активности. `internal/service/servicetest` — общие fake-репозитории для тестов всех сервисов. Корневой `service.Service` — **временный фасад**: сохраняет старый API (имена методов, type alias на переехавшие типы, обёртки конструкторов), чтобы handlers не менялись до этапа перевязки; удаляется вместе с ней;
 - `internal/auth` — auth manager, middleware chain, provider interface, policy evaluator;
 - `internal/auth/providers/{name}` — реализации провайдеров; каждый провайдер — изолированный пакет;
 - `internal/http` — SSR handlers; шаблоны живут в `/web/templates` и встраиваются пакетом `web`
@@ -45,6 +45,8 @@ AI должен сохранять разделение ответственно
 Публичных пакетов ровно два: `app` — фасад приложения, и `web` — SSR-ассеты. Всё остальное — `internal/`.
 
 **Группировка в `internal/`.** В корне `internal/` лежат только слои и группы, не отдельные доменные пакеты: `core/` — чистая логика без I/O; `platform/` — registry-сеймы OSS/SaaS; `render/` — форматтеры; плюс `auth/`, `http/`, `service/`, `store/`. Новый пакет кладётся в существующую группу; заводить пакет в корне `internal/` — повод сначала решить, к какой группе он относится.
+
+**Граница service / usecase.** Метод принадлежит сервису сущности, если трогает не более одного репозитория **и** не пишет в журнал активности. Иначе это usecase. Правило операционное — проверяется механически, а не на вкус: карту «метод → репозитории» можно построить скриптом и свериться.
 
 **Именование.** Store — множественное число, service — единственное (`store/goals` ↔ `service/goal`). Коллизии имён пакетов разрешаются алиасом на месте импорта, а не переименованием каталога:
 

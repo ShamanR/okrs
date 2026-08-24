@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/progress"
 	"okrs/internal/render/export"
 )
 
@@ -155,9 +156,9 @@ func (s *Service) exportTreeBlocks(ctx context.Context, scope domain.TenantScope
 			g := &goals[gi]
 			// compute progress (batched loader does not set it)
 			for ki := range g.KeyResults {
-				g.KeyResults[ki].Progress = CalculateKRProgress(g.KeyResults[ki])
+				g.KeyResults[ki].Progress = progress.ForKR(g.KeyResults[ki])
 			}
-			g.Progress = CalculateGoalProgress(g)
+			g.Progress = progress.ForGoal(g)
 			if notes != nil {
 				for ki := range g.KeyResults {
 					g.KeyResults[ki].Note = notes[g.KeyResults[ki].ID]
