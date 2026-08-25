@@ -11,7 +11,6 @@ import (
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
 	goalsharesvc "okrs/internal/service/goalshare"
-	keyresultsvc "okrs/internal/service/keyresult"
 	periodsvc "okrs/internal/service/period"
 	"okrs/internal/service/servicetest"
 	teamsvc "okrs/internal/service/team"
@@ -31,7 +30,6 @@ type rawDeps struct {
 	Statuses teamstatussvc.Repo
 	Periods  periodsvc.Repo
 	Teams    teamsvc.Repo
-	KRs      keyresultsvc.Repo
 	Activity activitysvc.Repo
 }
 
@@ -55,9 +53,6 @@ func newFromRepos(d rawDeps) *UseCase {
 	if d.Teams != nil {
 		deps.Teams = teamsvc.New(d.Teams)
 	}
-	if d.KRs != nil {
-		deps.KRs = keyresultsvc.New(d.KRs)
-	}
 	// Activity is always present: scenarios record the journal unconditionally, and a
 	// nil service would panic rather than no-op.
 	deps.Activity = activitysvc.New(d.Activity, nil)
@@ -66,5 +61,5 @@ func newFromRepos(d rawDeps) *UseCase {
 
 // newGoalTestService builds the usecase against the call-recording goal fake.
 func newGoalTestService(gf *servicetest.GoalStore) *UseCase {
-	return newFromRepos(rawDeps{Teams: gf, Goals: gf, Shares: gf, Periods: gf, KRs: gf, Statuses: gf})
+	return newFromRepos(rawDeps{Teams: gf, Goals: gf, Shares: gf, Periods: gf, Statuses: gf})
 }

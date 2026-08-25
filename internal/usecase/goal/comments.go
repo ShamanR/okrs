@@ -60,7 +60,7 @@ func (s *UseCase) SetCommentResolved(ctx context.Context, scope domain.TenantSco
 	return nil
 }
 
-// DeleteGoalComment removes a task (cascading its replies) or a reply. Authorization:
+// DeleteComment removes a task (cascading its replies) or a reply. Authorization:
 // the requesting user must be the author, or a tenant admin. Returns isTask so the
 // caller/log distinguishes a task deletion (comment_deleted) from a reply (reply_deleted).
 // A cascaded task deletion logs a single comment_deleted event (replies vanish silently).

@@ -15,7 +15,7 @@ type Handler struct {
 
 func New(activity admincommon.ActivityPurger) *Handler { return &Handler{activity: activity} }
 
-// HandlePurgeActivity handles POST /api/v1/admin/activity/purge.
+// Post handles POST /api/v1/admin/activity/purge.
 // Body: {"older_than":"quarter"|"year"|"all"}. Tenant-admin authority is enforced by
 // RequireTenantAdminMiddleware on the route group.
 func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {

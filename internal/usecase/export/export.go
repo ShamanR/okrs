@@ -12,7 +12,6 @@ import (
 	"okrs/internal/core/progress"
 	render "okrs/internal/render/export"
 	goalsvc "okrs/internal/service/goal"
-	goallinksvc "okrs/internal/service/goallink"
 	keyresultsvc "okrs/internal/service/keyresult"
 	periodsvc "okrs/internal/service/period"
 	teamsvc "okrs/internal/service/team"
@@ -21,7 +20,8 @@ import (
 
 // BoardReader is the narrow port into the OKR-board usecase: an export renders the
 // same board the tracker shows, so it reads it rather than assembling its own copy.
-// Declared consumer-side so export does not depend on the whole okrboard package.
+// Declared consumer-side, so the only thing export takes from okrboard is the board
+// read-model type in this signature — no behaviour and no wider surface.
 type BoardReader interface {
 	TeamOKRFor(ctx context.Context, scope domain.TenantScope, teamID, periodID int64, period domain.Period) (okrboard.TeamOKR, error)
 }
@@ -32,7 +32,6 @@ type Deps struct {
 	Goals   *goalsvc.Service
 	KRs     *keyresultsvc.Service
 	Periods *periodsvc.Service
-	Links   *goallinksvc.Service
 }
 
 type UseCase struct {
@@ -41,11 +40,10 @@ type UseCase struct {
 	goals   *goalsvc.Service
 	krs     *keyresultsvc.Service
 	periods *periodsvc.Service
-	links   *goallinksvc.Service
 }
 
 func New(deps Deps) *UseCase {
-	return &UseCase{board: deps.Board, teams: deps.Teams, goals: deps.Goals, krs: deps.KRs, periods: deps.Periods, links: deps.Links}
+	return &UseCase{board: deps.Board, teams: deps.Teams, goals: deps.Goals, krs: deps.KRs, periods: deps.Periods}
 }
 
 type ExportParams struct {

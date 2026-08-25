@@ -21,7 +21,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// tenantScope extracts TenantScope from the request context, writing 403 and
+// TenantScope extracts TenantScope from the request context, writing 403 and
 // returning false if it is missing.
 // TenantScope pulls the active tenant out of the request context, answering 403 when
 // it is absent. Shared by every /api/v1/krs/** endpoint and by goals/key-results.
@@ -33,7 +33,7 @@ func TenantScope(w http.ResponseWriter, r *http.Request) (domain.TenantScope, bo
 	return scope, ok
 }
 
-// parseKeyResultMeta parses meta fields for a key result based on kind.
+// ParseMeta parses meta fields for a key result based on kind.
 func ParseMeta(r *http.Request, kind domain.KRKind) (keyresultsvc.MetaInput, error) {
 	switch kind {
 	case domain.KRKindNumerical:
@@ -52,7 +52,7 @@ func ParseMeta(r *http.Request, kind domain.KRKind) (keyresultsvc.MetaInput, err
 	}
 }
 
-// parseProjectStages parses project stage fields from a multipart form.
+// ParseProjectStages parses project stage fields from a multipart form.
 func ParseProjectStages(r *http.Request) ([]krs.ProjectStageInput, error) {
 	stages := make([]krs.ProjectStageInput, 0, 4)
 	titles := r.Form["step_title[]"]
@@ -114,7 +114,7 @@ type MoveDeps struct {
 	Goals GoalGetter
 }
 
-// goalForKR resolves the parent goal of a KR and returns it.
+// GoalForKR resolves the parent goal of a KR and returns it.
 // Returns an error if the KR or its goal cannot be found.
 // GoalForKR resolves the goal a key result belongs to. Every /api/v1/krs/** endpoint
 // needs it: authorization is by the goal's team, not by the KR itself.

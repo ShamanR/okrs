@@ -16,7 +16,6 @@ import (
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
 	goalsharesvc "okrs/internal/service/goalshare"
-	periodsvc "okrs/internal/service/period"
 	teamsvc "okrs/internal/service/team"
 	teamstatussvc "okrs/internal/service/teamstatus"
 	"okrs/internal/store/shares"
@@ -28,7 +27,6 @@ type Deps struct {
 	Goals    *goalsvc.Service
 	Shares   *goalsharesvc.Service
 	Statuses *teamstatussvc.Service
-	Periods  *periodsvc.Service
 	Links    *goallinksvc.Service
 }
 
@@ -37,12 +35,11 @@ type UseCase struct {
 	goals    *goalsvc.Service
 	shares   *goalsharesvc.Service
 	statuses *teamstatussvc.Service
-	periods  *periodsvc.Service
 	links    *goallinksvc.Service
 }
 
 func New(deps Deps) *UseCase {
-	return &UseCase{teams: deps.Teams, goals: deps.Goals, shares: deps.Shares, statuses: deps.Statuses, periods: deps.Periods, links: deps.Links}
+	return &UseCase{teams: deps.Teams, goals: deps.Goals, shares: deps.Shares, statuses: deps.Statuses, links: deps.Links}
 }
 
 type TeamSummary struct {
@@ -431,7 +428,7 @@ func buildShareInfosFromBatch(goal domain.Goal, shareList []shares.GoalShare, te
 	return teamInfos
 }
 
-// AttachGoalLinks fills Parents/Children (scope-filtered, with progress) on each board goal
+// AttachLinks fills Parents/Children (scope-filtered, with progress) on each board goal
 // in place. Navigation-only; leaves progress/status untouched.
 func (s *UseCase) AttachLinks(ctx context.Context, scope domain.TenantScope, details []GoalDetails, allowedTeamIDs []int64, adminAll bool) error {
 	if len(details) == 0 {

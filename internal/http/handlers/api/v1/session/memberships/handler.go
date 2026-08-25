@@ -8,33 +8,21 @@ import (
 	"github.com/go-chi/chi/v5"
 	"net/http"
 	"okrs/internal/auth"
-	"okrs/internal/core/domain"
 	"okrs/internal/service/provisioning"
 	"okrs/internal/store/memberships"
 	"strconv"
 )
 
-// MembershipLookup lists a user's memberships.
+// MembershipLookup lists the caller's memberships together with their tenants.
 type MembershipLookup interface {
-	ListByUser(ctx context.Context, userID int64) ([]domain.Membership, error)
 	ListByUserWithTenant(ctx context.Context, userID int64) ([]memberships.MembershipWithTenant, error)
 }
 
-// MembershipLeaver removes the caller's own membership. *service.OnboardingService satisfies it.
+// MembershipLeaver removes the caller's own membership. *provisioning.Service satisfies it.
 type MembershipLeaver interface {
 	LeaveTenant(ctx context.Context, tenantID, userID int64) error
 }
 
-// TenantLookup loads tenants by slug or id.
-type TenantLookup interface {
-	GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
-	GetByID(ctx context.Context, id int64) (*domain.Tenant, error)
-}
-
-// SessionWriter persists the session's active tenant.
-type SessionWriter interface {
-	SetActiveTenant(ctx context.Context, sessionID string, tenantID int64) error
-}
 type membershipDTO struct {
 	TenantID int64  `json:"tenant_id"`
 	Slug     string `json:"slug"`
@@ -52,7 +40,7 @@ func New(members MembershipLookup, leaver MembershipLeaver) *Handler {
 	return &Handler{members: members, leaver: leaver}
 }
 
-// ListMyMemberships returns the caller's memberships (all statuses) for /settings.
+// Get returns the caller's memberships (all statuses) for /settings.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil {
@@ -72,7 +60,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// LeaveTenant lets the caller leave a tenant / cancel their pending request.
+// Delete lets the caller leave a tenant / cancel their pending request.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil {

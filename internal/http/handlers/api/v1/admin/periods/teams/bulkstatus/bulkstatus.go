@@ -28,7 +28,7 @@ type TeamLister interface {
 	ListAll(ctx context.Context, scope domain.TenantScope) ([]domain.Team, error)
 }
 
-// handleBulk applies a bulk status transition over the whole tenant (admin-only path).
+// Run applies a bulk status transition over the whole tenant (admin-only path).
 // Run performs an admin-scope bulk status change over every team of a period. Shared by
 // the activate and close endpoints: they differ only by the target status.
 func Run(w http.ResponseWriter, r *http.Request, uc *perioduc.UseCase, teams TeamLister, leads TeamScopeResolver, target domain.TeamPeriodStatus) {
@@ -50,7 +50,7 @@ func Run(w http.ResponseWriter, r *http.Request, uc *perioduc.UseCase, teams Tea
 	v1.WriteJSON(w, http.StatusOK, res)
 }
 
-// handleBulkScoped applies a bulk status transition within the requested scope:
+// RunScoped applies a bulk status transition within the requested scope:
 // my_teams (teams the caller leads + descendants) or org (whole tenant, admin-only).
 // RunScoped is the member-facing variant: it narrows the change to the teams the caller
 // leads. Org-wide scope stays admin-gated inside the resolver.
@@ -77,7 +77,7 @@ func RunScoped(w http.ResponseWriter, r *http.Request, uc *perioduc.UseCase, tea
 	v1.WriteJSON(w, http.StatusOK, res)
 }
 
-// resolveOverviewScope reads ?scope=my_teams|org and returns the team filter to apply
+// ResolveOverviewScope reads ?scope=my_teams|org and returns the team filter to apply
 // (nil = whole organization). On an authorization/validation problem it writes the error
 // response and returns ok=false. Shared by the scoped overview and scoped bulk handlers.
 // ResolveOverviewScope decides which teams a period overview covers: "my_teams"

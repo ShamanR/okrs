@@ -12,7 +12,7 @@ import (
 
 // Неразбираемый goalID в пути — это ошибка клиента, а не 404 и не 500.
 func TestGatePostBadGoalID(t *testing.T) {
-	w := handlertest.Do(New(nil, nil, nil).Post, http.MethodGet, "/api/v1/goals/{goalID}/key-results", "",
+	w := handlertest.Do(New(nil, nil).Post, http.MethodGet, "/api/v1/goals/{goalID}/key-results", "",
 		handlertest.Tenant(1),
 		handlertest.URLParam("goalID", "не-число"))
 	handlertest.IsError(t, w, http.StatusBadRequest)

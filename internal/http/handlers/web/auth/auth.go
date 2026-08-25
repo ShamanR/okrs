@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-// safeRedirectPath returns true only for relative paths on this host,
+// SafeRedirectPath returns true only for relative paths on this host,
 // preventing open-redirect attacks via a crafted next parameter.
 func SafeRedirectPath(next string) bool {
 	if next == "" {

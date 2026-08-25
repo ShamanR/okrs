@@ -9,7 +9,7 @@ import (
 	"okrs/internal/store/goallinks"
 )
 
-// SetGoalParents replaces the full set of parents of childID. Validation: access to the
+// SetParents replaces the full set of parents of childID. Validation: access to the
 // child's owner team; tenant-membership and scope-access of every parent; no self-link; no
 // cycle. Records goal_linked/goal_unlinked activity for the diff. Navigation-only: does not
 // touch progress or team period status.

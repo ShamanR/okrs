@@ -31,7 +31,7 @@ func New(onboard Onboarder, sessions SessionWriter) *Handler {
 	return &Handler{onboard: onboard, sessions: sessions}
 }
 
-// HandleInvite redeems an invite-link token. An already-authenticated visitor is claimed
+// Get redeems an invite-link token. An already-authenticated visitor is claimed
 // immediately (and their session is focused on the invite's tenant) and sent to the app;
 // an anonymous visitor gets the token stashed in a short-lived cookie and is sent to login,
 // where the callback redeems it. Invalid tokens never block: authenticated visitors are

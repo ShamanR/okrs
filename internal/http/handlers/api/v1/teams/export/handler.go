@@ -1,4 +1,4 @@
-// Package export serves GET /api/v1/teams/{teamID}/render.
+// Package export serves GET /api/v1/teams/{teamID}/export.
 package export
 
 import (

@@ -11,19 +11,17 @@ import (
 	"okrs/internal/http/handlers/api/v1/krs/krscommon"
 	"okrs/internal/http/handlers/web/common"
 	goalsvc "okrs/internal/service/goal"
-	keyresultsvc "okrs/internal/service/keyresult"
 	"okrs/internal/store/krs"
 	kruc "okrs/internal/usecase/keyresult"
 )
 
 type Handler struct {
 	goals *goalsvc.Service
-	krs   *keyresultsvc.Service
 	kruc  *kruc.UseCase
 }
 
-func New(goals *goalsvc.Service, krs *keyresultsvc.Service, kruc *kruc.UseCase) *Handler {
-	return &Handler{goals: goals, krs: krs, kruc: kruc}
+func New(goals *goalsvc.Service, kruc *kruc.UseCase) *Handler {
+	return &Handler{goals: goals, kruc: kruc}
 }
 
 func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {

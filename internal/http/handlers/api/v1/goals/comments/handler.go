@@ -62,7 +62,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-// HandleDeleteGoalComment deletes a task (cascading its replies) or a reply. Access chain:
+// Delete deletes a task (cascading its replies) or a reply. Access chain:
 // tenant scope → goal reachable by the caller → the service enforces author-or-admin and pins
 // the comment to the goal/tenant. Author or tenant admin only; others → 403.
 func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {

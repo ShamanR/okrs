@@ -11,7 +11,6 @@ import (
 	"okrs/internal/core/domain"
 	goalsvc "okrs/internal/service/goal"
 	goalsharesvc "okrs/internal/service/goalshare"
-	periodsvc "okrs/internal/service/period"
 	"okrs/internal/service/servicetest"
 	teamsvc "okrs/internal/service/team"
 	teamstatussvc "okrs/internal/service/teamstatus"
@@ -23,7 +22,6 @@ func newBoardInternal(st *servicetest.Store) *UseCase {
 		Goals:    goalsvc.New(st),
 		Shares:   goalsharesvc.New(st),
 		Statuses: teamstatussvc.New(st),
-		Periods:  periodsvc.New(st),
 	})
 }
 

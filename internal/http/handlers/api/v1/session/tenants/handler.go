@@ -7,30 +7,18 @@ import (
 	"net/http"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
-	"okrs/internal/store/memberships"
 )
 
-// MembershipLookup lists a user's memberships.
+// MembershipLookup lists the caller's memberships so the switcher can name the tenants.
 type MembershipLookup interface {
 	ListByUser(ctx context.Context, userID int64) ([]domain.Membership, error)
-	ListByUserWithTenant(ctx context.Context, userID int64) ([]memberships.MembershipWithTenant, error)
 }
 
-// MembershipLeaver removes the caller's own membership. *service.OnboardingService satisfies it.
-type MembershipLeaver interface {
-	LeaveTenant(ctx context.Context, tenantID, userID int64) error
-}
-
-// TenantLookup loads tenants by slug or id.
+// TenantLookup resolves a membership's tenant id to the tenant itself.
 type TenantLookup interface {
-	GetBySlug(ctx context.Context, slug string) (*domain.Tenant, error)
 	GetByID(ctx context.Context, id int64) (*domain.Tenant, error)
 }
 
-// SessionWriter persists the session's active tenant.
-type SessionWriter interface {
-	SetActiveTenant(ctx context.Context, sessionID string, tenantID int64) error
-}
 type tenantDTO struct {
 	ID     int64  `json:"id"`
 	Slug   string `json:"slug"`
@@ -47,7 +35,7 @@ func New(members MembershipLookup, tenants TenantLookup) *Handler {
 	return &Handler{members: members, tenants: tenants}
 }
 
-// ListMyTenants returns the current user's active-membership tenants for the switcher.
+// Get returns the current user's active-membership tenants for the switcher.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil {

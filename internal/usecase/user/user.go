@@ -33,7 +33,7 @@ func New(deps Deps) *UseCase {
 	return &UseCase{users: deps.Users, teams: deps.Teams, grants: deps.Grants}
 }
 
-// SearchUsersInScope returns up to 20 non-system users visible in the given scope.
+// SearchInScope returns up to 20 non-system users visible in the given scope.
 //   - scopeTeamIDs == nil → admin/unrestricted: all users
 //   - scopeTeamIDs != nil → users with a hierarchy grant to any team related to the scope nodes:
 //     ancestors (access from above), the nodes themselves, or descendants (access from below).

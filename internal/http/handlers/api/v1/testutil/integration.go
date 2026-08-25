@@ -98,7 +98,7 @@ func NewAPIV1RouterWithScope(st *store.Store, grantsCache *grants.GrantsCache, a
 	goalsunresolve.RegisterRoutes(router, goalsunresolve.New(goalcommon.ResolveDeps{Goals: d.Goals, Shares: d.Shares, UC: d.GoalUC}))
 	goalsmoveup.RegisterRoutes(router, goalsmoveup.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
 	goalsmovedown.RegisterRoutes(router, goalsmovedown.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
-	goalskeyresults.RegisterRoutes(router, goalskeyresults.New(d.Goals, d.Krs, d.KrUC))
+	goalskeyresults.RegisterRoutes(router, goalskeyresults.New(d.Goals, d.KrUC))
 	apigoaltree.RegisterRoutes(router, apigoaltree.New(d.Periods, d.TreeUC))
 	apikrs.RegisterRoutes(router, apikrs.New(d.Goals, d.Krs, d.KrUC))
 	krsnumerical.RegisterRoutes(router, krsnumerical.New(d.Goals, d.Krs, d.KrUC))

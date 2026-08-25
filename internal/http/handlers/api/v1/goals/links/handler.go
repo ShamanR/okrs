@@ -23,7 +23,7 @@ type Handler struct {
 
 func New(goals *goalsvc.Service, uc *goaluc.UseCase) *Handler { return &Handler{goals: goals, uc: uc} }
 
-// HandleSetGoalParents replaces the parent set of a goal (full replace).
+// Post replaces the parent set of a goal (full replace).
 // POST /api/v1/goals/{goalID}/links  body {"parent_goal_ids":[...]}
 func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	goalID, err := common.ParseID(chi.URLParam(r, "goalID"))

@@ -19,7 +19,7 @@ type Handler struct {
 
 func New(links *goallinksvc.Service) *Handler { return &Handler{links: links} }
 
-// HandleLinkableGoals lists candidate goals for the parent picker.
+// Get lists candidate goals for the parent picker.
 // GET /api/v1/goals/linkable?period_id=&q=&exclude_goal_id=
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	scope, ok := auth.TenantScopeFromContext(r.Context())

@@ -68,7 +68,7 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 	activity := activitysvc.New(st.Activity, logger)
 	snaps := progresssnapsvc.New(st.ProgressSnap)
 
-	board := okrboarduc.New(okrboarduc.Deps{Teams: teams, Goals: goals, Shares: shares, Statuses: statuses, Periods: periods, Links: links})
+	board := okrboarduc.New(okrboarduc.Deps{Teams: teams, Goals: goals, Shares: shares, Statuses: statuses, Links: links})
 
 	return Deps{
 		Teams: teams, Goals: goals, Shares: shares, Links: links, Statuses: statuses,
@@ -76,12 +76,12 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 
 		Board: board,
 		GoalUC: goaluc.New(goaluc.Deps{Goals: goals, Shares: shares, Links: links, Statuses: statuses,
-			Periods: periods, Teams: teams, KRs: krs, Activity: activity}),
+			Periods: periods, Teams: teams, Activity: activity}),
 		KrUC: kruc.New(kruc.Deps{KRs: krs, Goals: goals, Activity: activity}),
 		PeriodUC: perioduc.New(perioduc.Deps{Periods: periods, Teams: teams, Goals: goals, Statuses: statuses,
 			Snaps: snaps, Activity: activity, HCCache: hcCache, Logger: logger}),
 		TreeUC:   goaltreeuc.New(goaltreeuc.Deps{Teams: teams, Goals: goals, Links: links, Periods: periods}),
-		ExportUC: exportuc.New(exportuc.Deps{Board: board, Teams: teams, Goals: goals, KRs: krs, Periods: periods, Links: links}),
+		ExportUC: exportuc.New(exportuc.Deps{Board: board, Teams: teams, Goals: goals, KRs: krs, Periods: periods}),
 		UserUC:   useruc.New(useruc.Deps{Users: users, Teams: teams, Grants: grantsCache}),
 	}
 }

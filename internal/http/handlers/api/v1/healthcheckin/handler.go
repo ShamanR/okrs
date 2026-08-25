@@ -17,26 +17,22 @@ type Computer interface {
 	Get(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg hcsvc.Config) (*hcsvc.Result, error)
 }
 
+// settingsProvider reads the tenant's check-in config. Read-only on purpose: writing it
+// (and invalidating the cache afterwards) belongs to admin/settings/healthcheckin.
 type settingsProvider interface {
 	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
-	SetTenantProduct(ctx context.Context, scope domain.TenantScope, key string, value any) error
-}
-
-type cacheInvalidator interface {
-	InvalidateAll()
 }
 
 type Handler struct {
 	svc      Computer
 	settings settingsProvider
-	cache    cacheInvalidator
 }
 
-func New(svc Computer, settings settingsProvider, cache cacheInvalidator) *Handler {
-	return &Handler{svc: svc, settings: settings, cache: cache}
+func New(svc Computer, settings settingsProvider) *Handler {
+	return &Handler{svc: svc, settings: settings}
 }
 
-// HandleHealthCheckIn serves GET /api/v1/health-checkin?period_id=X
+// Get serves GET /api/v1/health-checkin?period_id=X
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	periodIDStr := r.URL.Query().Get("period_id")
 	periodID, err := strconv.ParseInt(periodIDStr, 10, 64)

@@ -144,7 +144,7 @@ const (
 	SettingKeyProgressSnapshotIntervalDays = "progress_snapshot_interval_days"
 )
 
-// purgeCutoff maps a purge depth to a cutoff time. "all" returns (nil, true), meaning
+// PurgeCutoff maps a purge depth to a cutoff time. "all" returns (nil, true), meaning
 // delete everything. ok=false for an unknown depth.
 func PurgeCutoff(depth string) (t *time.Time, ok bool) {
 	now := time.Now()
@@ -162,7 +162,7 @@ func PurgeCutoff(depth string) (t *time.Time, ok bool) {
 	}
 }
 
-// hasUnsafeURLScheme reports whether s uses a scheme that can execute script
+// HasUnsafeURLScheme reports whether s uses a scheme that can execute script
 // when placed in an href (javascript:, data:, vbscript:). Used where any link
 // shape is allowed but rendered-href XSS must still be prevented.
 func HasUnsafeURLScheme(s string) bool {
@@ -175,7 +175,7 @@ func HasUnsafeURLScheme(s string) bool {
 	return false
 }
 
-// isValidHTTPURL reports whether s is an absolute http(s) URL. Restricting the
+// IsValidHTTPURL reports whether s is an absolute http(s) URL. Restricting the
 // scheme keeps unsafe values (e.g. javascript:) out of a rendered href.
 func IsValidHTTPURL(s string) bool {
 	u, err := url.Parse(s)
@@ -185,7 +185,7 @@ func IsValidHTTPURL(s string) bool {
 	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
-// settingString reads a string setting; empty when unset or malformed.
+// SettingString reads a string setting; empty when unset or malformed.
 func SettingString(ctx context.Context, settings TenantSettings, scope domain.TenantScope, key string) string {
 	raw, err := settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
@@ -196,7 +196,7 @@ func SettingString(ctx context.Context, settings TenantSettings, scope domain.Te
 	return s
 }
 
-// settingBool reads a bool setting; false when unset or malformed.
+// SettingBool reads a bool setting; false when unset or malformed.
 func SettingBool(ctx context.Context, settings TenantSettings, scope domain.TenantScope, key string) bool {
 	raw, err := settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
@@ -207,7 +207,7 @@ func SettingBool(ctx context.Context, settings TenantSettings, scope domain.Tena
 	return b
 }
 
-// settingInt reads an int setting; returns def when unset, malformed, or < 1.
+// SettingInt reads an int setting; returns def when unset, malformed, or < 1.
 func SettingInt(ctx context.Context, settings TenantSettings, scope domain.TenantScope, key string, def int) int {
 	raw, err := settings.GetTenant(ctx, scope, key)
 	if err != nil || raw == nil {
@@ -220,7 +220,7 @@ func SettingInt(ctx context.Context, settings TenantSettings, scope domain.Tenan
 	return n
 }
 
-// setMemberRole applies a tenant-scoped role change to the target member.
+// SetMemberRole applies a tenant-scoped role change to the target member.
 // SetMemberRole is the body behind both POST and DELETE on …/users/{userID}/admin:
 // the two verbs differ only by the role they assign.
 func SetMemberRole(w http.ResponseWriter, r *http.Request, roles MemberRoleSetter, role domain.Role) {

@@ -12,7 +12,6 @@ import (
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
 	goalsharesvc "okrs/internal/service/goalshare"
-	keyresultsvc "okrs/internal/service/keyresult"
 	periodsvc "okrs/internal/service/period"
 	teamsvc "okrs/internal/service/team"
 	teamstatussvc "okrs/internal/service/teamstatus"
@@ -28,7 +27,6 @@ type Deps struct {
 	Statuses *teamstatussvc.Service
 	Periods  *periodsvc.Service
 	Teams    *teamsvc.Service
-	KRs      *keyresultsvc.Service
 	Activity *activitysvc.Service
 }
 
@@ -39,13 +37,12 @@ type UseCase struct {
 	statuses *teamstatussvc.Service
 	periods  *periodsvc.Service
 	teams    *teamsvc.Service
-	krs      *keyresultsvc.Service
 	activity *activitysvc.Service
 }
 
 func New(deps Deps) *UseCase {
 	return &UseCase{goals: deps.Goals, shares: deps.Shares, links: deps.Links, statuses: deps.Statuses,
-		periods: deps.Periods, teams: deps.Teams, krs: deps.KRs, activity: deps.Activity}
+		periods: deps.Periods, teams: deps.Teams, activity: deps.Activity}
 }
 
 type ShareTarget struct {
@@ -71,7 +68,7 @@ const (
 	CopyGoalModeMove CopyGoalMode = "move"
 )
 
-// CreateGoal creates a goal and auto-advances status from NoGoals to Forming on first goal.
+// Create creates a goal and auto-advances status from NoGoals to Forming on first goal.
 // Returns domain.ErrPeriodClosed if the team's period status is InProgress or Closed.
 func (s *UseCase) Create(ctx context.Context, scope domain.TenantScope, input goals.GoalInput, actorUserID int64) (int64, error) {
 	status, err := s.statuses.Get(ctx, scope, input.TeamID, input.PeriodID)
@@ -143,7 +140,7 @@ func (s *UseCase) UpdateFields(ctx context.Context, scope domain.TenantScope, in
 	return nil
 }
 
-// DeleteGoal removes a goal or a team's share of it, transferring ownership when the owner deletes.
+// Delete removes a goal or a team's share of it, transferring ownership when the owner deletes.
 // Returns the effective requesting teamID and the goal's periodID for redirect.
 // Returns domain.ErrPeriodClosed if the owner tries to delete in a closed period with no shares.
 func (s *UseCase) Delete(ctx context.Context, scope domain.TenantScope, goalID, requestingTeamID int64, actorUserID int64) (effectiveTeamID, periodID int64, err error) {
@@ -210,7 +207,7 @@ func (s *UseCase) Delete(ctx context.Context, scope domain.TenantScope, goalID, 
 	return requestingTeamID, goal.PeriodID, nil
 }
 
-// CopyGoal copies (or moves) a goal into a target team/period.
+// Copy copies (or moves) a goal into a target team/period.
 // It rejects a target whose team period status is InProgress/Closed (domain.ErrPeriodClosed),
 // and a move whose target equals the source pair (domain.ErrTransferTargetSameAsSource).
 // Shares are never carried. On move, the source is hard-deleted (cascade).
@@ -374,7 +371,7 @@ func (s *UseCase) Share(ctx context.Context, scope domain.TenantScope, goalID in
 	return nil
 }
 
-// UpdateGoalOwnerAndShares updates goal ownership and sharing based on the selected team set.
+// UpdateOwnerAndShares updates goal ownership and sharing based on the selected team set.
 // Returns domain.ErrCannotShareWithClosedPeriod if any selected team has an in_progress or closed period.
 func (s *UseCase) UpdateOwnerAndShares(ctx context.Context, scope domain.TenantScope, goalID int64, selectedTeamIDs []int64, actorUserID int64) (ownerID, periodID int64, err error) {
 	goal, err := s.goals.Get(ctx, scope, goalID)

@@ -114,7 +114,6 @@ import (
 	"okrs/internal/scheduler"
 	goalsvc "okrs/internal/service/goal"
 	periodsvc "okrs/internal/service/period"
-	progresssnapsvc "okrs/internal/service/progresssnap"
 	teamsvc "okrs/internal/service/team"
 	teamstatussvc "okrs/internal/service/teamstatus"
 	"okrs/internal/store"
@@ -533,7 +532,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	goalsunresolve.RegisterRoutes(r, goalsunresolve.New(goalcommon.ResolveDeps{Goals: d.Goals, Shares: d.Shares, UC: d.GoalUC}))
 	goalsmoveup.RegisterRoutes(r, goalsmoveup.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
 	goalsmovedown.RegisterRoutes(r, goalsmovedown.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
-	goalskeyresults.RegisterRoutes(r, goalskeyresults.New(d.Goals, d.Krs, d.KrUC))
+	goalskeyresults.RegisterRoutes(r, goalskeyresults.New(d.Goals, d.KrUC))
 	apigoaltree.RegisterRoutes(r, apigoaltree.New(d.Periods, d.TreeUC))
 	apikrs.RegisterRoutes(r, apikrs.New(d.Goals, d.Krs, d.KrUC))
 	krsnumerical.RegisterRoutes(r, krsnumerical.New(d.Goals, d.Krs, d.KrUC))
@@ -546,7 +545,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 
 	apiconfig.RegisterRoutes(r, apiconfig.New(s.settingsSvc))
 	apiusers.RegisterRoutes(r, apiusers.New(d.UserUC, d.Users))
-	apihealthcheckin.RegisterRoutes(r, apihealthcheckin.New(d.HC, s.settingsSvc, s.hcCache))
+	apihealthcheckin.RegisterRoutes(r, apihealthcheckin.New(d.HC, s.settingsSvc))
 
 	// Scope-aware period overview + bulk period control available to any authenticated
 	// member (my_teams — teams they lead); org scope is admin-gated inside the handler.
@@ -570,7 +569,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		Snapshot: s.deps.PeriodUC,
 		Periods:  s.deps.Periods,
 		Active:   s.store.Periods,
-		Snaps:    progresssnapsvc.New(s.store.ProgressSnap),
+		Snaps:    s.deps.Snaps,
 		Tenants:  s.store.Tenants,
 		Settings: s.settingsSvc,
 		Zone:     s.zone,

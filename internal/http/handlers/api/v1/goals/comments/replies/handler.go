@@ -27,7 +27,7 @@ func New(goals *goalsvc.Service, uc *goaluc.UseCase, shares *goalsharesvc.Servic
 	return &Handler{goals: goals, uc: uc, shares: shares}
 }
 
-// HandleAddGoalReply creates a reply under a task. Access chain: tenant scope → goal
+// Post creates a reply under a task. Access chain: tenant scope → goal
 // reachable by the caller (owner or shared team) → the parent must be a task of this goal
 // (enforced in the store; a bad/non-task parent → 404).
 func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {

@@ -64,7 +64,7 @@ func WriteJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// inviteBaseURL returns the scheme+host to build invite links against. An explicitly configured
+// InviteBaseURL returns the scheme+host to build invite links against. An explicitly configured
 // baseURL (AUTH_BASE_URL) wins as an operator override; otherwise it is derived from the request
 // so links point at the domain the app is actually served on, honoring the X-Forwarded-* headers
 // set by an ingress/reverse proxy.
@@ -87,7 +87,7 @@ func InviteBaseURL(r *http.Request, baseURL string) string {
 	return scheme + "://" + host
 }
 
-// firstForwardedValue returns the first entry of a possibly comma-separated X-Forwarded-* header.
+// FirstForwardedValue returns the first entry of a possibly comma-separated X-Forwarded-* header.
 func FirstForwardedValue(v string) string {
 	if v == "" {
 		return ""

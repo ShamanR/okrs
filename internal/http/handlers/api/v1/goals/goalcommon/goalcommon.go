@@ -30,7 +30,7 @@ type ShareLister interface {
 	List(ctx context.Context, scope domain.TenantScope, goalID int64) ([]shares.GoalShare, error)
 }
 
-// canAccessGoal reports whether the current request may act on a goal that is
+// CanAccess reports whether the current request may act on a goal that is
 // visible to the user: it must be owned by an accessible team or shared into one.
 // A shared goal appears on the cards of every team it is shared into, so comment /
 // resolve actions must accept users who can reach any of those teams — not only the
@@ -54,7 +54,7 @@ func CanAccess(ctx context.Context, shares ShareLister, scope domain.TenantScope
 	return false
 }
 
-// parseTeamID extracts team_id from either a JSON body (tracker SPA via apiPost)
+// TeamID extracts team_id from either a JSON body (tracker SPA via apiPost)
 // or a form field (legacy multipart page). Returns 0 when absent/invalid.
 func TeamID(r *http.Request) int64 {
 	if raw := strings.TrimSpace(r.FormValue("team_id")); raw != "" {
@@ -72,7 +72,7 @@ func TeamID(r *http.Request) int64 {
 	return req.TeamID
 }
 
-// allowedTeams returns the caller's allowed team IDs and whether they are unrestricted
+// AllowedTeams returns the caller's allowed team IDs and whether they are unrestricted
 // (admin: nil allowed set). Mirrors how board/list endpoints read scope from context.
 func AllowedTeams(r *http.Request) (allowed []int64, adminAll bool) {
 	allowed, _ = auth.AllowedTeamIDsFromCtx(r.Context())
@@ -154,7 +154,7 @@ type MoveDeps struct {
 	Mover  Mover
 }
 
-// setGoalCommentResolved marks a comment resolved or clears the resolution.
+// SetCommentResolved marks a comment resolved or clears the resolution.
 // Access is gated by access to the parent goal — any user in the goal's scope
 // may resolve/reopen, matching who may comment.
 // SetCommentResolved is the body behind both …/comments/{id}/resolve and …/unresolve:

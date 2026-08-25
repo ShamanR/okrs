@@ -18,10 +18,16 @@ internal/
   service/           операции над одной сущностью, по пакету на сущность
   usecase/           бизнес-сценарии над несколькими сущностями
   scheduler/         фоновые проходы (снапшоты прогресса, прогрев кэша)
-  http/              сервер, сборка зависимостей, обработчики
+  http/              сервер, сборка зависимостей, DTO ответов, обработчики
 ```
 
 Публичных пакетов ровно два: `app` и `web`. Всё остальное — под `internal/`.
+
+Внутри `http/` кроме `handlers/` лежат `httpdeps/` (сборка графа сервисов и
+usecase), `middleware/` и `dto/` — структуры JSON-ответов с их тегами. `dto`
+вынесен из обработчиков потому, что одну и ту же форму ответа собирают разные
+пакеты (`teamscommon`, `goalcommon`, `activitycommon`), и держать её копии рядом
+с каждым обработчиком означало бы разъезжающийся контракт.
 
 ## 2. Слои `service` и `usecase`
 
@@ -76,7 +82,8 @@ usecase — `goalsvc`, `perioduc`. Пакеты стора берут множе
 пакетов глаз ищет одинаковую строку, а не разную. Дополнительные тесты по темам
 (`access_test.go`, `links_test.go`) допустимы, когда одного файла мало.
 
-Исключений из правила «пакет = URI» нет: соответствие проверяется по таблице в §6.
+Исключения перечислены в §7 и только там; для всего остального соответствие
+проверяется по таблице в §6.
 
 ## 4. Общий код внутри группы
 
@@ -147,9 +154,13 @@ web/common                     web/auth
 | `/api/v1/goals/{goalID}/comments` | POST | `api/v1/goals/comments` |
 | `/api/v1/goals/{goalID}/comments/{commentID}` | DELETE | ↑ |
 | `/api/v1/goals/{goalID}/comments/{commentID}/replies` | POST | `api/v1/goals/comments/replies` |
+| `/api/v1/goals/{goalID}/comments/{commentID}/resolve` | POST | `api/v1/goals/comments/resolve` |
+| `/api/v1/goals/{goalID}/comments/{commentID}/unresolve` | POST | `api/v1/goals/comments/unresolve` |
 | `/api/v1/goals/{goalID}/key-results` | POST | `api/v1/goals/keyresults` |
 | `/api/v1/goals/linkable` | GET | `api/v1/goals/linkable` |
 | `/api/v1/goals/{goalID}/links` | POST | `api/v1/goals/links` |
+| `/api/v1/goals/{goalID}/move-down` | POST | `api/v1/goals/movedown` |
+| `/api/v1/goals/{goalID}/move-up` | POST | `api/v1/goals/moveup` |
 | `/api/v1/goals/{goalID}/share` | POST | `api/v1/goals/share` |
 | `/api/v1/goals/{goalID}/share/{teamID}` | DELETE | ↑ |
 | `/api/v1/goals/{goalID}/transfer` | POST | `api/v1/goals/transfer` |
@@ -159,6 +170,8 @@ web/common                     web/auth
 | `/api/v1/hierarchy` | GET | `api/v1/hierarchy` |
 | `/api/v1/krs/{krID}` | POST DELETE | `api/v1/krs` |
 | `/api/v1/krs/{krID}/description` | POST | `api/v1/krs/description` |
+| `/api/v1/krs/{krID}/move-down` | POST | `api/v1/krs/movedown` |
+| `/api/v1/krs/{krID}/move-up` | POST | `api/v1/krs/moveup` |
 | `/api/v1/krs/{krID}/note` | POST | `api/v1/krs/note` |
 | `/api/v1/krs/{krID}/progress/boolean` | POST | `api/v1/krs/progress/boolean` |
 | `/api/v1/krs/{krID}/progress/numerical` | POST | `api/v1/krs/progress/numerical` |
@@ -201,13 +214,42 @@ web/common                     web/auth
 | `/invite/{token}` | GET | `web/invite` |
 | `/login` | GET | `web/login` |
 | `/logout` | POST | `web/logout` |
-## 7. Что не монтируется пакетом
+| `/no-access` | GET | `web/noaccess` |
+## 7. Исключения из правила «пакет = URI»
 
-Два роута регистрируются в `server.go` напрямую и намеренно:
+Их три, и других нет. Таблица §6 покрывает всё остальное.
 
-- `/static/*` — раздача файлов с диска, доменного обработчика у неё нет;
-- `/login` в режиме `AUTH_MODE=disabled` — редирект на корень, потому что
-  выбирать провайдера не из чего; в обычном режиме URI обслуживает `web/login`.
+**1. SSR-shell'ы и legacy-редиректы — `web/shell`.** Один пакет обслуживает
+девятнадцать URI, потому что за ними нет логики: shell — строка таблицы
+«URI → шаблон», редирект — строка таблицы «URI → target». Девятнадцать пакетов
+с одним `ExecuteTemplate` каждый были бы шумом без навигационного выигрыша.
+Таблицы — экспортируемые переменные `shell.Public`, `shell.TenantAdmin`,
+`shell.System`, `shell.PublicRedirects`, `shell.MemberRedirects`,
+`shell.AdminRedirects`; в каком middleware-уровне они смонтированы, видно в
+`server.go`:
+
+| URI | Что отдаёт | Таблица |
+|---|---|---|
+| `/`, `/teams/{teamID}/okr` | `tracker-shell` | `shell.Public` |
+| `/settings` | `settings-shell` | ↑ |
+| `/period-overview` | `period-overview-shell` | ↑ |
+| `/goal-tree` | `goal-tree-shell` | ↑ |
+| `/admin`, `/admin/access`, `/admin/teams`, `/admin/periods`, `/admin/health-checkin` | `admin-shell` | `shell.TenantAdmin` |
+| `/activity-log` | `activity-shell` | ↑ |
+| `/system` | `system-shell` | `shell.System` |
+| `/teams` → `/admin/teams`, `/periods` → `/admin/periods` | 302 | `shell.PublicRedirects` |
+| `/teamOkrs` → `/` (с сохранением query) | 302 | `shell.MemberRedirects` |
+| `/admin/teams/new`, `/admin/teams/{teamID}/edit`, `/admin/periods/{periodID}/edit`, `/admin/users/{userID}` → `/admin` | 302 | `shell.AdminRedirects` |
+
+`/no-access` в эту таблицу НЕ входит: он резолвится через реестр
+`platform/nomembership` и подставляет настраиваемое сообщение — это живая
+логика, поэтому у него свой пакет `web/noaccess` и строка в §6.
+
+**2. `/static/*`** — раздача файлов с диска, доменного обработчика у неё нет;
+регистрируется в `server.go` напрямую.
+
+**3. `/login` в режиме `AUTH_MODE=disabled`** — редирект на корень, потому что
+выбирать провайдера не из чего; в обычном режиме URI обслуживает `web/login`.
 
 ## 8. Тесты обработчиков
 
@@ -221,10 +263,22 @@ tenant-scope, пользователем, ролью, ограничением �
 
 Минимум, который проверяется в каждом пакете:
 
-- **гейт tenant-scope** — без активного tenant эндпоинт отвечает 403, а не пустым
-  телом и не паникой (`handlertest.RequiresTenantScope`);
 - **разбор пути** — неразбираемый или неположительный id даёт 400, а не 404/500;
 - **разбор тела** — испорченный JSON и нарушенные инварианты полей дают 400.
+
+Плюс **гейт tenant-scope** — но только там, где он есть: без активного tenant
+эндпоинт отвечает 403, а не пустым телом и не паникой
+(`handlertest.RequiresTenantScope`). Гейта нет и проверять нечего у tenant-less
+плоскостей: `/api/v1/system/**` (гейт — `RequireSystemAdmin`), `/api/v1/me`,
+`/api/v1/session/**` и SSR-страницы аутентификации. Там, где гейт вынесен в
+лист-пакет (`krscommon.TenantScope`, `goalcommon`, `activitycommon`,
+`admincommon`), он проверяется в тестах пакетов-потребителей, а не повторно в
+каждом.
+
+Открытый долг: пятнадцать пакетов с инлайновым `TenantScopeFromContext` пока не
+имеют собственного теста на 403 — `activity` и оба его счётчика,
+`admin/activity/purge`, `admin/periods/archive`, `admin/settings/{feedback,general}`,
+`admin/users`, `config`, `goaltree`, `hierarchy`, `periods`, `teams`, `users`.
 
 Где обработчик принимает узкие порты, к этому добавляются happy path и маппинг
 доменных ошибок в коды (404 против 409 против 500). Пакеты-обёртки над общим
@@ -250,3 +304,8 @@ go test ./internal/http -run RoutesGolden -update-routes
 ```
 
 Обновлённый golden идёт в тот же change set, что и правка маршрутов.
+
+Вторым тестом (`internal/http/spec_routes_test.go`) golden сверяется с таблицей §6
+и списком исключений §7: маршрут, которого нет ни там, ни там, роняет сборку, как и
+строка в спеке без соответствующего маршрута. Без него таблица §6 разъезжается молча
+— в первой же редакции в ней не хватало шести живых эндпоинтов.

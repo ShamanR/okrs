@@ -24,7 +24,7 @@ func New(goals *goalsvc.Service, krs *keyresultsvc.Service) *Handler {
 	return &Handler{goals: goals, krs: krs}
 }
 
-// HandleUpdateKRDescription updates only the description of a KR. Allowed in the
+// Post updates only the description of a KR. Allowed in the
 // same situations as notes (access check only), so a description can be added
 // from the progress-update modal when full editing is otherwise locked.
 func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {

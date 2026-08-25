@@ -12,13 +12,6 @@ import (
 	"okrs/internal/store/progresssnap"
 )
 
-// ProgressSnapRepo persists and reads daily per-team progress snapshots.
-// *progresssnap.Repository satisfies it.
-type ProgressSnapRepo interface {
-	UpsertSnapshots(ctx context.Context, scope domain.TenantScope, periodID int64, day time.Time, snaps []progresssnap.Snapshot) error
-	ListSnapshots(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) ([]progresssnap.SeriesRow, error)
-}
-
 // SeriesPoint is one dated point on the period progress chart.
 type SeriesPoint struct {
 	Date     string `json:"date"` // YYYY-MM-DD

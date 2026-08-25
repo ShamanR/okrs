@@ -31,7 +31,7 @@ type Repo interface {
 	Purge(ctx context.Context, scope domain.TenantScope, olderThan *time.Time) (int64, error)
 }
 
-// recordActivity persists one event best-effort: a failure is logged, never returned,
+// Record persists one event best-effort: a failure is logged, never returned,
 // so the activity journal can never break the user's mutation.
 func (s *Service) Record(ctx context.Context, scope domain.TenantScope, ev domain.ActivityEvent) {
 	if s.repo == nil {
@@ -42,19 +42,19 @@ func (s *Service) Record(ctx context.Context, scope domain.TenantScope, ev domai
 	}
 }
 
-// ActivityTreeCounts returns direct per-team event counts for the sidebar tree.
+// TreeCounts returns direct per-team event counts for the sidebar tree.
 func (s *Service) TreeCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, periodID *int64, since *time.Time) (map[int64]int, error) {
 	return s.repo.TreeCounts(ctx, scope, allowedTeamIDs, periodID, since)
 }
 
-// PurgeActivity deletes journal rows for the caller's tenant. Authority (tenant-admin) is
+// Purge deletes journal rows for the caller's tenant. Authority (tenant-admin) is
 // enforced by RequireTenantAdminMiddleware on the route; the system plane uses
 // ProvisioningService.PurgeActivityForTenant instead.
 func (s *Service) Purge(ctx context.Context, scope domain.TenantScope, olderThan *time.Time) (int64, error) {
 	return s.repo.Purge(ctx, scope, olderThan)
 }
 
-// diffFields returns only the entries whose before != after, as {field: {"before":x,"after":y}}.
+// DiffFields returns only the entries whose before != after, as {field: {"before":x,"after":y}}.
 func DiffFields(pairs map[string][2]any) map[string]any {
 	out := map[string]any{}
 	for field, ba := range pairs {
