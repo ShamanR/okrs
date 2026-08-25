@@ -25,7 +25,7 @@ func TestHandleConfigReturnsDocumentationURL(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", w.Code)
@@ -44,7 +44,7 @@ func TestHandleConfigEmptyHierarchyMessage(t *testing.T) {
 	h := New(&fakeSettings{data: map[string]json.RawMessage{"empty_hierarchy_message": raw}})
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 	var got struct {
 		EmptyHierarchyMessage string `json:"empty_hierarchy_message"`
 	}
@@ -59,7 +59,7 @@ func TestHandleConfigEmptyWhenUnset(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
@@ -75,7 +75,7 @@ func TestHandleConfigStaleDaysDefault(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
@@ -92,7 +92,7 @@ func TestHandleConfigStaleDaysFromSettings(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
@@ -108,7 +108,7 @@ func TestHandleConfigBehindMarginDefault(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
@@ -125,7 +125,7 @@ func TestHandleConfigBehindMarginFromSettings(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
@@ -141,7 +141,7 @@ func TestHandleConfigFeedbackDefaults(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
@@ -167,7 +167,7 @@ func TestHandleConfigIsSystemAdmin(t *testing.T) {
 	// Without a system-admin user in context, the flag is false.
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatalf("decode error: %v", err)
@@ -180,7 +180,7 @@ func TestHandleConfigIsSystemAdmin(t *testing.T) {
 	r = httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	r = r.WithContext(auth.WithUser(r.Context(), &domain.User{ID: 1, IsSystemAdmin: true}))
 	w = httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
 		t.Fatalf("decode error: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestHandleConfigFeedbackFromSettings(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
-	h.HandleConfig(w, r)
+	h.Get(w, r)
 
 	var got configResponse
 	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {

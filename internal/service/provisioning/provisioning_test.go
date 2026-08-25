@@ -1,5 +1,10 @@
 package provisioning_test
 
+// TODO(refactoring): newOnboardingForTest продублирован из тестов пакета onboarding —
+// Go не позволяет делить _test.go-хелперы между пакетами, а provisioning реально нужен
+// живой onboarding как defaultAccessApplier. Убирается выносом в servicetest/db.go
+// (фикстуры поверх настоящего pool); сейчас servicetest чисто in-memory.
+
 import (
 	"context"
 	"errors"

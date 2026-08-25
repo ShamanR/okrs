@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	teamsvc "okrs/internal/service/team"
+	usersvc "okrs/internal/service/user"
+	useruc "okrs/internal/usecase/user"
 	"testing"
 	"time"
 
@@ -12,7 +15,6 @@ import (
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
 	apiusers "okrs/internal/http/handlers/api/v1/users"
-	"okrs/internal/service"
 	"okrs/internal/store"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -119,12 +121,22 @@ func parseUsers(t *testing.T, w *httptest.ResponseRecorder) []map[string]any {
 	return out
 }
 
+// newSearchUC собирает usecase поиска поверх тестового стора: поиск пересекает гранты
+// вызывающего с иерархией команд, поэтому ему нужны и users, и teams, и кэш грантов.
+func newSearchUC(st *store.Store) *useruc.UseCase {
+	return useruc.New(useruc.Deps{
+		Users:  usersvc.New(st.Users),
+		Teams:  teamsvc.New(st.Teams),
+		Grants: store.NewGrantsCache(st.Grants),
+	})
+}
+
 func TestUsersEndpoint_NoParams_Returns400(t *testing.T) {
 	_, st, cleanup := setupDB(t)
 	defer cleanup()
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 	w := doGet(t, handler, "/api/v1/users", nil)
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", w.Code)
@@ -138,8 +150,8 @@ func TestUsersEndpoint_QParam_EmptyString_ReturnsRecent(t *testing.T) {
 	insertUser(t, pool, "Alice", "alice@example.com")
 	insertUser(t, pool, "Bob", "bob@example.com")
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 	w := doGet(t, handler, "/api/v1/users?q=", nil) // nil scope = admin
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -158,8 +170,8 @@ func TestUsersEndpoint_IDsMode_ReturnsByUDID(t *testing.T) {
 	_, udid2 := insertUser(t, pool, "Bob", "bob@example.com")
 	insertUser(t, pool, "Carol", "carol@example.com")
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 	url := "/api/v1/users?ids[]=" + udid1 + "&ids[]=" + udid2
 	w := doGet(t, handler, url, []int64{}) // even empty scope — ids[] skips scope
 	if w.Code != http.StatusOK {
@@ -197,8 +209,8 @@ func TestUsersEndpoint_ScopedSearch_OnlyGrantedAndLeads(t *testing.T) {
 	grantAccess(t, pool, aliceID, teamA)
 	grantAccess(t, pool, carolID, teamB)
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 
 	// Scope = only teamA.
 	w := doGet(t, handler, "/api/v1/users?q=", []int64{teamA})
@@ -243,8 +255,8 @@ func TestUsersEndpoint_ScopedSearch_ParentGrantCoversChild(t *testing.T) {
 
 	grantAccess(t, pool, aliceID, parentID)
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 
 	// Scope = childTeam only.
 	w := doGet(t, handler, "/api/v1/users?q=", []int64{childID})
@@ -267,8 +279,8 @@ func TestUsersEndpoint_EmptyScope_ReturnsEmpty(t *testing.T) {
 
 	insertUser(t, pool, "Alice", "alice@example.com")
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 
 	// Empty scope (no grants at all).
 	w := doGet(t, handler, "/api/v1/users?q=", []int64{})
@@ -289,8 +301,8 @@ func TestUsersEndpoint_LedTeam_IncludedInResponse(t *testing.T) {
 	teamID := insertTeamWithLead(t, pool, "Platform", "Alice", aliceUDID)
 	grantAccess(t, pool, aliceID, teamID)
 
-	h := apiusers.New(service.NewFromStore(st, store.NewGrantsCache(st.Grants), nil, nil))
-	handler := http.HandlerFunc(h.Handle)
+	h := apiusers.New(newSearchUC(st), usersvc.New(st.Users))
+	handler := http.HandlerFunc(h.Get)
 
 	w := doGet(t, handler, "/api/v1/users?q=", nil) // admin
 	if w.Code != http.StatusOK {

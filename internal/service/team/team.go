@@ -1,6 +1,8 @@
-// Package team is the team entity service: CRUD over the team repository plus the
-// in-memory hierarchy it builds from them. It touches exactly one repository and never
-// writes the activity journal — anything that orchestrates more than teams is a usecase.
+// BuildHierarchy, BuildNode, FindDirectChildren, CollectDescendantIDs и
+// HierarchyFromTeams экспортированы не «для фасада»: после его удаления у каждой
+// остался внешний потребитель — usecase/okrboard строит по ним дерево команд для
+// доски. То же у healthcheckin.BuildTeamPath и Abs (usecase/period). Сузить
+// видимость нельзя, не затащив построение иерархии обратно в один пакет.
 package team
 
 import (

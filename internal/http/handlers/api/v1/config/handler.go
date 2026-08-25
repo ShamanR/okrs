@@ -7,10 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	hcsvc "okrs/internal/service/healthcheckin"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
-	"okrs/internal/service"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	settingKeyEmptyHierarchyMessage   = "empty_hierarchy_message"
 )
 
-// settingsReader is satisfied by *service.SettingsService (per-tenant product keys).
+// settingsReader is satisfied by *settingssvc.Service (per-tenant product keys).
 type settingsReader interface {
 	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
 }
@@ -64,11 +64,11 @@ type configResponse struct {
 }
 
 // GET /api/v1/config
-func (h *Handler) HandleConfig(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	// Config is served inside the membership-gated group, so a tenant is present.
 	// A zero scope (no tenant) simply reads no rows and yields defaults.
 	scope, _ := auth.TenantScopeFromContext(r.Context())
-	cfg, _ := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
+	cfg, _ := hcsvc.LoadConfig(r.Context(), scope, h.settings)
 	resp := configResponse{
 		DocumentationURL: h.documentationURL(r.Context(), scope),
 		StaleDays:        cfg.StaleDays,

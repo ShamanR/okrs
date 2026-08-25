@@ -1,43 +1,129 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"html/template"
 	"log/slog"
 	"net/http"
+	hcsvc "okrs/internal/service/healthcheckin"
+	onboardingsvc "okrs/internal/service/onboarding"
+	provisioningsvc "okrs/internal/service/provisioning"
+	settingssvc "okrs/internal/service/settings"
 	"time"
 
+	"context"
 	"okrs/internal/auth"
-	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiactivity "okrs/internal/http/handlers/api/v1/activity"
-	apiadmin "okrs/internal/http/handlers/api/v1/admin"
+	activitycat "okrs/internal/http/handlers/api/v1/activity/categorycounts"
+	activitytree "okrs/internal/http/handlers/api/v1/activity/treecounts"
+	adminareq "okrs/internal/http/handlers/api/v1/admin/accessrequests"
+	adminapprove "okrs/internal/http/handlers/api/v1/admin/accessrequests/approve"
+	admindeny "okrs/internal/http/handlers/api/v1/admin/accessrequests/deny"
+	adminpurge "okrs/internal/http/handlers/api/v1/admin/activity/purge"
+	admininvitations "okrs/internal/http/handlers/api/v1/admin/invitations"
+	admininvrevoke "okrs/internal/http/handlers/api/v1/admin/invitations/revoke"
+	adminmembers "okrs/internal/http/handlers/api/v1/admin/members"
+	adminperiods "okrs/internal/http/handlers/api/v1/admin/periods"
+	adminparchive "okrs/internal/http/handlers/api/v1/admin/periods/archive"
+	adminpoverview "okrs/internal/http/handlers/api/v1/admin/periods/overview"
+	adminpstats "okrs/internal/http/handlers/api/v1/admin/periods/stats"
+	adminpactivate "okrs/internal/http/handlers/api/v1/admin/periods/teams/activate"
+	adminpclose "okrs/internal/http/handlers/api/v1/admin/periods/teams/close"
+	adminpunarchive "okrs/internal/http/handlers/api/v1/admin/periods/unarchive"
+	adminaccess "okrs/internal/http/handlers/api/v1/admin/settings/access"
+	adminfeedback "okrs/internal/http/handlers/api/v1/admin/settings/feedback"
+	admingeneral "okrs/internal/http/handlers/api/v1/admin/settings/general"
+	adminhc "okrs/internal/http/handlers/api/v1/admin/settings/healthcheckin"
+	adminteams "okrs/internal/http/handlers/api/v1/admin/teams"
+	adminhard "okrs/internal/http/handlers/api/v1/admin/teams/hard"
+	adminrestore "okrs/internal/http/handlers/api/v1/admin/teams/restore"
+	adminusers "okrs/internal/http/handlers/api/v1/admin/users"
+	adminrole "okrs/internal/http/handlers/api/v1/admin/users/admin"
+	admingrants "okrs/internal/http/handlers/api/v1/admin/users/grants"
 	apiconfig "okrs/internal/http/handlers/api/v1/config"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
+	goalscomments "okrs/internal/http/handlers/api/v1/goals/comments"
+	goalsreplies "okrs/internal/http/handlers/api/v1/goals/comments/replies"
+	goalsresolve "okrs/internal/http/handlers/api/v1/goals/comments/resolve"
+	goalsunresolve "okrs/internal/http/handlers/api/v1/goals/comments/unresolve"
+	"okrs/internal/http/handlers/api/v1/goals/goalcommon"
+	goalskeyresults "okrs/internal/http/handlers/api/v1/goals/keyresults"
+	goalslinkable "okrs/internal/http/handlers/api/v1/goals/linkable"
+	goalslinks "okrs/internal/http/handlers/api/v1/goals/links"
+	goalsmovedown "okrs/internal/http/handlers/api/v1/goals/movedown"
+	goalsmoveup "okrs/internal/http/handlers/api/v1/goals/moveup"
+	goalsshare "okrs/internal/http/handlers/api/v1/goals/share"
+	goalstransfer "okrs/internal/http/handlers/api/v1/goals/transfer"
+	goalsweight "okrs/internal/http/handlers/api/v1/goals/weight"
 	apigoaltree "okrs/internal/http/handlers/api/v1/goaltree"
 	apihealthcheckin "okrs/internal/http/handlers/api/v1/healthcheckin"
-	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
+	apihierarchy "okrs/internal/http/handlers/api/v1/hierarchy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
-	apionboarding "okrs/internal/http/handlers/api/v1/onboarding"
+	krsdescription "okrs/internal/http/handlers/api/v1/krs/description"
+	"okrs/internal/http/handlers/api/v1/krs/krscommon"
+	krsmovedown "okrs/internal/http/handlers/api/v1/krs/movedown"
+	krsmoveup "okrs/internal/http/handlers/api/v1/krs/moveup"
+	krsnote "okrs/internal/http/handlers/api/v1/krs/note"
+	krsboolean "okrs/internal/http/handlers/api/v1/krs/progress/boolean"
+	krsnumerical "okrs/internal/http/handlers/api/v1/krs/progress/numerical"
+	krsproject "okrs/internal/http/handlers/api/v1/krs/progress/project"
+	apime "okrs/internal/http/handlers/api/v1/me"
+	joinrequest "okrs/internal/http/handlers/api/v1/onboarding/joinrequest"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
-	apisystem "okrs/internal/http/handlers/api/v1/system"
+	periodsoverview "okrs/internal/http/handlers/api/v1/periods/overview"
+	periodsactivate "okrs/internal/http/handlers/api/v1/periods/teams/activate"
+	periodsclose "okrs/internal/http/handlers/api/v1/periods/teams/close"
+	sessionmemberships "okrs/internal/http/handlers/api/v1/session/memberships"
+	sessiontenant "okrs/internal/http/handlers/api/v1/session/tenant"
+	sessiontenants "okrs/internal/http/handlers/api/v1/session/tenants"
+	syssettings "okrs/internal/http/handlers/api/v1/system/settings"
+	sysdefreg "okrs/internal/http/handlers/api/v1/system/settings/defaultregistrationtenant"
+	sysnoaccess "okrs/internal/http/handlers/api/v1/system/settings/noaccessmessage"
+	systenants "okrs/internal/http/handlers/api/v1/system/tenants"
+	syspurge "okrs/internal/http/handlers/api/v1/system/tenants/activity/purge"
+	sysentitlements "okrs/internal/http/handlers/api/v1/system/tenants/entitlements"
+	sysmembers "okrs/internal/http/handlers/api/v1/system/tenants/members"
+	sysdeny "okrs/internal/http/handlers/api/v1/system/tenants/members/deny"
+	sysrole "okrs/internal/http/handlers/api/v1/system/tenants/members/role"
+	sysrestore "okrs/internal/http/handlers/api/v1/system/tenants/restore"
+	syssuspend "okrs/internal/http/handlers/api/v1/system/tenants/suspend"
+	sysusers "okrs/internal/http/handlers/api/v1/system/users"
+	sysadmin "okrs/internal/http/handlers/api/v1/system/users/systemadmin"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
-	apitenants "okrs/internal/http/handlers/api/v1/tenants"
+	teamsexport "okrs/internal/http/handlers/api/v1/teams/export"
+	teamsgoals "okrs/internal/http/handlers/api/v1/teams/goals"
+	teamsokrs "okrs/internal/http/handlers/api/v1/teams/okrs"
+	teamsoverview "okrs/internal/http/handlers/api/v1/teams/overview"
+	teamsstatus "okrs/internal/http/handlers/api/v1/teams/status"
 	apiusers "okrs/internal/http/handlers/api/v1/users"
-	"okrs/internal/http/handlers/web/authhandler"
+	webauthcallback "okrs/internal/http/handlers/web/auth/callback"
+	webauthstart "okrs/internal/http/handlers/web/auth/start"
 	"okrs/internal/http/handlers/web/common"
-	"okrs/internal/http/handlers/web/goals"
+	webgoalsdelete "okrs/internal/http/handlers/web/goals/delete"
+	webinvite "okrs/internal/http/handlers/web/invite"
+	weblogin "okrs/internal/http/handlers/web/login"
+	weblogout "okrs/internal/http/handlers/web/logout"
+	webnoaccess "okrs/internal/http/handlers/web/noaccess"
+	"okrs/internal/http/handlers/web/shell"
+	"okrs/internal/http/httpdeps"
 	"okrs/internal/http/middleware"
 	"okrs/internal/platform/entitlements"
 	"okrs/internal/platform/nomembership"
-	"okrs/internal/service"
+
+	"okrs/internal/scheduler"
+	goalsvc "okrs/internal/service/goal"
+	periodsvc "okrs/internal/service/period"
+	progresssnapsvc "okrs/internal/service/progresssnap"
+	teamsvc "okrs/internal/service/team"
+	teamstatussvc "okrs/internal/service/teamstatus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
 	"okrs/internal/store/tenantsettings"
+	hcuc "okrs/internal/usecase/healthcheckin"
 	"okrs/web"
 
 	"github.com/go-chi/chi/v5"
@@ -49,20 +135,20 @@ func parseTemplates() (*template.Template, error) {
 
 type Server struct {
 	store            *store.Store
+	deps             httpdeps.Deps
 	logger           *slog.Logger
 	tmpl             *template.Template
 	zone             *time.Location
-	service          *service.Service
 	auth             *auth.Manager
 	policy           *auth.PolicyEvaluator
 	grantsCache      *grants.GrantsCache
-	hcCache          *service.HealthCheckInCache
+	hcCache          *hcsvc.Cache
 	tenantResolver   *auth.TenantResolver
 	tenantCache      *tenants.TenantCache
 	membershipCache  *memberships.MembershipCache
-	settingsSvc      *service.SettingsService
-	provisioning     *service.ProvisioningService
-	onboarding       *service.OnboardingService
+	settingsSvc      *settingssvc.Service
+	provisioning     *provisioningsvc.Service
+	onboarding       *onboardingsvc.Service
 	entitlements     entitlements.Entitlements
 	noMembershipName string
 	assetsDev        bool
@@ -111,59 +197,17 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	if err != nil {
 		return nil, err
 	}
-	hcLoader := func(ctx context.Context, scope domain.TenantScope, periodID int64) (*service.PeriodData, error) {
-		period, err := st.Periods.GetPeriod(ctx, scope, periodID)
-		if err != nil {
-			return nil, err
-		}
-		allTeams, err := st.Teams.ListAllTeams(ctx, scope)
-		if err != nil {
-			return nil, err
-		}
-		allTeamIDs := make([]int64, len(allTeams))
-		for i, t := range allTeams {
-			allTeamIDs[i] = t.ID
-		}
-		goalsByTeam, err := st.Goals.ListGoalsByTeamsPeriod(ctx, scope, periodID, allTeamIDs)
-		if err != nil {
-			return nil, err
-		}
-		statuses, err := st.Statuses.ListTeamPeriodStatuses(ctx, scope, periodID, allTeamIDs)
-		if err != nil {
-			return nil, err
-		}
-		goalIDSet := make(map[int64]struct{})
-		for _, goals := range goalsByTeam {
-			for _, g := range goals {
-				goalIDSet[g.ID] = struct{}{}
-			}
-		}
-		goalIDs := make([]int64, 0, len(goalIDSet))
-		for id := range goalIDSet {
-			goalIDs = append(goalIDs, id)
-		}
-		commentsByGoal, err := st.Goals.ListGoalCommentsByGoals(ctx, scope, goalIDs)
-		if err != nil {
-			return nil, err
-		}
-		for teamID, goals := range goalsByTeam {
-			for i := range goals {
-				goals[i].Comments = commentsByGoal[goals[i].ID]
-			}
-			goalsByTeam[teamID] = goals
-		}
-		return &service.PeriodData{
-			PeriodID:    periodID,
-			Period:      period,
-			Teams:       allTeams,
-			GoalsByTeam: goalsByTeam,
-			Statuses:    statuses,
-			CachedAt:    time.Now(),
-		}, nil
-	}
+	// Загрузчик снимка периода — бизнес-логика над четырьмя сервисами сущностей,
+	// поэтому живёт в слое usecase, а не здесь (спека 010, правило 1).
+	hcLoader := hcuc.NewPeriodLoader(hcuc.Deps{
+		Periods:  periodsvc.New(st.Periods),
+		Teams:    teamsvc.New(st.Teams),
+		Goals:    goalsvc.New(st.Goals),
+		Statuses: teamstatussvc.New(st.Statuses),
+	})
 
 	cacheTTL := 5 * time.Minute
-	hcCache := service.NewHealthCheckInCache(hcLoader, cacheTTL, logger)
+	hcCache := hcsvc.NewCache(hcLoader, cacheTTL, logger)
 
 	// Cache tenant + membership lookups on the per-request resolve hot path. These MUST be the
 	// same instances the resolver reads, or membership/tenant writes (provisioning, onboarding)
@@ -178,14 +222,14 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	if membershipCache == nil {
 		membershipCache = memberships.NewMembershipCache(st.Memberships)
 	}
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(st.TenantSettings), st.TenantSettings,
 		settings.NewSystemSettingsCache(st.Settings), st.Settings,
 	)
-	onboardingSvc := service.NewOnboardingService(
+	onboardingSvc := onboardingsvc.New(
 		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
 	)
-	provisioning := service.NewProvisioningService(
+	provisioning := provisioningsvc.New(
 		st.Tenants, tenantCache,
 		st.Memberships, membershipCache,
 		settingsSvc, grantsCache, onboardingSvc, st.Users,
@@ -206,10 +250,10 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 
 	return &Server{
 		store:            st,
+		deps:             httpdeps.Build(st, grantsCache, hcCache, logger),
 		logger:           logger,
 		tmpl:             tmpl,
 		zone:             zone,
-		service:          service.NewFromStore(st, grantsCache, hcCache, logger),
 		auth:             authMgr,
 		policy:           auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache:      grantsCache,
@@ -241,74 +285,7 @@ func (s *Server) Routes() http.Handler {
 		_ = s.tmpl.ExecuteTemplate(w, "no-membership", map[string]any{"NoAccessMessage": msg, "Dev": s.assetsDev})
 	}})
 
-	ctx := context.Background()
-	// activePeriods enumerates each tenant's currently-active (date-based) period,
-	// so closed/archived periods are naturally excluded.
-	activePeriods := func(ctx context.Context) []service.HCActive {
-		now := time.Now().In(s.zone)
-		tenants, err := s.store.Tenants.List(ctx)
-		if err != nil {
-			return nil
-		}
-		var active []service.HCActive
-		for _, tn := range tenants {
-			scope := domain.TenantScope{TenantID: tn.ID}
-			p, err := s.service.FindPeriodForDate(ctx, scope, now)
-			if err != nil {
-				continue
-			}
-			active = append(active, service.HCActive{Scope: scope, PeriodID: p.ID})
-		}
-		return active
-	}
-	s.hcCache.StartRefreshLoop(ctx, 5*time.Minute, activePeriods)
-
-	// Progress snapshots. The loop polls on a fixed base cadence but only records a
-	// period when the tenant's configured interval (progress_snapshot_interval_days, ≥1)
-	// has elapsed since its last point. Covers EVERY active (non-archived, date-containing)
-	// period — nested periods (year + quarter) each get their own points.
-	//
-	// lastAttempt throttles periods that legitimately produce no snapshots (only no-goal
-	// or forming teams): those never advance LatestSnapshotDate, so without an attempt
-	// record they'd be reprocessed every poll. Only the single advisory-lock holder runs
-	// this per tick, so the in-memory map is mutated by one goroutine.
-	lastAttempt := make(map[[2]int64]time.Time)
-	snapshotDuePeriods := func(ctx context.Context) []service.HCActive {
-		now := time.Now().In(s.zone)
-		tenants, err := s.store.Tenants.List(ctx)
-		if err != nil {
-			return nil
-		}
-		var due []service.HCActive
-		for _, tn := range tenants {
-			scope := domain.TenantScope{TenantID: tn.ID}
-			intervalDays := service.LoadProgressSnapshotIntervalDays(ctx, scope, s.settingsSvc)
-			periods, err := s.store.Periods.ListActivePeriodsForDate(ctx, scope, now)
-			if err != nil {
-				continue
-			}
-			for _, p := range periods {
-				latest, has, err := s.store.ProgressSnap.LatestSnapshotDate(ctx, scope, p.ID)
-				if err != nil {
-					continue
-				}
-				key := [2]int64{tn.ID, p.ID}
-				// Effective "last handled" = the newer of the recorded point and our last
-				// attempt, so empty passes still count toward the interval.
-				if a, ok := lastAttempt[key]; ok && (!has || a.After(latest)) {
-					latest, has = a, true
-				}
-				if !has || daysBetween(latest, now) >= intervalDays {
-					due = append(due, service.HCActive{Scope: scope, PeriodID: p.ID})
-					lastAttempt[key] = now
-				}
-			}
-		}
-		return due
-	}
-	s.startProgressSnapshotLoop(ctx, snapshotCheckInterval, snapshotDuePeriods)
-
-	deps := common.Dependencies{Service: s.service, Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
+	deps := common.Dependencies{Logger: s.logger, Templates: s.tmpl, Zone: s.zone}
 	r := chi.NewRouter()
 
 	csrf := middleware.NewCSRF()
@@ -319,6 +296,8 @@ func (s *Server) Routes() http.Handler {
 	// a stale bundle after a deploy. no-cache is deploy-safe across K8s instances: it needs
 	// no server-side state. (Vendored files are not content-hashed, so long-lived immutable
 	// caching would risk serving a stale library after an in-place version bump.)
+	// Единственный инлайн-роут не-страничного вида: раздача файлов не имеет доменного
+	// обработчика, монтировать её отдельным пакетом нечего.
 	staticFiles := http.StripPrefix("/static/", http.FileServer(http.Dir("web/static")))
 	r.Handle("/static/*", http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
@@ -335,26 +314,22 @@ func (s *Server) Routes() http.Handler {
 		}
 
 		// Auth routes — public, no CSRF (OAuth callbacks use GET).
-		authH := authhandler.New(s.auth, s.tmpl, s.logger, s.onboarding, s.store.Sessions)
-		r.Get("/login", func(w http.ResponseWriter, r *http.Request) {
-			if s.auth.Disabled() {
-				http.Redirect(w, r, "/", http.StatusFound)
-				return
-			}
-			authH.HandleLogin(w, r)
-		})
-		r.Get("/auth/{provider}/start", authH.HandleProviderStart)
-		r.Get("/auth/{provider}/callback", authH.HandleCallback)
-		r.Get("/invite/{token}", authH.HandleInvite)
-		r.Post("/logout", authH.HandleLogout)
+		// Auth-эндпоинты — по пакету на URI. /login в disabled-режиме уводит на корень:
+		// выбирать провайдера не из чего.
+		if s.auth.Disabled() {
+			r.Get("/login", func(w http.ResponseWriter, req *http.Request) {
+				http.Redirect(w, req, "/", http.StatusFound)
+			})
+		} else {
+			weblogin.RegisterRoutes(r, weblogin.New(s.auth, s.tmpl, s.logger))
+		}
+		webauthstart.RegisterRoutes(r, webauthstart.New(s.auth))
+		webauthcallback.RegisterRoutes(r, webauthcallback.New(s.auth, s.logger, s.onboarding, s.store.Sessions))
+		webinvite.RegisterRoutes(r, webinvite.New(s.onboarding, s.store.Sessions))
+		weblogout.RegisterRoutes(r, weblogout.New(s.auth))
 
 		// Legacy redirects for bookmarks.
-		r.Get("/teams", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/admin/teams", http.StatusFound)
-		})
-		r.Get("/periods", func(w http.ResponseWriter, r *http.Request) {
-			http.Redirect(w, r, "/admin/periods", http.StatusFound)
-		})
+		shell.RegisterRedirects(r, shell.PublicRedirects)
 
 		// Public control-plane mounts (SaaS): outer tier — session loaded, no auth gate, no CSRF
 		// (e.g. billing webhooks with their own signature verification). nil in OSS.
@@ -373,34 +348,23 @@ func (s *Server) Routes() http.Handler {
 			}
 			r.Use(csrf.Handler)
 
-			r.Get("/no-access", func(w http.ResponseWriter, r *http.Request) {
-				h, ok := nomembership.Get(s.noMembershipName)
-				if !ok {
-					http.Error(w, "no-membership handler not registered", http.StatusInternalServerError)
-					return
-				}
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				h.ServeNoMembership(w, r)
-			})
+			webnoaccess.RegisterRoutes(r, webnoaccess.New(s.noMembershipName))
 
 			// /api/v1/me is global identity ("who am I"), not tenant data — available to any
 			// authenticated user, including one without a membership (so the no-access shell
 			// can render the shared header the same way every other page does).
-			r.Get("/api/v1/me", apiadmin.HandleMe)
+			apime.RegisterRoutes(r, apime.New())
 
-			onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
-			r.Post("/api/v1/onboarding/join-request", onboardH.HandleJoinRequest)
+			joinrequest.RegisterRoutes(r, joinrequest.New(s.onboarding))
 
 			// Tenant switcher: authenticated but NOT membership-gated, so a user whose active
 			// tenant is suspended (or where they lost membership) can still list their tenants
 			// and switch to one they're active in — otherwise RequireMembership would lock them
 			// out before they could recover. These handlers key off the user + explicit target,
 			// not the resolved active tenant.
-			tenantH := apitenants.New(s.store.Memberships, s.store.Tenants, s.store.Sessions, s.onboarding)
-			r.Get("/api/v1/session/tenants", tenantH.ListMyTenants)
-			r.Post("/api/v1/session/tenant", tenantH.SwitchTenant)
-			r.Get("/api/v1/session/memberships", tenantH.ListMyMemberships)
-			r.Delete("/api/v1/session/memberships/{tenantID}", tenantH.LeaveTenant)
+			sessiontenants.RegisterRoutes(r, sessiontenants.New(s.store.Memberships, s.store.Tenants))
+			sessiontenant.RegisterRoutes(r, sessiontenant.New(s.store.Memberships, s.store.Tenants, s.store.Sessions))
+			sessionmemberships.RegisterRoutes(r, sessionmemberships.New(s.store.Memberships, s.onboarding))
 
 			// Authed control-plane mounts (SaaS): authed but not membership-gated
 			// (e.g. self-service "create organization"). nil in OSS.
@@ -438,193 +402,67 @@ func (s *Server) Routes() http.Handler {
 	return r
 }
 
-// progressSnapshotLockKey is a fixed advisory-lock key so that, across K8s replicas,
-// only one instance runs the daily snapshot pass (the upsert is idempotent regardless).
-const progressSnapshotLockKey = 918273645
-
-// snapshotCheckInterval is how often the loop wakes to check whether any period is due a
-// new snapshot. The actual spacing between recorded points is the per-tenant
-// progress_snapshot_interval_days setting; this is just the polling granularity.
-const snapshotCheckInterval = time.Hour
-
-// daysBetween returns the whole-day difference between two dates (b - a), tz-agnostic.
-func daysBetween(a, b time.Time) int {
-	ad := time.Date(a.Year(), a.Month(), a.Day(), 0, 0, 0, 0, time.UTC)
-	bd := time.Date(b.Year(), b.Month(), b.Day(), 0, 0, 0, 0, time.UTC)
-	return int(bd.Sub(ad).Hours()) / 24
-}
-
-// startProgressSnapshotLoop runs a background goroutine that materialises each active
-// period's per-team progress once per interval. An initial pass runs at startup.
-func (s *Server) startProgressSnapshotLoop(ctx context.Context, interval time.Duration, activePeriods func(context.Context) []service.HCActive) {
-	run := func() {
-		conn, err := s.store.DB.Acquire(ctx)
-		if err != nil {
-			return
-		}
-		defer conn.Release()
-		var got bool
-		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, progressSnapshotLockKey).Scan(&got); err != nil || !got {
-			return // another replica holds the lock this cycle
-		}
-		defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, progressSnapshotLockKey) }()
-
-		day := time.Now().In(s.zone)
-		if err := s.service.SnapshotActivePeriods(ctx, day, activePeriods(ctx)); err != nil && s.logger != nil {
-			s.logger.Warn("progress snapshot failed", "err", err)
-		}
-	}
-	go func() {
-		run() // capture today at startup
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				run()
-			}
-		}
-	}()
-}
-
 func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
-	goalsHandler := goals.New(deps)
+	d := s.deps
 
-	// Tracker SPA — serves the React shell for the main OKR tracker.
-	trackerShell := func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "tracker-shell", s.shellData())
-	}
-	r.Get("/", trackerShell)
-	r.Get("/teams/{teamID}/okr", trackerShell)
-
-	// Personal settings SPA — team descriptions (for leads) and sidebar node picker.
-	// Available to any authenticated user (not admin-only); not part of the admin panel.
-	r.Get("/settings", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "settings-shell", s.shellData())
-	})
-
-	// Обзор периода — доступен любому аутентифицированному участнику (охват «Мои
-	// команды»); переключатель «Вся организация» и массовые операции — только админам
-	// (гейтятся на клиенте и в API).
-	r.Get("/period-overview", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "period-overview-shell", s.shellData())
-	})
-
-	// Дерево целей — доступно любому аутентифицированному участнику, как /settings.
-	// /activity-log — под tenant-admin гейтом, регистрируется в registerAdminRoutes.
-	r.Get("/goal-tree", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = s.tmpl.ExecuteTemplate(w, "goal-tree-shell", s.shellData())
-	})
-
-	// Legacy redirect for bookmarks — the tracker now lives at the root.
-	r.Get("/teamOkrs", func(w http.ResponseWriter, r *http.Request) {
-		target := "/"
-		if qs := r.URL.RawQuery; qs != "" {
-			target += "?" + qs
-		}
-		http.Redirect(w, r, target, http.StatusFound)
-	})
+	// SPA-shell'ы и legacy-редиректы — декларативные таблицы в handlers/web/shell,
+	// а не по пакету на URI: в них нет логики, только «URI → шаблон» и «URI → target».
+	shellH := shell.New(s.tmpl, func() shell.Data { return shell.Data{Dev: s.assetsDev} })
+	shellH.RegisterShells(r, shell.Public)
+	shell.RegisterRedirects(r, shell.MemberRedirects)
 
 	// Goal delete is still used by tracker.js via the legacy form endpoint.
-	r.Post("/goals/{goalID}/delete", goalsHandler.HandleDeleteGoal)
+	webgoalsdelete.RegisterRoutes(r, webgoalsdelete.New(deps, d.GoalUC))
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
-	adminAPI := apiadmin.New(s.store.Users, s.settingsSvc, s.auth, s.grantsCache, s.onboarding, s.provisioning, s.service)
-	serviceH := apiadmin.NewServiceHandler(s.service, s.settingsSvc, s.grantsCache)
+	d := s.deps
 
 	r.Group(func(r chi.Router) {
 		if !s.auth.Disabled() {
 			r.Use(auth.RequireTenantAdminMiddleware)
 		}
 
-		// Admin SPA — all web admin pages serve the React shell.
-		adminShell := func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "admin-shell", s.shellData())
-		}
-		r.Get("/admin", adminShell)
-		r.Get("/admin/access", adminShell)
-		r.Get("/admin/teams", adminShell)
-		r.Get("/admin/periods", adminShell)
-
-		// Журнал активности — tenant-admin-only раздел (собственный shell, не admin-панель).
-		r.Get("/activity-log", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "activity-shell", s.shellData())
-		})
-		// Legacy deep-links → root SPA.
-		redirect := func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin", http.StatusFound) }
-		r.Get("/admin/teams/new", redirect)
-		r.Get("/admin/teams/{teamID}/edit", redirect)
-		r.Get("/admin/periods/{periodID}/edit", redirect)
-		r.Get("/admin/users/{userID}", redirect)
+		// Admin-shell'ы и legacy deep-links — те же таблицы (см. handlers/web/shell).
+		adminShellH := shell.New(s.tmpl, func() shell.Data { return shell.Data{Dev: s.assetsDev} })
+		adminShellH.RegisterShells(r, shell.TenantAdmin)
+		shell.RegisterRedirects(r, shell.AdminRedirects)
 
 		// Admin user API.
-		r.Get("/api/v1/admin/users", adminAPI.HandleListUsers)
-		r.Get("/api/v1/admin/users/{userID}", adminAPI.HandleGetUser)
-		r.Post("/api/v1/admin/users/{userID}/admin", adminAPI.HandleGrantAdmin)
-		r.Delete("/api/v1/admin/users/{userID}/admin", adminAPI.HandleRevokeAdmin)
-		r.Get("/api/v1/admin/users/{userID}/grants", adminAPI.HandleListGrants)
-		r.Post("/api/v1/admin/users/{userID}/grants", adminAPI.HandleAddGrant)
-		r.Delete("/api/v1/admin/users/{userID}/grants/{teamID}", adminAPI.HandleRemoveGrant)
-		r.Get("/api/v1/admin/settings/access", adminAPI.HandleGetAccessSettings)
-		r.Post("/api/v1/admin/settings/access", adminAPI.HandleUpdateAccessSettings)
-		r.Get("/api/v1/admin/settings/general", adminAPI.HandleGetGeneralSettings)
-		r.Post("/api/v1/admin/settings/general", adminAPI.HandleUpdateGeneralSettings)
-		r.Get("/api/v1/admin/settings/feedback", adminAPI.HandleGetFeedbackSettings)
-		r.Post("/api/v1/admin/settings/feedback", adminAPI.HandleUpdateFeedbackSettings)
-
-		// Admin activity-log purge.
-		r.Post("/api/v1/admin/activity/purge", adminAPI.HandlePurgeActivity)
-
-		// Admin periods API.
-		r.Get("/api/v1/admin/periods", serviceH.HandleListPeriods)
-		r.Get("/api/v1/admin/periods/stats", serviceH.HandlePeriodStats)
-		r.Post("/api/v1/admin/periods", serviceH.HandleCreatePeriod)
-		r.Patch("/api/v1/admin/periods/{periodID}", serviceH.HandleUpdatePeriod)
-		r.Delete("/api/v1/admin/periods/{periodID}", serviceH.HandleDeletePeriod)
-		r.Get("/api/v1/admin/periods/{periodID}/overview", serviceH.HandlePeriodOverview)
-		r.Post("/api/v1/admin/periods/{periodID}/archive", serviceH.HandleArchivePeriod)
-		r.Post("/api/v1/admin/periods/{periodID}/unarchive", serviceH.HandleUnarchivePeriod)
-		r.Post("/api/v1/admin/periods/{periodID}/teams/activate", serviceH.HandleActivatePeriodTeams)
-		r.Post("/api/v1/admin/periods/{periodID}/teams/close", serviceH.HandleClosePeriodTeams)
-
-		// Admin teams API.
-		r.Get("/api/v1/admin/teams", serviceH.HandleListTeams)
-		r.Post("/api/v1/admin/teams", serviceH.HandleCreateTeam)
-		r.Patch("/api/v1/admin/teams/{teamID}", serviceH.HandleUpdateTeam)
-		r.Delete("/api/v1/admin/teams/{teamID}", serviceH.HandleDeleteTeam)
-		r.Post("/api/v1/admin/teams/{teamID}/restore", serviceH.HandleRestoreTeam)
-		r.Delete("/api/v1/admin/teams/{teamID}/hard", serviceH.HandleHardDeleteTeam)
+		// /api/v1/admin/** — пакет на URI-сегмент.
+		adminusers.RegisterRoutes(r, adminusers.New(s.grantsCache, s.store.Users))
+		adminrole.RegisterRoutes(r, adminrole.New(s.onboarding))
+		admingrants.RegisterRoutes(r, admingrants.New(s.grantsCache))
+		adminaccess.RegisterRoutes(r, adminaccess.New(s.settingsSvc))
+		admingeneral.RegisterRoutes(r, admingeneral.New(s.provisioning, s.settingsSvc))
+		adminfeedback.RegisterRoutes(r, adminfeedback.New(s.settingsSvc))
+		adminpurge.RegisterRoutes(r, adminpurge.New(d.Activity))
+		adminperiods.RegisterRoutes(r, adminperiods.New(d.Periods))
+		adminpstats.RegisterRoutes(r, adminpstats.New(d.PeriodUC, s.settingsSvc))
+		adminpoverview.RegisterRoutes(r, adminpoverview.New(d.PeriodUC, s.settingsSvc))
+		adminparchive.RegisterRoutes(r, adminparchive.New(d.Periods))
+		adminpunarchive.RegisterRoutes(r, adminpunarchive.New(d.Periods))
+		adminpactivate.RegisterRoutes(r, adminpactivate.New(d.PeriodUC, d.Teams, s.grantsCache))
+		adminpclose.RegisterRoutes(r, adminpclose.New(d.PeriodUC, d.Teams, s.grantsCache))
+		adminteams.RegisterRoutes(r, adminteams.New(d.Teams, d.Users))
+		adminrestore.RegisterRoutes(r, adminrestore.New(d.Teams))
+		adminhard.RegisterRoutes(r, adminhard.New(d.Teams))
 
 		// Admin health check-in settings API.
-		hcHandler := apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache)
-		r.Get("/api/v1/admin/settings/health-checkin", hcHandler.HandleGetHealthCheckInSettings)
-		r.Post("/api/v1/admin/settings/health-checkin", hcHandler.HandleUpdateHealthCheckInSettings)
+		adminhc.RegisterRoutes(r, adminhc.New(s.settingsSvc, s.hcCache))
 
 		// Onboarding: tenant-admin invitations + access-request queue.
-		onboardH := apionboarding.New(s.store.Invitations, s.onboarding, s.auth.Config().BaseURL)
-		r.Post("/api/v1/admin/invitations", onboardH.HandleCreateInvitation)
-		r.Post("/api/v1/admin/invitations/{id}/revoke", onboardH.HandleRevokeInvitation)
-		r.Get("/api/v1/admin/invitations", onboardH.HandleListInvitations)
-		r.Get("/api/v1/admin/access-requests", onboardH.HandleListAccessRequests)
-		r.Post("/api/v1/admin/access-requests/{userID}/approve", onboardH.HandleApproveAccessRequest)
-		r.Post("/api/v1/admin/access-requests/{userID}/deny", onboardH.HandleDenyAccessRequest)
-		r.Delete("/api/v1/admin/members/{userID}", onboardH.HandleRemoveMember)
+		admininvitations.RegisterRoutes(r, admininvitations.New(s.store.Invitations, s.auth.Config().BaseURL))
+		admininvrevoke.RegisterRoutes(r, admininvrevoke.New(s.store.Invitations))
+		adminareq.RegisterRoutes(r, adminareq.New(s.onboarding))
+		adminapprove.RegisterRoutes(r, adminapprove.New(s.onboarding))
+		admindeny.RegisterRoutes(r, admindeny.New(s.onboarding))
+		adminmembers.RegisterRoutes(r, adminmembers.New(s.onboarding))
 
-		r.Get("/admin/health-checkin", adminShell)
 	})
 }
 
 func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddleware) {
-	sysH := apisystem.New(s.provisioning, s.settingsSvc, s.store.Users, s.store.Tenants, s.store.Memberships, s.store.Activity)
 
 	r.Group(func(r chi.Router) {
 		// RequireSystemAdmin is the SOLE gate for the system plane in EVERY mode (spec 040):
@@ -637,30 +475,23 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		r.Use(auth.RequireSystemAdminMiddleware(s.auth.Config().ProvisioningToken))
 		r.Use(csrf.Handler)
 
-		// System-admin shell (React panel; powered by the /api/v1/system/* endpoints below).
-		r.Get("/system", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_ = s.tmpl.ExecuteTemplate(w, "system-shell", s.shellData())
-		})
+		// System-admin shell (React-панель поверх /api/v1/system/*).
+		shell.New(s.tmpl, func() shell.Data { return shell.Data{Dev: s.assetsDev} }).RegisterShells(r, shell.System)
 
-		r.Post("/api/v1/system/tenants", sysH.HandleCreateTenant)
-		r.Get("/api/v1/system/tenants", sysH.HandleListTenants)
-		r.Patch("/api/v1/system/tenants/{id}", sysH.HandlePatchTenant)
-		r.Post("/api/v1/system/tenants/{id}/members", sysH.HandleAttachMember)
-		r.Get("/api/v1/system/tenants/{id}/members", sysH.HandleListMembers)
-		r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", sysH.HandleDenyMember)
-		r.Put("/api/v1/system/tenants/{id}/members/{userID}/role", sysH.HandleSetMemberRole)
-		r.Delete("/api/v1/system/tenants/{id}/members/{userID}", sysH.HandleRemoveMember)
-		r.Put("/api/v1/system/tenants/{id}/entitlements", sysH.HandleSetEntitlements)
-		r.Get("/api/v1/system/tenants/{id}/entitlements", sysH.HandleGetEntitlements)
-		r.Post("/api/v1/system/tenants/{id}/suspend", sysH.HandleSuspend)
-		r.Post("/api/v1/system/tenants/{id}/restore", sysH.HandleRestore)
-		r.Post("/api/v1/system/tenants/{id}/activity/purge", sysH.HandlePurgeActivity)
-		r.Get("/api/v1/system/users", sysH.HandleListUsers)
-		r.Put("/api/v1/system/users/{userID}/system-admin", sysH.HandleSetSystemAdmin)
-		r.Get("/api/v1/system/settings", sysH.HandleGetSettings)
-		r.Put("/api/v1/system/settings/default-registration-tenant", sysH.HandleSetDefaultRegistrationTenant)
-		r.Put("/api/v1/system/settings/no-access-message", sysH.HandleSetNoAccessMessage)
+		// /api/v1/system/** — пакет на URI-сегмент.
+		systenants.RegisterRoutes(r, systenants.New(s.provisioning, s.store.Tenants))
+		sysmembers.RegisterRoutes(r, sysmembers.New(s.store.Memberships, s.provisioning))
+		sysdeny.RegisterRoutes(r, sysdeny.New(s.provisioning))
+		sysrole.RegisterRoutes(r, sysrole.New(s.provisioning))
+		sysentitlements.RegisterRoutes(r, sysentitlements.New(s.provisioning, s.settingsSvc))
+		syssuspend.RegisterRoutes(r, syssuspend.New(s.provisioning))
+		sysrestore.RegisterRoutes(r, sysrestore.New(s.provisioning))
+		syspurge.RegisterRoutes(r, syspurge.New(s.store.Activity))
+		sysusers.RegisterRoutes(r, sysusers.New(s.store.Users))
+		sysadmin.RegisterRoutes(r, sysadmin.New(s.provisioning))
+		syssettings.RegisterRoutes(r, syssettings.New(s.settingsSvc))
+		sysdefreg.RegisterRoutes(r, sysdefreg.New(s.settingsSvc))
+		sysnoaccess.RegisterRoutes(r, sysnoaccess.New(s.settingsSvc))
 	})
 }
 
@@ -669,33 +500,80 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 // integration test router); the few single-endpoint handlers without a package
 // route table are registered inline here.
 func (s *Server) registerApiRoutes(r chi.Router) {
-	apihierarhy.RegisterRoutes(r, apihierarhy.New(s.service))
+	// Каждый пакет получает ровно те сервисы и usecase, которые нужны его эндпоинтам.
+	d := s.deps
+	apihierarchy.RegisterRoutes(r, apihierarchy.New(d.Teams, d.Board, d.Periods, d.Users))
 	// Журнал активности (лента + счётчики) — только для tenant-admin, как и очистка
 	// журнала (RequireTenantAdmin). При AUTH_MODE=disabled anonymous-local — admin, доступ есть.
 	r.Group(func(r chi.Router) {
 		if !s.auth.Disabled() {
 			r.Use(auth.RequireTenantAdminMiddleware)
 		}
-		apiactivity.RegisterRoutes(r, apiactivity.New(s.service))
+		apiactivity.RegisterRoutes(r, apiactivity.New(d.Activity))
+		activitytree.RegisterRoutes(r, activitytree.New(d.Activity))
+		activitycat.RegisterRoutes(r, activitycat.New(d.Activity))
 	})
-	apiperiods.RegisterRoutes(r, apiperiods.New(s.service))
-	apiteams.RegisterRoutes(r, apiteams.New(s.service))
-	apigoals.RegisterRoutes(r, apigoals.New(s.service))
-	apigoaltree.RegisterRoutes(r, apigoaltree.New(s.service))
-	apikrs.RegisterRoutes(r, apikrs.New(s.service))
+	apiperiods.RegisterRoutes(r, apiperiods.New(d.Periods))
+	apiteams.RegisterRoutes(r, apiteams.New(d.Teams))
+	teamsokrs.RegisterRoutes(r, teamsokrs.New(d.Board, d.Periods, d.Users))
+	teamsoverview.RegisterRoutes(r, teamsoverview.New(d.Board, d.Periods, d.Users))
+	teamsexport.RegisterRoutes(r, teamsexport.New(d.ExportUC))
+	teamsstatus.RegisterRoutes(r, teamsstatus.New(d.PeriodUC))
+	teamsgoals.RegisterRoutes(r, teamsgoals.New(d.GoalUC, d.Users))
+	// /api/v1/goals/** — пакет на URI-сегмент, каждый с собственным узким конструктором.
+	apigoals.RegisterRoutes(r, apigoals.New(d.Goals, d.Shares, d.Links, d.Users, d.GoalUC))
+	goalslinkable.RegisterRoutes(r, goalslinkable.New(d.Links))
+	goalslinks.RegisterRoutes(r, goalslinks.New(d.Goals, d.GoalUC))
+	goalsshare.RegisterRoutes(r, goalsshare.New(d.Goals, d.Shares, d.GoalUC))
+	goalstransfer.RegisterRoutes(r, goalstransfer.New(d.Goals, d.GoalUC))
+	goalsweight.RegisterRoutes(r, goalsweight.New(d.Goals, d.Shares))
+	goalscomments.RegisterRoutes(r, goalscomments.New(d.Goals, d.GoalUC, d.Shares))
+	goalsreplies.RegisterRoutes(r, goalsreplies.New(d.Goals, d.GoalUC, d.Shares))
+	goalsresolve.RegisterRoutes(r, goalsresolve.New(goalcommon.ResolveDeps{Goals: d.Goals, Shares: d.Shares, UC: d.GoalUC}))
+	goalsunresolve.RegisterRoutes(r, goalsunresolve.New(goalcommon.ResolveDeps{Goals: d.Goals, Shares: d.Shares, UC: d.GoalUC}))
+	goalsmoveup.RegisterRoutes(r, goalsmoveup.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
+	goalsmovedown.RegisterRoutes(r, goalsmovedown.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
+	goalskeyresults.RegisterRoutes(r, goalskeyresults.New(d.Goals, d.Krs, d.KrUC))
+	apigoaltree.RegisterRoutes(r, apigoaltree.New(d.Periods, d.TreeUC))
+	apikrs.RegisterRoutes(r, apikrs.New(d.Goals, d.Krs, d.KrUC))
+	krsnumerical.RegisterRoutes(r, krsnumerical.New(d.Goals, d.Krs, d.KrUC))
+	krsboolean.RegisterRoutes(r, krsboolean.New(d.Goals, d.Krs, d.KrUC))
+	krsproject.RegisterRoutes(r, krsproject.New(d.Goals, d.Krs, d.KrUC))
+	krsnote.RegisterRoutes(r, krsnote.New(d.Goals, d.Krs, d.KrUC))
+	krsdescription.RegisterRoutes(r, krsdescription.New(d.Goals, d.Krs))
+	krsmoveup.RegisterRoutes(r, krsmoveup.New(krscommon.MoveDeps{KRs: d.Krs, Goals: d.Goals}))
+	krsmovedown.RegisterRoutes(r, krsmovedown.New(krscommon.MoveDeps{KRs: d.Krs, Goals: d.Goals}))
 
-	r.Get("/api/v1/config", apiconfig.New(s.settingsSvc).HandleConfig)
-	r.Get("/api/v1/users", apiusers.New(s.service).Handle)
-	r.Get("/api/v1/health-checkin", apihealthcheckin.New(s.service, s.settingsSvc, s.hcCache).HandleHealthCheckIn)
+	apiconfig.RegisterRoutes(r, apiconfig.New(s.settingsSvc))
+	apiusers.RegisterRoutes(r, apiusers.New(d.UserUC, d.Users))
+	apihealthcheckin.RegisterRoutes(r, apihealthcheckin.New(d.HC, s.settingsSvc, s.hcCache))
 
 	// Scope-aware period overview + bulk period control available to any authenticated
 	// member (my_teams — teams they lead); org scope is admin-gated inside the handler.
-	scopedOverviewH := apiadmin.NewServiceHandler(s.service, s.settingsSvc, s.grantsCache)
-	r.Get("/api/v1/periods/{periodID}/overview", scopedOverviewH.HandlePeriodOverviewScoped)
-	r.Post("/api/v1/periods/{periodID}/teams/activate", scopedOverviewH.HandleActivatePeriodTeamsScoped)
-	r.Post("/api/v1/periods/{periodID}/teams/close", scopedOverviewH.HandleClosePeriodTeamsScoped)
+	periodsoverview.RegisterRoutes(r, periodsoverview.New(d.PeriodUC, s.settingsSvc, d.Teams, s.grantsCache))
+	periodsactivate.RegisterRoutes(r, periodsactivate.New(d.PeriodUC, d.Teams, s.grantsCache))
+	periodsclose.RegisterRoutes(r, periodsclose.New(d.PeriodUC, d.Teams, s.grantsCache))
 
 	r.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		v1.WriteError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed", nil)
 	})
+}
+
+// StartBackground launches the periodic passes (health check-in cache refresh,
+// progress snapshots). Deliberately separate from Routes(): building the router must
+// stay a pure assembly step, so a test can construct it without spawning goroutines.
+// Called by app.New once the server is assembled.
+func (s *Server) StartBackground(ctx context.Context) {
+	scheduler.New(scheduler.Deps{
+		DB:       s.store.DB,
+		HCCache:  s.hcCache,
+		Snapshot: s.deps.PeriodUC,
+		Periods:  s.deps.Periods,
+		Active:   s.store.Periods,
+		Snaps:    progresssnapsvc.New(s.store.ProgressSnap),
+		Tenants:  s.store.Tenants,
+		Settings: s.settingsSvc,
+		Zone:     s.zone,
+		Logger:   s.logger,
+	}).Start(ctx)
 }

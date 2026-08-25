@@ -1,4 +1,4 @@
-package hierarhy
+package hierarchy
 
 import (
 	"net/http"
@@ -12,7 +12,7 @@ import (
 
 func TestRegisterRoutes(t *testing.T) {
 	r := chi.NewRouter()
-	RegisterRoutes(r, New(nil))
+	RegisterRoutes(r, New(nil, nil, nil, nil))
 	v1.RegisterMethodNotAllowed(r)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/hierarchy", nil)

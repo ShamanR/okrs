@@ -5,14 +5,21 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	onboardingsvc "okrs/internal/service/onboarding"
+	settingssvc "okrs/internal/service/settings"
 	"strconv"
 	"strings"
 	"testing"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
-	apionboarding "okrs/internal/http/handlers/api/v1/onboarding"
-	"okrs/internal/service"
+	adminareq "okrs/internal/http/handlers/api/v1/admin/accessrequests"
+	adminapprove "okrs/internal/http/handlers/api/v1/admin/accessrequests/approve"
+	admindeny "okrs/internal/http/handlers/api/v1/admin/accessrequests/deny"
+	admininvitations "okrs/internal/http/handlers/api/v1/admin/invitations"
+	admininvrevoke "okrs/internal/http/handlers/api/v1/admin/invitations/revoke"
+	adminmembers "okrs/internal/http/handlers/api/v1/admin/members"
+	joinrequest "okrs/internal/http/handlers/api/v1/onboarding/joinrequest"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
 	"okrs/internal/store/memberships"
@@ -41,13 +48,12 @@ func buildRouterBase(t *testing.T, user *domain.User, baseURL string) (*chi.Mux,
 	tnRepo := tenants.NewTenantRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
-	onboardSvc := service.NewOnboardingService(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
-	h := apionboarding.New(invRepo, onboardSvc, baseURL)
+	onboardSvc := onboardingsvc.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
@@ -59,13 +65,15 @@ func buildRouterBase(t *testing.T, user *domain.User, baseURL string) (*chi.Mux,
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	})
-	r.Post("/api/v1/admin/invitations", h.HandleCreateInvitation)
-	r.Post("/api/v1/admin/invitations/{id}/revoke", h.HandleRevokeInvitation)
-	r.Get("/api/v1/admin/invitations", h.HandleListInvitations)
-	r.Get("/api/v1/admin/access-requests", h.HandleListAccessRequests)
-	r.Post("/api/v1/admin/access-requests/{userID}/approve", h.HandleApproveAccessRequest)
-	r.Delete("/api/v1/admin/members/{userID}", h.HandleRemoveMember)
-	r.Post("/api/v1/onboarding/join-request", h.HandleJoinRequest)
+	// Онбординг разложен по пакету на URI; тест монтирует их так же, как server.go,
+	// и ходит по настоящим путям — это проверка сценария целиком, а не обработчика.
+	admininvitations.RegisterRoutes(r, admininvitations.New(invRepo, baseURL))
+	admininvrevoke.RegisterRoutes(r, admininvrevoke.New(invRepo))
+	adminareq.RegisterRoutes(r, adminareq.New(onboardSvc))
+	adminapprove.RegisterRoutes(r, adminapprove.New(onboardSvc))
+	admindeny.RegisterRoutes(r, admindeny.New(onboardSvc))
+	adminmembers.RegisterRoutes(r, adminmembers.New(onboardSvc))
+	joinrequest.RegisterRoutes(r, joinrequest.New(onboardSvc))
 	return r, pool
 }
 

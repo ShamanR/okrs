@@ -1,11 +1,11 @@
 package v1
 
 import (
+	okrboarduc "okrs/internal/usecase/okrboard"
 	"testing"
 	"time"
 
 	"okrs/internal/core/domain"
-	"okrs/internal/service"
 )
 
 func TestBuildMeasureNumerical(t *testing.T) {
@@ -133,7 +133,7 @@ func TestMapGoalDetailsIncludesProgressMeta(t *testing.T) {
 		StartDate: time.Now().Add(-24 * time.Hour),
 		EndDate:   time.Now().Add(24 * time.Hour),
 	}
-	detail := service.GoalDetails{
+	detail := okrboarduc.GoalDetails{
 		Goal: domain.Goal{
 			ID:       10,
 			Progress: 40,

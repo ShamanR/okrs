@@ -42,20 +42,9 @@ func (s *Service) Record(ctx context.Context, scope domain.TenantScope, ev domai
 	}
 }
 
-// ListActivity returns a scoped page of journal events. allowedTeamIDs == nil = admin/unrestricted.
-func (s *Service) List(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f storeactivity.ListFilter) ([]domain.ActivityEvent, *storeactivity.Cursor, error) {
-	return s.repo.List(ctx, scope, allowedTeamIDs, f)
-}
-
 // ActivityTreeCounts returns direct per-team event counts for the sidebar tree.
 func (s *Service) TreeCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, periodID *int64, since *time.Time) (map[int64]int, error) {
 	return s.repo.TreeCounts(ctx, scope, allowedTeamIDs, periodID, since)
-}
-
-// ActivityCategoryCounts returns per-category event counts for the feed's tab counters,
-// stable across the selected category (the filter excludes category).
-func (s *Service) CategoryCounts(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, f storeactivity.ListFilter) (map[string]int, error) {
-	return s.repo.CategoryCounts(ctx, scope, allowedTeamIDs, f)
 }
 
 // PurgeActivity deletes journal rows for the caller's tenant. Authority (tenant-admin) is

@@ -10,8 +10,8 @@ import (
 
 	"okrs/internal/core/domain"
 	apiv1testutil "okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store"
+	"okrs/internal/store/grants"
 	"okrs/internal/store/periods"
 	"okrs/internal/store/teams"
 	storetestutil "okrs/internal/store/testutil"
@@ -25,6 +25,7 @@ func TestActivityFeedAndTreeCountsEndpoints(t *testing.T) {
 	ctx := context.Background()
 	scope := domain.TenantScope{TenantID: 1}
 	repo := store.New(pool)
+	gc := grants.NewGrantsCache(repo.Grants)
 
 	teamID, err := repo.Teams.CreateTeam(ctx, scope, teams.TeamInput{Name: "Платформа", Type: domain.TeamTypeTeam})
 	if err != nil {
@@ -45,8 +46,7 @@ func TestActivityFeedAndTreeCountsEndpoints(t *testing.T) {
 		}
 	}
 
-	svc := service.NewFromStore(repo, store.NewGrantsCache(repo.Grants), nil, nil)
-	srv := httptest.NewServer(apiv1testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+	srv := httptest.NewServer(apiv1testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 	defer srv.Close()
 
 	// Feed

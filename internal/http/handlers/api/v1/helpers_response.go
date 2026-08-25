@@ -1,13 +1,13 @@
 package v1
 
 import (
+	okrboarduc "okrs/internal/usecase/okrboard"
 	"strings"
 	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/web/common"
-	"okrs/internal/service"
 )
 
 // BuildUserRefMap builds a udid→UserRef lookup from a slice of users.
@@ -152,7 +152,7 @@ func CalculatePeriodForecast(period domain.Period, now time.Time) int {
 	return value
 }
 
-func MapGoalDetails(detail service.GoalDetails, period domain.Period, userRefs map[string]*dto.UserRef) dto.GoalDetails {
+func MapGoalDetails(detail okrboarduc.GoalDetails, period domain.Period, userRefs map[string]*dto.UserRef) dto.GoalDetails {
 	krList := make([]dto.KeyResult, 0, len(detail.Goal.KeyResults))
 	for _, kr := range detail.Goal.KeyResults {
 		krList = append(krList, MapKeyResult(kr))

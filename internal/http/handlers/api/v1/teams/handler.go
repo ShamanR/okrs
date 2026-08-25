@@ -1,33 +1,23 @@
+// Package teams serves /api/v1/teams/{teamID}.
 package teams
 
 import (
-	"encoding/json"
-	"errors"
 	"net/http"
-	"strings"
-
-	"github.com/jackc/pgx/v5"
-
-	"okrs/internal/auth"
-	"okrs/internal/core/domain"
-	v1 "okrs/internal/http/handlers/api/v1"
-	"okrs/internal/http/handlers/web/common"
-	"okrs/internal/render/export"
-	"okrs/internal/service"
-	"okrs/internal/store/goals"
 
 	"github.com/go-chi/chi/v5"
+	"okrs/internal/auth"
+	v1 "okrs/internal/http/handlers/api/v1"
+	"okrs/internal/http/handlers/web/common"
+	teamsvc "okrs/internal/service/team"
 )
 
 type Handler struct {
-	service *service.Service
+	teams *teamsvc.Service
 }
 
-func New(service *service.Service) *Handler {
-	return &Handler{service: service}
-}
+func New(teams *teamsvc.Service) *Handler { return &Handler{teams: teams} }
 
-func (h *Handler) HandleTeam(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
@@ -42,7 +32,7 @@ func (h *Handler) HandleTeam(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 		return
 	}
-	team, err := h.service.GetTeam(r.Context(), scope, teamID)
+	team, err := h.teams.Get(r.Context(), scope, teamID)
 	if err != nil {
 		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
 		return
@@ -54,293 +44,4 @@ func (h *Handler) HandleTeam(w http.ResponseWriter, r *http.Request) {
 		"type_label": common.TeamTypeLabel(team.Type),
 		"parent_id":  team.ParentID,
 	})
-}
-
-func (h *Handler) HandleTeamOKRs(w http.ResponseWriter, r *http.Request) {
-	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
-		return
-	}
-	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
-		return
-	}
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-		return
-	}
-	periodID, err := common.ParsePeriodID(r)
-	if err != nil || periodID == 0 {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
-		return
-	}
-	period, err := h.service.GetPeriod(r.Context(), scope, periodID)
-	if err != nil {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
-		return
-	}
-	okr, err := h.service.GetTeamOKR(r.Context(), scope, teamID, periodID, period)
-	if err != nil {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team okr not found", nil)
-		return
-	}
-	// Attach scope-filtered parent/child links to each goal (navigation-only). Best-effort:
-	// links are decoration, so a failure here degrades to a board without labels rather than
-	// breaking the whole view (mirrors HandleGoal).
-	allowed, _ := auth.AllowedTeamIDsFromCtx(r.Context())
-	_ = h.service.AttachGoalLinks(r.Context(), scope, okr.Goals, allowed, allowed == nil)
-	udids := collectOKRUserUDIDs(okr)
-	users, _ := h.service.GetUsersByUDIDs(r.Context(), udids)
-	v1.WriteJSON(w, http.StatusOK, newTeamOKRResponse(okr, v1.BuildUserRefMap(users)))
-}
-
-func (h *Handler) HandleTeamOverview(w http.ResponseWriter, r *http.Request) {
-	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
-		return
-	}
-	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
-		return
-	}
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
-		return
-	}
-	periodID, err := common.ParsePeriodID(r)
-	if err != nil || periodID == 0 {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
-		return
-	}
-	period, err := h.service.GetPeriod(r.Context(), scope, periodID)
-	if err != nil {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "period not found", map[string]string{"period_id": "not_found"})
-		return
-	}
-	overview, err := h.service.GetTeamOverview(r.Context(), scope, teamID, periodID)
-	if err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load team overview", nil)
-		return
-	}
-	udids := collectOverviewUserUDIDs(overview)
-	users, _ := h.service.GetUsersByUDIDs(r.Context(), udids)
-	v1.WriteJSON(w, http.StatusOK, newTeamOverviewResponse(period, overview, v1.BuildUserRefMap(users)))
-}
-
-func (h *Handler) HandleUpdateTeamPeriodStatus(w http.ResponseWriter, r *http.Request) {
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
-		return
-	}
-	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
-		return
-	}
-	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
-		return
-	}
-	var req struct {
-		PeriodID int64  `json:"period_id"`
-		Status   string `json:"status"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
-		return
-	}
-	if req.PeriodID == 0 {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "period_id required", map[string]string{"period_id": "required"})
-		return
-	}
-	status := domain.TeamPeriodStatus(req.Status)
-	if !common.ValidTeamPeriodStatus(status) {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid status", map[string]string{"status": "invalid"})
-		return
-	}
-	if err := h.service.UpdateTeamPeriodStatus(r.Context(), scope, teamID, req.PeriodID, status, auth.UserIDFromContext(r.Context())); err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update status", nil)
-		return
-	}
-	v1.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-}
-
-// GET /api/v1/teams/{teamID}/export
-func (h *Handler) HandleTeamExport(w http.ResponseWriter, r *http.Request) {
-	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", map[string]string{"team_id": "invalid"})
-		return
-	}
-	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
-		return
-	}
-	scopeCtx, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "no active tenant", nil)
-		return
-	}
-	periodID, err := common.ParsePeriodID(r)
-	if err != nil || periodID == 0 {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid period id", map[string]string{"period_id": "invalid"})
-		return
-	}
-
-	q := r.URL.Query()
-	exportScope := export.Scope(q.Get("scope"))
-	if exportScope != export.ScopeGoal && exportScope != export.ScopeTeam && exportScope != export.ScopeTree {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid scope", map[string]string{"scope": "invalid"})
-		return
-	}
-	format := export.Format(q.Get("format"))
-	if format == "" {
-		format = export.FormatShort
-	}
-	if format != export.FormatShort && format != export.FormatFull {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid format", map[string]string{"format": "invalid"})
-		return
-	}
-	var goalID int64
-	if exportScope == export.ScopeGoal {
-		goalID, err = common.ParseID(q.Get("goal_id"))
-		if err != nil || goalID == 0 {
-			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "goal_id required", map[string]string{"goal_id": "required"})
-			return
-		}
-	}
-	allowed, _ := auth.AllowedTeamIDsFromCtx(r.Context())
-
-	res, err := h.service.ExportOKR(r.Context(), scopeCtx, service.ExportParams{
-		TeamID: teamID, PeriodID: periodID, GoalID: goalID, Scope: exportScope,
-		Options:        export.Options{Format: format, Comments: q.Get("comments") == "1"},
-		AllowedTeamIDs: allowed,
-	})
-	if err != nil {
-		// Genuine "not found" (goal not on board, team invisible in period, missing team/period)
-		// maps to 404; anything else (DB/store failure) is an operational 500.
-		if errors.Is(err, service.ErrGoalNotOnTeamBoard) ||
-			errors.Is(err, service.ErrTeamNotVisibleInPeriod) ||
-			errors.Is(err, pgx.ErrNoRows) {
-			v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "export not available", nil)
-			return
-		}
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to build export", nil)
-		return
-	}
-	v1.WriteJSON(w, http.StatusOK, map[string]any{
-		"filename": res.Filename,
-		"markdown": res.Markdown,
-		"lines":    res.Lines,
-	})
-}
-
-func collectOKRUserUDIDs(okr service.TeamOKR) []string {
-	seen := make(map[string]struct{})
-	if okr.Team.LeadUDID != nil {
-		seen[*okr.Team.LeadUDID] = struct{}{}
-	}
-	for _, g := range okr.Goals {
-		for _, uid := range g.Goal.OwnerUDIDs {
-			seen[uid] = struct{}{}
-		}
-	}
-	udids := make([]string, 0, len(seen))
-	for uid := range seen {
-		udids = append(udids, uid)
-	}
-	return udids
-}
-
-func collectOverviewUserUDIDs(overview service.TeamOverview) []string {
-	seen := make(map[string]struct{})
-	for _, item := range overview.ChildrenSummary {
-		if item.Team.LeadUDID != nil {
-			seen[*item.Team.LeadUDID] = struct{}{}
-		}
-	}
-	udids := make([]string, 0, len(seen))
-	for uid := range seen {
-		udids = append(udids, uid)
-	}
-	return udids
-}
-
-// POST /api/v1/teams/{teamID}/goals
-func (h *Handler) HandleCreateGoal(w http.ResponseWriter, r *http.Request) {
-	teamID, err := common.ParseID(chi.URLParam(r, "teamID"))
-	if err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team id", nil)
-		return
-	}
-	if !auth.CanAccessTeamFromCtx(r.Context(), teamID) {
-		v1.WriteError(w, http.StatusNotFound, "NOT_FOUND", "team not found", nil)
-		return
-	}
-	var req struct {
-		PeriodID    int64    `json:"period_id"`
-		Title       string   `json:"title"`
-		Description string   `json:"description"`
-		Priority    string   `json:"priority"`
-		Weight      int      `json:"weight"`
-		WorkType    string   `json:"work_type"`
-		FocusType   string   `json:"focus_type"`
-		OwnerUDIDs  []string `json:"owner_udids"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
-		return
-	}
-	if req.Title == "" {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "title required", map[string]string{"title": "required"})
-		return
-	}
-	if req.PeriodID == 0 {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "period_id required", map[string]string{"period_id": "required"})
-		return
-	}
-	priority := domain.Priority(req.Priority)
-	workType := domain.WorkType(req.WorkType)
-	focusType := domain.FocusType(req.FocusType)
-	if msg := common.ValidateGoalInput(priority, workType, focusType, req.Weight); msg != "" {
-		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg, nil)
-		return
-	}
-	if len(req.OwnerUDIDs) > 0 {
-		missing, err := h.service.ValidateUserUDIDsExist(r.Context(), req.OwnerUDIDs)
-		if err != nil {
-			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to validate owners", nil)
-			return
-		}
-		if len(missing) > 0 {
-			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown owner UDIDs", map[string]string{"owner_udids": "unknown: " + strings.Join(missing, ", ")})
-			return
-		}
-	}
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
-		return
-	}
-	goalID, err := h.service.CreateGoal(r.Context(), scope, goals.GoalInput{
-		TeamID:      teamID,
-		PeriodID:    req.PeriodID,
-		Title:       req.Title,
-		Description: req.Description,
-		Priority:    priority,
-		Weight:      req.Weight,
-		WorkType:    workType,
-		FocusType:   focusType,
-		OwnerUDIDs:  req.OwnerUDIDs,
-	}, auth.UserIDFromContext(r.Context()))
-	if err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to create goal", nil)
-		return
-	}
-	v1.WriteJSON(w, http.StatusOK, map[string]int64{"id": goalID})
 }

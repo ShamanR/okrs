@@ -5,14 +5,28 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	onboardingsvc "okrs/internal/service/onboarding"
+	provisioningsvc "okrs/internal/service/provisioning"
+	settingssvc "okrs/internal/service/settings"
 	"strconv"
 	"strings"
 	"testing"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
-	apisystem "okrs/internal/http/handlers/api/v1/system"
-	"okrs/internal/service"
+	syssettings "okrs/internal/http/handlers/api/v1/system/settings"
+	sysdefreg "okrs/internal/http/handlers/api/v1/system/settings/defaultregistrationtenant"
+	sysnoaccess "okrs/internal/http/handlers/api/v1/system/settings/noaccessmessage"
+	systenants "okrs/internal/http/handlers/api/v1/system/tenants"
+	syspurge "okrs/internal/http/handlers/api/v1/system/tenants/activity/purge"
+	sysentitlements "okrs/internal/http/handlers/api/v1/system/tenants/entitlements"
+	sysmembers "okrs/internal/http/handlers/api/v1/system/tenants/members"
+	sysdeny "okrs/internal/http/handlers/api/v1/system/tenants/members/deny"
+	sysrole "okrs/internal/http/handlers/api/v1/system/tenants/members/role"
+	sysrestore "okrs/internal/http/handlers/api/v1/system/tenants/restore"
+	syssuspend "okrs/internal/http/handlers/api/v1/system/tenants/suspend"
+	sysusers "okrs/internal/http/handlers/api/v1/system/users"
+	sysadmin "okrs/internal/http/handlers/api/v1/system/users/systemadmin"
 	"okrs/internal/store/activity"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/invitations"
@@ -38,22 +52,20 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	userRepo := users.NewUserRepository(pool)
 	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
 	sysRepo := settings.NewSettingsRepository(pool)
-	settingsSvc := service.NewSettingsService(
+	settingsSvc := settingssvc.New(
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	grantsCache := grants.NewGrantsCache(grants.NewGrantRepository(pool))
-	onboardingSvc := service.NewOnboardingService(
+	onboardingSvc := onboardingsvc.New(
 		invitations.NewInvitationRepository(pool), memRepo, memberships.NewMembershipCache(memRepo),
 		tnRepo, settingsSvc, grantsCache,
 	)
-	prov := service.NewProvisioningService(
+	prov := provisioningsvc.New(
 		tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grantsCache, onboardingSvc, userRepo,
 	)
-	h := apisystem.New(prov, settingsSvc, userRepo, tnRepo, memRepo, activity.NewActivityRepository(pool))
-
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -64,22 +76,23 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 		})
 	})
 	r.Use(auth.RequireSystemAdminMiddleware(""))
-	r.Post("/api/v1/system/tenants", h.HandleCreateTenant)
-	r.Get("/api/v1/system/tenants", h.HandleListTenants)
-	r.Patch("/api/v1/system/tenants/{id}", h.HandlePatchTenant)
-	r.Post("/api/v1/system/tenants/{id}/members", h.HandleAttachMember)
-	r.Get("/api/v1/system/tenants/{id}/members", h.HandleListMembers)
-	r.Post("/api/v1/system/tenants/{id}/members/{userID}/deny", h.HandleDenyMember)
-	r.Put("/api/v1/system/tenants/{id}/members/{userID}/role", h.HandleSetMemberRole)
-	r.Delete("/api/v1/system/tenants/{id}/members/{userID}", h.HandleRemoveMember)
-	r.Put("/api/v1/system/tenants/{id}/entitlements", h.HandleSetEntitlements)
-	r.Get("/api/v1/system/tenants/{id}/entitlements", h.HandleGetEntitlements)
-	r.Post("/api/v1/system/tenants/{id}/suspend", h.HandleSuspend)
-	r.Get("/api/v1/system/settings", h.HandleGetSettings)
-	r.Get("/api/v1/system/users", h.HandleListUsers)
-	r.Put("/api/v1/system/users/{userID}/system-admin", h.HandleSetSystemAdmin)
-	r.Put("/api/v1/system/settings/default-registration-tenant", h.HandleSetDefaultRegistrationTenant)
-	r.Put("/api/v1/system/settings/no-access-message", h.HandleSetNoAccessMessage)
+
+	// Группа /api/v1/system разложена по пакету на URI; тест монтирует их так же,
+	// как server.go, и ходит по настоящим путям — это проверка группы целиком,
+	// а не отдельного обработчика.
+	systenants.RegisterRoutes(r, systenants.New(prov, tnRepo))
+	sysmembers.RegisterRoutes(r, sysmembers.New(memRepo, prov))
+	sysdeny.RegisterRoutes(r, sysdeny.New(prov))
+	sysrole.RegisterRoutes(r, sysrole.New(prov))
+	sysentitlements.RegisterRoutes(r, sysentitlements.New(prov, settingsSvc))
+	syssuspend.RegisterRoutes(r, syssuspend.New(prov))
+	sysrestore.RegisterRoutes(r, sysrestore.New(prov))
+	syspurge.RegisterRoutes(r, syspurge.New(activity.NewActivityRepository(pool)))
+	sysusers.RegisterRoutes(r, sysusers.New(userRepo))
+	sysadmin.RegisterRoutes(r, sysadmin.New(prov))
+	syssettings.RegisterRoutes(r, syssettings.New(settingsSvc))
+	sysdefreg.RegisterRoutes(r, sysdefreg.New(settingsSvc))
+	sysnoaccess.RegisterRoutes(r, sysnoaccess.New(settingsSvc))
 	return r, tnRepo, userRepo
 }
 

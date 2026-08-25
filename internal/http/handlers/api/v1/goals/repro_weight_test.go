@@ -12,7 +12,6 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/shares"
@@ -59,8 +58,8 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil)) // admin scope
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil)) // admin scope
 	defer server.Close()
 
 	weightFor := func(teamID int64) int {

@@ -1,22 +1,49 @@
-package hierarhy
+package hierarchy
 
 import (
 	"net/http"
 	"slices"
 	"time"
 
+	"context"
 	"okrs/internal/auth"
+	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
-	"okrs/internal/service"
+	teamsvc "okrs/internal/service/team"
+	okrboarduc "okrs/internal/usecase/okrboard"
 )
 
-type Handler struct {
-	service *service.Service
+// TeamHierarchy строит дерево команд. *team.Service удовлетворяет.
+type TeamHierarchy interface {
+	Hierarchy(ctx context.Context, scope domain.TenantScope, periodID *int64) ([]teamsvc.Node, error)
 }
 
-func New(service *service.Service) *Handler {
-	return &Handler{service: service}
+// BoardSummary отдаёт метрики команд за период. *okrboard.UseCase удовлетворяет.
+type BoardSummary interface {
+	TeamsWithPeriodSummary(ctx context.Context, scope domain.TenantScope, periodID int64, orgID *int64) ([]okrboarduc.TeamSummary, error)
+}
+
+// PeriodReader читает период для расчёта прогноза. *period.Service удовлетворяет.
+type PeriodReader interface {
+	Get(ctx context.Context, scope domain.TenantScope, periodID int64) (domain.Period, error)
+}
+
+// UserDirectory резолвит лидов команд в отображаемых пользователей.
+// *user.Service удовлетворяет.
+type UserDirectory interface {
+	GetByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
+}
+
+type Handler struct {
+	teams   TeamHierarchy
+	board   BoardSummary
+	periods PeriodReader
+	users   UserDirectory
+}
+
+func New(teams TeamHierarchy, board BoardSummary, periods PeriodReader, users UserDirectory) *Handler {
+	return &Handler{teams: teams, board: board, periods: periods, users: users}
 }
 
 func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
@@ -35,24 +62,24 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 	if periodID > 0 {
 		periodRef = &periodID
 	}
-	nodes, err := h.service.GetHierarchy(r.Context(), scope, periodRef)
+	nodes, err := h.teams.Hierarchy(r.Context(), scope, periodRef)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy", nil)
 		return
 	}
-	metrics := map[int64]service.TeamSummary{}
+	metrics := map[int64]okrboarduc.TeamSummary{}
 	forecast := 0
 	if periodRef != nil {
-		summaries, err := h.service.GetTeamsWithPeriodSummary(r.Context(), scope, periodID, nil)
+		summaries, err := h.board.TeamsWithPeriodSummary(r.Context(), scope, periodID, nil)
 		if err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy summary", nil)
 			return
 		}
-		metrics = make(map[int64]service.TeamSummary, len(summaries))
+		metrics = make(map[int64]okrboarduc.TeamSummary, len(summaries))
 		for _, summary := range summaries {
 			metrics[summary.ID] = summary
 		}
-		period, err := h.service.GetPeriod(r.Context(), scope, periodID)
+		period, err := h.periods.Get(r.Context(), scope, periodID)
 		if err != nil {
 			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load hierarchy period", nil)
 			return
@@ -63,14 +90,14 @@ func (h *Handler) HandleHierarchy(w http.ResponseWriter, r *http.Request) {
 		nodes = filterNodesByScope(nodes, allowedIDs)
 	}
 	leadUDIDs := collectLeadUDIDs(nodes)
-	users, _ := h.service.GetUsersByUDIDs(r.Context(), leadUDIDs)
+	users, _ := h.users.GetByUDIDs(r.Context(), leadUDIDs)
 	v1.WriteJSON(w, http.StatusOK, newHierarchyResponse(nodes, metrics, v1.BuildUserRefMap(users), forecast))
 }
 
-func collectLeadUDIDs(nodes []service.TeamNode) []string {
+func collectLeadUDIDs(nodes []teamsvc.Node) []string {
 	seen := make(map[string]struct{})
-	var walk func([]service.TeamNode)
-	walk = func(ns []service.TeamNode) {
+	var walk func([]teamsvc.Node)
+	walk = func(ns []teamsvc.Node) {
 		for _, n := range ns {
 			if n.Team.LeadUDID != nil {
 				seen[*n.Team.LeadUDID] = struct{}{}
@@ -88,8 +115,8 @@ func collectLeadUDIDs(nodes []service.TeamNode) []string {
 
 // filterNodesByScope removes tree nodes not in allowedIDs and promotes orphaned children to their
 // parent's level so the user sees a valid subtree rooted at their access boundary.
-func filterNodesByScope(nodes []service.TeamNode, allowedIDs []int64) []service.TeamNode {
-	result := make([]service.TeamNode, 0, len(nodes))
+func filterNodesByScope(nodes []teamsvc.Node, allowedIDs []int64) []teamsvc.Node {
+	result := make([]teamsvc.Node, 0, len(nodes))
 	for _, node := range nodes {
 		filteredChildren := filterNodesByScope(node.Children, allowedIDs)
 		if slices.Contains(allowedIDs, node.Team.ID) {

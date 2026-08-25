@@ -11,7 +11,6 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
@@ -90,8 +89,8 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		t.Fatalf("soft delete team: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1Router(repo, gc))
 	defer server.Close()
 
 	currentHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
@@ -304,8 +303,8 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 		t.Fatalf("set status: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1Router(svc))
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1Router(repo, gc))
 	defer server.Close()
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/overview?period_id=%d", server.URL, parentID, periodID))

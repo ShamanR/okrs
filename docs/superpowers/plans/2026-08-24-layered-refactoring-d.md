@@ -90,7 +90,7 @@ user:        SearchUnrestricted, SearchInSet
 period:      — (всё уже есть)
 ```
 
-- [ ] **Step 1: Свериться с фактом перед добавлением**
+- [x] **Step 1: Свериться с фактом перед добавлением**
 
 Список выше составлен скриптом; перепроверить перед работой, потому что этап C мог что-то уже покрыть:
 
@@ -100,7 +100,7 @@ rg -o 's\.(teams|goals|shares|goalLinks|periods|krs|statuses|users|progressSnap)
   internal/service/*.go | sort -u
 ```
 
-- [ ] **Step 2: Добавить методы**
+- [x] **Step 2: Добавить методы**
 
 Каждый — проброс. Образец (`internal/service/goal/goal.go`):
 
@@ -118,7 +118,7 @@ func (s *Service) ListByTeamsPeriod(ctx context.Context, scope domain.TenantScop
 }
 ```
 
-- [ ] **Step 3: Проверить**
+- [x] **Step 3: Проверить**
 
 ```bash
 go build ./... && go vet ./...
@@ -200,10 +200,10 @@ docker info > /dev/null && go test ./...
 
 **Внимание:** `getTeamsWithPeriodSummaryFromTeams` делает батчевую загрузку (`ListByTeamsPeriod`, `ListByGoalIDs`, `List` статусов) — сохранить батчевость дословно.
 
-- [ ] **Step 1:** Создать пакет по общему образцу, перенести семь методов и семь типов.
-- [ ] **Step 2:** Перенести тесты: `rg -n '^func Test' internal/service/service_test.go | rg -i 'teamokr|teamswithperiod|overview|childrensummary'`.
-- [ ] **Step 3:** Фасад: поле `okrboardUC`, алиасы типов, делегаты `GetTeamOKR`/`GetTeamsWithPeriodSummary`/`GetDirectChildrenSummary`/`GetTeamOverview`.
-- [ ] **Step 4:** Проверка по общему образцу.
+- [x] **Step 1:** Создать пакет по общему образцу, перенести семь методов и семь типов.
+- [x] **Step 2:** Перенести тесты: `rg -n '^func Test' internal/service/service_test.go | rg -i 'teamokr|teamswithperiod|overview|childrensummary'`.
+- [x] **Step 3:** Фасад: поле `okrboardUC`, алиасы типов, делегаты `GetTeamOKR`/`GetTeamsWithPeriodSummary`/`GetDirectChildrenSummary`/`GetTeamOverview`.
+- [x] **Step 4:** Проверка по общему образцу.
 
 ---
 
@@ -219,10 +219,10 @@ docker info > /dev/null && go test ./...
 
 Самый крупный пакет — 16 методов. Разложить по трём файлам: `goal.go` (CRUD-сценарии + share/transfer), `comments.go` (4 метода комментариев), `links.go` (`SetParents`, `AttachLinks`, `fillGoalRefProgress`).
 
-- [ ] **Step 1:** Создать три файла по общему образцу.
-- [ ] **Step 2:** Перенести тесты из `goal_test.go`, `copy_goal_test.go`, `goal_links_test.go` и относящиеся к целям из `activity_test.go`.
-- [ ] **Step 3:** Фасад: поле `goalUC`, алиасы типов, 14 делегатов.
-- [ ] **Step 4:** Проверка по общему образцу.
+- [x] **Step 1:** Создать три файла по общему образцу.
+- [x] **Step 2:** Перенести тесты из `goal_test.go`, `copy_goal_test.go`, `goal_links_test.go` и относящиеся к целям из `activity_test.go`.
+- [x] **Step 3:** Фасад: поле `goalUC`, алиасы типов, 14 делегатов.
+- [x] **Step 4:** Проверка по общему образцу.
 
 ---
 
@@ -238,10 +238,10 @@ docker info > /dev/null && go test ./...
 
 `recordKRProgress` — приватный хелпер пакета: он считает before/after и пишет событие, его зовут все три `UpdateProgress*`.
 
-- [ ] **Step 1:** Создать пакет, перенести семь методов + хелпер.
-- [ ] **Step 2:** Перенести тесты из `progress_test.go` и KR-часть `activity_test.go`.
-- [ ] **Step 3:** Фасад: поле `keyresultUC`, алиас `ProjectStageUpdate`, 7 делегатов.
-- [ ] **Step 4:** Проверка по общему образцу.
+- [x] **Step 1:** Создать пакет, перенести семь методов + хелпер.
+- [x] **Step 2:** Перенести тесты из `progress_test.go` и KR-часть `activity_test.go`.
+- [x] **Step 3:** Фасад: поле `keyresultUC`, алиас `ProjectStageUpdate`, 7 делегатов.
+- [x] **Step 4:** Проверка по общему образцу.
 
 ---
 
@@ -257,11 +257,11 @@ docker info > /dev/null && go test ./...
 
 `ProgressSnapRepo` — единственный репозиторий без сервиса сущности. Завести `internal/service/progresssnap` с методами `List`/`Upsert`/`LatestDate`, чтобы правило «одна дверь к store» не нарушалось.
 
-- [ ] **Step 1:** Создать `internal/service/progresssnap` (сервис сущности для снимков).
-- [ ] **Step 2:** Создать `internal/usecase/period` из трёх файлов.
-- [ ] **Step 3:** Перенести тесты из `period_overview_test.go`, `period_bulk_status_test.go`, `period_progress_test.go`.
-- [ ] **Step 4:** Фасад: поле `periodUC`, алиасы типов, делегаты.
-- [ ] **Step 5:** Проверка по общему образцу.
+- [x] **Step 1:** Создать `internal/service/progresssnap` (сервис сущности для снимков).
+- [x] **Step 2:** Создать `internal/usecase/period` из трёх файлов.
+- [x] **Step 3:** Перенести тесты из `period_overview_test.go`, `period_bulk_status_test.go`, `period_progress_test.go`.
+- [x] **Step 4:** Фасад: поле `periodUC`, алиасы типов, делегаты.
+- [x] **Step 5:** Проверка по общему образцу.
 
 ---
 
@@ -278,10 +278,10 @@ docker info > /dev/null && go test ./...
 - `export.UseCase.OKR(...)` → `ExportResult`; consumes `team`, `goal`, `keyresult`, `period`, `goallink` + `render/export`.
 - `user.UseCase.SearchInScope(...)`; consumes `user`, `team` сервисы и `GrantsProvider`.
 
-- [ ] **Step 1:** Создать три пакета.
-- [ ] **Step 2:** Перенести тесты из `export_test.go`, `search_test.go` и goal-tree тесты.
-- [ ] **Step 3:** Фасад: три поля, алиасы `GoalTreeData`/`GoalTreeNode`/`GoalTreeTeam`/`ExportParams`/`ExportResult`, делегаты.
-- [ ] **Step 4:** Проверка по общему образцу.
+- [x] **Step 1:** Создать три пакета.
+- [x] **Step 2:** Перенести тесты из `export_test.go`, `search_test.go` и goal-tree тесты.
+- [x] **Step 3:** Фасад: три поля, алиасы `GoalTreeData`/`GoalTreeNode`/`GoalTreeTeam`/`ExportParams`/`ExportResult`, делегаты.
+- [x] **Step 4:** Проверка по общему образцу.
 
 ---
 
@@ -297,9 +297,9 @@ docker info > /dev/null && go test ./...
 
 Это устраняет нарушение правила 1 спеки 010: сейчас `server.go` собирает `PeriodData` из пяти репозиториев прямо в конструкторе. Батчевость (`ListByTeamsPeriod`, `ListCommentsByGoals`, `List` статусов) сохранить дословно.
 
-- [ ] **Step 1:** Создать loader, перенеся тело `hcLoader` из `server.go:114-163`.
-- [ ] **Step 2:** В `server.go` заменить замыкание на `healthcheckinuc.NewPeriodLoader(...)`.
-- [ ] **Step 3:** Проверка: `go build ./... && go vet ./...`, полный прогон.
+- [x] **Step 1:** Создать loader, перенеся тело `hcLoader` из `server.go:114-163`.
+- [x] **Step 2:** В `server.go` заменить замыкание на `healthcheckinuc.NewPeriodLoader(...)`.
+- [x] **Step 3:** Проверка: `go build ./... && go vet ./...`, полный прогон.
 
 ---
 
@@ -340,17 +340,17 @@ func (s *Scheduler) Start(ctx context.Context)
 
 **Что сохранить дословно:** advisory-lock `pg_try_advisory_lock(918273645)` — single-flight между репликами в K8s; карту `lastAttempt`, которая троттлит периоды, легитимно не дающие снимков (иначе они переобрабатываются на каждом тике); и то, что мутирует её ровно один держатель лока.
 
-- [ ] **Step 1:** Создать пакет, перенеся код из `server.go:245-309, 441-480`.
-- [ ] **Step 2:** Удалить петли из `server.go`; `Routes()` больше не запускает goroutine.
-- [ ] **Step 3:** Запускать из `app.New` после сборки сервера.
-- [ ] **Step 4:** Проверить, что `Routes()` чист:
+- [x] **Step 1:** Создать пакет, перенеся код из `server.go:245-309, 441-480`.
+- [x] **Step 2:** Удалить петли из `server.go`; `Routes()` больше не запускает goroutine.
+- [x] **Step 3:** Запускать из `app.New` после сборки сервера.
+- [x] **Step 4:** Проверить, что `Routes()` чист:
 
 ```bash
 rg -n 'go func|StartRefreshLoop|startProgressSnapshotLoop' internal/http/server.go && echo "^^^ петли остались" || echo "Routes() чист"
 wc -l internal/http/server.go   # ориентир: ~450 (было 701)
 ```
 
-- [ ] **Step 5:** Полный прогон + smoke: поднять приложение, убедиться, что снимки прогресса пишутся (лог `progress snapshot`), а health-checkin отдаётся.
+- [x] **Step 5:** Полный прогон + smoke: поднять приложение, убедиться, что снимки прогресса пишутся (лог `progress snapshot`), а health-checkin отдаётся.
 
 ---
 
@@ -359,13 +359,13 @@ wc -l internal/http/server.go   # ориентир: ~450 (было 701)
 **Files:**
 - Modify: `internal/service/service.go`, `specs/010-architecture-constraints.md`, дизайн-док
 
-- [ ] **Step 1:** Убедиться, что в корне `internal/service` остался только `service.go` (фасад) и его тест:
+- [x] **Step 1:** Убедиться, что в корне `internal/service` остался только `service.go` (фасад) и его тест:
 
 ```bash
 ls internal/service/*.go
 ```
 
-- [ ] **Step 2:** Посчитать состав фасада — должны остаться только делегаты, алиасы и обёртки:
+- [x] **Step 2:** Посчитать состав фасада — должны остаться только делегаты, алиасы и обёртки:
 
 ```bash
 python3 - <<'PY'
@@ -385,7 +385,7 @@ PY
 
 Ожидается: не-делегатов 0. Каждый оставшийся — либо пропущенный сценарий, либо кандидат в сервис сущности; разобрать поштучно.
 
-- [ ] **Step 3:** Проверить, что экспорт «ради фасада» с этапа C можно сузить. Кандидаты: `team.BuildHierarchy`, `team.FindDirectChildren`, `team.CollectDescendantIDs`, `team.HierarchyFromTeams`, `healthcheckin.BuildTeamPath`, `healthcheckin.Abs`. Для каждого:
+- [x] **Step 3:** Проверить, что экспорт «ради фасада» с этапа C можно сузить. Кандидаты: `team.BuildHierarchy`, `team.FindDirectChildren`, `team.CollectDescendantIDs`, `team.HierarchyFromTeams`, `healthcheckin.BuildTeamPath`, `healthcheckin.Abs`. Для каждого:
 
 ```bash
 rg -n '\bteam\.(BuildHierarchy|FindDirectChildren|CollectDescendantIDs|HierarchyFromTeams)\b|\bhealthcheckin\.(BuildTeamPath|Abs)\b' --glob '*.go'
@@ -393,11 +393,11 @@ rg -n '\bteam\.(BuildHierarchy|FindDirectChildren|CollectDescendantIDs|Hierarchy
 
 Если единственный потребитель — один пакет usecase, перенести туда и сделать приватным. Если потребителей несколько — оставить экспортированным.
 
-- [ ] **Step 4:** Обновить спеку 010: добавить слой `internal/usecase` и `internal/scheduler` в перечень слоёв, зафиксировать цепочку `handler → usecase → service → store` и правило «usecase оркестрирует сервисы, а не репозитории».
+- [x] **Step 4:** Обновить спеку 010: добавить слой `internal/usecase` и `internal/scheduler` в перечень слоёв, зафиксировать цепочку `handler → usecase → service → store` и правило «usecase оркестрирует сервисы, а не репозитории».
 
-- [ ] **Step 5:** Обновить дизайн-док §6 и §8 по фактическому результату; отметить, что нарушение правила 1 спеки 010 (бизнес-логика в `server.go`) устранено.
+- [x] **Step 5:** Обновить дизайн-док §6 и §8 по фактическому результату; отметить, что нарушение правила 1 спеки 010 (бизнес-логика в `server.go`) устранено.
 
-- [ ] **Step 6:** Финальный прогон.
+- [x] **Step 6:** Финальный прогон.
 
 ---
 

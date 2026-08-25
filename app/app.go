@@ -5,6 +5,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -129,5 +130,9 @@ func New(cfg Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &App{Handler: srv.Routes()}, nil
+	// Фоновые петли запускаются здесь, а не внутри Routes(): сборка роутера должна
+	// оставаться чистой, иначе её нельзя вызвать в тесте без goroutine и БД.
+	handler := srv.Routes()
+	srv.StartBackground(context.Background())
+	return &App{Handler: handler}, nil
 }

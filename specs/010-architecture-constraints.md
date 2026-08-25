@@ -25,14 +25,17 @@ AI должен сохранять разделение ответственно
 - `internal/platform/nomembership` — реестр страницы «нет доступа» (бывший `internal/onboarding`);
 - `internal/render/export` — рендер OKR в Markdown;
 - `internal/store` — SQL и persistence; каждый тип сущности имеет свой отдельный repository-тип; `store.Store` — composite-фабрика; auth-методы (users, sessions, grants, settings) живут здесь;
-- `internal/service` — сервисы по сущностям, по пакету на сущность: `team`, `goal`, `keyresult`, `period`, `goalshare`, `goallink`, `teamstatus`, `user`, `activity`, плюс `settings`, `provisioning`, `onboarding`, `healthcheckin`. Каждый работает **с одной** сущностью через **один** репозиторий, объявленный интерфейсом на стороне потребителя (`team.Repo`, `goal.Repo` и т.д.), и не пишет в журнал активности. `internal/service/servicetest` — общие fake-репозитории для тестов всех сервисов. Корневой `service.Service` — **временный фасад**: сохраняет старый API (имена методов, type alias на переехавшие типы, обёртки конструкторов), чтобы handlers не менялись до этапа перевязки; удаляется вместе с ней;
+- `internal/service` — сервисы по сущностям, по пакету на сущность: `team`, `goal`, `keyresult`, `period`, `goalshare`, `goallink`, `teamstatus`, `user`, `activity`, `progresssnap`, плюс `settings`, `provisioning`, `onboarding`, `healthcheckin`. Каждый работает **с одной** сущностью через **один** репозиторий, объявленный интерфейсом на стороне потребителя (`team.Repo`, `goal.Repo` и т.д.), и не пишет в журнал активности. `internal/service/servicetest` — общие fake-репозитории для тестов всех сервисов и usecase. Файлов в корне `internal/service` нет: фасад `service.Service` удалён, каждый обработчик получает ровно те сервисы и usecase, которые вызывает;
+- `internal/usecase` — бизнес-сценарии: `okrboard`, `goal`, `keyresult`, `period`, `goaltree`, `export`, `user`, `healthcheckin`. Каждый оркестрирует **сервисы сущностей**, а не репозитории: цепочка `handler → usecase → service → store`, у store одна дверь;
+- `internal/scheduler` — фоновые петли (обновление кэша health check-in, снимки прогресса). Запускается из `app.New`, а НЕ из `Routes()`: построение роутера должно оставаться чистой сборкой, иначе его нельзя вызвать в тесте без goroutine и БД;
 - `internal/auth` — auth manager, middleware chain, provider interface, policy evaluator;
 - `internal/auth/providers/{name}` — реализации провайдеров; каждый провайдер — изолированный пакет;
 - `internal/http` — SSR handlers; шаблоны живут в `/web/templates` и встраиваются пакетом `web`
   (`web.TemplatesFS`); `NewServer(..., Options)` параметризуется
   инжектируемыми seam'ами (resolver, `Entitlements`, имя no-membership-страницы, mount'ы
   control-plane роутов по уровням);
-- `internal/http/handlers/api/v1` — API-контракт для JSON/form-data;
+- `internal/http/httpdeps` — сборка графа сервисов и usecase: `Build(store, grantsCache, hcCache, logger) Deps`. Единственное место, где известен полный список зависимостей; `server.go` раздаёт из него поля по пакетам;
+- `internal/http/handlers/api/v1` — API-контракт для JSON/form-data; **пакет на URI**, см. [070-code-structure.md](070-code-structure.md);
 - `internal/http/handlers/web` — веб-хендлеры SSR-страниц (login, no-access, goal-delete); все `/admin*`, `/`, `/settings`, `/system` отдают React-shell из `server.go` (единый источник правды навигации — `sidebar.js`);
 - `app` (public, **корень модуля**) — фасад: `app.New(Config) (*App, error)` собирает приложение
   из `Config` + seam'ов, выбираемых по имени из реестров (`auth.RegisterResolveStrategy`,
@@ -47,6 +50,20 @@ AI должен сохранять разделение ответственно
 **Группировка в `internal/`.** В корне `internal/` лежат только слои и группы, не отдельные доменные пакеты: `core/` — чистая логика без I/O; `platform/` — registry-сеймы OSS/SaaS; `render/` — форматтеры; плюс `auth/`, `http/`, `service/`, `store/`. Новый пакет кладётся в существующую группу; заводить пакет в корне `internal/` — повод сначала решить, к какой группе он относится.
 
 **Граница service / usecase.** Метод принадлежит сервису сущности, если трогает не более одного репозитория **и** не пишет в журнал активности. Иначе это usecase. Правило операционное — проверяется механически, а не на вкус: карту «метод → репозитории» можно построить скриптом и свериться.
+
+**Usecase не ходит в репозитории.** Если сценарию нужна операция над одной сущностью, её добавляют в сервис этой сущности (обычно однострочный проброс), а не тянут репозиторий в usecase. Иначе слой service вырождается, а у store появляется вторая дверь.
+
+**Зависимости между usecase запрещены.** Если сценарию нужен результат другого сценария, объявляется узкий порт на стороне потребителя, а не импорт чужого пакета целиком. Так сделано в `usecase/export` (порт `BoardReader` в `okrboard`), `service/goallink` (`GoalProgressReader` в `goal`) и `internal/scheduler` (`PeriodFinder`, `SnapshotRunner`, `ActivePeriodLister`). Порт называет ровно то, что нужно потребителю, и не даёт слою слипнуться внутри себя.
+
+**Обработчик на URI.** Один URI обслуживает один пакет, путь которого повторяет путь URI (сегменты-параметры выброшены, дефисы убраны): `/api/v1/goals/{goalID}/key-results` → `handlers/api/v1/goals/keyresults`. Методы называются по глаголу (`Get`, `Post`, `Patch`, `Delete`), регистрация — в `routes.go` того же пакета. Общий для группы код выносится в лист-пакет (`goalcommon`, `admincommon`, …), потому что родитель монтирует подпакеты и обратный импорт даёт цикл. Полная карта и два намеренных исключения — в [070-code-structure.md](070-code-structure.md).
+
+**Handler не работает с сырыми данными store.** Обработчик принимает и отдаёт итоговые модели: доменные типы, DTO ответа и типы своего сервиса/usecase. Позиция строки в таблице, курсор пагинации, `*Filter`/`*Input` репозитория — детали слоя store, и в handler им делать нечего. Показательный случай — лента активности: курсор `created_at|id` кодируется и разбирается в `service/activity`, наружу и обратно ходит непрозрачная строка (`activity.Filter.Cursor`, `activity.Page.NextCursor`), а `activitycommon` занимается только разбором query-параметров и сборкой DTO.
+
+Остаточные протечки store-типов в handlers числятся долгом и перечислены в TODO дизайн-дока: sentinel-ошибки (`goals.ErrNotFound` и подобные — им место в `core/domain`), `*Input`-структуры репозиториев и read-модели вида `memberships.MembershipWithTenant`.
+
+**Набор маршрутов зафиксирован golden-тестом.** `internal/http/routes_golden_test.go` обходит собранный роутер через `chi.Walk` и сверяется с `testdata/routes.golden`. Grep по исходникам для этого не годится: как только URI становится переменной (табличная регистрация SSR-страниц), он молча перестаёт их видеть. Намеренное изменение контракта обновляет golden в том же change set: `go test ./internal/http -run RoutesGolden -update-routes`.
+
+**Батчевые чтения остаются батчевыми.** Методы вида `ListByTeamsPeriod(periodID, teamIDs)`, `ListCommentsByGoals(goalIDs)`, `RecordBatch` существуют, чтобы не делать N+1 (правило 9 в CLAUDE.md). Они помечены комментарием в коде; превращение любого из них в цикл — регрессия, а не рефакторинг.
 
 **Именование.** Store — множественное число, service — единственное (`store/goals` ↔ `service/goal`). Коллизии имён пакетов разрешаются алиасом на месте импорта, а не переименованием каталога:
 

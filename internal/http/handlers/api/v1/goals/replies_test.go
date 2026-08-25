@@ -10,7 +10,6 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 )
@@ -47,8 +46,8 @@ func TestReplyAndDeleteHandlers(t *testing.T) {
 		t.Fatalf("others task: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 	defer server.Close()
 
 	post := func(path, body string) int {

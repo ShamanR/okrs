@@ -12,7 +12,6 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
@@ -72,10 +71,10 @@ func TestTeamExportEndpoint(t *testing.T) {
 		t.Fatalf("create goal: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
+	gc := grants.NewGrantsCache(repo.Grants)
 
 	// happy path: team scope, short
-	inScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+	inScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 	defer inScope.Close()
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/export?period_id=%d&scope=team", inScope.URL, teamID, periodID))
@@ -109,7 +108,7 @@ func TestTeamExportEndpoint(t *testing.T) {
 	}
 
 	// team out of scope -> 404
-	outScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{99999}))
+	outScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{99999}))
 	defer outScope.Close()
 	resp3, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/export?period_id=%d&scope=team", outScope.URL, teamID, periodID))
 	if err != nil {
