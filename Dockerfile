@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
 
@@ -18,7 +18,7 @@ RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /app
 
 COPY --from=builder /out/server /app/server
-COPY internal/web /app/internal/web
+COPY web /app/web
 COPY migrations /app/migrations
 
 EXPOSE 8080

@@ -7,35 +7,33 @@ import (
 	"strconv"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
-	"okrs/internal/service"
+	"okrs/internal/core/domain"
+	hcsvc "okrs/internal/service/healthcheckin"
 )
 
-type serviceProvider interface {
-	GetHealthCheckIn(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg service.HealthCheckInConfig) (*service.HealthCheckInResult, error)
+// Computer computes the check-in from the cached period snapshot.
+// *healthcheckin.Service satisfies it.
+type Computer interface {
+	Get(ctx context.Context, scope domain.TenantScope, userUDID string, isAdmin bool, periodID int64, cfg hcsvc.Config) (*hcsvc.Result, error)
 }
 
+// settingsProvider reads the tenant's check-in config. Read-only on purpose: writing it
+// (and invalidating the cache afterwards) belongs to admin/settings/healthcheckin.
 type settingsProvider interface {
 	GetTenant(ctx context.Context, scope domain.TenantScope, key string) (json.RawMessage, error)
-	SetTenantProduct(ctx context.Context, scope domain.TenantScope, key string, value any) error
-}
-
-type cacheInvalidator interface {
-	InvalidateAll()
 }
 
 type Handler struct {
-	svc      serviceProvider
+	svc      Computer
 	settings settingsProvider
-	cache    cacheInvalidator
 }
 
-func New(svc serviceProvider, settings settingsProvider, cache cacheInvalidator) *Handler {
-	return &Handler{svc: svc, settings: settings, cache: cache}
+func New(svc Computer, settings settingsProvider) *Handler {
+	return &Handler{svc: svc, settings: settings}
 }
 
-// HandleHealthCheckIn serves GET /api/v1/health-checkin?period_id=X
-func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
+// Get serves GET /api/v1/health-checkin?period_id=X
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	periodIDStr := r.URL.Query().Get("period_id")
 	periodID, err := strconv.ParseInt(periodIDStr, 10, 64)
 	if err != nil || periodID <= 0 {
@@ -54,7 +52,7 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cfg, err := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
+	cfg, err := hcsvc.LoadConfig(r.Context(), scope, h.settings)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to load config")
 		return
@@ -63,69 +61,12 @@ func (h *Handler) HandleHealthCheckIn(w http.ResponseWriter, r *http.Request) {
 	// Unrestricted health-check scope is granted to tenant admins (active role), matching the
 	// PolicyEvaluator's tenant-scoped admin model — not any legacy global flag.
 	role, _ := auth.ActiveRoleFromContext(r.Context())
-	result, err := h.svc.GetHealthCheckIn(r.Context(), scope, user.UDID, role == domain.RoleAdmin, periodID, cfg)
+	result, err := h.svc.Get(r.Context(), scope, user.UDID, role == domain.RoleAdmin, periodID, cfg)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, result)
-}
-
-// HandleGetHealthCheckInSettings serves GET /api/v1/admin/settings/health-checkin
-func (h *Handler) HandleGetHealthCheckInSettings(w http.ResponseWriter, r *http.Request) {
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusForbidden, "no active tenant")
-		return
-	}
-	cfg, err := service.LoadHealthCheckInConfig(r.Context(), scope, h.settings)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, cfg)
-}
-
-// HandleUpdateHealthCheckInSettings serves POST /api/v1/admin/settings/health-checkin
-func (h *Handler) HandleUpdateHealthCheckInSettings(w http.ResponseWriter, r *http.Request) {
-	var body service.HealthCheckInConfig
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid body")
-		return
-	}
-	if body.StaleDays <= 0 {
-		writeError(w, http.StatusBadRequest, "stale_days must be > 0")
-		return
-	}
-	if body.CacheTTLMinutes <= 0 {
-		writeError(w, http.StatusBadRequest, "cache_ttl_minutes must be > 0")
-		return
-	}
-	if body.GreenThreshold < 1 || body.GreenThreshold > 100 {
-		writeError(w, http.StatusBadRequest, "green_threshold must be 1..100")
-		return
-	}
-	if body.CommentDepth < 0 {
-		writeError(w, http.StatusBadRequest, "comment_depth must be >= 0")
-		return
-	}
-	if body.ResolvedCommentsLimit < 1 {
-		writeError(w, http.StatusBadRequest, "resolved_comments_limit must be >= 1")
-		return
-	}
-	scope, ok := auth.TenantScopeFromContext(r.Context())
-	if !ok {
-		writeError(w, http.StatusForbidden, "no active tenant")
-		return
-	}
-	if err := h.settings.SetTenantProduct(r.Context(), scope, "health_checkin_config", body); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if h.cache != nil {
-		h.cache.InvalidateAll()
-	}
-	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

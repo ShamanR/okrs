@@ -12,9 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
@@ -107,11 +106,11 @@ func TestKRProgressAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
+	gc := grants.NewGrantsCache(repo.Grants)
 	payload, _ := json.Marshal(map[string]float64{"current_value": 50})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -125,7 +124,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	})
 
 	t.Run("denied when team not in scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID + 999}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID + 999}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -139,7 +138,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed when team in scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -153,7 +152,7 @@ func TestKRProgressAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed for admin (nil scope)", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/progress/numerical", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -171,11 +170,11 @@ func TestKRNoteAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, _, krID := buildKRAccessFixture(t, pool, repo)
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
+	gc := grants.NewGrantsCache(repo.Grants)
 	payload, _ := json.Marshal(map[string]string{"text": "test note"})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -189,7 +188,7 @@ func TestKRNoteAccessControl(t *testing.T) {
 	})
 
 	t.Run("denied when team not in scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID + 999}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID + 999}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -203,7 +202,7 @@ func TestKRNoteAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed when team in scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -217,7 +216,7 @@ func TestKRNoteAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed for admin (nil scope)", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/krs/%d/note", server.URL, krID),
 			"application/json", bytes.NewBuffer(payload))
@@ -235,7 +234,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 	pool, repo, teardown := setupKRAccessDB(t)
 	defer teardown()
 	teamID, _, goalID, _ := buildKRAccessFixture(t, pool, repo)
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
+	gc := grants.NewGrantsCache(repo.Grants)
 
 	body, ct := multipartBody(map[string]string{
 		"title": "New KR", "kind": "NUMERICAL", "weight": "50",
@@ -243,7 +242,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 	})
 
 	t.Run("denied with empty scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{}))
 		defer server.Close()
 		body, ct := multipartBody(map[string]string{
 			"title": "New KR", "kind": "NUMERICAL", "weight": "50",
@@ -260,7 +259,7 @@ func TestCreateKRAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed when team in scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/key-results", server.URL, goalID), ct, body)
 		if err != nil {

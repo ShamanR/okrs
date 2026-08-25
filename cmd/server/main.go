@@ -16,8 +16,8 @@ import (
 
 	"okrs/app"
 	"okrs/internal/auth"
-	"okrs/internal/domain"
-	"okrs/internal/entitlements"
+	"okrs/internal/core/domain"
+	"okrs/internal/platform/entitlements"
 	"okrs/internal/store"
 	"okrs/internal/store/periods"
 

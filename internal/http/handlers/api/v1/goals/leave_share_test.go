@@ -8,9 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/shares"
@@ -54,8 +53,8 @@ func TestLeaveGoalShareRemovesGoalFromTeamOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
 	defer server.Close()
 
 	sees := func(teamID int64) bool {
@@ -142,8 +141,8 @@ func TestLeaveGoalShareUnattachedTeamReturns404(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil)) // admin scope: passes the team-access check
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil)) // admin scope: passes the team-access check
 	defer server.Close()
 
 	del := func(gID, tID int64) int {
@@ -213,8 +212,8 @@ func TestDetachOwnerFromSharedGoalKeepsItForOthers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
 	defer server.Close()
 
 	sees := func(teamID int64) bool {

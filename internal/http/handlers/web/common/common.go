@@ -11,12 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"okrs/internal/domain"
-	"okrs/internal/service"
+	"okrs/internal/core/domain"
+	keyresultsvc "okrs/internal/service/keyresult"
 )
 
 type Dependencies struct {
-	Service   *service.Service
 	Logger    *slog.Logger
 	Templates *template.Template
 	Zone      *time.Location
@@ -180,16 +179,16 @@ func KRKindLabel(k domain.KRKind) string {
 
 // ParseNumericalMeta parses NUMERICAL meta fields (unit, values, optional checkpoints)
 // from a form. Shared by the API and web KR handlers.
-func ParseNumericalMeta(r *http.Request) (service.KeyResultMetaInput, error) {
+func ParseNumericalMeta(r *http.Request) (keyresultsvc.MetaInput, error) {
 	unit := strings.TrimSpace(r.FormValue("numerical_unit"))
 	if !domain.IsValidKRUnit(unit) {
-		return service.KeyResultMetaInput{}, fmt.Errorf("Недопустимая единица измерения")
+		return keyresultsvc.MetaInput{}, fmt.Errorf("Недопустимая единица измерения")
 	}
 	checkpoints, err := parseNumericalCheckpoints(r)
 	if err != nil {
-		return service.KeyResultMetaInput{}, err
+		return keyresultsvc.MetaInput{}, err
 	}
-	return service.KeyResultMetaInput{
+	return keyresultsvc.MetaInput{
 		NumericalStart:       ParseFloatField(r.FormValue("numerical_start")),
 		NumericalTarget:      ParseFloatField(r.FormValue("numerical_target")),
 		NumericalCurrent:     ParseFloatField(r.FormValue("numerical_current")),

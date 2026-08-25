@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 const defaultTenantSettingsCacheTTL = 5 * time.Minute

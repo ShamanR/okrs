@@ -11,16 +11,46 @@ import (
 	"time"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 	apiactivity "okrs/internal/http/handlers/api/v1/activity"
+	activitycat "okrs/internal/http/handlers/api/v1/activity/categorycounts"
+	activitytree "okrs/internal/http/handlers/api/v1/activity/treecounts"
 	apigoals "okrs/internal/http/handlers/api/v1/goals"
+	goalscomments "okrs/internal/http/handlers/api/v1/goals/comments"
+	goalsreplies "okrs/internal/http/handlers/api/v1/goals/comments/replies"
+	goalsresolve "okrs/internal/http/handlers/api/v1/goals/comments/resolve"
+	goalsunresolve "okrs/internal/http/handlers/api/v1/goals/comments/unresolve"
+	"okrs/internal/http/handlers/api/v1/goals/goalcommon"
+	goalskeyresults "okrs/internal/http/handlers/api/v1/goals/keyresults"
+	goalslinkable "okrs/internal/http/handlers/api/v1/goals/linkable"
+	goalslinks "okrs/internal/http/handlers/api/v1/goals/links"
+	goalsmovedown "okrs/internal/http/handlers/api/v1/goals/movedown"
+	goalsmoveup "okrs/internal/http/handlers/api/v1/goals/moveup"
+	goalsshare "okrs/internal/http/handlers/api/v1/goals/share"
+	goalstransfer "okrs/internal/http/handlers/api/v1/goals/transfer"
+	goalsweight "okrs/internal/http/handlers/api/v1/goals/weight"
 	apigoaltree "okrs/internal/http/handlers/api/v1/goaltree"
-	apihierarhy "okrs/internal/http/handlers/api/v1/hierarhy"
+	apihierarchy "okrs/internal/http/handlers/api/v1/hierarchy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
+	krsdescription "okrs/internal/http/handlers/api/v1/krs/description"
+	"okrs/internal/http/handlers/api/v1/krs/krscommon"
+	krsmovedown "okrs/internal/http/handlers/api/v1/krs/movedown"
+	krsmoveup "okrs/internal/http/handlers/api/v1/krs/moveup"
+	krsnote "okrs/internal/http/handlers/api/v1/krs/note"
+	krsboolean "okrs/internal/http/handlers/api/v1/krs/progress/boolean"
+	krsnumerical "okrs/internal/http/handlers/api/v1/krs/progress/numerical"
+	krsproject "okrs/internal/http/handlers/api/v1/krs/progress/project"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	apiteams "okrs/internal/http/handlers/api/v1/teams"
-	"okrs/internal/service"
+	teamsexport "okrs/internal/http/handlers/api/v1/teams/export"
+	teamsgoals "okrs/internal/http/handlers/api/v1/teams/goals"
+	teamsokrs "okrs/internal/http/handlers/api/v1/teams/okrs"
+	teamsoverview "okrs/internal/http/handlers/api/v1/teams/overview"
+	teamsstatus "okrs/internal/http/handlers/api/v1/teams/status"
+	"okrs/internal/http/httpdeps"
+	"okrs/internal/store"
+	"okrs/internal/store/grants"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-migrate/migrate/v4"
@@ -29,18 +59,16 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func NewAPIV1Router(service *service.Service) *chi.Mux {
-	return NewAPIV1RouterWithScope(service, nil)
+func NewAPIV1Router(st *store.Store, grantsCache *grants.GrantsCache) *chi.Mux {
+	return NewAPIV1RouterWithScope(st, grantsCache, nil)
 }
 
 // NewAPIV1RouterWithScope returns a test router with a fixed scope injected into every request context.
 // Pass nil for unrestricted access (admin), an empty slice for no access, or a specific list of team IDs.
-func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.Mux {
-	hierarchyHandler := apihierarhy.New(svc)
-	periodsHandler := apiperiods.New(svc)
-	teamsHandler := apiteams.New(svc)
-	goalsHandler := apigoals.New(svc)
-	krsHandler := apikrs.New(svc)
+func NewAPIV1RouterWithScope(st *store.Store, grantsCache *grants.GrantsCache, allowedTeamIDs []int64) *chi.Mux {
+	// Собираем тот же граф сервисов и usecase, что и боевой сервер: handlers теперь
+	// принимают отдельные зависимости, а не фасад.
+	d := httpdeps.Build(st, grantsCache, nil, nil)
 
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
@@ -50,21 +78,47 @@ func NewAPIV1RouterWithScope(svc *service.Service, allowedTeamIDs []int64) *chi.
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
-	apihierarhy.RegisterRoutes(router, hierarchyHandler)
-	apiperiods.RegisterRoutes(router, periodsHandler)
-	apiteams.RegisterRoutes(router, teamsHandler)
-	apigoals.RegisterRoutes(router, goalsHandler)
-	apigoaltree.RegisterRoutes(router, apigoaltree.New(svc))
-	apikrs.RegisterRoutes(router, krsHandler)
-	apiactivity.RegisterRoutes(router, apiactivity.New(svc))
+	apihierarchy.RegisterRoutes(router, apihierarchy.New(d.Teams, d.Board, d.Periods, d.Users))
+	apiperiods.RegisterRoutes(router, apiperiods.New(d.Periods))
+	apiteams.RegisterRoutes(router, apiteams.New(d.Teams))
+	teamsokrs.RegisterRoutes(router, teamsokrs.New(d.Board, d.Periods, d.Users))
+	teamsoverview.RegisterRoutes(router, teamsoverview.New(d.Board, d.Periods, d.Users))
+	teamsexport.RegisterRoutes(router, teamsexport.New(d.ExportUC))
+	teamsstatus.RegisterRoutes(router, teamsstatus.New(d.PeriodUC))
+	teamsgoals.RegisterRoutes(router, teamsgoals.New(d.GoalUC, d.Users))
+	apigoals.RegisterRoutes(router, apigoals.New(d.Goals, d.Shares, d.Links, d.Users, d.GoalUC))
+	goalslinkable.RegisterRoutes(router, goalslinkable.New(d.Links))
+	goalslinks.RegisterRoutes(router, goalslinks.New(d.Goals, d.GoalUC))
+	goalsshare.RegisterRoutes(router, goalsshare.New(d.Goals, d.Shares, d.GoalUC))
+	goalstransfer.RegisterRoutes(router, goalstransfer.New(d.Goals, d.GoalUC))
+	goalsweight.RegisterRoutes(router, goalsweight.New(d.Goals, d.Shares))
+	goalscomments.RegisterRoutes(router, goalscomments.New(d.Goals, d.GoalUC, d.Shares))
+	goalsreplies.RegisterRoutes(router, goalsreplies.New(d.Goals, d.GoalUC, d.Shares))
+	goalsresolve.RegisterRoutes(router, goalsresolve.New(goalcommon.ResolveDeps{Goals: d.Goals, Shares: d.Shares, UC: d.GoalUC}))
+	goalsunresolve.RegisterRoutes(router, goalsunresolve.New(goalcommon.ResolveDeps{Goals: d.Goals, Shares: d.Shares, UC: d.GoalUC}))
+	goalsmoveup.RegisterRoutes(router, goalsmoveup.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
+	goalsmovedown.RegisterRoutes(router, goalsmovedown.New(goalcommon.MoveDeps{Goals: d.Goals, Shares: d.Shares, Mover: d.Goals}))
+	goalskeyresults.RegisterRoutes(router, goalskeyresults.New(d.Goals, d.KrUC))
+	apigoaltree.RegisterRoutes(router, apigoaltree.New(d.Periods, d.TreeUC))
+	apikrs.RegisterRoutes(router, apikrs.New(d.Goals, d.Krs, d.KrUC))
+	krsnumerical.RegisterRoutes(router, krsnumerical.New(d.Goals, d.Krs, d.KrUC))
+	krsboolean.RegisterRoutes(router, krsboolean.New(d.Goals, d.Krs, d.KrUC))
+	krsproject.RegisterRoutes(router, krsproject.New(d.Goals, d.Krs, d.KrUC))
+	krsnote.RegisterRoutes(router, krsnote.New(d.Goals, d.Krs, d.KrUC))
+	krsdescription.RegisterRoutes(router, krsdescription.New(d.Goals, d.Krs))
+	krsmoveup.RegisterRoutes(router, krsmoveup.New(krscommon.MoveDeps{KRs: d.Krs, Goals: d.Goals}))
+	krsmovedown.RegisterRoutes(router, krsmovedown.New(krscommon.MoveDeps{KRs: d.Krs, Goals: d.Goals}))
+	apiactivity.RegisterRoutes(router, apiactivity.New(d.Activity))
+	activitytree.RegisterRoutes(router, activitytree.New(d.Activity))
+	activitycat.RegisterRoutes(router, activitycat.New(d.Activity))
 	v1.RegisterMethodNotAllowed(router)
 	return router
 }
 
 // NewAPIV1RouterWithUser — как NewAPIV1RouterWithScope, но дополнительно кладёт пользователя в
 // контекст (для эндпоинтов, зависящих от UDID вызывающего, напр. led_by_me в goal-tree).
-func NewAPIV1RouterWithUser(svc *service.Service, allowedTeamIDs []int64, user *domain.User) *chi.Mux {
-	router := NewAPIV1RouterWithScope(svc, allowedTeamIDs)
+func NewAPIV1RouterWithUser(st *store.Store, grantsCache *grants.GrantsCache, allowedTeamIDs []int64, user *domain.User) *chi.Mux {
+	router := NewAPIV1RouterWithScope(st, grantsCache, allowedTeamIDs)
 	wrapped := chi.NewRouter()
 	wrapped.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

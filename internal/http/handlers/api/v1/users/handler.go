@@ -7,22 +7,29 @@ import (
 	"strconv"
 
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
 )
 
-type serviceIface interface {
-	SearchUsersInScope(ctx context.Context, scope domain.TenantScope, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error)
-	GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
-	ListUserLeadTeams(ctx context.Context) (map[string]string, error)
+// Searcher is the scope-aware search — a usecase, because it intersects the caller's
+// grants with the team hierarchy before querying.
+type Searcher interface {
+	SearchInScope(ctx context.Context, scope domain.TenantScope, scopeTeamIDs []int64, q string, limit int) ([]*domain.User, error)
+}
+
+// Directory is the plain user lookup — a single-entity service.
+type Directory interface {
+	GetByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
+	ListLeadTeams(ctx context.Context) (map[string]string, error)
 }
 
 type Handler struct {
-	svc serviceIface
+	search Searcher
+	dir    Directory
 }
 
-func New(svc serviceIface) *Handler {
-	return &Handler{svc: svc}
+func New(search Searcher, dir Directory) *Handler {
+	return &Handler{search: search, dir: dir}
 }
 
 type userResponse struct {
@@ -38,7 +45,7 @@ type userResponse struct {
 // At least one of ?ids[]=<udid> or ?q=<string> must be present.
 // ids[] mode: return up to 100 users by UDID (no scope filtering — used for loading known references).
 // q mode:    return up to 20 users matching q within the caller's hierarchy scope.
-func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	ids := r.URL.Query()["ids[]"]
 	_, hasQ := r.URL.Query()["q"]
 	q := r.URL.Query().Get("q")
@@ -53,7 +60,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	var err error
 
 	if len(ids) > 0 {
-		users, err = h.svc.GetUsersByUDIDs(ctx, ids)
+		users, err = h.dir.GetByUDIDs(ctx, ids)
 	} else {
 		tenantScope, ok := auth.TenantScopeFromContext(ctx)
 		if !ok {
@@ -71,14 +78,14 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 		} else {
 			scopeTeamIDs, _ = auth.AllowedTeamIDsFromCtx(ctx)
 		}
-		users, err = h.svc.SearchUsersInScope(ctx, tenantScope, scopeTeamIDs, q, 20)
+		users, err = h.search.SearchInScope(ctx, tenantScope, scopeTeamIDs, q, 20)
 	}
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to list users", nil)
 		return
 	}
 
-	leadTeams, err := h.svc.ListUserLeadTeams(ctx)
+	leadTeams, err := h.dir.ListLeadTeams(ctx)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to list lead teams", nil)
 		return

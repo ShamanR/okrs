@@ -8,9 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 )
@@ -89,10 +88,10 @@ func TestBoardEmbedsParentsScopeFiltered(t *testing.T) {
 		t.Fatalf("link: %v", err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
+	gc := grants.NewGrantsCache(repo.Grants)
 
 	// Admin scope (nil): parent in another team is visible.
-	adminServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil))
+	adminServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
 	defer adminServer.Close()
 	board := fetchBoard(t, adminServer.URL, teamChild, periodID)
 	var childGoal *boardGoal
@@ -115,7 +114,7 @@ func TestBoardEmbedsParentsScopeFiltered(t *testing.T) {
 	}
 
 	// Scoped to teamChild only: parent (in teamParent) is hidden.
-	scopedServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamChild}))
+	scopedServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamChild}))
 	defer scopedServer.Close()
 	scopedBoard := fetchBoard(t, scopedServer.URL, teamChild, periodID)
 	for i := range scopedBoard.Goals {

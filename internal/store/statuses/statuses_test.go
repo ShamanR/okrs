@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/statuses"
 	"okrs/internal/store/testutil"
 )

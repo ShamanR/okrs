@@ -78,7 +78,7 @@ func TestShellReactBuildSwitch(t *testing.T) {
 // readPeriodURL/usePeriodURLSync/periodLinkParams are defined when the app runs.
 func TestPeriodSelectionShellsLoadPeriodURL(t *testing.T) {
 	const shared = `/static/period_url.js`
-	if _, err := os.Stat("../web/static/period_url.js"); err != nil {
+	if _, err := os.Stat("../../web/static/period_url.js"); err != nil {
 		t.Fatalf("shared period_url.js missing: %v", err)
 	}
 	shells := map[string]string{

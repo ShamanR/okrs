@@ -21,4 +21,9 @@
   030-user-flows.md
   040-api-contract.md
   050-permissions-and-lifecycle.md
+  070-code-structure.md
 ```
+
+`070-code-structure.md` отвечает на вопрос «где лежит код»: раскладка пакетов по
+слоям и карта «URI → пакет обработчика». `010-architecture-constraints.md` —
+на вопрос «кому что можно вызывать».

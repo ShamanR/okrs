@@ -8,9 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/shares"
@@ -56,8 +55,8 @@ func TestMoveGoalReadsTeamIDFromJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, nil)) // admin scope
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil)) // admin scope
 	defer server.Close()
 
 	// The tracker SPA sends team_id as a JSON body via apiPost.

@@ -11,7 +11,7 @@ import (
 
 	"okrs/app"
 	"okrs/internal/auth"
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/sessions"
 	"okrs/internal/store/testutil"

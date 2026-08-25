@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/krs"
 	"okrs/internal/store/testutil"
 )

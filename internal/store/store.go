@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/activity"
 	"okrs/internal/store/goallinks"
 	"okrs/internal/store/goals"

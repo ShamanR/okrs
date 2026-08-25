@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/store/teams"
 	"okrs/internal/store/testutil"
 	"okrs/internal/store/users"
@@ -193,7 +193,7 @@ func TestTeamLeadUDID(t *testing.T) {
 
 	u, err := ur.UpsertUser(ctx, users.UpsertUserInput{
 		ProviderSubjectKey: "test:lead-udid-user",
-		Provider: "test", Subject: "lead-udid-user",
+		Provider:           "test", Subject: "lead-udid-user",
 		DisplayName: "Lead User",
 	})
 	if err != nil {

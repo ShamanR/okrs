@@ -8,9 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/testutil"
-	"okrs/internal/service"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/grants"
 )
@@ -49,8 +48,8 @@ func TestResolveGoalComment(t *testing.T) {
 	}
 	commentID := comments[0].ID
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, []int64{teamID}))
+	gc := grants.NewGrantsCache(repo.Grants)
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
 	defer server.Close()
 
 	post := func(path string) int {
@@ -124,11 +123,11 @@ func TestResolveGoalCommentOnSharedGoal(t *testing.T) {
 	comments, _ := repo.Goals.ListGoalComments(ctx, scope, goalID)
 	commentID := comments[0].ID
 
-	svc := service.NewFromStore(repo, grants.NewGrantsCache(repo.Grants), nil, nil)
+	gc := grants.NewGrantsCache(repo.Grants)
 	resolveURL := fmt.Sprintf("/api/v1/goals/%d/comments/%d/resolve", goalID, commentID)
 
 	postWithScope := func(allowed []int64, path string) int {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(svc, allowed))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, allowed))
 		defer server.Close()
 		resp, err := http.Post(server.URL+path, "application/json", bytes.NewBufferString("{}"))
 		if err != nil {

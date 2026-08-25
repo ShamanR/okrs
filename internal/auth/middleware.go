@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 // SessionMiddleware resolves the session cookie and loads user+session into context.

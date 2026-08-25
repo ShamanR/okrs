@@ -3,7 +3,7 @@ package auth
 import (
 	"context"
 
-	"okrs/internal/domain"
+	"okrs/internal/core/domain"
 )
 
 type contextKey int

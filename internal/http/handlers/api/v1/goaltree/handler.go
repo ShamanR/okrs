@@ -5,18 +5,34 @@ import (
 	"strconv"
 	"strings"
 
+	"context"
 	"okrs/internal/auth"
+	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
-	"okrs/internal/service"
+	goaltreeuc "okrs/internal/usecase/goaltree"
 )
 
-type Handler struct {
-	service *service.Service
+// PeriodViewLister отдаёт список периодов для режима cross_period.
+// *period.Service удовлетворяет.
+type PeriodViewLister interface {
+	ListViews(ctx context.Context, scope domain.TenantScope, includeArchived bool) ([]domain.PeriodView, error)
 }
 
-func New(service *service.Service) *Handler { return &Handler{service: service} }
+// TreeBuilder собирает граф целей и связей. *goaltree.UseCase удовлетворяет.
+type TreeBuilder interface {
+	GoalTree(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, periodIDs []int64, callerUDID string) (goaltreeuc.GoalTreeData, error)
+}
+
+type Handler struct {
+	periods PeriodViewLister
+	tree    TreeBuilder
+}
+
+func New(periods PeriodViewLister, tree TreeBuilder) *Handler {
+	return &Handler{periods: periods, tree: tree}
+}
 
 // HandleGoalTree отдаёт агрегированный граф целей/связей в scope.
 // GET /api/v1/goal-tree?period_id=&cross_period=
@@ -29,7 +45,7 @@ func (h *Handler) HandleGoalTree(w http.ResponseWriter, r *http.Request) {
 	}
 	crossPeriod := r.URL.Query().Get("cross_period") == "1"
 
-	views, err := h.service.ListPeriodViews(r.Context(), scope, false)
+	views, err := h.periods.ListViews(r.Context(), scope, false)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load periods", nil)
 		return
@@ -55,7 +71,7 @@ func (h *Handler) HandleGoalTree(w http.ResponseWriter, r *http.Request) {
 		callerUDID = u.UDID
 	}
 
-	data, err := h.service.GoalTree(r.Context(), scope, allowed, adminAll, periodIDs, callerUDID)
+	data, err := h.tree.GoalTree(r.Context(), scope, allowed, adminAll, periodIDs, callerUDID)
 	if err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load goal tree", nil)
 		return
@@ -63,7 +79,7 @@ func (h *Handler) HandleGoalTree(w http.ResponseWriter, r *http.Request) {
 	v1.WriteJSON(w, http.StatusOK, buildResponse(data))
 }
 
-func buildResponse(data service.GoalTreeData) dto.GoalTreeResponse {
+func buildResponse(data goaltreeuc.GoalTreeData) dto.GoalTreeResponse {
 	resp := dto.GoalTreeResponse{
 		Periods: make([]dto.GoalTreePeriod, 0, len(data.Periods)),
 		Teams:   make([]dto.GoalTreeTeam, 0, len(data.Teams)),
