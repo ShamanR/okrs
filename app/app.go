@@ -15,6 +15,7 @@ import (
 	"okrs/internal/auth"
 	httpserver "okrs/internal/http"
 	"okrs/internal/platform/entitlements"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
@@ -43,6 +44,15 @@ type Config struct {
 
 type App struct {
 	Handler http.Handler
+
+	bus *eventbus.Bus
+}
+
+// Close releases background resources New started: the event bus's async subscriber
+// goroutines (none yet in the OSS box, but a SaaS build's notifier registers one).
+// Waits up to timeout for queued events to drain before giving up.
+func (a *App) Close(timeout time.Duration) error {
+	return a.bus.Close(timeout)
 }
 
 // withAuthDefaults fills unset auth fields with OSS defaults so a near-empty Config yields the
@@ -116,7 +126,13 @@ func New(cfg Config) (*App, error) {
 		return nil, fmt.Errorf("app: unknown entitlements %q", entName)
 	}
 
-	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, httpserver.Options{
+	// The bus is created before the server so httpdeps.Build (called from within
+	// NewServer) can register subscribers on it; Start only happens below, once
+	// assembly is done — Subscribe after Start panics by design, so this order is
+	// what catches an assembly-ordering mistake immediately instead of in prod.
+	bus := eventbus.New(logger)
+
+	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, bus, httpserver.Options{
 		Resolver:         auth.NewTenantResolver(strategies...),
 		TenantCache:      tenantCache,
 		MembershipCache:  membershipCache,
@@ -130,9 +146,10 @@ func New(cfg Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+	bus.Start(context.Background())
 	// Фоновые петли запускаются здесь, а не внутри Routes(): сборка роутера должна
 	// оставаться чистой, иначе её нельзя вызвать в тесте без goroutine и БД.
 	handler := srv.Routes()
 	srv.StartBackground(context.Background())
-	return &App{Handler: handler}, nil
+	return &App{Handler: handler, bus: bus}, nil
 }

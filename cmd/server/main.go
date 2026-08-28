@@ -116,6 +116,7 @@ func main() {
 		logger.Error("failed to assemble app", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
+	defer func() { _ = a.Close(5 * time.Second) }()
 
 	addr := fmt.Sprintf(":%s", port)
 	logger.Info("listening", slog.String("addr", addr))

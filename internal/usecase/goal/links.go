@@ -2,16 +2,18 @@ package goal
 
 import (
 	"context"
+	"time"
 
 	"errors"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 	"okrs/internal/store/goallinks"
 )
 
 // SetParents replaces the full set of parents of childID. Validation: access to the
 // child's owner team; tenant-membership and scope-access of every parent; no self-link; no
-// cycle. Records goal_linked/goal_unlinked activity for the diff. Navigation-only: does not
+// cycle. Publishes GoalLinked/GoalUnlinked for the diff. Navigation-only: does not
 // touch progress or team period status.
 func (s *UseCase) SetParents(ctx context.Context, scope domain.TenantScope, allowedTeamIDs []int64, adminAll bool, childID int64, parentIDs []int64, actorUserID int64) error {
 	child, err := s.goals.Get(ctx, scope, childID)
@@ -61,18 +63,15 @@ func (s *UseCase) SetParents(ctx context.Context, scope domain.TenantScope, allo
 	}
 
 	teamID, periodID := child.TeamID, child.PeriodID
+	meta := event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()}
 	if len(added) > 0 {
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalLinked,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &childID, EntityTitle: child.Title,
-			Payload: map[string]any{"linked_parent_goal_ids": added},
+		s.events.Publish(ctx, event.GoalLinked{
+			Meta: meta, ChildGoalID: childID, Title: child.Title, ParentGoalIDs: added,
 		})
 	}
 	if len(removed) > 0 {
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnlinked,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &childID, EntityTitle: child.Title,
-			Payload: map[string]any{"unlinked_parent_goal_ids": removed},
+		s.events.Publish(ctx, event.GoalUnlinked{
+			Meta: meta, ChildGoalID: childID, Title: child.Title, ParentGoalIDs: removed,
 		})
 	}
 	return nil

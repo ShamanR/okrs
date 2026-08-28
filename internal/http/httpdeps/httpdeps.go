@@ -3,6 +3,7 @@ package httpdeps
 import (
 	"log/slog"
 
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 
@@ -55,7 +56,13 @@ type Deps struct {
 	UserUC   *useruc.UseCase
 }
 
-func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, logger *slog.Logger) Deps {
+// Build assembles the service and usecase graph. bus is required, not optional: Build
+// registers the activity-journal subscriber on it (eventbus.SubscribeAll below) and
+// hands it to every usecase as their Publisher, so a nil bus panics on the SubscribeAll
+// call rather than producing a Deps that silently drops every mutation event. Callers
+// must construct the bus (eventbus.New) before calling Build, and must not call
+// bus.Start until after Build returns — Subscribe/SubscribeAll after Start panics.
+func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, bus *eventbus.Bus, logger *slog.Logger) Deps {
 	hc := hcsvc.New(hcCache)
 	teams := teamsvc.New(st.Teams)
 	goals := goalsvc.New(st.Goals)
@@ -68,6 +75,10 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 	activity := activitysvc.New(st.Activity, logger)
 	snaps := progresssnapsvc.New(st.ProgressSnap)
 
+	// The journal is a synchronous subscriber: a mutation's event must be durable
+	// before the HTTP response, exactly as it was when usecases wrote it inline.
+	eventbus.SubscribeAll(bus, "activity-journal", activity.Handle, eventbus.WithMode(eventbus.Sync))
+
 	board := okrboarduc.New(okrboarduc.Deps{Teams: teams, Goals: goals, Shares: shares, Statuses: statuses, Links: links})
 
 	return Deps{
@@ -76,10 +87,10 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 
 		Board: board,
 		GoalUC: goaluc.New(goaluc.Deps{Goals: goals, Shares: shares, Links: links, Statuses: statuses,
-			Periods: periods, Teams: teams, Activity: activity}),
-		KrUC: kruc.New(kruc.Deps{KRs: krs, Goals: goals, Activity: activity}),
+			Periods: periods, Teams: teams, Events: bus}),
+		KrUC: kruc.New(kruc.Deps{KRs: krs, Goals: goals, Events: bus}),
 		PeriodUC: perioduc.New(perioduc.Deps{Periods: periods, Teams: teams, Goals: goals, Statuses: statuses,
-			Snaps: snaps, Activity: activity, HCCache: hcCache, Logger: logger}),
+			Snaps: snaps, Events: bus, HCCache: hcCache, Logger: logger}),
 		TreeUC:   goaltreeuc.New(goaltreeuc.Deps{Teams: teams, Goals: goals, Links: links, Periods: periods}),
 		ExportUC: exportuc.New(exportuc.Deps{Board: board, Teams: teams, Goals: goals, KRs: krs, Periods: periods}),
 		UserUC:   useruc.New(useruc.Deps{Users: users, Teams: teams, Grants: grantsCache}),

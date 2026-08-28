@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"okrs/internal/auth"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 )
@@ -35,8 +36,9 @@ const routesGolden = "testdata/routes.golden"
 //
 // Refresh after an intentional contract change: go test ./internal/http -run RoutesGolden -update-routes
 func TestRoutesGolden(t *testing.T) {
-	srv, err := NewServer(&store.Store{}, &grants.GrantsCache{}, slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		time.UTC, authManagerForRouteTest(t), Options{})
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	srv, err := NewServer(&store.Store{}, &grants.GrantsCache{}, logger,
+		time.UTC, authManagerForRouteTest(t), eventbus.New(logger), Options{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}

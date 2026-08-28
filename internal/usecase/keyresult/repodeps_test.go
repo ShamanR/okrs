@@ -1,7 +1,6 @@
 package keyresult
 
 import (
-	activitysvc "okrs/internal/service/activity"
 	goalsvc "okrs/internal/service/goal"
 	keyresultsvc "okrs/internal/service/keyresult"
 	"okrs/internal/service/servicetest"
@@ -11,18 +10,18 @@ import (
 // orchestrates. The migrated tests keep poking the store directly; only wiring moved.
 func newTestUC(store *servicetest.Store) *UseCase {
 	return New(Deps{
-		KRs:      keyresultsvc.New(store),
-		Goals:    goalsvc.New(store),
-		Activity: activitysvc.New(&servicetest.ActivityRepo{}, nil),
+		KRs:    keyresultsvc.New(store),
+		Goals:  goalsvc.New(store),
+		Events: &servicetest.FakeBus{},
 	})
 }
 
-// newTestUCWithActivity is for tests that assert what landed in the journal.
-func newTestUCWithActivity(store *servicetest.Store, act *servicetest.ActivityRepo) *UseCase {
+// newTestUCWithBus is for tests that assert on the events published.
+func newTestUCWithBus(store *servicetest.Store, bus *servicetest.FakeBus) *UseCase {
 	return New(Deps{
-		KRs:      keyresultsvc.New(store),
-		Goals:    goalsvc.New(store),
-		Activity: activitysvc.New(act, nil),
+		KRs:    keyresultsvc.New(store),
+		Goals:  goalsvc.New(store),
+		Events: bus,
 	})
 }
 
@@ -30,8 +29,8 @@ func newTestUCWithActivity(store *servicetest.Store, act *servicetest.ActivityRe
 // also implements the KR repository — KR scenarios read the parent goal.
 func newGoalTestService(gf *servicetest.GoalStore) *UseCase {
 	return New(Deps{
-		KRs:      keyresultsvc.New(gf),
-		Goals:    goalsvc.New(gf),
-		Activity: activitysvc.New(&servicetest.ActivityRepo{}, nil),
+		KRs:    keyresultsvc.New(gf),
+		Goals:  goalsvc.New(gf),
+		Events: &servicetest.FakeBus{},
 	})
 }

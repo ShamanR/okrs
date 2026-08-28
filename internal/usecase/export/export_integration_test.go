@@ -4,6 +4,7 @@ package export_test
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"okrs/internal/core/domain"
 	apitestutil "okrs/internal/http/handlers/api/v1/testutil"
 	"okrs/internal/http/httpdeps"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/render/export"
 	"okrs/internal/store"
 	"okrs/internal/store/goals"
@@ -100,7 +102,7 @@ func TestExportOKRTree(t *testing.T) {
 	}
 
 	// Собираем тот же граф зависимостей, что и сервер, и берём из него usecase экспорта.
-	svc := httpdeps.Build(repo, grants.NewGrantsCache(repo.Grants), nil, nil).ExportUC
+	svc := httpdeps.Build(repo, grants.NewGrantsCache(repo.Grants), nil, eventbus.New(slog.Default()), nil).ExportUC
 
 	// full subtree access: owner block full, child block shows shared reference
 	res, err := svc.ExportOKR(ctx, scope, exportuc.ExportParams{

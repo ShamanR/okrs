@@ -7,7 +7,6 @@ package goal
 // Убирается переписыванием тестов на Deps с сервисами — отдельная задача, не рефакторинг слоёв.
 
 import (
-	activitysvc "okrs/internal/service/activity"
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
 	goalsharesvc "okrs/internal/service/goalshare"
@@ -30,7 +29,7 @@ type rawDeps struct {
 	Statuses teamstatussvc.Repo
 	Periods  periodsvc.Repo
 	Teams    teamsvc.Repo
-	Activity activitysvc.Repo
+	Events   Publisher // defaults to a fresh *servicetest.FakeBus when nil
 }
 
 func newFromRepos(d rawDeps) *UseCase {
@@ -53,9 +52,12 @@ func newFromRepos(d rawDeps) *UseCase {
 	if d.Teams != nil {
 		deps.Teams = teamsvc.New(d.Teams)
 	}
-	// Activity is always present: scenarios record the journal unconditionally, and a
-	// nil service would panic rather than no-op.
-	deps.Activity = activitysvc.New(d.Activity, nil)
+	// Events is always present: scenarios publish unconditionally, and a nil
+	// Publisher would panic (method call on a nil interface) rather than no-op.
+	deps.Events = d.Events
+	if deps.Events == nil {
+		deps.Events = &servicetest.FakeBus{}
+	}
 	return New(deps)
 }
 

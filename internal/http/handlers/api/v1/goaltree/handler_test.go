@@ -89,7 +89,7 @@ func TestGoalTree_Contract(t *testing.T) {
 	gc := grants.NewGrantsCache(repo.Grants)
 
 	// Связь: quarter → annual (ребёнок ссылается на родителя).
-	adminSrv := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	adminSrv := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer adminSrv.Close()
 	body := fmt.Sprintf(`{"parent_goal_ids":[%d]}`, annualGoal)
 	if resp, _ := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/links", adminSrv.URL, quarterGoal), "application/json", jsonBody(body)); resp.StatusCode != http.StatusNoContent {
@@ -122,7 +122,7 @@ func TestGoalTree_Contract(t *testing.T) {
 	}
 
 	// Scope только teamB: annual-цель (teamA) недоступна → её нет, ребро вверх обрезано.
-	scopedSrv := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamB}))
+	scopedSrv := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamB}))
 	defer scopedSrv.Close()
 	var trScoped treeResp
 	getJSON(t, scopedSrv.URL+"/api/v1/goal-tree?cross_period=1", &trScoped)
@@ -134,7 +134,7 @@ func TestGoalTree_Contract(t *testing.T) {
 	}
 
 	// led_by_me: как лид teamA (leadUDID) — teamA.led_by_me=true, teamB=false.
-	leadSrv := httptest.NewServer(testutil.NewAPIV1RouterWithUser(repo, gc, nil, &domain.User{ID: 3, UDID: leadUDID}))
+	leadSrv := httptest.NewServer(testutil.NewAPIV1RouterWithUser(t, repo, gc, nil, &domain.User{ID: 3, UDID: leadUDID}))
 	defer leadSrv.Close()
 	var trLead treeResp
 	getJSON(t, leadSrv.URL+"/api/v1/goal-tree?cross_period=1", &trLead)
@@ -178,7 +178,7 @@ func TestGoalTree_TenantIsolation(t *testing.T) {
 
 	gc := grants.NewGrantsCache(repo.Grants)
 	// Роутер жёстко фиксирует tenant=1 (см. testutil.NewAPIV1RouterWithScope); allowed=nil → admin-scope.
-	adminSrv := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	adminSrv := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer adminSrv.Close()
 
 	var tr treeResp

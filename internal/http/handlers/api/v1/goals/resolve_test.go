@@ -49,7 +49,7 @@ func TestResolveGoalComment(t *testing.T) {
 	commentID := comments[0].ID
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID}))
 	defer server.Close()
 
 	post := func(path string) int {
@@ -68,6 +68,23 @@ func TestResolveGoalComment(t *testing.T) {
 	comments, _ = repo.Goals.ListGoalComments(ctx, scope, goalID)
 	if comments[0].ResolvedAt == nil {
 		t.Fatalf("comment must be resolved after POST resolve")
+	}
+
+	// End-to-end check that the usecase's published event actually reached the
+	// journal through the real bus this router wires up (testutil.NewAPIV1RouterWithScope
+	// builds httpdeps.Build with a live *eventbus.Bus and registers the activity-journal
+	// subscriber on it, same as production). FakeBus-based usecase tests only prove the
+	// usecase calls Publish; they cannot catch the journal subscriber going missing from
+	// assembly. This does: if httpdeps.Build ever stops calling eventbus.SubscribeAll for
+	// the journal, this row never appears and the assertion below fails.
+	var resolvedCount int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM activity_events WHERE tenant_id=$1 AND goal_id=$2 AND comment_id=$3 AND action=$4`,
+		scope.TenantID, goalID, commentID, string(domain.ActionCommentResolved)).Scan(&resolvedCount); err != nil {
+		t.Fatalf("count activity_events: %v", err)
+	}
+	if resolvedCount != 1 {
+		t.Fatalf("want 1 comment_resolved row in activity_events, got %d — the journal subscriber may not be wired to the usecase's bus", resolvedCount)
 	}
 
 	// Reopen the comment.
@@ -127,7 +144,7 @@ func TestResolveGoalCommentOnSharedGoal(t *testing.T) {
 	resolveURL := fmt.Sprintf("/api/v1/goals/%d/comments/%d/resolve", goalID, commentID)
 
 	postWithScope := func(allowed []int64, path string) int {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, allowed))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, allowed))
 		defer server.Close()
 		resp, err := http.Post(server.URL+path, "application/json", bytes.NewBufferString("{}"))
 		if err != nil {

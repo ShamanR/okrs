@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"log/slog"
+
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	v1 "okrs/internal/http/handlers/api/v1"
@@ -49,6 +51,7 @@ import (
 	teamsoverview "okrs/internal/http/handlers/api/v1/teams/overview"
 	teamsstatus "okrs/internal/http/handlers/api/v1/teams/status"
 	"okrs/internal/http/httpdeps"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 
@@ -59,16 +62,33 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-func NewAPIV1Router(st *store.Store, grantsCache *grants.GrantsCache) *chi.Mux {
-	return NewAPIV1RouterWithScope(st, grantsCache, nil)
+func NewAPIV1Router(t testing.TB, st *store.Store, grantsCache *grants.GrantsCache) *chi.Mux {
+	return NewAPIV1RouterWithScope(t, st, grantsCache, nil)
 }
 
 // NewAPIV1RouterWithScope returns a test router with a fixed scope injected into every request context.
 // Pass nil for unrestricted access (admin), an empty slice for no access, or a specific list of team IDs.
-func NewAPIV1RouterWithScope(st *store.Store, grantsCache *grants.GrantsCache, allowedTeamIDs []int64) *chi.Mux {
+//
+// t is used only to register the bus teardown (t.Cleanup) that mirrors what app.New
+// does in production: Start the bus after Build, Close it when the router is done with.
+// Today the only registered subscriber is Sync (the activity journal), which needs no
+// goroutine, so skipping Start would still pass every test — but the next phase adds
+// an async subscriber, and a router that never starts the bus would silently never
+// exercise it end to end.
+func NewAPIV1RouterWithScope(t testing.TB, st *store.Store, grantsCache *grants.GrantsCache, allowedTeamIDs []int64) *chi.Mux {
+	t.Helper()
 	// Собираем тот же граф сервисов и usecase, что и боевой сервер: handlers теперь
-	// принимают отдельные зависимости, а не фасад.
-	d := httpdeps.Build(st, grantsCache, nil, nil)
+	// принимают отдельные зависимости, а не фасад. The bus needs a real logger (not
+	// nil, unlike the activity service below) because it logs straight through on a
+	// dropped/failed delivery, with no nil-safe guard.
+	bus := eventbus.New(slog.Default())
+	d := httpdeps.Build(st, grantsCache, nil, bus, nil)
+	bus.Start(context.Background())
+	t.Cleanup(func() {
+		if err := bus.Close(5 * time.Second); err != nil {
+			t.Logf("eventbus close: %v", err)
+		}
+	})
 
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
@@ -117,8 +137,8 @@ func NewAPIV1RouterWithScope(st *store.Store, grantsCache *grants.GrantsCache, a
 
 // NewAPIV1RouterWithUser — как NewAPIV1RouterWithScope, но дополнительно кладёт пользователя в
 // контекст (для эндпоинтов, зависящих от UDID вызывающего, напр. led_by_me в goal-tree).
-func NewAPIV1RouterWithUser(st *store.Store, grantsCache *grants.GrantsCache, allowedTeamIDs []int64, user *domain.User) *chi.Mux {
-	router := NewAPIV1RouterWithScope(st, grantsCache, allowedTeamIDs)
+func NewAPIV1RouterWithUser(t testing.TB, st *store.Store, grantsCache *grants.GrantsCache, allowedTeamIDs []int64, user *domain.User) *chi.Mux {
+	router := NewAPIV1RouterWithScope(t, st, grantsCache, allowedTeamIDs)
 	wrapped := chi.NewRouter()
 	wrapped.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

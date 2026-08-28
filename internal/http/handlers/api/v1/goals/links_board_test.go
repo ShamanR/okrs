@@ -91,7 +91,7 @@ func TestBoardEmbedsParentsScopeFiltered(t *testing.T) {
 	gc := grants.NewGrantsCache(repo.Grants)
 
 	// Admin scope (nil): parent in another team is visible.
-	adminServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	adminServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer adminServer.Close()
 	board := fetchBoard(t, adminServer.URL, teamChild, periodID)
 	var childGoal *boardGoal
@@ -114,7 +114,7 @@ func TestBoardEmbedsParentsScopeFiltered(t *testing.T) {
 	}
 
 	// Scoped to teamChild only: parent (in teamParent) is hidden.
-	scopedServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamChild}))
+	scopedServer := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamChild}))
 	defer scopedServer.Close()
 	scopedBoard := fetchBoard(t, scopedServer.URL, teamChild, periodID)
 	for i := range scopedBoard.Goals {

@@ -109,6 +109,7 @@ import (
 	"okrs/internal/http/httpdeps"
 	"okrs/internal/http/middleware"
 	"okrs/internal/platform/entitlements"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/platform/nomembership"
 
 	"okrs/internal/scheduler"
@@ -191,7 +192,7 @@ type Options struct {
 	TenantRoutes func(chi.Router) // membership-gated, tenant-scoped (billing UI)
 }
 
-func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager, opts Options) (*Server, error) {
+func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager, bus *eventbus.Bus, opts Options) (*Server, error) {
 	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, err
@@ -249,7 +250,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 
 	return &Server{
 		store:            st,
-		deps:             httpdeps.Build(st, grantsCache, hcCache, logger),
+		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger),
 		logger:           logger,
 		tmpl:             tmpl,
 		zone:             zone,

@@ -46,7 +46,7 @@ func TestActivityFeedAndTreeCountsEndpoints(t *testing.T) {
 		}
 	}
 
-	srv := httptest.NewServer(apiv1testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
+	srv := httptest.NewServer(apiv1testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID}))
 	defer srv.Close()
 
 	// Feed
