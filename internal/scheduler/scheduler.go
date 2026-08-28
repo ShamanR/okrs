@@ -23,6 +23,12 @@ import (
 // only one instance runs the daily snapshot pass (the upsert is idempotent regardless).
 const progressSnapshotLockKey = 918273645
 
+// notificationRetentionLockKey is a fixed advisory-lock key so only one replica runs
+// the daily notification purge (deleting twice is harmless, but the scan is not
+// free). Deliberately different from progressSnapshotLockKey — sharing a key would
+// make the two independent passes wait on each other for no reason.
+const notificationRetentionLockKey = 918273646
+
 // snapshotCheckInterval is how often the loop wakes to check whether any period is due a
 // new snapshot. The actual spacing between recorded points is the per-tenant
 // progress_snapshot_interval_days setting; this is just the polling granularity.
@@ -32,6 +38,17 @@ const snapshotCheckInterval = time.Hour
 // every tenant's currently-active period, so the first request after a TTL expiry does
 // not pay the cold-load cost.
 const hcRefreshInterval = 5 * time.Minute
+
+// notificationRetentionInterval is how often the notification purge pass runs. Daily
+// is plenty for a retention window measured in months.
+const notificationRetentionInterval = 24 * time.Hour
+
+// Read notifications survive 90 days, anything at all survives 180. Constants until
+// there is evidence someone needs different — see notifications design spec §7.6.
+const (
+	notificationReadRetentionDays = 90
+	notificationAnyRetentionDays  = 180
+)
 
 // TenantLister enumerates the tenants a pass must cover.
 type TenantLister interface {
@@ -55,17 +72,25 @@ type SnapshotRunner interface {
 	SnapshotActivePeriods(ctx context.Context, day time.Time, actives []hcsvc.Active) error
 }
 
+// NotificationPurger removes notifications past retention. Narrow port so the
+// scheduler does not depend on the whole notification service. *notification.Service
+// satisfies it.
+type NotificationPurger interface {
+	Purge(ctx context.Context, readDays, anyDays int) (int64, error)
+}
+
 type Deps struct {
-	DB       *pgxpool.Pool
-	HCCache  *hcsvc.Cache
-	Snapshot SnapshotRunner
-	Periods  PeriodFinder
-	Active   ActivePeriodLister
-	Snaps    *progresssnapsvc.Service
-	Tenants  TenantLister
-	Settings hcsvc.SettingsReader
-	Zone     *time.Location
-	Logger   *slog.Logger
+	DB            *pgxpool.Pool
+	HCCache       *hcsvc.Cache
+	Snapshot      SnapshotRunner
+	Periods       PeriodFinder
+	Active        ActivePeriodLister
+	Snaps         *progresssnapsvc.Service
+	Tenants       TenantLister
+	Settings      hcsvc.SettingsReader
+	Notifications NotificationPurger
+	Zone          *time.Location
+	Logger        *slog.Logger
 }
 
 type Scheduler struct {
@@ -85,6 +110,7 @@ func New(deps Deps) *Scheduler {
 func (s *Scheduler) Start(ctx context.Context) {
 	s.deps.HCCache.StartRefreshLoop(ctx, hcRefreshInterval, s.activePeriods)
 	s.startProgressSnapshotLoop(ctx, snapshotCheckInterval)
+	s.startNotificationRetentionLoop(ctx, notificationRetentionInterval)
 }
 
 // activePeriods enumerates each tenant's currently-active (date-based) period,
@@ -162,6 +188,49 @@ func (s *Scheduler) startProgressSnapshotLoop(ctx context.Context, interval time
 		day := time.Now().In(s.deps.Zone)
 		if err := s.deps.Snapshot.SnapshotActivePeriods(ctx, day, s.snapshotDuePeriods(ctx)); err != nil && s.deps.Logger != nil {
 			s.deps.Logger.Warn("progress snapshot failed", "err", err)
+		}
+	}
+	go func() {
+		run() // capture today at startup
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+}
+
+// startNotificationRetentionLoop runs a background goroutine that purges
+// notifications past retention once per interval. An initial pass runs at startup,
+// same shape as startProgressSnapshotLoop above — separate advisory-lock key so the
+// two passes never wait on each other.
+func (s *Scheduler) startNotificationRetentionLoop(ctx context.Context, interval time.Duration) {
+	run := func() {
+		conn, err := s.deps.DB.Acquire(ctx)
+		if err != nil {
+			return
+		}
+		defer conn.Release()
+		var got bool
+		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, notificationRetentionLockKey).Scan(&got); err != nil || !got {
+			return // another replica holds the lock this cycle
+		}
+		defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, notificationRetentionLockKey) }()
+
+		n, err := s.deps.Notifications.Purge(ctx, notificationReadRetentionDays, notificationAnyRetentionDays)
+		if err != nil {
+			if s.deps.Logger != nil {
+				s.deps.Logger.Warn("notification retention purge failed", "err", err)
+			}
+			return
+		}
+		if s.deps.Logger != nil && n > 0 {
+			s.deps.Logger.Info("notification retention purge", "deleted", n)
 		}
 	}
 	go func() {

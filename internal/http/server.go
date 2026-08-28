@@ -69,6 +69,10 @@ import (
 	krsnumerical "okrs/internal/http/handlers/api/v1/krs/progress/numerical"
 	krsproject "okrs/internal/http/handlers/api/v1/krs/progress/project"
 	apime "okrs/internal/http/handlers/api/v1/me"
+	apinotifications "okrs/internal/http/handlers/api/v1/notifications"
+	notificationsprefs "okrs/internal/http/handlers/api/v1/notifications/preferences"
+	notificationsread "okrs/internal/http/handlers/api/v1/notifications/read"
+	notificationsunread "okrs/internal/http/handlers/api/v1/notifications/unreadcount"
 	joinrequest "okrs/internal/http/handlers/api/v1/onboarding/joinrequest"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	periodsoverview "okrs/internal/http/handlers/api/v1/periods/overview"
@@ -503,6 +507,15 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	// Каждый пакет получает ровно те сервисы и usecase, которые нужны его эндпоинтам.
 	d := s.deps
 	apihierarchy.RegisterRoutes(r, apihierarchy.New(d.Teams, d.Board, d.Periods, d.Users))
+	// Bell feed: tenant-scoped, per-user. POST /read is state-changing and browser-invoked,
+	// so it must live in this CSRF-protected group (spec 010, rule 7) — it does, registerApiRoutes
+	// is only called from the membership-gated group where csrf.Handler is already mounted.
+	apinotifications.RegisterRoutes(r, apinotifications.New(d.Notifications))
+	notificationsunread.RegisterRoutes(r, notificationsunread.New(d.Notifications))
+	notificationsread.RegisterRoutes(r, notificationsread.New(d.Notifications))
+	// PUT is state-changing and browser-invoked, so it must live in this same
+	// CSRF-protected, membership-gated group.
+	notificationsprefs.RegisterRoutes(r, notificationsprefs.New(d.NotificationPrefs))
 	// Журнал активности (лента + счётчики) — только для tenant-admin, как и очистка
 	// журнала (RequireTenantAdmin). При AUTH_MODE=disabled anonymous-local — admin, доступ есть.
 	r.Group(func(r chi.Router) {
@@ -565,15 +578,16 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 // Called by app.New once the server is assembled.
 func (s *Server) StartBackground(ctx context.Context) {
 	scheduler.New(scheduler.Deps{
-		DB:       s.store.DB,
-		HCCache:  s.hcCache,
-		Snapshot: s.deps.PeriodUC,
-		Periods:  s.deps.Periods,
-		Active:   s.store.Periods,
-		Snaps:    s.deps.Snaps,
-		Tenants:  s.store.Tenants,
-		Settings: s.settingsSvc,
-		Zone:     s.zone,
-		Logger:   s.logger,
+		DB:            s.store.DB,
+		HCCache:       s.hcCache,
+		Snapshot:      s.deps.PeriodUC,
+		Periods:       s.deps.Periods,
+		Active:        s.store.Periods,
+		Snaps:         s.deps.Snaps,
+		Tenants:       s.store.Tenants,
+		Settings:      s.settingsSvc,
+		Notifications: s.deps.Notifications,
+		Zone:          s.zone,
+		Logger:        s.logger,
 	}).Start(ctx)
 }

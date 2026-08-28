@@ -223,7 +223,7 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 - tenant_id (FK → tenants.id, ON DELETE CASCADE)
 - actor_user_id (FK → users.id) — кто совершил действие; в `auth.mode=disabled` — `anonymous-local` (id=1)
 - category — `progress` | `composition` | `status` | `discussion` (совпадает с табами UI)
-- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `goal_copied`, `goal_moved`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_linked`, `goal_unlinked`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
+- action — конкретное действие: `kr_progress`, `goal_created`, `goal_deleted`, `goal_copied`, `goal_moved`, `kr_created`, `kr_deleted`, `goal_shared`, `goal_unshared`, `goal_linked`, `goal_unlinked`, `goal_owner_changed`, `goal_fields_changed`, `kr_fields_changed`, `kr_note_updated`, `status_changed`, `comment_added`, `comment_resolved`, `comment_reopened`, `reply_added`, `comment_deleted`, `reply_deleted` — категории `discussion` относятся `comment_added`/`reply_added`/`comment_resolved`/`comment_reopened`/`comment_deleted`/`reply_deleted` (таски и ответы живут под одним фильтром, но с разными описаниями)
 - team_id (FK → teams.id, ON DELETE SET NULL) — команда-контекст на момент события (owner team / команда статуса)
 - period_id (FK → periods.id, ON DELETE SET NULL) — период-контекст
 - goal_id, kr_id, comment_id — ссылки на сущности (**не** FK: журнал переживает удаление сущности)
@@ -237,6 +237,86 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 - actor резолвится tenant-scoped на чтении: активный участник тенанта → имя + аватар; не участник (кроме системных, provider=`system`) → нейтральный плейсхолдер `removed=true` **без** email/аватара/UDID (PII бывшего участника не утекает);
 - хранимые `team_id`/`period_id` — исторический контекст (scope, счётчики, бейдж периода); навигационный target собирается на чтении;
 - очистка журнала — только через admin-действие (tenant-admin своего пространства / system-admin по любому тенанту), см. `040-api-contract.md` и `050-permissions-and-lifecycle.md`.
+
+### Notification
+
+Персональное уведомление получателя (таблица `notifications`, миграция `044_notifications`).
+Одна строка — одновременно запись ленты колокольчика и якорь для будущих внешних
+доставок (Telegram/Mattermost, фаза 2).
+
+**Поля:**
+
+- id
+- tenant_id (FK → tenants.id, ON DELETE CASCADE)
+- user_id (FK → users.id, ON DELETE CASCADE) — получатель
+- type — `goal_comment` | `my_comment_resolved` | `goal_changed` | `kr_progress`; из какого события какой тип
+  получается, см. `notifyType` в `internal/usecase/notification/mapping.go` — часть событий шины (9 из 22)
+  не порождает уведомления вовсе (напр. `status_changed`, `goal_shared`, `kr_note_updated`)
+- kind — исходное действие события (те же значения, что `action` у ActivityEvent)
+- actor_user_id (FK → users.id) — кто совершил действие
+- team_id, period_id, goal_id, kr_id, comment_id — ссылки на сущности (**не** FK — как и у
+  ActivityEvent, уведомление переживает удаление сущности, на которую указывает)
+- entity_title — снапшот заголовка цели/KR на момент события
+- payload_json (JSONB) — минимум, нужный рендеру текста (`internal/render/notify`), не весь payload журнала
+- coalesce_key — `type:entity:actor:bucket`, где entity — `kr:<id>` только для `kr_progress`,
+  иначе `goal:<id>`; bucket — фиксированное десятиминутное окно (`CoalesceWindow`), а не
+  скользящее: скользящее окно потребовало бы read-then-write и гонок между репликами,
+  фиксированное разменивает это на артефакт границы бакета — сознательная плата
+- coalesce_count — сколько повторов схлопнулось в эту строку
+- created_at, updated_at
+- read_at (NULL пока не прочитано)
+
+**Инварианты:**
+
+- вставка — `INSERT ... ON CONFLICT (tenant_id, user_id, coalesce_key) DO UPDATE`: повтор в
+  пределах окна не создаёт новую строку, а увеличивает `coalesce_count`, обновляет
+  `payload_json` и **сбрасывает `read_at` в NULL** — повтор внутри окна снова помечает
+  уведомление непрочитанным, потому что это новая информация, а не дубликат старой;
+  один атомарный statement, конфликт арбитрирует уникальный индекс, а не read-then-write гонка
+  между репликами;
+- цель схлопывания — редактирование цели вместе с двумя её KR даёт одно уведомление «×3»,
+  а не три отдельных: сущность в ключе схлопывания — KR только для `kr_progress`, для всех
+  остальных типов — сама цель;
+- адресные типы (`my_comment_resolved`) уведомляют конкретного получателя, зашитого в
+  событие (автора комментария); никто не уведомляется о собственном действии — актёр события
+  никогда не получатель;
+- типы со скоупом (`goal_comment`, `goal_changed`, `kr_progress`) резолвятся обходом дерева
+  команд (`teams.parent_id`) от team_id события вверх до корня, одним батчевым рекурсивным
+  запросом на группу событий (не в цикле — N+1), по настройкам получателя, см.
+  NotificationPreference ниже;
+- ретенция (`PurgeOlderThan`) считает возраст по **`updated_at`, а не `created_at`**: схлопывание
+  обновляет `updated_at` и сбрасывает `read_at`, поэтому уведомление, которое продолжает
+  собирать повторы, не должно быть удалено из-под непрочитанного бейджа только потому, что
+  впервые возникло давно — «нетронуто N дней» здесь и означает `updated_at`;
+- actor резолвится на чтении так же, как у ActivityEvent (tenant-scoped участник → имя и
+  аватар; бывший участник, кроме системных provider=`system` — нейтральный плейсхолдер, без PII).
+
+### NotificationPreference
+
+Настройки уведомлений одного пользователя в одном пространстве (таблица
+`notification_preferences`, миграция `044_notifications`).
+
+**Поля:**
+
+- tenant_id, user_id (FK → tenants.id / users.id, ON DELETE CASCADE)
+- type — тот же перечень, что у Notification.type
+- enabled (по умолчанию TRUE)
+- scope — `own` | `own_and_children` | `subtree`; NULL для адресных типов (у
+  `my_comment_resolved` скоупа нет — получатель уже известен из события)
+- channels — TEXT[], по умолчанию `{in_app}`; в фазе 1b единственный канал
+- PRIMARY KEY (tenant_id, user_id, type)
+
+**Инварианты:**
+
+- **отсутствие строки — это норма, а не пробел**: означает дефолт (enabled=TRUE,
+  scope=`own`, channels=`{in_app}`) — бэкфилл на всех пользователей при создании
+  пользователя или типа не делается, дефолт подставляется на чтении и на резолве
+  получателей;
+- scope управляет обходом дерева команд при резолве: `own` — только лид team_id события
+  (distance 0), `own_and_children` — лид этой команды и её непосредственного родителя
+  (distance ≤ 1), `subtree` — лид любого предка вплоть до корня;
+- изменить свои настройки может только сам пользователь (`user_id` берётся из сессии, не
+  из тела запроса), см. `050-permissions-and-lifecycle.md`.
 
 ### TeamPeriodStatus
 

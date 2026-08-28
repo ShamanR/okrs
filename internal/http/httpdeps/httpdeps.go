@@ -13,6 +13,8 @@ import (
 	goalsharesvc "okrs/internal/service/goalshare"
 	hcsvc "okrs/internal/service/healthcheckin"
 	keyresultsvc "okrs/internal/service/keyresult"
+	notificationsvc "okrs/internal/service/notification"
+	notificationprefsvc "okrs/internal/service/notificationpref"
 	periodsvc "okrs/internal/service/period"
 	progresssnapsvc "okrs/internal/service/progresssnap"
 	teamsvc "okrs/internal/service/team"
@@ -23,6 +25,7 @@ import (
 	goaluc "okrs/internal/usecase/goal"
 	goaltreeuc "okrs/internal/usecase/goaltree"
 	kruc "okrs/internal/usecase/keyresult"
+	notificationuc "okrs/internal/usecase/notification"
 	okrboarduc "okrs/internal/usecase/okrboard"
 	perioduc "okrs/internal/usecase/period"
 	useruc "okrs/internal/usecase/user"
@@ -46,6 +49,13 @@ type Deps struct {
 	Activity *activitysvc.Service
 	Snaps    *progresssnapsvc.Service
 	HC       *hcsvc.Service
+	// Notifications is the read/write port for the bell feed (list, unread count, mark
+	// read). Build also registers the fan-out subscriber (notificationuc.UseCase) on
+	// the bus, which writes through this same service.
+	Notifications *notificationsvc.Service
+	// NotificationPrefs backs the settings screen: GET/PUT of the per-user
+	// notification-preferences matrix.
+	NotificationPrefs *notificationprefsvc.Service
 
 	Board    *okrboarduc.UseCase
 	GoalUC   *goaluc.UseCase
@@ -74,16 +84,29 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 	users := usersvc.New(st.Users)
 	activity := activitysvc.New(st.Activity, logger)
 	snaps := progresssnapsvc.New(st.ProgressSnap)
+	notifications := notificationsvc.New(st.Notifications)
+	notificationPrefs := notificationprefsvc.New(st.NotificationPrefs)
 
 	// The journal is a synchronous subscriber: a mutation's event must be durable
 	// before the HTTP response, exactly as it was when usecases wrote it inline.
 	eventbus.SubscribeAll(bus, "activity-journal", activity.Handle, eventbus.WithMode(eventbus.Sync))
+
+	notificationUC := notificationuc.New(notificationuc.Deps{
+		Notifications: notifications,
+		Prefs:         notificationPrefs,
+		Logger:        logger,
+	})
+	// Асинхронно: резолв получателей (рекурсивный запрос по дереву команд) и вставка
+	// строк не должны задерживать HTTP-ответ. Журнал, наоборот, подписан синхронно
+	// (фаза 1a) — там нужна гарантия durable-записи до ответа.
+	eventbus.SubscribeAll(bus, "notifications", notificationUC.Handle, eventbus.WithMode(eventbus.Async))
 
 	board := okrboarduc.New(okrboarduc.Deps{Teams: teams, Goals: goals, Shares: shares, Statuses: statuses, Links: links})
 
 	return Deps{
 		Teams: teams, Goals: goals, Shares: shares, Links: links, Statuses: statuses,
 		Periods: periods, Krs: krs, Users: users, Activity: activity, Snaps: snaps, HC: hc,
+		Notifications: notifications, NotificationPrefs: notificationPrefs,
 
 		Board: board,
 		GoalUC: goaluc.New(goaluc.Deps{Goals: goals, Shares: shares, Links: links, Statuses: statuses,

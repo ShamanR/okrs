@@ -177,6 +177,10 @@ web/common                     web/auth
 | `/api/v1/krs/{krID}/progress/numerical` | POST | `api/v1/krs/progress/numerical` |
 | `/api/v1/krs/{krID}/progress/project` | POST | `api/v1/krs/progress/project` |
 | `/api/v1/me` | GET | `api/v1/me` |
+| `/api/v1/notifications` | GET | `api/v1/notifications` |
+| `/api/v1/notifications/preferences` | GET PUT | `api/v1/notifications/preferences` |
+| `/api/v1/notifications/read` | POST | `api/v1/notifications/read` |
+| `/api/v1/notifications/unread-count` | GET | `api/v1/notifications/unreadcount` |
 | `/api/v1/onboarding/join-request` | POST | `api/v1/onboarding/joinrequest` |
 | `/api/v1/periods` | GET | `api/v1/periods` |
 | `/api/v1/periods/{periodID}/overview` | GET | `api/v1/periods/overview` |

@@ -1,6 +1,8 @@
 // Общий тёмный сайдбар навигации. Грузится как text/babel ПЕРЕД app-скриптами
-// (tracker.js, stub.js, settings.js, admin.js), экспортируя глобальные компоненты
-// Sidebar / SidebarTenant / SidebarSections / SidebarFooter / SidebarBell —
+// (tracker.js, stub.js, settings.js, admin.js), но ПОСЛЕ notifications.js —
+// колокольчик уведомлений (NotificationsBell) рендерится сайдбаром сам, не
+// получая его пропом, экспортируя глобальные компоненты
+// Sidebar / SidebarTenant / SidebarSections / SidebarFooter —
 // единый источник правды переиспользуемой навигации. Стили — sidebar.css.
 //
 // Самодостаточен: рендерит аватары инлайн, читает CSRF из cookie, logout через
@@ -50,18 +52,8 @@ function SidebarAvatar({ user, size }) {
   );
 }
 
-// SidebarBell — колокольчик с бейджем. Рендерится хостом в слот bell.
-function SidebarBell({ count, onClick }) {
-  return (
-    <button className="sidebar__bell" onClick={onClick} aria-label="Health Check-in">
-      <span className="sidebar__bell-icon">🔔</span>
-      <span className={`sidebar__bell-badge${count === 0 ? ' sidebar__bell-badge--zero' : ''}`}>{count}</span>
-    </button>
-  );
-}
-
 // SidebarTenant — шапка тенанта + переключатель организаций (если тенантов > 1).
-function SidebarTenant({ user, bell }) {
+function SidebarTenant({ user }) {
   const [tenants, setTenants] = React.useState([]);
   const [open, setOpen] = React.useState(false);
   React.useEffect(() => {
@@ -99,7 +91,9 @@ function SidebarTenant({ user, bell }) {
         <span className="sidebar__tenant-name">{name}</span>
         {canSwitch && <span className="sidebar__tenant-chevron">▾</span>}
       </button>
-      {bell}
+      {/* Колокольчик уведомлений живёт здесь, а не приходит пропом: так он
+          появляется на всех SPA-страницах разом, а не только на трекере. */}
+      <NotificationsBell />
       {open && canSwitch && (
         <div className="sidebar__tenant-menu" onMouseLeave={() => setOpen(false)}>
           {tenants.map(t => (
@@ -197,7 +191,7 @@ function SidebarFooter({ user, cfg }) {
 // Sidebar — контейнер. children = контекстная навигация страницы (со своим
 // flex:1 скролл-регионом). beforeSections — вставка между шапкой и разделами
 // (на трекере — блок выбора периода).
-function Sidebar({ user, active, bell, beforeSections, showSections = true, linkParams, children }) {
+function Sidebar({ user, active, beforeSections, showSections = true, linkParams, children }) {
   // Единый источник конфига для сайдбара: разделы (activity-log под is_admin) и футер.
   const [cfg, setCfg] = React.useState(null);
   React.useEffect(() => {
@@ -208,7 +202,7 @@ function Sidebar({ user, active, bell, beforeSections, showSections = true, link
   }, []);
   return (
     <div className="sidebar">
-      <SidebarTenant user={user} bell={bell} />
+      <SidebarTenant user={user} />
       {beforeSections}
       {showSections !== false && <SidebarSections active={active} linkParams={linkParams} isAdmin={!!(cfg && cfg.is_admin)} />}
       {children}

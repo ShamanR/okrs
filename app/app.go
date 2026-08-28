@@ -46,12 +46,25 @@ type App struct {
 	Handler http.Handler
 
 	bus *eventbus.Bus
+	// stopBackground cancels the context srv.StartBackground was launched with (the
+	// health check-in refresh, progress-snapshot and notification-retention loops in
+	// internal/scheduler). Called from Close, before draining the bus, so those loops
+	// stop touching the pool during the same exit window the bus drain happens in —
+	// see the doc comment on Close below for why the order matters.
+	stopBackground context.CancelFunc
 }
 
-// Close releases background resources New started: the event bus's async subscriber
-// goroutines (none yet in the OSS box, but a SaaS build's notifier registers one).
-// Waits up to timeout for queued events to drain before giving up.
+// Close releases every background resource New started, in the order the caller in
+// cmd/server relies on: stop the scheduler loops first (health check-in refresh,
+// progress snapshots, notification retention — internal/scheduler), so none of them
+// can start a new query against the pool during shutdown, THEN drain the event bus's
+// async subscriber goroutines (none in the OSS box today, but a SaaS build's notifier
+// registers one) so anything already in flight finishes against a pool that is still
+// open. The caller closes the pool only after Close returns. Waits up to timeout for
+// the bus to drain before giving up; the scheduler loops stop immediately (ctx
+// cancellation, no drain to wait for).
 func (a *App) Close(timeout time.Duration) error {
+	a.stopBackground()
 	return a.bus.Close(timeout)
 }
 
@@ -150,6 +163,10 @@ func New(cfg Config) (*App, error) {
 	// Фоновые петли запускаются здесь, а не внутри Routes(): сборка роутера должна
 	// оставаться чистой, иначе её нельзя вызвать в тесте без goroutine и БД.
 	handler := srv.Routes()
-	srv.StartBackground(context.Background())
-	return &App{Handler: handler, bus: bus}, nil
+	// A dedicated cancellable context, not context.Background(): Close needs a way to
+	// stop these loops on shutdown (see Close's doc comment), and Background() can
+	// never be cancelled.
+	bgCtx, stopBackground := context.WithCancel(context.Background())
+	srv.StartBackground(bgCtx)
+	return &App{Handler: handler, bus: bus, stopBackground: stopBackground}, nil
 }

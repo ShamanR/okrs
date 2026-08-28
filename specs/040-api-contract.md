@@ -483,6 +483,100 @@ Body: JSON объект с полями `stale_days`, `behind_margin`, `weight_t
 
 Errors: `400` при `stale_days <= 0` или `cache_ttl_minutes <= 0`.
 
+### `GET /api/v1/notifications?unread=<0|1>&limit=<int>&cursor=<string>`
+
+Назначение: лента колокольчика — уведомления текущего пользователя, свежие сверху.
+
+Доступен: любому авторизованному пользователю. Scope — по `user_id` из сессии, тело/query
+запроса на выбор получателя не влияют (см. `050-permissions-and-lifecycle.md`).
+
+Request params (все опциональны):
+- `unread` — `1` возвращает только непрочитанные
+- `limit` — 1..100, по умолчанию 20
+- `cursor` — opaque-курсор из предыдущего ответа (keyset по `created_at, id`, как в ленте активности)
+
+Success response (`200`):
+
+```json
+{
+  "items": [
+    {
+      "id": 501, "type": "goal_changed", "kind": "goal_fields_changed",
+      "title": "Иван Иванов изменил цель (3)",
+      "body": "Снизить P95 latency до 200ms",
+      "count": 3, "created_at": "2026-08-28T09:00:00Z", "read": false,
+      "actor_name": "Иван Иванов", "actor_avatar": "https://...",
+      "url": "/?goal_id=42&team_id=4&period_id=4"
+    }
+  ],
+  "next_cursor": "opaque-string"
+}
+```
+
+- `title`/`body` рендерятся **на сервере** (`internal/render/notify`) из `kind` + `payload` —
+  единый источник формулировок для колокольчика и будущих внешних каналов (фаза 2), фронт не
+  собирает текст сам;
+- `count` — `coalesce_count`: сколько повторов схлопнулось в эту строку (за окно, см.
+  `020-domain-model.md`);
+- `actor_name`/`actor_avatar` следуют тому же PII-правилу, что и журнал активности: бывший
+  участник (кроме системных) — нейтральный плейсхолдер, без имени/аватара;
+- `url` — куда ведёт клик; пусто, если у уведомления нет цели-якоря (уведомление всё равно
+  рендерится, просто некликабельно).
+
+Idempotency: read-only, без side effects.
+
+---
+
+### `GET /api/v1/notifications/unread-count`
+
+Назначение: бейдж колокольчика. Опрашивается клиентом раз в 60 секунд и при возврате фокуса
+на вкладку.
+
+Доступен: любому авторизованному пользователю.
+
+Success response (`200`): `{ "count": 5 }`.
+
+Кэша на сервере намеренно нет: это `COUNT` по partial-индексу для одного пользователя,
+дешёвый сам по себе, а кеш в памяти инстанса в K8s-среде дал бы разные числа на разных
+репликах. Пользовательское ожидание «увижу в течение минуты» для колокольчика адекватно
+опросу раз в 60 секунд.
+
+Idempotency: read-only, без side effects.
+
+---
+
+### `GET /api/v1/notifications/preferences`
+
+Назначение: матрица настроек уведомлений для раздела «Уведомления» в `/settings`.
+
+Доступен: любому авторизованному пользователю; каждый видит и меняет только свои настройки.
+
+Success response (`200`):
+
+```json
+{
+  "items": [
+    { "type": "goal_comment", "enabled": true, "scope": "own", "channels": ["in_app"], "addressed": false },
+    { "type": "my_comment_resolved", "enabled": true, "channels": ["in_app"], "addressed": true },
+    { "type": "goal_changed", "enabled": true, "scope": "own", "channels": ["in_app"], "addressed": false },
+    { "type": "kr_progress", "enabled": true, "scope": "own", "channels": ["in_app"], "addressed": false }
+  ],
+  "channels": ["in_app"]
+}
+```
+
+- ответ всегда содержит все четыре типа: строки, отсутствующие в БД, сервер подставляет
+  дефолтом (`enabled=true`, `scope="own"`, `channels=["in_app"]`) — см. NotificationPreference
+  в `020-domain-model.md`;
+- `scope` отсутствует у адресных типов (`addressed: true`) — у `my_comment_resolved`
+  получатель уже известен из события, охват неприменим;
+- `channels` верхнего уровня — список каналов, доступных в этой сборке; в фазе 1b всегда
+  `["in_app"]`, UI показывает колонки каналов только когда их больше одного.
+
+Idempotency: read-only, без side effects.
+
+---
+
 ## CSRF requirements for browser mutations
 
 Для вызовов write endpoint'ов требуется CSRF token:
@@ -519,6 +613,57 @@ CSRF token должен быть ротационным (не постоянны
 - delete goal — `DELETE /api/v1/goals/{goalID}`
 - delete KR — `DELETE /api/v1/krs/{krID}`
 - leave goal share — `DELETE /api/v1/goals/{goalID}/share/{teamID}`
+- mark notifications read — `POST /api/v1/notifications/read`
+- update notification preferences — `PUT /api/v1/notifications/preferences`
+
+### `POST /api/v1/notifications/read`
+
+Назначение: пометить уведомления прочитанными (клик по записи в панели колокольчика или
+кнопка «Отметить все прочитанными»). Открытие панели само по себе ничего не помечает —
+список грузится через `GET /api/v1/notifications` и остаётся непрочитанным, пока
+пользователь не кликнет по записи или не нажмёт «Отметить все прочитанными».
+
+Требует CSRF token.
+
+Body: `{ "ids": [501, 502], "all": false }` — либо непустой `ids`, либо `all: true`; не то и
+другое сразу не запрещено, но `all` перекрывает `ids`. Хотя бы одно из двух обязательно.
+
+Side effects: проставляет `read_at = now()` для уведомлений вызывающего пользователя,
+подходящих под фильтр (`ids`, или все непрочитанные при `all: true`). Обновление всегда
+скопировано по `user_id` из сессии — пометить чужое уведомление прочитанным нельзя (см.
+`050-permissions-and-lifecycle.md`).
+
+Errors:
+- `400 VALIDATION_ERROR` если не передано ни `ids`, ни `all: true`
+
+Success response: `204 No Content`.
+
+Idempotency: да — повторная пометка уже прочитанного уведомления не ошибка.
+
+### `PUT /api/v1/notifications/preferences`
+
+Назначение: сохранить матрицу настроек уведомлений целиком (раздел «Уведомления» в
+`/settings`).
+
+Требует CSRF token.
+
+Body: `{ "items": [ { "type": "goal_comment", "enabled": true, "scope": "own", "channels": ["in_app"] }, ... ] }`
+— вся матрица разом, а не патч одной строки: экран настроек редактирует форму целиком и
+отбрасывает несохранённые правки при переключении раздела.
+
+Side effects: upsert по каждой строке `items` (`ON CONFLICT (tenant_id, user_id, type) DO UPDATE`),
+scoped по `user_id` из сессии — изменить чужие настройки нельзя.
+
+Validation (цикл максимум по четырём элементам — не N+1, набор типов замкнут CHECK-constraint
+в БД):
+- `400 VALIDATION_ERROR` при неизвестном `type`
+- `400 VALIDATION_ERROR` при неизвестном `scope` (для не-адресных типов)
+
+Success response: `204 No Content`.
+
+Idempotency: да — тот же payload дважды даёт то же состояние.
+
+---
 
 ### `POST /api/v1/teams/{teamID}/goals`
 

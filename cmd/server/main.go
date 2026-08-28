@@ -9,9 +9,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"okrs/app"
@@ -34,7 +36,14 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// main only translates run's exit code: os.Exit bypasses every deferred call in the
+// function it is invoked from, so all cleanup (pool.Close, the graceful-shutdown
+// sequence) has to live inside run and finish before main ever calls os.Exit.
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	var seed bool
 	flag.BoolVar(&seed, "seed", false, "seed demo data")
 	flag.Parse()
@@ -46,7 +55,7 @@ func main() {
 	zone, err := time.LoadLocation(zoneName)
 	if err != nil {
 		logger.Error("invalid timezone", slog.String("tz", zoneName))
-		os.Exit(1)
+		return 1
 	}
 
 	databaseURL := envOrDefault("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable")
@@ -54,13 +63,13 @@ func main() {
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
 		logger.Error("failed to connect db", slog.String("error", err.Error()))
-		os.Exit(1)
+		return 1
 	}
 	defer pool.Close()
 
 	if err := runMigrations(databaseURL); err != nil {
 		logger.Error("failed to migrate", slog.String("error", err.Error()))
-		os.Exit(1)
+		return 1
 	}
 
 	pgstore := store.New(pool)
@@ -79,18 +88,18 @@ func main() {
 				})
 				if err != nil {
 					logger.Error("failed to create seed period", slog.String("error", err.Error()))
-					os.Exit(1)
+					return 1
 				}
 			} else {
 				logger.Error("failed to resolve seed period", slog.String("error", err.Error()))
-				os.Exit(1)
+				return 1
 			}
 		} else {
 			periodID = period.ID
 		}
 		if err := pgstore.SeedDemo(context.Background(), periodID); err != nil {
 			logger.Error("failed to seed", slog.String("error", err.Error()))
-			os.Exit(1)
+			return 1
 		}
 		logger.Info("seed data created")
 	}
@@ -114,16 +123,58 @@ func main() {
 	})
 	if err != nil {
 		logger.Error("failed to assemble app", slog.String("error", err.Error()))
-		os.Exit(1)
+		return 1
 	}
-	defer func() { _ = a.Close(5 * time.Second) }()
+
+	// Graceful shutdown: without catching the signal, http.ListenAndServe either
+	// blocks forever or returns straight to os.Exit(1) in main, which skips every
+	// defer — including pool.Close() above and a.Close() below. That was harmless in
+	// phase 1a (the only subscriber was synchronous), but phase 1b added an async
+	// notifications subscriber with a buffer: events still queued at SIGTERM would be
+	// lost silently without this.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// serveErr is set only on a genuine listen/serve failure (port in use, bad
+	// address, ...), never on a clean shutdown (http.ErrServerClosed). It is written
+	// once, from the goroutine below, strictly before that same goroutine calls
+	// stop() — and stop() closing ctx.Done() is what unblocks the read below, so the
+	// write happens-before the read without any extra synchronization.
+	var serveErr error
 
 	addr := fmt.Sprintf(":%s", port)
-	logger.Info("listening", slog.String("addr", addr))
-	if err := http.ListenAndServe(addr, a.Handler); err != nil {
-		logger.Error("server stopped", slog.String("error", err.Error()))
-		os.Exit(1)
+	srv := &http.Server{Addr: addr, Handler: a.Handler}
+	go func() {
+		logger.Info("listening", slog.String("addr", addr))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server failed", slog.String("error", err.Error()))
+			serveErr = err
+			stop()
+		}
+	}()
+	<-ctx.Done()
+
+	// Order matters: stop accepting requests, then drain the event bus (so the async
+	// notifications subscriber gets to run against a live pool), and only then close
+	// the pool via the deferred pool.Close() above. Reversing this loses events to a
+	// closed pool. This ordering holds regardless of why we got here — a signal or a
+	// failed listener — so a failed bind still exits cleanly, just with exit code 1.
+	logger.Info("shutting down")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		logger.Warn("http shutdown did not complete cleanly", slog.String("error", err.Error()))
 	}
+	if err := a.Close(5 * time.Second); err != nil {
+		logger.Warn("event bus did not drain cleanly", slog.String("error", err.Error()))
+	}
+
+	if serveErr != nil {
+		// pool.Close() still runs: it is deferred above, and a deferred call fires
+		// when run() returns, before main() ever sees this exit code.
+		return 1
+	}
+	return 0
 }
 
 func loadAuthConfig() auth.Config {
