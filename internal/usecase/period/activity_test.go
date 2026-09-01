@@ -7,25 +7,29 @@ import (
 	"testing"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 	"okrs/internal/service/servicetest"
 )
 
 func TestUpdateStatusRecordsEvent(t *testing.T) {
-	fa := &servicetest.ActivityRepo{}
+	bus := &servicetest.FakeBus{}
 	st := servicetest.NewStore()
 	st.Teams = []domain.Team{{ID: 10, Name: "PaaS / Infra"}}
-	s := newTestUC(st, fa)
+	s := newTestUC(st, bus)
 	if err := s.UpdateTeamStatus(context.Background(), domain.TenantScope{TenantID: 1}, 10, 3, domain.TeamPeriodStatusInProgress, 5); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if len(fa.Recorded) != 1 {
-		t.Fatalf("want 1 event, got %d", len(fa.Recorded))
+	if len(bus.Events) != 1 {
+		t.Fatalf("want 1 event, got %d", len(bus.Events))
 	}
-	ev := fa.Recorded[0]
-	if ev.Category != domain.ActivityStatus || ev.Action != domain.ActionStatusChanged || ev.EntityTitle != "PaaS / Infra" {
+	ev, ok := bus.Events[0].(event.StatusChanged)
+	if !ok {
+		t.Fatalf("wrong event type: %+v", bus.Events[0])
+	}
+	if ev.TeamTitle != "PaaS / Infra" || ev.Bulk {
 		t.Fatalf("wrong event: %+v", ev)
 	}
-	if ev.Payload["after"].(map[string]any)["status"] != string(domain.TeamPeriodStatusInProgress) {
-		t.Fatalf("after status wrong: %+v", ev.Payload)
+	if ev.After != domain.TeamPeriodStatusInProgress {
+		t.Fatalf("after status wrong: %+v", ev)
 	}
 }

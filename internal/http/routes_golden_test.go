@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"okrs/internal/auth"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 )
@@ -35,8 +36,9 @@ const routesGolden = "testdata/routes.golden"
 //
 // Refresh after an intentional contract change: go test ./internal/http -run RoutesGolden -update-routes
 func TestRoutesGolden(t *testing.T) {
-	srv, err := NewServer(&store.Store{}, &grants.GrantsCache{}, slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		time.UTC, authManagerForRouteTest(t), Options{})
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	srv, err := NewServer(&store.Store{}, &grants.GrantsCache{}, logger,
+		time.UTC, authManagerForRouteTest(t), eventbus.New(logger), Options{})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
@@ -61,7 +63,11 @@ func TestRoutesGolden(t *testing.T) {
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
 			t.Fatalf("mkdir testdata: %v", err)
 		}
-		if err := os.WriteFile(routesGolden, []byte(actual), 0o644); err != nil {
+		// The file is checked in with CRLF line endings (working-tree convention for this
+		// repo). Writing LF here would rewrite every unchanged line's terminator too, burying
+		// an intentional route change under 142 lines of line-ending noise. Match the existing
+		// convention so the diff is exactly the routes that actually changed.
+		if err := os.WriteFile(routesGolden, []byte(toCRLF(actual)), 0o644); err != nil {
 			t.Fatalf("write golden: %v", err)
 		}
 		t.Logf("golden refreshed: %d routes", len(got))
@@ -72,11 +78,21 @@ func TestRoutesGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v (create it with -update-routes)", routesGolden, err)
 	}
-	if actual != string(want) {
+	// routes.golden is CRLF on disk (see toCRLF above); the router's actual output is LF.
+	// Normalize before comparing so the two conventions don't register as a route diff.
+	wantLF := toLF(string(want))
+	if actual != wantLF {
 		t.Errorf("route set changed.\nActual has %d routes.\nRun with -update-routes only if the change is intentional.\n\n%s",
-			len(got), firstDiff(string(want), actual))
+			len(got), firstDiff(wantLF, actual))
 	}
 }
+
+// toLF and toCRLF convert between the router's LF output and testdata/routes.golden's
+// (and specs/070-code-structure.md's) checked-in CRLF line endings. Both golden tests
+// read a CRLF file and compare it against LF text built in-process, and both would fail
+// on every run — not just on an intentional route change — without this normalization.
+func toLF(s string) string   { return strings.ReplaceAll(s, "\r\n", "\n") }
+func toCRLF(s string) string { return strings.ReplaceAll(toLF(s), "\n", "\r\n") }
 
 // firstDiff reports the first differing line, which is far more useful than dumping
 // both hundred-line lists.

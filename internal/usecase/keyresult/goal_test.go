@@ -17,7 +17,7 @@ func TestUpdateKRProgressNumericalRejectsUnsupportedKind(t *testing.T) {
 	st.KeyResults[1] = domain.KeyResult{ID: 1, Kind: domain.KRKindBoolean}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 1, 50, 1); err == nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 1, CheckInInput{Numerical: ptr(50.0)}, 1); err == nil {
 		t.Fatal("expected error for boolean KR with numerical update")
 	}
 }
@@ -27,17 +27,22 @@ func TestUpdateKRProgressBooleanRejectsUnsupportedKind(t *testing.T) {
 	st.KeyResults[2] = domain.KeyResult{ID: 2, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 2, true, 1); err == nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 2, CheckInInput{Boolean: ptr(true)}, 1); err == nil {
 		t.Fatal("expected error for numerical KR with boolean update")
 	}
 }
 
+// Пустой (но не nil) слайс Project — явный сигнал «прогресс — часть этого
+// чек-ина» (в отличие от nil, означающего «прогресс не отправлен вовсе»), поэтому
+// именно так тест обязан вызывать CheckIn, чтобы задеть проверку вида KR — ровно
+// как раньше это гарантировала обёртка UpdateProgressProject, нормализуя nil в []
+// на своей стороне.
 func TestUpdateKRProgressProjectRejectsUnsupportedKind(t *testing.T) {
 	st := servicetest.NewGoalStore()
 	st.KeyResults[3] = domain.KeyResult{ID: 3, Kind: domain.KRKindNumerical}
 	svc := newGoalTestService(st)
 
-	if err := svc.UpdateProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 3, nil, 1); err == nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 3, CheckInInput{Project: []ProjectStageUpdate{}}, 1); err == nil {
 		t.Fatal("expected error for numerical KR with project update")
 	}
 }

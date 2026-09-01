@@ -95,7 +95,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1Router(repo, gc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(t, repo, gc))
 	defer server.Close()
 
 	payload, _ := json.Marshal(map[string]float64{"current_value": 50})
@@ -189,7 +189,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID}))
 	defer server.Close()
 
 	t.Run("empty text returns 400", func(t *testing.T) {
@@ -314,7 +314,7 @@ func TestUpdateKRHealthStatusIntegration(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1Router(repo, gc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(t, repo, gc))
 	defer server.Close()
 
 	postProgress := func(t *testing.T, body map[string]any) int {

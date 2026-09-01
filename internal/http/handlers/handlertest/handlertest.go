@@ -49,6 +49,15 @@ func UserID(id int64, udid string) Option {
 	}
 }
 
+// UserEmail кладёт пользователя с заданным id, UDID и email — для обработчиков,
+// которые адресуют получателя по auth.UserFromContext(ctx).Email (User/UserID
+// намеренно оставляют Email пустым, так что для таких тестов нужен этот хелпер).
+func UserEmail(id int64, udid, email string) Option {
+	return func(r *http.Request) *http.Request {
+		return r.WithContext(auth.WithUser(r.Context(), &domain.User{ID: id, UDID: udid, Email: email}))
+	}
+}
+
 // Role задаёт роль в активном tenant: часть эндпоинтов пускает org-scope только админу.
 func Role(role domain.Role) Option {
 	return func(r *http.Request) *http.Request {

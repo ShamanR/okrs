@@ -62,7 +62,7 @@ func TestSetGoalParents_Contract(t *testing.T) {
 	gc := grants.NewGrantsCache(repo.Grants)
 
 	// Admin scope: happy path 204 + read-back.
-	admin := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	admin := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer admin.Close()
 
 	if resp := postLinks(t, admin.URL, child, []int64{parent}); resp.StatusCode != http.StatusNoContent {
@@ -103,7 +103,7 @@ func TestSetGoalParents_Contract(t *testing.T) {
 	}
 
 	// Scoped to teamMain only: linking to a parent in teamOther → 400 (not accessible).
-	scoped := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamMain}))
+	scoped := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamMain}))
 	defer scoped.Close()
 	if resp := postLinks(t, scoped.URL, child, []int64{otherGoal}); resp.StatusCode != http.StatusBadRequest {
 		resp.Body.Close()
@@ -111,7 +111,7 @@ func TestSetGoalParents_Contract(t *testing.T) {
 	}
 
 	// Child owner team out of scope → 404. Scope only to teamOther, target child in teamMain.
-	scopedOther := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamOther}))
+	scopedOther := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamOther}))
 	defer scopedOther.Close()
 	if resp := postLinks(t, scopedOther.URL, child, []int64{otherGoal}); resp.StatusCode != http.StatusNotFound {
 		resp.Body.Close()
@@ -158,7 +158,7 @@ func TestLinkableGoals_Contract(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	admin := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	admin := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer admin.Close()
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/goals/linkable?exclude_goal_id=%d&q=time-to-deploy", admin.URL, self))

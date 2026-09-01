@@ -15,10 +15,12 @@ import (
 	"okrs/internal/auth"
 	httpserver "okrs/internal/http"
 	"okrs/internal/platform/entitlements"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
+	"okrs/notifychannel"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +37,12 @@ type Config struct {
 	NoMembershipName     string   // "" → "stub"
 	ResolveStrategyNames []string // nil → ["session"]
 	AssetsDev            bool     // serve development vendored React; false → production build
+	// NotificationChannels are the delivery channels this build offers. Assembled by
+	// the caller, so a private module can add its own without touching this one; the
+	// OSS box passes the channels in cmd/server. Nil means in-app only.
+	NotificationChannels []notifychannel.Channel
+	// NotificationSecretKey (base64, 32 bytes) encrypts channel secrets at rest.
+	NotificationSecretKey string
 	// Embedded control-plane route mounts (SaaS), one per middleware tier; each nil in OSS.
 	PublicRoutes func(chi.Router)
 	AuthedRoutes func(chi.Router)
@@ -43,6 +51,28 @@ type Config struct {
 
 type App struct {
 	Handler http.Handler
+
+	bus *eventbus.Bus
+	// stopBackground cancels the context srv.StartBackground was launched with (the
+	// health check-in refresh, progress-snapshot and notification-retention loops in
+	// internal/scheduler). Called from Close, before draining the bus, so those loops
+	// stop touching the pool during the same exit window the bus drain happens in —
+	// see the doc comment on Close below for why the order matters.
+	stopBackground context.CancelFunc
+}
+
+// Close releases every background resource New started, in the order the caller in
+// cmd/server relies on: stop the scheduler loops first (health check-in refresh,
+// progress snapshots, notification retention — internal/scheduler), so none of them
+// can start a new query against the pool during shutdown, THEN drain the event bus's
+// async subscriber goroutines (none in the OSS box today, but a SaaS build's notifier
+// registers one) so anything already in flight finishes against a pool that is still
+// open. The caller closes the pool only after Close returns. Waits up to timeout for
+// the bus to drain before giving up; the scheduler loops stop immediately (ctx
+// cancellation, no drain to wait for).
+func (a *App) Close(timeout time.Duration) error {
+	a.stopBackground()
+	return a.bus.Close(timeout)
 }
 
 // withAuthDefaults fills unset auth fields with OSS defaults so a near-empty Config yields the
@@ -116,23 +146,36 @@ func New(cfg Config) (*App, error) {
 		return nil, fmt.Errorf("app: unknown entitlements %q", entName)
 	}
 
-	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, httpserver.Options{
-		Resolver:         auth.NewTenantResolver(strategies...),
-		TenantCache:      tenantCache,
-		MembershipCache:  membershipCache,
-		Entitlements:     entFactory(),
-		NoMembershipName: cfg.NoMembershipName,
-		AssetsDev:        cfg.AssetsDev,
-		PublicRoutes:     cfg.PublicRoutes,
-		AuthedRoutes:     cfg.AuthedRoutes,
-		TenantRoutes:     cfg.TenantRoutes,
+	// The bus is created before the server so httpdeps.Build (called from within
+	// NewServer) can register subscribers on it; Start only happens below, once
+	// assembly is done — Subscribe after Start panics by design, so this order is
+	// what catches an assembly-ordering mistake immediately instead of in prod.
+	bus := eventbus.New(logger)
+
+	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, bus, httpserver.Options{
+		Resolver:              auth.NewTenantResolver(strategies...),
+		TenantCache:           tenantCache,
+		MembershipCache:       membershipCache,
+		Entitlements:          entFactory(),
+		NoMembershipName:      cfg.NoMembershipName,
+		AssetsDev:             cfg.AssetsDev,
+		NotificationChannels:  cfg.NotificationChannels,
+		NotificationSecretKey: cfg.NotificationSecretKey,
+		PublicRoutes:          cfg.PublicRoutes,
+		AuthedRoutes:          cfg.AuthedRoutes,
+		TenantRoutes:          cfg.TenantRoutes,
 	})
 	if err != nil {
 		return nil, err
 	}
+	bus.Start(context.Background())
 	// Фоновые петли запускаются здесь, а не внутри Routes(): сборка роутера должна
 	// оставаться чистой, иначе её нельзя вызвать в тесте без goroutine и БД.
 	handler := srv.Routes()
-	srv.StartBackground(context.Background())
-	return &App{Handler: handler}, nil
+	// A dedicated cancellable context, not context.Background(): Close needs a way to
+	// stop these loops on shutdown (see Close's doc comment), and Background() can
+	// never be cancelled.
+	bgCtx, stopBackground := context.WithCancel(context.Background())
+	srv.StartBackground(bgCtx)
+	return &App{Handler: handler, bus: bus, stopBackground: stopBackground}, nil
 }

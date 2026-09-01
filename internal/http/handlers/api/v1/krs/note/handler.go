@@ -48,12 +48,13 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid payload", nil)
 		return
 	}
-	req.Text = strings.ReplaceAll(req.Text, "\r\n", "\n")
+	req.Text = krscommon.NormalizeNoteText(req.Text)
 	if strings.TrimSpace(req.Text) == "" {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "text required", map[string]string{"text": "required"})
 		return
 	}
-	if err := h.uc.UpsertNote(r.Context(), scope, krID, req.Text, auth.UserIDFromContext(r.Context())); err != nil {
+	in := kruc.CheckInInput{Note: &req.Text}
+	if err := h.uc.CheckIn(r.Context(), scope, krID, in, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to upsert note", nil)
 		return
 	}

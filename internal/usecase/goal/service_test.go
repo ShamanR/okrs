@@ -13,7 +13,7 @@ import (
 // newTestService keeps the old call shape the migrated tests use; grants are unused
 // by goal scenarios (scope-aware search moved to usecase/user).
 func newTestService(st *servicetest.Store, _ any) *UseCase {
-	return newFromRepos(rawDeps{Teams: st, Goals: st, Shares: st, Periods: st, Statuses: st, Activity: &servicetest.ActivityRepo{}})
+	return newFromRepos(rawDeps{Teams: st, Goals: st, Shares: st, Periods: st, Statuses: st, Events: &servicetest.FakeBus{}})
 }
 
 // ShareGoal must reject targets that don't belong to the active tenant, so a caller can't attach

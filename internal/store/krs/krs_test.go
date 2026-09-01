@@ -267,3 +267,51 @@ func TestUpdateHealthStatus(t *testing.T) {
 		t.Fatalf("after update via ListKeyResultsByGoal = %+v, want at_risk", list)
 	}
 }
+
+// Находка ревью: чек-ин обязан быть атомарным. Раньше прогресс, статус и заметка
+// писались тремя отдельно закоммиченными запросами — отказ на второй оставлял
+// первую сохранённой, вызывающий получал ошибку, а событие не публиковалось: база
+// уезжала, а журнал и уведомления оставались на месте, и заметить это было нечем.
+//
+// Отказ вызывается настоящим нарушением внешнего ключа: у заметки автор, которого
+// нет в users. Он срабатывает ПОСЛЕ записи прогресса внутри той же транзакции —
+// ровно та последовательность, о которой находка.
+func TestApplyCheckInRollsBackProgressWhenNoteFails(t *testing.T) {
+	ctx := context.Background()
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := krs.NewKRRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+
+	var teamID, periodID, goalID, krID int64
+	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
+	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1','2024-01-01','2024-03-31') RETURNING id`).Scan(&periodID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order)
+	                    VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order, current_value)
+	                    VALUES ($1,'KR1',100,'NUMERICAL',1,10) RETURNING id`, goalID).Scan(&krID)
+
+	newValue := 99.0
+	missingAuthor := int64(999999) // такого пользователя нет — нарушение внешнего ключа
+	err := repo.ApplyCheckIn(ctx, scope, krID, krs.CheckInWrites{
+		Numerical: &newValue,
+		Note:      &krs.CheckInNote{Text: "заметка", AuthorUserID: missingAuthor},
+	})
+	if err == nil {
+		t.Fatal("ожидалась ошибка: автор заметки не существует")
+	}
+
+	var current float64
+	if err := pool.QueryRow(ctx,
+		`SELECT current_value FROM key_results WHERE id=$1`, krID).Scan(&current); err != nil {
+		t.Fatalf("чтение прогресса: %v", err)
+	}
+	if current != 10 {
+		t.Fatalf("прогресс = %v, ожидалось 10: транзакция не откатилась, чек-ин сохранился частично", current)
+	}
+	var notes int
+	pool.QueryRow(ctx, `SELECT count(*) FROM key_result_notes WHERE key_result_id=$1`, krID).Scan(&notes)
+	if notes != 0 {
+		t.Fatalf("заметок: %d, ожидалось 0", notes)
+	}
+}

@@ -9,6 +9,7 @@ DELETE /api/v1/goals/{goalID}
 DELETE /api/v1/goals/{goalID}/comments/{commentID}
 DELETE /api/v1/goals/{goalID}/share/{teamID}
 DELETE /api/v1/krs/{krID}
+DELETE /api/v1/notifications/{id}
 DELETE /api/v1/session/memberships/{tenantID}
 DELETE /api/v1/system/tenants/{id}/members/{userID}
 DELETE /static/*
@@ -35,6 +36,7 @@ GET /api/v1/admin/settings/access
 GET /api/v1/admin/settings/feedback
 GET /api/v1/admin/settings/general
 GET /api/v1/admin/settings/health-checkin
+GET /api/v1/admin/settings/notifications
 GET /api/v1/admin/teams
 GET /api/v1/admin/users
 GET /api/v1/admin/users/{userID}
@@ -46,10 +48,14 @@ GET /api/v1/goals/{goalID}
 GET /api/v1/health-checkin
 GET /api/v1/hierarchy
 GET /api/v1/me
+GET /api/v1/notifications
+GET /api/v1/notifications/preferences
+GET /api/v1/notifications/unread-count
 GET /api/v1/periods
 GET /api/v1/periods/{periodID}/overview
 GET /api/v1/session/memberships
 GET /api/v1/session/tenants
+GET /api/v1/system/notification-channels
 GET /api/v1/system/settings
 GET /api/v1/system/tenants
 GET /api/v1/system/tenants/{id}/entitlements
@@ -94,6 +100,7 @@ POST /api/v1/admin/settings/access
 POST /api/v1/admin/settings/feedback
 POST /api/v1/admin/settings/general
 POST /api/v1/admin/settings/health-checkin
+POST /api/v1/admin/settings/notifications/{channel}/test
 POST /api/v1/admin/teams
 POST /api/v1/admin/teams/{teamID}/restore
 POST /api/v1/admin/users/{userID}/admin
@@ -118,6 +125,7 @@ POST /api/v1/krs/{krID}/note
 POST /api/v1/krs/{krID}/progress/boolean
 POST /api/v1/krs/{krID}/progress/numerical
 POST /api/v1/krs/{krID}/progress/project
+POST /api/v1/notifications/read
 POST /api/v1/onboarding/join-request
 POST /api/v1/periods/{periodID}/teams/activate
 POST /api/v1/periods/{periodID}/teams/close
@@ -133,6 +141,8 @@ POST /api/v1/teams/{teamID}/status
 POST /goals/{goalID}/delete
 POST /logout
 POST /static/*
+PUT /api/v1/admin/settings/notifications/{channel}
+PUT /api/v1/notifications/preferences
 PUT /api/v1/system/settings/default-registration-tenant
 PUT /api/v1/system/settings/no-access-message
 PUT /api/v1/system/tenants/{id}/entitlements

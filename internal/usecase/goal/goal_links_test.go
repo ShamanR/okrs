@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
-	"okrs/internal/store/activity"
+	"okrs/internal/service/servicetest"
 	"okrs/internal/store/goallinks"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/krs"
@@ -31,6 +32,7 @@ type linkFixture struct {
 	gr     *goals.GoalRepository
 	scope  domain.TenantScope
 	period int64
+	bus    *servicetest.FakeBus
 }
 
 func newLinkFixture(t *testing.T) (*linkFixture, func()) {
@@ -38,6 +40,7 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 	pool, cleanup := testutil.SetupDB(t)
 	ctx := context.Background()
 	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
+	bus := &servicetest.FakeBus{}
 	f := &linkFixture{
 		ctx:   ctx,
 		pool:  pool,
@@ -45,10 +48,11 @@ func newLinkFixture(t *testing.T) (*linkFixture, func()) {
 		pr:    periods.NewPeriodRepository(pool),
 		gr:    gr,
 		scope: domain.TenantScope{TenantID: 1},
+		bus:   bus,
 		svc: newFromRepos(rawDeps{
-			Goals:    gr,
-			Links:    goallinks.NewGoalLinkRepository(pool),
-			Activity: activity.NewActivityRepository(pool),
+			Goals:  gr,
+			Links:  goallinks.NewGoalLinkRepository(pool),
+			Events: bus,
 		}),
 		// Чтение связей — операция сервиса сущности, а не сценария: тест проверяет
 		// результат SetParents, поэтому читает напрямую через goallink-сервис.
@@ -154,21 +158,22 @@ func TestSetGoalParents_RecordsActivity(t *testing.T) {
 		t.Fatalf("unlink: %v", err)
 	}
 
-	if n := countActivity(t, f, child, domain.ActionGoalLinked); n != 1 {
-		t.Fatalf("goal_linked count = %d, want 1", n)
+	// The usecase publishes; whether the journal turns that into a row is
+	// service/activity's job, covered separately (journal_test.go, activity_test.go).
+	if n := countKind(f.bus, event.KindGoalLinked); n != 1 {
+		t.Fatalf("goal_linked count = %d, want 1: %+v", n, f.bus.Events)
 	}
-	if n := countActivity(t, f, child, domain.ActionGoalUnlinked); n != 1 {
-		t.Fatalf("goal_unlinked count = %d, want 1", n)
+	if n := countKind(f.bus, event.KindGoalUnlinked); n != 1 {
+		t.Fatalf("goal_unlinked count = %d, want 1: %+v", n, f.bus.Events)
 	}
 }
 
-func countActivity(t *testing.T, f *linkFixture, goalID int64, action domain.ActivityAction) int {
-	t.Helper()
+func countKind(bus *servicetest.FakeBus, kind event.Kind) int {
 	var n int
-	if err := f.pool.QueryRow(f.ctx,
-		`SELECT count(*) FROM activity_events WHERE tenant_id=$1 AND goal_id=$2 AND action=$3`,
-		f.scope.TenantID, goalID, string(action)).Scan(&n); err != nil {
-		t.Fatalf("count activity: %v", err)
+	for _, k := range bus.KindsPublished() {
+		if k == kind {
+			n++
+		}
 	}
 	return n
 }

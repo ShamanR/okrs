@@ -30,7 +30,14 @@ async function apiSend(url, method, body) {
   });
 }
 const apiPost = (url, body) => apiSend(url, 'POST', body);
+const apiPut = (url, body) => apiSend(url, 'PUT', body);
 const apiDelete = (url) => apiSend(url, 'DELETE');
+// readErr — читает структурированную ошибку из тела ответа ({ error: "..." }),
+// иначе падает на код статуса. Общий хелпер для всех секций, шлющих запросы.
+async function readErr(res) {
+  try { const j = await res.json(); return j.error || ('Ошибка ' + res.status); }
+  catch { return 'Ошибка ' + res.status; }
+}
 
 // ── tree helpers ────────────────────────────────────────────────────────────
 function flatten(nodes, depth = 0, out = []) {
@@ -283,7 +290,6 @@ function SpacesSection() {
   const [msg, setMsg] = useState('');
   const reload = async () => { try { setRows(await apiGet('/api/v1/session/memberships')); } catch (_) { /* keep prior list */ } };
   useEffect(() => { reload(); }, []);
-  async function readErr(res) { try { const j = await res.json(); return j.error || ('Ошибка ' + res.status); } catch { return 'Ошибка ' + res.status; } }
   async function leave(tenantID) {
     setMsg('');
     const res = await apiDelete(`/api/v1/session/memberships/${tenantID}`);
@@ -358,9 +364,190 @@ function SpacesSection() {
   );
 }
 
+// ── SECTION: NOTIFICATIONS ───────────────────────────────────────────────────
+// Подписи типов уведомлений. Тексты живут на клиенте: сервер отдаёт ключи, а не
+// готовые ярлыки, чтобы не смешивать контракт API с языком интерфейса.
+const NOTIF_TYPE_LABELS = {
+  goal_comment: { label: 'Комментарий к цели', hint: 'Кто-то оставил комментарий или ответил' },
+  my_comment_resolved: { label: 'Решён мой комментарий', hint: 'Приходит всегда, независимо от охвата' },
+  goal_changed: { label: 'Изменение в цели', hint: 'Правки цели и её ключевых результатов, создание и удаление' },
+  kr_progress: { label: 'Обновление прогресса KR', hint: 'Изменился процент выполнения' },
+};
+
+const NOTIF_SCOPES = [
+  { value: 'own', label: 'Только мои команды' },
+  { value: 'own_and_children', label: 'Мои команды и уровень ниже' },
+  { value: 'subtree', label: 'Мои команды и всё поддерево' },
+];
+
+function NotificationsSettings() {
+  const [items, setItems] = useState([]);
+  // savedItems — снимок последней загруженной или успешно сохранённой матрицы.
+  // Сравнение с ним даёт признак несохранённых правок (см. dirty ниже).
+  const [savedItems, setSavedItems] = useState([]);
+  const [channels, setChannels] = useState([]);
+  const [status, setStatus] = useState('');
+  const [loading, setLoading] = useState(true);
+  // loadError — сеть/403 при загрузке матрицы. Без него неудачный запрос оставляет
+  // секцию в состоянии "Загрузка…" навсегда (apiGet бросает на любом не-2xx), а
+  // пользователь не может ни увидеть проблему, ни повторить попытку.
+  const [loadError, setLoadError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const data = await apiGet('/api/v1/notifications/preferences');
+      const loaded = data?.items || [];
+      setItems(loaded);
+      setSavedItems(loaded);
+      setChannels(data?.channels || []);
+    } catch (_) {
+      setLoadError('Не удалось загрузить настройки уведомлений.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Колонки каналов показываются только когда каналов больше одного: в фазе 1b
+  // канал ровно один (in-app), поэтому колонок нет и таблица остаётся простой.
+  const showChannels = channels.length > 1;
+
+  const patch = (type, changes) =>
+    setItems(prev => prev.map(it => (it.type === type ? { ...it, ...changes } : it)));
+
+  // dirty — матрица отличается от последней загруженной/сохранённой версии.
+  // Секция не автосохраняет и переключение на другой раздел размонтирует её,
+  // молча отбрасывая правки, — явно показываем это состояние рядом с кнопкой,
+  // а не прячем.
+  const dirty = JSON.stringify(items) !== JSON.stringify(savedItems);
+
+  const save = async () => {
+    setStatus('');
+    setSaving(true);
+    try {
+      const res = await apiPut('/api/v1/notifications/preferences', { items });
+      if (res.ok) {
+        setSavedItems(items);
+        setStatus('Сохранено');
+      } else {
+        setStatus(await readErr(res));
+      }
+    } catch (_) {
+      // Сетевой сбой: apiPut не бросает на не-2xx (это ветка выше), но fetch сам
+      // может отклониться — без catch saving обнулится в finally, а status
+      // останется пустым, и кнопка будет выглядеть так, будто ничего не произошло.
+      setStatus('Не удалось сохранить: проверьте соединение и попробуйте ещё раз');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="set-panel"><div className="set-empty__text">Загрузка…</div></div>;
+
+  if (loadError) {
+    return (
+      <div className="set-panel">
+        <div className="set-empty" style={{ padding: '24px 20px' }}>
+          <div className="set-empty__icon">⚠️</div>
+          <div className="set-empty__title">{loadError}</div>
+          <button className="set-btn set-btn--ghost" onClick={load} style={{ marginTop: 12 }}>Повторить</button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="set-panel">
+      <div className="notif-prefs-scroll">
+        <table className="notif-prefs">
+          <thead>
+            <tr>
+              <th scope="col">Тип</th>
+              <th scope="col">Присылать</th>
+              <th scope="col">Охват</th>
+              {showChannels && channels.map(c => <th key={c} scope="col">{c}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(it => {
+              const meta = NOTIF_TYPE_LABELS[it.type] || { label: it.type, hint: '' };
+              return (
+                <tr key={it.type}>
+                  <td>
+                    <div className="notif-prefs__label">{meta.label}</div>
+                    <div className="notif-prefs__hint">{meta.hint}</div>
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={it.enabled}
+                      onChange={e => patch(it.type, { enabled: e.target.checked })}
+                      aria-label={`Присылать: ${meta.label}`}
+                    />
+                  </td>
+                  <td>
+                    {/* У адресного типа охват неприменим: получатель — конкретный
+                        человек, а не срез структуры. Признак приходит с сервера
+                        (addressed), чтобы клиент не хардкодил имя типа
+                        "my_comment_resolved". */}
+                    {it.addressed ? (
+                      <span className="notif-prefs__na">—</span>
+                    ) : (
+                      <select
+                        value={it.scope || 'own'}
+                        disabled={!it.enabled}
+                        onChange={e => patch(it.type, { scope: e.target.value })}
+                        aria-label={`Охват: ${meta.label}`}
+                      >
+                        {NOTIF_SCOPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                      </select>
+                    )}
+                  </td>
+                  {showChannels && channels.map(c => (
+                    <td key={c}>
+                      <input
+                        type="checkbox"
+                        checked={(it.channels || []).includes(c)}
+                        disabled={!it.enabled}
+                        onChange={e => patch(it.type, {
+                          channels: e.target.checked
+                            ? [...(it.channels || []), c]
+                            : (it.channels || []).filter(x => x !== c),
+                        })}
+                        aria-label={`${c}: ${meta.label}`}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="notif-prefs__actions">
+        <button className="set-btn set-btn--primary" onClick={save} disabled={saving}>
+          {saving ? 'Сохранение…' : 'Сохранить'}
+        </button>
+        {dirty && !saving && <span className="notif-prefs__dirty">есть несохранённые изменения</span>}
+        {status && (
+          <span className={`notif-prefs__status ${status === 'Сохранено' ? 'notif-prefs__status--ok' : 'notif-prefs__status--err'}`}>
+            {status}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── APP SHELL ─────────────────────────────────────────────────────────────────
 const SECTION_META = {
   descriptions: { label: 'Описание команд', hint: 'Только команды, где вы лид', icon: '📝' },
+  notifications: { label: 'Уведомления', hint: 'Что и о чём присылать', icon: '🔔' },
   sidebar: { label: 'Мой сайдбар', hint: 'Какие узлы показывать', icon: '☰' },
   spaces: { label: 'Мои пространства', hint: 'Тенанты и заявки', icon: '🏢' },
 };
@@ -402,7 +589,12 @@ function App() {
   }, [me, hierarchy]);
 
   // Available sections — descriptions only when the user actually leads a team.
-  const sections = useMemo(() => [...(isLead ? ['descriptions'] : []), 'sidebar', 'spaces'], [isLead]);
+  // Notifications is available to everyone: the addressed type ("my_comment_resolved")
+  // reaches anyone who writes comments, whether or not they lead a team.
+  const sections = useMemo(
+    () => [...(isLead ? ['descriptions'] : []), 'notifications', 'sidebar', 'spaces'],
+    [isLead],
+  );
   const active = sections.includes(section) ? section : sections[0];
 
   // Заголовок вкладки: «Профиль {раздел}».
@@ -466,9 +658,11 @@ function App() {
             ? <div className="set-panel"><div className="set-empty"><div className="set-empty__icon">⚠️</div><div className="set-empty__title">Не удалось загрузить данные</div><div className="set-empty__text">Попробуйте обновить страницу.</div></div></div>
             : active === 'descriptions'
               ? (<><p className="set-intro">Вы можете редактировать описание команд, в которых являетесь лидом, а также всех вложенных в них команд.</p><DescriptionsSection me={me} hierarchy={hierarchy} /></>)
-              : active === 'spaces'
-                ? (<><p className="set-intro">Пространства (тенанты), в которых вы состоите. Можно выйти из пространства, отменить заявку или отправить новую заявку на вступление по slug.</p><SpacesSection /></>)
-                : (<><p className="set-intro">Выберите узлы иерархии, которые будут видны в вашем сайдбаре. Можно отметить одну команду, целую ветвь или несколько команд из разных ветвей — родительские узлы показываются автоматически для навигации.</p><SidebarSection me={me} hierarchy={hierarchy} /></>)}
+              : active === 'notifications'
+                ? (<><p className="set-intro">Уведомления приходят по целям команд, где вы руководитель. Охват задаёт, насколько глубоко вниз по структуре смотреть.</p><NotificationsSettings /></>)
+                : active === 'spaces'
+                  ? (<><p className="set-intro">Пространства (тенанты), в которых вы состоите. Можно выйти из пространства, отменить заявку или отправить новую заявку на вступление по slug.</p><SpacesSection /></>)
+                  : (<><p className="set-intro">Выберите узлы иерархии, которые будут видны в вашем сайдбаре. Можно отметить одну команду, целую ветвь или несколько команд из разных ветвей — родительские узлы показываются автоматически для навигации.</p><SidebarSection me={me} hierarchy={hierarchy} /></>)}
         </main>
       </div>
     </div>

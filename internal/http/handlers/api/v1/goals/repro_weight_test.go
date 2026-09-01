@@ -59,7 +59,7 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil)) // admin scope
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil)) // admin scope
 	defer server.Close()
 
 	weightFor := func(teamID int64) int {

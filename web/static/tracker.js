@@ -677,16 +677,21 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     setSaving(true);
     try {
       const healthField = healthTouched ? { health_status: health } : {};
-      if (form.krType === 'NUMERICAL') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0, ...healthField });
-      } else if (form.krType === 'BOOLEAN') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done, ...healthField });
-      } else if (form.krType === 'PROJECT') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })), ...healthField });
-      }
+      // Заметка едет вместе с прогрессом одним запросом — это и есть чек-ин: одно
+      // действие пользователя, один usecase-вызов CheckIn, одно событие/уведомление.
+      // Отдельного POST /note в интерфейсе больше нет: единственный путь правки
+      // заметки — эта форма, а форма всегда бьёт вместе с прогрессом/статусом.
+      // Сохранено прежнее поведение "не отправлять пустую и не отправлять
+      // неизменившуюся" — очистка заметки через эту форму как не работала, так и
+      // не работает; это не относится к переносу заметки в тело запроса прогресса.
       const trimmed = note.trim();
-      if (trimmed && trimmed !== (kr.note?.text ?? '')) {
-        await apiPost(`/api/v1/krs/${kr.id}/note`, { text: trimmed });
+      const noteField = (trimmed && trimmed !== (kr.note?.text ?? '')) ? { note: trimmed } : {};
+      if (form.krType === 'NUMERICAL') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0, ...healthField, ...noteField });
+      } else if (form.krType === 'BOOLEAN') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done, ...healthField, ...noteField });
+      } else if (form.krType === 'PROJECT') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })), ...healthField, ...noteField });
       }
       const trimmedDesc = descDraft.trim();
       if (descEditing && trimmedDesc) {
@@ -1629,7 +1634,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   // "N дней без обновления" is an execution-phase signal: it applies only while
   // the team is in_progress ("в работе"). Drafts, goals awaiting validation and
   // closed periods are not being actively executed, so it is not meaningful for
-  // them. Kept in sync with the Health Check-in "stale" category (bell).
+  // them. Kept in sync with the Health Check-in "stale" category.
   const staleTracked = periodStatus === 'in_progress';
   const isStale = staleTracked && goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;
@@ -2566,229 +2571,6 @@ function ClusterView({ overview, onSelect, greenThreshold = 80 }) {
   );
 }
 
-// ── HEALTH CHECK-IN ───────────────────────────────────────────────────────────
-const HCI_CAT_META = {
-  stale: { icon: '🕐', label: 'Нет обновлений', color: '#f59e0b' },
-  no_goals: { icon: '○', label: 'Нет целей', color: '#6b7280' },
-  awaiting_validation: { icon: '○', label: 'Ожидают валидации', color: '#6b7280' },
-  formation_errors: { icon: '⚠', label: 'Ошибки формирования', color: '#ef4444' },
-  lagging: { icon: '▼', label: 'Отстающие', color: '#3b82f6' },
-  comments: { icon: '💬', label: 'Комментарии', color: '#8b5cf6' },
-};
-const HCI_CAT_ORDER = ['stale', 'no_goals', 'awaiting_validation', 'formation_errors', 'lagging', 'comments'];
-const HCI_ACTION_LABEL = {
-  stale: '→ Обновить прогресс',
-  no_goals: '→ Перейти к команде',
-  awaiting_validation: '→ Перейти к команде',
-  formation_errors: '→ Исправить',
-  lagging: '→ Перейти к цели',
-  comments: '→ Перейти к комментарию',
-};
-
-function hciSeenKey(meId) { return `hci_resolved_seen_${meId || 'anon'}`; }
-
-// Непросмотренные решённые = те, чей resolved_at строго новее сохранённого watermark.
-function hciUnseenResolved(hciData, meId) {
-  const resolved = hciData?.categories?.comments?.resolved || [];
-  if (resolved.length === 0) return 0;
-  const wm = localStorage.getItem(hciSeenKey(meId));
-  const wmMs = wm ? new Date(wm).getTime() : 0;
-  return resolved.filter(r => new Date(r.resolved_at).getTime() > wmMs).length;
-}
-
-// Двигает watermark на максимум resolved_at среди показанных решённых.
-function hciMarkResolvedSeen(hciData, meId) {
-  const resolved = hciData?.categories?.comments?.resolved || [];
-  if (resolved.length === 0) return;
-  const maxMs = Math.max(...resolved.map(r => new Date(r.resolved_at).getTime()));
-  localStorage.setItem(hciSeenKey(meId), new Date(maxMs).toISOString());
-}
-
-function HealthCheckInButton({ data, onClick }) {
-  if (!data || !data.has_scope) return null;
-  const count = data.total_problems;
-  return (
-    <button className="hci-button" onClick={onClick}>
-      <span>⚡ Health Check-in</span>
-      <span className={`hci-badge${count === 0 ? ' hci-badge--zero' : ''}`}>{count}</span>
-    </button>
-  );
-}
-
-function formatHCIErrorType(errType, item) {
-  const labels = {
-    weight_sum_not_100: `Сумма весов целей: ${item.actual_weight_sum ?? '?'}% (должно быть 100%)`,
-    no_krs: 'У цели нет ключевых результатов',
-    kr_weight_sum_not_100: 'Сумма весов KR ≠ 100%',
-    project_no_stages: 'PROJECT KR без шагов',
-    project_stage_weight_sum_not_100: 'Сумма весов шагов ≠ 100%',
-    kr_zero_range: 'Нулевой диапазон (start = target)',
-    kr_no_title: 'KR без названия',
-  };
-  return labels[errType] || errType;
-}
-
-function HealthCheckInPanel({ data, open, onClose }) {
-  const [filter, setFilter] = useState(null);
-  if (!data) return null;
-
-  const subtitle = (() => {
-    if (data.total_problems > 0) return `Найдено проблем: ${data.total_problems}`;
-    const lagging = data.categories?.lagging?.count ?? 0;
-    if (lagging > 0) return 'Проблем нет · есть отстающие цели';
-    return 'Всё в порядке';
-  })();
-
-  // Для категории comments «объём» = нерешённые + мои решённые (у неё нет items/count-семантики badge).
-  const catVisibleCount = (k) => {
-    if (k === 'comments') {
-      const c = data.categories?.comments;
-      return (c?.unresolved?.length || 0) + (c?.resolved?.length || 0);
-    }
-    return data.categories?.[k]?.count ?? 0;
-  };
-  const nonEmptyCats = HCI_CAT_ORDER.filter(k => catVisibleCount(k) > 0);
-  const counterCats = HCI_CAT_ORDER.filter(k => data.categories?.[k]?.in_counter);
-  // Секция «Комментарии» видна по умолчанию, даже если не в счётчике (in_counter=false).
-  const commentsNonEmpty = nonEmptyCats.includes('comments');
-  const baseCats = commentsNonEmpty && !counterCats.includes('comments')
-    ? [...counterCats, 'comments'] : counterCats;
-  const visibleCats = filter ? [filter] : baseCats;
-
-  return (
-    <>
-      {open && <div className="hci-backdrop" onClick={onClose} />}
-      <div className={`hci-panel${open ? ' hci-panel--open' : ''}`}>
-        <div className="hci-panel__header">
-          <div style={{ flex: 1 }}>
-            <p className="hci-panel__title">⚡ Health Check-in</p>
-            <p className="hci-panel__subtitle">{subtitle}</p>
-          </div>
-          <button className="hci-panel__close" onClick={onClose}>✕</button>
-        </div>
-
-        {nonEmptyCats.length > 0 && (
-          <div className="hci-chips">
-            <button
-              className={`hci-chip${!filter ? ' hci-chip--active' : ''}`}
-              onClick={() => setFilter(null)}>
-              Все · {data.total_problems}
-            </button>
-            {nonEmptyCats.map(k => {
-              const cat = data.categories[k];
-              const meta = HCI_CAT_META[k];
-              const isActive = filter === k;
-              const chipStyle = isActive
-                ? { background: meta.color, borderColor: meta.color, color: '#fff' }
-                : { borderColor: meta.color + '60', color: meta.color };
-              return (
-                <button key={k}
-                  className="hci-chip"
-                  style={chipStyle}
-                  onClick={() => setFilter(isActive ? null : k)}>
-                  {meta.icon} {meta.label} · {catVisibleCount(k)}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        <div className="hci-body">
-          {visibleCats.every(k => catVisibleCount(k) === 0) ? (
-            <div className="hci-empty">
-              <span className="hci-empty__icon">{filter ? '🔍' : '✅'}</span>
-              <span>{filter ? 'По выбранному фильтру ничего нет' : 'Всё ok'}</span>
-            </div>
-          ) : (
-            visibleCats.map(k => {
-              const cat = data.categories?.[k];
-              if (!cat) return null;
-
-              if (k === 'comments') {
-                const unresolved = cat.unresolved || [];
-                const resolved = cat.resolved || [];
-                if (unresolved.length === 0 && resolved.length === 0) return null;
-                const cmeta = HCI_CAT_META[k];
-                const renderRow = (item, kind) => (
-                  <div key={`${kind}-${item.comment_id}`} className="hci-item">
-                    <div className="hci-item__title">{item.goal_title}</div>
-                    <Markdown text={item.text} className="hci-item__comment" />
-                    <div className="hci-item__meta">
-                      {kind === 'unresolved'
-                        ? (item.author_name || '')
-                        : `решил: ${item.resolved_by_name || ''}`}
-                      {' · '}{(item.team_path || []).join(' › ')}
-                    </div>
-                    <a className="hci-item__action"
-                      href={buildTargetURL({ team_id: item.team_id, period_id: data.period_id, goal_id: item.goal_id, comment_id: item.comment_id })}>
-                      {HCI_ACTION_LABEL[k]}
-                    </a>
-                  </div>
-                );
-                return (
-                  <div key={k} className="hci-section">
-                    <div className="hci-section__header" style={{ color: cmeta.color }}>
-                      <span>{cmeta.icon}</span><span>{cmeta.label}</span>
-                      <span className="hci-section__count">{unresolved.length + resolved.length}</span>
-                    </div>
-                    {unresolved.length > 0 && <>
-                      <div className="hci-team__name"><span>▸</span><span>Нерешённые · {unresolved.length}</span></div>
-                      {unresolved.map(it => renderRow(it, 'unresolved'))}
-                    </>}
-                    {resolved.length > 0 && <>
-                      <div className="hci-team__name"><span>▸</span><span>Мои решённые · {resolved.length}</span></div>
-                      {resolved.map(it => renderRow(it, 'resolved'))}
-                    </>}
-                  </div>
-                );
-              }
-
-              if (cat.count === 0) return null;
-              const meta = HCI_CAT_META[k];
-              const byTeam = {};
-              for (const item of cat.items) {
-                if (!byTeam[item.team_id]) byTeam[item.team_id] = { name: item.team_name, path: item.team_path, items: [] };
-                byTeam[item.team_id].items.push(item);
-              }
-              return (
-                <div key={k} className="hci-section">
-                  <div className="hci-section__header" style={{ color: meta.color }}>
-                    <span>{meta.icon}</span>
-                    <span>{meta.label}</span>
-                    <span className="hci-section__count">{cat.count}</span>
-                  </div>
-                  {Object.entries(byTeam).map(([teamIdStr, group]) => (
-                    <div key={teamIdStr} className="hci-team">
-                      <div className="hci-team__name">
-                        <span>▸</span>
-                        <span>{group.path?.join(' › ') || group.name}</span>
-                      </div>
-                      {group.items.map((item, idx) => (
-                        <div key={idx} className="hci-item">
-                          {item.goal_title && <div className="hci-item__title">{item.goal_title}</div>}
-                          {item.days_since_update > 0 && <div className="hci-item__meta">{item.days_since_update} дн. без обновлений</div>}
-                          {item.error_type && <div className="hci-item__meta">{formatHCIErrorType(item.error_type, item)}</div>}
-                          {item.progress !== undefined && item.expected_pace !== undefined && (
-                            <div className="hci-item__meta">Прогресс: {item.progress}% · Ожидалось: {item.expected_pace}%</div>
-                          )}
-                          <a className="hci-item__action"
-                            href={buildTargetURL({ team_id: item.team_id, period_id: data.period_id, goal_id: item.goal_id })}>
-                            {HCI_ACTION_LABEL[k]}
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
 // ── APP ───────────────────────────────────────────────────────────────────────
 function App() {
   const [me, setMe] = useState(null);
@@ -2803,28 +2585,12 @@ function App() {
   const [favorites, setFavorites] = useState(null); // null = not loaded from storage yet
   const [goalModal, setGoalModal] = useState(null);
   const [accent] = useState(ACCENT);
-  const [hciData, setHciData] = useState(null);
-  const [hciOpen, setHciOpen] = useState(false);
   const [docUrl, setDocUrl] = useState('');
   const [emptyHierMsg, setEmptyHierMsg] = useState('');
   const [staleDays, setStaleDays] = useState(7);
   const [behindMargin, setBehindMargin] = useState(10);
   const [greenThreshold, setGreenThreshold] = useState(80);
   const [isAdmin, setIsAdmin] = useState(false);
-
-  const loadHCI = useCallback((pid) => {
-    if (!pid) return;
-    apiGet(`/api/v1/health-checkin?period_id=${pid}`)
-      .then(d => d && setHciData(d));
-  }, []);
-
-  // При открытии панели помечаем решённые комментарии просмотренными (watermark в localStorage),
-  // чтобы после первого просмотра их непросмотренный счётчик в бейдже обнулился.
-  useEffect(() => {
-    if (hciOpen && hciData) {
-      hciMarkResolvedSeen(hciData, me?.id);
-    }
-  }, [hciOpen]);
 
   // Read desired initial team+period once from URL (highest prio) then cookie.
   const initialNavRef = useRef(null);
@@ -2944,8 +2710,6 @@ function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
-  useEffect(() => { loadHCI(periodId); }, [periodId]);
 
   // Заголовок вкладки: «Цели {команда}» для выбранного узла.
   useEffect(() => {
@@ -3083,9 +2847,6 @@ function App() {
         user={me}
         active="tracker"
         linkParams={periodLinkParams(periodId)}
-        bell={hciData && hciData.has_scope
-          ? <SidebarBell count={hciData.total_problems + hciUnseenResolved(hciData, me?.id)} onClick={() => setHciOpen(true)} />
-          : null}
         beforeSections={
           <div className="sidebar__period">
             <div className="sidebar__period-label">Период</div>
@@ -3192,11 +2953,6 @@ function App() {
         onSave={() => { setGoalModal(null); reload(); }}
         onClose={() => setGoalModal(null)}
         accent={accent} allTeams={hierarchy} periods={periods} />}
-      <HealthCheckInPanel
-        data={hciData}
-        open={hciOpen}
-        onClose={() => setHciOpen(false)}
-      />
     </div>
   );
 }

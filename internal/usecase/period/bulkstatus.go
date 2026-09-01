@@ -3,8 +3,10 @@ package period
 import (
 	"context"
 	"sort"
+	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 )
 
 // BulkStatusResult reports the outcome of a bulk team-period-status transition.
@@ -81,30 +83,23 @@ func (s *UseCase) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.Tena
 		return BulkStatusResult{}, err
 	}
 
-	evs := make([]domain.ActivityEvent, 0, len(affected))
+	// Батчевая операция: один PublishBatch на весь набор — не превращать в цикл Publish.
+	// One timestamp for the whole batch: it is a single logical bulk transition, and a
+	// per-iteration time.Now() would let events straddle a coalescing-bucket boundary.
+	now := time.Now()
+	evs := make([]event.Event, 0, len(affected))
 	for _, id := range affected {
 		before := statuses[id]
 		if before == "" {
 			before = domain.TeamPeriodStatusNoGoals
 		}
 		tID, pID := id, periodID
-		evs = append(evs, domain.ActivityEvent{
-			ActorUserID: actorUserID,
-			Category:    domain.ActivityStatus,
-			Action:      domain.ActionStatusChanged,
-			TeamID:      &tID,
-			PeriodID:    &pID,
-			EntityTitle: nameByID[id],
-			Payload: map[string]any{
-				"before": map[string]any{"status": string(before)},
-				"after":  map[string]any{"status": string(target)},
-				"bulk":   true,
-			},
+		evs = append(evs, event.StatusChanged{
+			Meta:      event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &tID, PeriodID: &pID, OccurredAt: now},
+			TeamTitle: nameByID[id], Before: before, After: target, Bulk: true,
 		})
 	}
-	if err := s.activity.RecordBatch(ctx, scope, evs); err != nil && s.logger != nil {
-		s.logger.Warn("bulk status: activity record failed", "period", periodID, "err", err)
-	}
+	s.events.PublishBatch(ctx, evs)
 
 	if s.hcCache != nil {
 		s.hcCache.InvalidateAll()
@@ -122,10 +117,9 @@ func (s *UseCase) UpdateTeamStatus(ctx context.Context, scope domain.TenantScope
 		title = team.Name
 	}
 	tID, pID := teamID, periodID
-	s.activity.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityStatus, Action: domain.ActionStatusChanged,
-		TeamID: &tID, PeriodID: &pID, EntityTitle: title,
-		Payload: map[string]any{"before": map[string]any{"status": string(before)}, "after": map[string]any{"status": string(status)}},
+	s.events.Publish(ctx, event.StatusChanged{
+		Meta:      event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &tID, PeriodID: &pID, OccurredAt: time.Now()},
+		TeamTitle: title, Before: before, After: status,
 	})
 	return nil
 }

@@ -64,3 +64,88 @@
 .fb-nudge__text { font-size: 14px; color: #475569; line-height: 1.55; margin-bottom: 20px; }
 .fb-nudge__btn { display: inline-block; width: 100%; box-sizing: border-box; padding: 11px 16px; border-radius: 10px; background: #7c3aed; color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; }
 .fb-nudge__btn:hover { background: #6d28d9; }
+
+/* ── NotificationsBell / NotificationsPanel ── */
+.notif__backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 200; animation: notifFadeIn 0.18s ease; }
+@keyframes notifFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.notif__panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  max-width: 100vw;
+  height: 100vh;
+  background: #0c1220;
+  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.5);
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+}
+.notif__panel-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
+.notif__panel-title { font-size: 16px; font-weight: 700; color: #f1f5f9; margin-right: auto;}
+.notif__mark-all { background: none; border: none; color: #a78bfa; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
+.notif__mark-all:hover { color: #c4b5fd; text-decoration: underline; }
+.notif__gear { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; text-decoration: none; }
+.notif__gear:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
+.notif__close { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.notif__close:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
+
+.notif__list { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
+.notif__list::-webkit-scrollbar { width: 4px; }
+.notif__list::-webkit-scrollbar-track { background: transparent; }
+.notif__list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.notif__item {
+  display: block;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.notif__item:hover { background: rgba(255,255,255,0.04); }
+.notif__item--unread { background: rgba(124, 58, 237, 0.08); }
+.notif__item--unread:hover { background: rgba(124, 58, 237, 0.14); }
+.notif__item-row { display: flex; align-items: flex-start; gap: 10px; }
+.notif__item-main { flex: 1; min-width: 0; }
+.notif__item-head { display: flex; align-items: baseline; gap: 8px; }
+.notif__item-title { font-size: 13px; font-weight: 700; color: #f1f5f9; flex: 1; min-width: 0; }
+.notif__item-time { font-size: 11px; color: #64748b; flex-shrink: 0; white-space: nowrap; }
+.notif__item-body { font-size: 12px; color: #94a3b8; line-height: 1.45; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+.notif__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; color: #475569; font-size: 14px; gap: 8px; }
+.notif__empty-icon { font-size: 32px; }
+
+/* Запись списка уведомлений: обёртка нужна, чтобы кнопка удаления была СОСЕДОМ
+   кликабельной части, а не потомком — <button> внутри <a> невалиден. */
+.notif__entry { position: relative; }
+/* Место справа под кнопку: без этого время в шапке уезжает под неё. */
+.notif__entry .notif__item { padding-right: 40px; }
+.notif__item-context {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notif__item-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  /* Видима всегда, а не только по наведению: на тач-устройствах наведения нет,
+     и скрытая кнопка была бы недоступна вовсе. Приглушена, чтобы не спорить
+     с текстом уведомления. */
+  opacity: 0.55;
+}
+.notif__item-delete:hover { opacity: 1; color: #f87171; background: rgba(248,113,113,0.12); }
+.notif__item-delete:focus-visible { opacity: 1; outline: 2px solid #c4b5fd; outline-offset: 1px; }

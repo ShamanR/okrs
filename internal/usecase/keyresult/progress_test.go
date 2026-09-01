@@ -17,7 +17,7 @@ func TestNumericalReaching100AutoSetsDone(t *testing.T) {
 		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 50},
 	}
 	svc := newTestUC(store)
-	if err := svc.UpdateProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 7, 100, 1); err != nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 7, CheckInInput{Numerical: ptr(100.0)}, 1); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if store.HealthUpdates[7] != domain.KRHealthDone {
@@ -32,7 +32,7 @@ func TestResaveAt100DoesNotOverrideManualHealth(t *testing.T) {
 		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 100},
 	}
 	svc := newTestUC(store)
-	if err := svc.UpdateProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 7, 100, 1); err != nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 7, CheckInInput{Numerical: ptr(100.0)}, 1); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if _, ok := store.HealthUpdates[7]; ok {
@@ -47,7 +47,7 @@ func TestDroppingBelow100KeepsHealth(t *testing.T) {
 		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 100},
 	}
 	svc := newTestUC(store)
-	if err := svc.UpdateProgressNumerical(context.Background(), domain.TenantScope{TenantID: 1}, 7, 80, 1); err != nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 7, CheckInInput{Numerical: ptr(80.0)}, 1); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if _, ok := store.HealthUpdates[7]; ok {
@@ -62,7 +62,7 @@ func TestBooleanDoneAutoSetsHealthDone(t *testing.T) {
 		Boolean: &domain.KRBoolean{IsDone: false},
 	}
 	svc := newTestUC(store)
-	if err := svc.UpdateProgressBoolean(context.Background(), domain.TenantScope{TenantID: 1}, 7, true, 1); err != nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 7, CheckInInput{Boolean: ptr(true)}, 1); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if store.HealthUpdates[7] != domain.KRHealthDone {
@@ -79,7 +79,7 @@ func TestProjectReaching100AutoSetsDone(t *testing.T) {
 	}
 	svc := newTestUC(store)
 	updates := []ProjectStageUpdate{{ID: 1, IsDone: true}, {ID: 2, IsDone: true}}
-	if err := svc.UpdateProgressProject(context.Background(), domain.TenantScope{TenantID: 1}, 7, updates, 1); err != nil {
+	if err := svc.CheckIn(context.Background(), domain.TenantScope{TenantID: 1}, 7, CheckInInput{Project: updates}, 1); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 	if store.HealthUpdates[7] != domain.KRHealthDone {

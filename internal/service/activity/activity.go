@@ -54,17 +54,6 @@ func (s *Service) Purge(ctx context.Context, scope domain.TenantScope, olderThan
 	return s.repo.Purge(ctx, scope, olderThan)
 }
 
-// DiffFields returns only the entries whose before != after, as {field: {"before":x,"after":y}}.
-func DiffFields(pairs map[string][2]any) map[string]any {
-	out := map[string]any{}
-	for field, ba := range pairs {
-		if ba[0] != ba[1] {
-			out[field] = map[string]any{"before": ba[0], "after": ba[1]}
-		}
-	}
-	return out
-}
-
 // RecordBatch writes many events in one statement and, unlike Record, reports the
 // error: bulk callers decide whether a lost batch is worth logging or surfacing.
 // Батчевая операция: не превращать в цикл Record — это N+1.

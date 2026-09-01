@@ -10,8 +10,16 @@ async function apiFetch(url, opts={}) {
 }
 const apiGet  = url       => apiFetch(url);
 const apiPost = (url, body) => apiFetch(url, {method:'POST',   headers:csrfHeaders(), body:JSON.stringify(body)});
+const apiPut  = (url, body) => apiFetch(url, {method:'PUT',    headers:csrfHeaders(), body:JSON.stringify(body)});
 const apiPatch= (url, body) => apiFetch(url, {method:'PATCH',  headers:csrfHeaders(), body:JSON.stringify(body)});
 const apiDel  = url       => apiFetch(url, {method:'DELETE', headers:{'X-CSRF-Token':readCSRF()}});
+// readErr — читает текст ошибки из тела ответа ({error:"..."}), иначе падает на код
+// статуса. res может быть null (401 уже увёл на /login в apiFetch).
+async function readErr(res) {
+  if (!res) return 'Ошибка авторизации';
+  try { const j = await res.json(); return j.error || ('Ошибка ' + res.status); }
+  catch { return 'Ошибка ' + res.status; }
+}
 
 // ── CONSTANTS ────────────────────────────────────────────────────────────────
 // TEAM_TYPE_LABEL / TEAM_TYPE_ORDER / TEAM_TYPE_COLOR — общие константы из ui.js (грузится раньше).
@@ -263,6 +271,7 @@ const ADMIN_SECTIONS = [
   {id:'users',    label:'Пользователи',hint:'Админы и доступ',         icon:'🔑'},
   {id:'settings', label:'Настройки',   hint:'Доступ и политики',       icon:'⚙'},
   {id:'health-checkin', label:'Health Check-in', hint:'Настройки проверок', icon:'⚡'},
+  {id:'notifications', label:'Уведомления', hint:'Каналы доставки', icon:'🔔'},
 ];
 
 function Shell({section, setSection, currentUser, children}) {
@@ -1663,6 +1672,123 @@ function UserModal({user, teams, currentUser, allUsers, ledTeams, onClose, onSav
   </div>;
 }
 
+// ── NOTIFICATION CHANNELS ───────────────────────────────────────────────────────
+// Каналы уведомлений пространства. Форма каждого канала строится по его же
+// дескриптору (поля name/label/kind/required/hint с сервера): этот экран не знает
+// ни одного канала по имени, поэтому канал из внешнего репозитория получает
+// рабочую форму без единой правки здесь.
+function NotificationsSection() {
+  const [channels, setChannels] = useState([]);
+  const [draft, setDraft] = useState({});   // name -> {enabled, values, secret}
+  const [msg, setMsg] = useState({});       // name -> {text, ok}
+  const [busy, setBusy] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const r = await apiGet('/api/v1/admin/settings/notifications');
+    setLoading(false);
+    if (!r || !r.ok) return;
+    const data = await r.json();
+    const list = data.channels || [];
+    setChannels(list);
+    setDraft(prev => {
+      const d = {};
+      list.forEach(c => { d[c.name] = prev[c.name] || {enabled: c.enabled, values: {...(c.values||{})}, secret: ''}; });
+      return d;
+    });
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const setField = (name, key, val) => setDraft(p => ({...p, [name]: {...p[name], values: {...p[name].values, [key]: val}}}));
+  const setFlag  = (name, key, val) => setDraft(p => ({...p, [name]: {...p[name], [key]: val}}));
+
+  const save = async (c) => {
+    setBusy(c.name); setMsg(m => ({...m, [c.name]: null}));
+    const d = draft[c.name];
+    const res = await apiPut(`/api/v1/admin/settings/notifications/${encodeURIComponent(c.name)}`,
+      {enabled: d.enabled, values: d.values, secret: d.secret});
+    setBusy('');
+    if (res && res.status === 204) {
+      setMsg(m => ({...m, [c.name]: {text: 'Сохранено', ok: true}}));
+      setDraft(p => ({...p, [c.name]: {...p[c.name], secret: ''}}));
+      load();
+    } else {
+      const text = await readErr(res);
+      setMsg(m => ({...m, [c.name]: {text, ok: false}}));
+    }
+  };
+
+  const probe = async (c) => {
+    setBusy(c.name); setMsg(m => ({...m, [c.name]: null}));
+    const res = await apiPost(`/api/v1/admin/settings/notifications/${encodeURIComponent(c.name)}/test`, {});
+    setBusy('');
+    if (res && res.ok) {
+      setMsg(m => ({...m, [c.name]: {text: 'Сообщение отправлено — проверьте мессенджер', ok: true}}));
+    } else {
+      const text = await readErr(res);
+      setMsg(m => ({...m, [c.name]: {text, ok: false}}));
+    }
+  };
+
+  if (loading) return <div style={{padding:24, color:T.mutedFg}}>Загрузка…</div>;
+
+  const cardStyle = {background:'white', borderRadius:14, border:'1px solid '+T.cardBorder, boxShadow:'0 1px 3px rgba(15,23,42,0.04)', overflow:'hidden', marginBottom:16, padding:'16px 20px'};
+
+  if (!channels.length) {
+    return <div style={{padding:'20px 24px 32px'}}>
+      <div style={cardStyle}>
+        <div style={{fontSize:15, fontWeight:700, color:T.headingFg, marginBottom:4}}>🔔 Уведомления</div>
+        <div style={{fontSize:13, color:T.mutedFg}}>
+          Внутренние уведомления (колокольчик) работают всегда и настройки не требуют.
+          Внешних каналов у этого пространства нет — их выдаёт администратор системы.
+        </div>
+      </div>
+    </div>;
+  }
+
+  return <div style={{padding:'20px 24px 32px'}}>
+    <div style={cardStyle}>
+      <div style={{fontSize:15, fontWeight:700, color:T.headingFg, marginBottom:4}}>🔔 Каналы уведомлений</div>
+      <div style={{fontSize:13, color:T.mutedFg}}>
+        Внутренние уведомления работают всегда. Ниже — внешние каналы, выданные пространству.
+      </div>
+    </div>
+    {channels.map(c => {
+      const d = draft[c.name] || {values:{}};
+      const m = msg[c.name];
+      return <div key={c.name} style={cardStyle}>
+        <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:14}}>
+          <strong style={{fontSize:14, color:T.headingFg}}>{c.title}</strong>
+          <label style={{display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:T.mutedFg, cursor:'pointer'}}>
+            <input type="checkbox" checked={!!d.enabled} onChange={e => setFlag(c.name, 'enabled', e.target.checked)}/>
+            включён
+          </label>
+        </div>
+        {c.fields.map(f => (
+          <Field key={f.key} label={f.label} hint={f.hint} required={f.required}>
+            {f.kind === 'secret'
+              ? <input type="password" autoComplete="new-password" style={inpStyle}
+                  placeholder={c.secret_hint ? `сохранено: ${c.secret_hint} — оставьте пустым, чтобы не менять` : 'не задан'}
+                  value={d.secret || ''} onChange={e => setFlag(c.name, 'secret', e.target.value)}/>
+              : <input type={f.kind === 'url' ? 'url' : 'text'} style={inpStyle}
+                  value={(d.values && d.values[f.key]) || ''} onChange={e => setField(c.name, f.key, e.target.value)}/>}
+          </Field>
+        ))}
+        <div style={{display:'flex', gap:10, alignItems:'center', marginTop:6}}>
+          <Btn variant="primary" onClick={() => save(c)} disabled={busy === c.name}>
+            {busy === c.name ? 'Сохранение…' : 'Сохранить'}
+          </Btn>
+          <Btn onClick={() => probe(c)} disabled={busy === c.name || !c.configured}>
+            Отправить проверку себе
+          </Btn>
+          {m && <span style={{fontSize:12.5, fontWeight:600, color: m.ok ? T.success : T.danger}}>{m.text}</span>}
+        </div>
+      </div>;
+    })}
+  </div>;
+}
+
 // ── APP ───────────────────────────────────────────────────────────────────────
 const ADMIN_SECTION_IDS = ADMIN_SECTIONS.map(s=>s.id);
 // Legacy server path routes (/admin/teams, …) fall back to their section.
@@ -1748,6 +1874,7 @@ function App() {
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><ActivityLogPanel/></div>
     </div>}
     {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}
+    {section==='notifications'&&<NotificationsSection/>}
   </Shell>;
 }
 

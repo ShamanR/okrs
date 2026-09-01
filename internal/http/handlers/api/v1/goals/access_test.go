@@ -82,7 +82,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 	payload, _ := json.Marshal(map[string]string{"text": "comment"})
 
 	t.Run("denied when user has no access to team", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/comments", server.URL, goalID),
 			"application/json", bytes.NewBuffer(payload))
@@ -96,7 +96,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 	})
 
 	t.Run("denied when allowed team list does not include goal team", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID + 999}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID + 999}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/comments", server.URL, goalID),
 			"application/json", bytes.NewBuffer(payload))
@@ -110,7 +110,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed when team is in scope", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID}))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/comments", server.URL, goalID),
 			"application/json", bytes.NewBuffer(payload))
@@ -124,7 +124,7 @@ func TestAddGoalCommentAccessControl(t *testing.T) {
 	})
 
 	t.Run("allowed for admin (nil scope)", func(t *testing.T) {
-		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+		server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 		defer server.Close()
 		resp, err := http.Post(fmt.Sprintf("%s/api/v1/goals/%d/comments", server.URL, goalID),
 			"application/json", bytes.NewBuffer(payload))

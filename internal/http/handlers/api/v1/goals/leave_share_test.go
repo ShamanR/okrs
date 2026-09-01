@@ -54,7 +54,7 @@ func TestLeaveGoalShareRemovesGoalFromTeamOnly(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer server.Close()
 
 	sees := func(teamID int64) bool {
@@ -142,7 +142,7 @@ func TestLeaveGoalShareUnattachedTeamReturns404(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil)) // admin scope: passes the team-access check
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil)) // admin scope: passes the team-access check
 	defer server.Close()
 
 	del := func(gID, tID int64) int {
@@ -213,7 +213,7 @@ func TestDetachOwnerFromSharedGoalKeepsItForOthers(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, nil))
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, nil))
 	defer server.Close()
 
 	sees := func(teamID int64) bool {

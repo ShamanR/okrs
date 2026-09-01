@@ -90,7 +90,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1Router(repo, gc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(t, repo, gc))
 	defer server.Close()
 
 	currentHierarchyResp, err := http.Get(fmt.Sprintf("%s/api/v1/hierarchy?period_id=%d", server.URL, currentPeriodID))
@@ -304,7 +304,7 @@ func TestTeamOverviewIncludesChildrenSummaryIntegration(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1Router(repo, gc))
+	server := httptest.NewServer(testutil.NewAPIV1Router(t, repo, gc))
 	defer server.Close()
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/overview?period_id=%d", server.URL, parentID, periodID))

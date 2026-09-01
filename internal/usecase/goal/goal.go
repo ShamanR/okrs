@@ -1,14 +1,17 @@
 // Package goal holds the goal business scenarios: create/update/delete, copy and move
 // between boards, sharing with other teams, comments and parent links. Each one
-// orchestrates several entity services and records the activity journal — that is
-// exactly what makes them usecases rather than goal-service methods.
+// orchestrates several entity services and publishes a domain event for the mutation —
+// that is exactly what makes them usecases rather than goal-service methods. The
+// activity journal is one subscriber among possibly several; this package does not
+// know it exists.
 package goal
 
 import (
 	"context"
+	"time"
 
 	"okrs/internal/core/domain"
-	activitysvc "okrs/internal/service/activity"
+	"okrs/internal/core/event"
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
 	goalsharesvc "okrs/internal/service/goalshare"
@@ -19,6 +22,14 @@ import (
 	"okrs/internal/store/shares"
 )
 
+// Publisher publishes domain events. *eventbus.Bus satisfies it.
+// Narrow port on the consumer side: the usecase must not know that a journal,
+// a notifier, or anything else is listening.
+type Publisher interface {
+	Publish(ctx context.Context, ev event.Event)
+	PublishBatch(ctx context.Context, evs []event.Event)
+}
+
 // Deps are the entity services this usecase orchestrates.
 type Deps struct {
 	Goals    *goalsvc.Service
@@ -27,7 +38,7 @@ type Deps struct {
 	Statuses *teamstatussvc.Service
 	Periods  *periodsvc.Service
 	Teams    *teamsvc.Service
-	Activity *activitysvc.Service
+	Events   Publisher
 }
 
 type UseCase struct {
@@ -37,12 +48,12 @@ type UseCase struct {
 	statuses *teamstatussvc.Service
 	periods  *periodsvc.Service
 	teams    *teamsvc.Service
-	activity *activitysvc.Service
+	events   Publisher
 }
 
 func New(deps Deps) *UseCase {
 	return &UseCase{goals: deps.Goals, shares: deps.Shares, links: deps.Links, statuses: deps.Statuses,
-		periods: deps.Periods, teams: deps.Teams, activity: deps.Activity}
+		periods: deps.Periods, teams: deps.Teams, events: deps.Events}
 }
 
 type ShareTarget struct {
@@ -88,9 +99,9 @@ func (s *UseCase) Create(ctx context.Context, scope domain.TenantScope, input go
 		}
 	}
 	teamID, periodID := input.TeamID, input.PeriodID
-	s.activity.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalCreated,
-		TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: input.Title,
+	s.events.Publish(ctx, event.GoalCreated{
+		Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()},
+		GoalID: goalID, Title: input.Title,
 	})
 	return goalID, nil
 }
@@ -100,7 +111,7 @@ func (s *UseCase) Update(ctx context.Context, scope domain.TenantScope, input go
 		return err
 	}
 	if after, aerr := s.goals.Get(ctx, scope, input.ID); aerr == nil {
-		changed := activitysvc.DiffFields(map[string][2]any{
+		changed := event.Diff(map[string][2]any{
 			"title":       {before.Title, after.Title},
 			"description": {before.Description, after.Description},
 			"priority":    {string(before.Priority), string(after.Priority)},
@@ -108,10 +119,9 @@ func (s *UseCase) Update(ctx context.Context, scope domain.TenantScope, input go
 		})
 		if len(changed) > 0 {
 			teamID, periodID, gid := after.TeamID, after.PeriodID, after.ID
-			s.activity.Record(ctx, scope, domain.ActivityEvent{
-				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalFieldsChanged,
-				TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: after.Title,
-				Payload: map[string]any{"changed": changed},
+			s.events.Publish(ctx, event.GoalFieldsChanged{
+				Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()},
+				GoalID: gid, Title: after.Title, Changed: changed,
 			})
 		}
 	}
@@ -123,17 +133,16 @@ func (s *UseCase) UpdateFields(ctx context.Context, scope domain.TenantScope, in
 		return err
 	}
 	if after, aerr := s.goals.Get(ctx, scope, input.ID); aerr == nil {
-		changed := activitysvc.DiffFields(map[string][2]any{
+		changed := event.Diff(map[string][2]any{
 			"title":       {before.Title, after.Title},
 			"description": {before.Description, after.Description},
 			"priority":    {string(before.Priority), string(after.Priority)},
 		})
 		if len(changed) > 0 {
 			teamID, periodID, gid := after.TeamID, after.PeriodID, after.ID
-			s.activity.Record(ctx, scope, domain.ActivityEvent{
-				ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalFieldsChanged,
-				TeamID: &teamID, PeriodID: &periodID, GoalID: &gid, EntityTitle: after.Title,
-				Payload: map[string]any{"changed": changed},
+			s.events.Publish(ctx, event.GoalFieldsChanged{
+				Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()},
+				GoalID: gid, Title: after.Title, Changed: changed,
 			})
 		}
 	}
@@ -158,10 +167,9 @@ func (s *UseCase) Delete(ctx context.Context, scope domain.TenantScope, goalID, 
 		// A shared team declined the goal — record it (anchored to the owner team, whose feed
 		// the owner watches; payload carries the team that left).
 		ownerTeam, pID, gid, decliner := goal.TeamID, goal.PeriodID, goalID, requestingTeamID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-			TeamID: &ownerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-			Payload: map[string]any{"declined_by_team_id": decliner},
+		s.events.Publish(ctx, event.GoalUnshared{
+			Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &ownerTeam, PeriodID: &pID, OccurredAt: time.Now()},
+			GoalID: gid, Title: goal.Title, DeclinedByTeamID: decliner,
 		})
 		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
@@ -180,10 +188,9 @@ func (s *UseCase) Delete(ctx context.Context, scope domain.TenantScope, goalID, 
 		}
 		// Owner "deleted" a shared goal → ownership transferred to a shared team; log the composition change.
 		oldOwner, pID, gid, newOwnerTeam := goal.TeamID, goal.PeriodID, goalID, newOwner.TeamID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
-			TeamID: &newOwnerTeam, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": newOwnerTeam}},
+		s.events.Publish(ctx, event.GoalOwnerChanged{
+			Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &newOwnerTeam, PeriodID: &pID, OccurredAt: time.Now()},
+			GoalID: gid, Title: goal.Title, BeforeTeamID: oldOwner, AfterTeamID: newOwnerTeam,
 		})
 		_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 		return requestingTeamID, goal.PeriodID, nil
@@ -199,9 +206,9 @@ func (s *UseCase) Delete(ctx context.Context, scope domain.TenantScope, goalID, 
 		return 0, 0, err
 	}
 	teamID, pID := goal.TeamID, goal.PeriodID
-	s.activity.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalDeleted,
-		TeamID: &teamID, PeriodID: &pID, GoalID: &goalID, EntityTitle: goal.Title,
+	s.events.Publish(ctx, event.GoalDeleted{
+		Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &teamID, PeriodID: &pID, OccurredAt: time.Now()},
+		GoalID: goalID, Title: goal.Title,
 	})
 	_ = s.resetStatusIfNoGoals(ctx, scope, requestingTeamID, goal.PeriodID)
 	return requestingTeamID, goal.PeriodID, nil
@@ -256,22 +263,21 @@ func (s *UseCase) Copy(ctx context.Context, scope domain.TenantScope, p CopyGoal
 		}
 	}
 
-	action := domain.ActionGoalCopied
-	if p.Mode == CopyGoalModeMove {
-		action = domain.ActionGoalMoved
-	}
 	tt, tp, ng := p.TargetTeamID, p.TargetPeriodID, newGoalID
-	s.activity.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: action,
-		TeamID: &tt, PeriodID: &tp, GoalID: &ng, EntityTitle: src.Title,
-		Payload: map[string]any{
-			"source_goal_id":   src.ID,
-			"source_team_id":   src.TeamID,
-			"source_period_id": src.PeriodID,
-			"with_progress":    p.WithProgress,
-			"with_comments":    p.WithComments,
-		},
-	})
+	meta := event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &tt, PeriodID: &tp, OccurredAt: time.Now()}
+	var ev event.Event = event.GoalCopied{
+		Meta: meta, GoalID: ng, Title: src.Title,
+		SourceGoalID: src.ID, SourceTeamID: src.TeamID, SourcePeriodID: src.PeriodID,
+		WithProgress: p.WithProgress, WithComments: p.WithComments,
+	}
+	if p.Mode == CopyGoalModeMove {
+		ev = event.GoalMoved{
+			Meta: meta, GoalID: ng, Title: src.Title,
+			SourceGoalID: src.ID, SourceTeamID: src.TeamID, SourcePeriodID: src.PeriodID,
+			WithProgress: p.WithProgress, WithComments: p.WithComments,
+		}
+	}
+	s.events.Publish(ctx, ev)
 
 	if p.Mode == CopyGoalModeMove {
 		// Source already deleted inside the copy transaction above; reset its team status
@@ -354,18 +360,15 @@ func (s *UseCase) Share(ctx context.Context, scope domain.TenantScope, goalID in
 		return err
 	}
 	teamID, periodID := goal.TeamID, goal.PeriodID
+	meta := event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()}
 	if len(added) > 0 {
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalShared,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: goal.Title,
-			Payload: map[string]any{"shared_with_team_ids": added},
+		s.events.Publish(ctx, event.GoalShared{
+			Meta: meta, GoalID: goalID, Title: goal.Title, SharedWithTeamIDs: added,
 		})
 	}
 	if len(removed) > 0 {
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, EntityTitle: goal.Title,
-			Payload: map[string]any{"unshared_team_ids": removed},
+		s.events.Publish(ctx, event.GoalUnshared{
+			Meta: meta, GoalID: goalID, Title: goal.Title, UnsharedTeamIDs: removed,
 		})
 	}
 	return nil
@@ -430,10 +433,9 @@ func (s *UseCase) UpdateOwnerAndShares(ctx context.Context, scope domain.TenantS
 	// Only log an owner change when the owner actually changed (avoid X→X noise).
 	if ownerID != oldOwner {
 		gid, pID := goalID, goal.PeriodID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalOwnerChanged,
-			TeamID: &ownerID, PeriodID: &pID, GoalID: &gid, EntityTitle: goal.Title,
-			Payload: map[string]any{"before": map[string]any{"owner_team_id": oldOwner}, "after": map[string]any{"owner_team_id": ownerID}},
+		s.events.Publish(ctx, event.GoalOwnerChanged{
+			Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &ownerID, PeriodID: &pID, OccurredAt: time.Now()},
+			GoalID: gid, Title: goal.Title, BeforeTeamID: oldOwner, AfterTeamID: ownerID,
 		})
 	}
 	return ownerID, goal.PeriodID, nil
@@ -444,10 +446,9 @@ func (s *UseCase) DeleteShare(ctx context.Context, scope domain.TenantScope, goa
 		return err
 	}
 	ownerTeam, periodID, shareTeam := g.TeamID, g.PeriodID, teamID
-	s.activity.Record(ctx, scope, domain.ActivityEvent{
-		ActorUserID: actorUserID, Category: domain.ActivityComposition, Action: domain.ActionGoalUnshared,
-		TeamID: &ownerTeam, PeriodID: &periodID, GoalID: &goalID, EntityTitle: g.Title,
-		Payload: map[string]any{"unshared_team_id": shareTeam},
+	s.events.Publish(ctx, event.GoalUnshared{
+		Meta:   event.Meta{Scope: scope, ActorID: actorUserID, TeamID: &ownerTeam, PeriodID: &periodID, OccurredAt: time.Now()},
+		GoalID: goalID, Title: g.Title, UnsharedTeamID: shareTeam,
 	})
 	return nil
 }

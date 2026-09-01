@@ -1,0 +1,8 @@
+package notifications
+
+import "github.com/go-chi/chi/v5"
+
+func RegisterRoutes(r chi.Router, h *Handler) {
+	r.Get("/api/v1/notifications", h.Get)
+	r.Delete("/api/v1/notifications/{id}", h.Delete)
+}

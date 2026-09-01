@@ -3,7 +3,6 @@ package period
 import (
 	"log/slog"
 
-	activitysvc "okrs/internal/service/activity"
 	goalsvc "okrs/internal/service/goal"
 	periodsvc "okrs/internal/service/period"
 	progresssnapsvc "okrs/internal/service/progresssnap"
@@ -14,7 +13,7 @@ import (
 
 // newTestUC wraps the shared in-memory fake into the entity services this usecase
 // orchestrates. Tests keep poking the store directly; only the wiring changed.
-func newTestUC(store *servicetest.Store, act *servicetest.ActivityRepo) *UseCase {
+func newTestUC(store *servicetest.Store, bus *servicetest.FakeBus) *UseCase {
 	var logger *slog.Logger
 	return New(Deps{
 		Teams:    teamsvc.New(store),
@@ -22,7 +21,7 @@ func newTestUC(store *servicetest.Store, act *servicetest.ActivityRepo) *UseCase
 		Statuses: teamstatussvc.New(store),
 		Periods:  periodsvc.New(store),
 		Snaps:    progresssnapsvc.New(store),
-		Activity: activitysvc.New(act, logger),
+		Events:   bus,
 		Logger:   logger,
 	})
 }

@@ -43,6 +43,7 @@ type Repo interface {
 	FindGoalIDByStage(ctx context.Context, scope domain.TenantScope, stageID int64) (int64, error)
 	UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error
 	UpdateHealthStatus(ctx context.Context, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error
+	ApplyCheckIn(ctx context.Context, scope domain.TenantScope, krID int64, w krs.CheckInWrites) error
 	UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error
 	ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error)
 	UpdateProjectStageDone(ctx context.Context, scope domain.TenantScope, stageID int64, done bool) error
@@ -92,11 +93,29 @@ func (s *Service) ApplyMeta(ctx context.Context, scope domain.TenantScope, krID 
 		return nil
 	}
 }
-func (s *Service) AutoCompleteHealth(ctx context.Context, scope domain.TenantScope, krID int64, kr domain.KeyResult, before, after int) {
-	if before < 100 && after == 100 && kr.HealthStatus != domain.KRHealthDone {
-		// best-effort: an auto-complete failure must not fail the progress mutation
-		_ = s.repo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthDone)
+
+// AutoCompleteHealth auto-completes health status to "done" when progress crosses
+// from below 100% to exactly 100% and the KR is not already manually marked done.
+// It returns the KR's resulting health status and whether this call actually
+// changed it, so a caller that needs to report the outcome (e.g. in a published
+// event) reads the answer here rather than re-deriving the same condition a second
+// time — a second copy of "before<100 && after==100 && ..." would silently drift
+// from this one the next time the auto-complete rule changes.
+// AutoCompleteDecision answers whether reaching 100% should close the KR, without
+// writing anything. Pure on purpose: the check-in applies every change in one
+// transaction, so the write cannot live here — but the CONDITION must stay in a
+// single place, or it drifts the first time the rule changes.
+func AutoCompleteDecision(current domain.KRHealthStatus, before, after int) (domain.KRHealthStatus, bool) {
+	if before < 100 && after == 100 && current != domain.KRHealthDone {
+		return domain.KRHealthDone, true
 	}
+	return current, false
+}
+
+// ApplyCheckIn writes one check-in atomically. See store/krs.ApplyCheckIn for why
+// the writes must land together.
+func (s *Service) ApplyCheckIn(ctx context.Context, scope domain.TenantScope, krID int64, w krs.CheckInWrites) error {
+	return s.repo.ApplyCheckIn(ctx, scope, krID, w)
 }
 
 // — Однострочные операции над сущностью, нужные сценариям слоя usecase. —

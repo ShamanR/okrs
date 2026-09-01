@@ -32,13 +32,16 @@ func TestSpecRouteTableMatchesRouter(t *testing.T) {
 		t.Fatalf("read %s: %v", routesGolden, err)
 	}
 
+	// Both files are checked in with CRLF line endings; normalize before parsing so a
+	// trailing \r doesn't end up glued onto every URI and route (see toLF/toCRLF in
+	// routes_golden_test.go for why this test would otherwise fail unconditionally).
 	documented := map[string]bool{}
-	for _, uri := range specURIs(string(spec)) {
+	for _, uri := range specURIs(toLF(string(spec))) {
 		documented[uri] = true
 	}
 
 	routed := map[string]bool{}
-	for _, line := range strings.Split(strings.TrimSpace(string(golden)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(toLF(string(golden))), "\n") {
 		_, uri, ok := strings.Cut(line, " ")
 		if !ok {
 			t.Fatalf("malformed golden line: %q", line)

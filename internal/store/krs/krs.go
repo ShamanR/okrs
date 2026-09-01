@@ -8,6 +8,7 @@ import (
 	"okrs/internal/core/domain"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -176,8 +177,8 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, scope domain.Te
 	return krs, nil
 }
 
-func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
-	_, err := r.db.Exec(ctx, `
+func upsertKeyResultNote(ctx context.Context, q execer, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	_, err := q.Exec(ctx, `
 		INSERT INTO key_result_notes (key_result_id, text, author_user_id, updated_at, tenant_id)
 		VALUES ($1, $2, $3, NOW(), $4)
 		ON CONFLICT (key_result_id) DO UPDATE
@@ -187,6 +188,10 @@ func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, scope domain.Ten
 		krID, text, authorUserID, scope.TenantID,
 	)
 	return err
+}
+
+func (r *KRRepository) UpsertKeyResultNote(ctx context.Context, scope domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	return upsertKeyResultNote(ctx, r.db, scope, krID, text, authorUserID)
 }
 
 // GetKeyResultNote returns the note for a single KR, or nil if it has none.
@@ -257,7 +262,7 @@ func (r *KRRepository) UpdateProjectStageDone(ctx context.Context, scope domain.
 
 // BatchUpdateProjectStagesDone updates is_done for multiple stages in two queries:
 // one batch UPDATE for stages, one touch on the parent key_result.
-func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, scope domain.TenantScope, krID int64, updates map[int64]bool) error {
+func batchUpdateProjectStagesDone(ctx context.Context, q execer, scope domain.TenantScope, krID int64, updates map[int64]bool) error {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -267,7 +272,7 @@ func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, scope d
 		stageIDs = append(stageIDs, id)
 		doneValues = append(doneValues, done)
 	}
-	_, err := r.db.Exec(ctx, `
+	_, err := q.Exec(ctx, `
 		UPDATE kr_project_stages SET is_done = u.done
 		FROM (SELECT unnest($1::bigint[]) AS id, unnest($2::boolean[]) AS done) u
 		WHERE kr_project_stages.id = u.id
@@ -276,9 +281,13 @@ func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, scope d
 	if err != nil {
 		return err
 	}
-	_, err = r.db.Exec(ctx, `
+	_, err = q.Exec(ctx, `
 		UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
 	return err
+}
+
+func (r *KRRepository) BatchUpdateProjectStagesDone(ctx context.Context, scope domain.TenantScope, krID int64, updates map[int64]bool) error {
+	return batchUpdateProjectStagesDone(ctx, r.db, scope, krID, updates)
 }
 
 func (r *KRRepository) ListProjectStages(ctx context.Context, scope domain.TenantScope, krID int64) ([]domain.KRProjectStage, error) {
@@ -375,20 +384,36 @@ func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, scope domain.Ten
 	return err
 }
 
-func (r *KRRepository) UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
-	_, err := r.db.Exec(ctx, `
+// execer is the slice of pgx that both *pgxpool.Pool and pgx.Tx satisfy. Every
+// check-in write below is expressed against it exactly once, so the transactional
+// path (ApplyCheckIn) and the standalone callers run the SAME statement — a second
+// copy of this SQL is how the two would quietly drift apart.
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+func updateNumericalCurrent(ctx context.Context, q execer, scope domain.TenantScope, krID int64, current float64) error {
+	_, err := q.Exec(ctx, `
 		UPDATE key_results
 		SET current_value=$1, updated_at=NOW(), progress_updated_at=NOW()
 		WHERE id=$2 AND tenant_id=$3`, current, krID, scope.TenantID)
 	return err
 }
 
-func (r *KRRepository) UpdateHealthStatus(ctx context.Context, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error {
-	_, err := r.db.Exec(ctx, `
+func (r *KRRepository) UpdateNumericalCurrent(ctx context.Context, scope domain.TenantScope, krID int64, current float64) error {
+	return updateNumericalCurrent(ctx, r.db, scope, krID, current)
+}
+
+func updateHealthStatus(ctx context.Context, q execer, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error {
+	_, err := q.Exec(ctx, `
 		UPDATE key_results
 		SET health_status=$1, updated_at=NOW()
 		WHERE id=$2 AND tenant_id=$3`, string(status), krID, scope.TenantID)
 	return err
+}
+
+func (r *KRRepository) UpdateHealthStatus(ctx context.Context, scope domain.TenantScope, krID int64, status domain.KRHealthStatus) error {
+	return updateHealthStatus(ctx, r.db, scope, krID, status)
 }
 
 func (r *KRRepository) UpdateBoolean(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
@@ -424,8 +449,8 @@ func (r *KRRepository) GetKeyResult(ctx context.Context, scope domain.TenantScop
 	return kr, nil
 }
 
-func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
-	_, err := r.db.Exec(ctx, `
+func upsertBooleanMeta(ctx context.Context, q execer, scope domain.TenantScope, krID int64, done bool) error {
+	_, err := q.Exec(ctx, `
 		INSERT INTO kr_boolean_meta (key_result_id, is_done)
 		SELECT $1, $2
 		WHERE EXISTS (SELECT 1 FROM key_results k WHERE k.id = $1 AND k.tenant_id = $3)
@@ -435,7 +460,12 @@ func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, scope domain.Tenan
 	if err != nil {
 		return err
 	}
-	return r.touchKeyResultUpdatedAt(ctx, scope, krID)
+	_, err = q.Exec(ctx, `UPDATE key_results SET updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
+	return err
+}
+
+func (r *KRRepository) UpsertBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64, done bool) error {
+	return upsertBooleanMeta(ctx, r.db, scope, krID, done)
 }
 
 func (r *KRRepository) GetBooleanMeta(ctx context.Context, scope domain.TenantScope, krID int64) (*domain.KRBoolean, error) {
@@ -450,6 +480,68 @@ func (r *KRRepository) GetBooleanMeta(ctx context.Context, scope domain.TenantSc
 		return nil, err
 	}
 	return &meta, nil
+}
+
+// CheckInNote is the note half of a check-in. Nil means the submission did not
+// include a note, which is not the same as an empty one — empty clears the text.
+type CheckInNote struct {
+	Text         string
+	AuthorUserID int64
+}
+
+// CheckInWrites is everything one check-in changes. A nil field was not part of the
+// submission and must be left alone.
+type CheckInWrites struct {
+	Numerical *float64
+	Boolean   *bool
+	Stages    map[int64]bool
+	Health    *domain.KRHealthStatus
+	Note      *CheckInNote
+}
+
+// ApplyCheckIn writes a whole check-in in ONE transaction.
+//
+// Progress, health status and note used to be three separately committed writes.
+// A failure on the second left the first persisted, the caller got an error, and
+// no KRCheckedIn event was published — so the database moved while the journal and
+// the notifications did not, and nothing downstream could tell. The event is the
+// record of what happened, so the writes it describes have to land or not land
+// together.
+func (r *KRRepository) ApplyCheckIn(ctx context.Context, scope domain.TenantScope, krID int64, w CheckInWrites) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	switch {
+	case w.Numerical != nil:
+		if err := updateNumericalCurrent(ctx, tx, scope, krID, *w.Numerical); err != nil {
+			return err
+		}
+	case w.Boolean != nil:
+		if err := upsertBooleanMeta(ctx, tx, scope, krID, *w.Boolean); err != nil {
+			return err
+		}
+		if err := touchProgressUpdatedAt(ctx, tx, scope, krID); err != nil {
+			return err
+		}
+	case w.Stages != nil:
+		if err := batchUpdateProjectStagesDone(ctx, tx, scope, krID, w.Stages); err != nil {
+			return err
+		}
+	}
+	if w.Health != nil {
+		if err := updateHealthStatus(ctx, tx, scope, krID, *w.Health); err != nil {
+			return err
+		}
+	}
+	if w.Note != nil {
+		if err := upsertKeyResultNote(ctx, tx, scope, krID, w.Note.Text, w.Note.AuthorUserID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *KRRepository) DeleteKeyResult(ctx context.Context, scope domain.TenantScope, id int64) error {
@@ -508,9 +600,13 @@ func (r *KRRepository) touchKeyResultUpdatedAt(ctx context.Context, scope domain
 	return err
 }
 
-func (r *KRRepository) touchKeyResultProgressUpdatedAt(ctx context.Context, scope domain.TenantScope, krID int64) error {
-	_, err := r.db.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
+func touchProgressUpdatedAt(ctx context.Context, q execer, scope domain.TenantScope, krID int64) error {
+	_, err := q.Exec(ctx, `UPDATE key_results SET updated_at=NOW(), progress_updated_at=NOW() WHERE id=$1 AND tenant_id=$2`, krID, scope.TenantID)
 	return err
+}
+
+func (r *KRRepository) touchKeyResultProgressUpdatedAt(ctx context.Context, scope domain.TenantScope, krID int64) error {
+	return touchProgressUpdatedAt(ctx, r.db, scope, krID)
 }
 
 func (r *KRRepository) FindGoalIDByKR(ctx context.Context, scope domain.TenantScope, krID int64) (int64, error) {

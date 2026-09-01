@@ -507,6 +507,29 @@ INSERT INTO activity_events (tenant_id, actor_user_id, category, action, team_id
      '{"before":{"progress":80},"after":{"progress":100},"kind":"NUMERICAL"}', NOW() - INTERVAL '12 days');
 
 -- ----------------------------------------------------------------
+-- Notifications (миграция 044). ON CONFLICT DO NOTHING — эти INSERT'ы не в TRUNCATE
+-- выше, чтобы повторный запуск сида не плодил дубликаты и не терял отметки "прочитано".
+-- ----------------------------------------------------------------
+
+-- Демо-настройки уведомлений: один пользователь смотрит всё поддерево,
+-- остальные остаются на дефолте (строк нет — дефолт подставляется на чтении).
+INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channels)
+SELECT 1, u.id, 'goal_changed', TRUE, 'subtree', '{in_app}'
+  FROM users u WHERE u.provider_subject_key = 'system:anonymous-local'
+ON CONFLICT DO NOTHING;
+
+-- Пара уведомлений, чтобы колокольчик в демо не был пустым. actor_user_id = 2 —
+-- системный пользователь "Migration" (migrations/013), а не anonymous-local: так
+-- уведомление визуально отличается от собственного действия получателя.
+INSERT INTO notifications
+  (tenant_id, user_id, type, kind, actor_user_id, team_id, period_id, goal_id,
+   entity_title, payload_json, coalesce_key, coalesce_count)
+SELECT 1, 1, 'goal_changed', 'goal_fields_changed', 2, g.team_id, g.period_id, g.id,
+       g.title, '{}'::jsonb, 'demo:goal:' || g.id, 1
+  FROM goals g WHERE g.tenant_id = 1 ORDER BY g.id LIMIT 2
+ON CONFLICT DO NOTHING;
+
+-- ----------------------------------------------------------------
 -- Reset sequences
 -- ----------------------------------------------------------------
 SELECT setval('teams_id_seq',                  (SELECT MAX(id) FROM teams));

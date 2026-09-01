@@ -2,8 +2,10 @@ package goal
 
 import (
 	"context"
+	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 )
 
 func (s *UseCase) AddComment(ctx context.Context, scope domain.TenantScope, goalID int64, text string, authorUserID int64) error {
@@ -13,10 +15,9 @@ func (s *UseCase) AddComment(ctx context.Context, scope domain.TenantScope, goal
 	}
 	if g, gerr := s.goals.Get(ctx, scope, goalID); gerr == nil {
 		teamID, periodID := g.TeamID, g.PeriodID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionCommentAdded,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
-			EntityTitle: g.Title, Payload: map[string]any{"text": text},
+		s.events.Publish(ctx, event.CommentAdded{
+			Meta:   event.Meta{Scope: scope, ActorID: authorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()},
+			GoalID: goalID, CommentID: commentID, GoalTitle: g.Title, Text: text,
 		})
 	}
 	return nil
@@ -28,10 +29,9 @@ func (s *UseCase) AddReply(ctx context.Context, scope domain.TenantScope, goalID
 	}
 	if g, gerr := s.goals.Get(ctx, scope, goalID); gerr == nil {
 		teamID, periodID := g.TeamID, g.PeriodID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: authorUserID, Category: domain.ActivityDiscussion, Action: domain.ActionReplyAdded,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &replyID,
-			EntityTitle: g.Title, Payload: map[string]any{"text": text},
+		s.events.Publish(ctx, event.ReplyAdded{
+			Meta:   event.Meta{Scope: scope, ActorID: authorUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()},
+			GoalID: goalID, CommentID: replyID, ParentCommentID: parentID, GoalTitle: g.Title, Text: text,
 		})
 	}
 	return nil
@@ -44,18 +44,26 @@ func (s *UseCase) SetCommentResolved(ctx context.Context, scope domain.TenantSco
 	if !changed {
 		return nil // already in the target state → no event, no re-stamp
 	}
+	// A comment's author never changes, so there is no ordering requirement against
+	// SetCommentResolved above (unlike DeleteComment, where the author gates the
+	// authorization check and must be read first). Loaded here, after the no-op
+	// guard, so this query — needed only by the notification fan-out (task 9), the
+	// journal itself never used it — is not paid on the already-resolved/-reopened
+	// no-op path. One query, not in a loop; on error the service already returns
+	// author == 0.
+	author, _, _ := s.goals.GetCommentMeta(ctx, scope, goalID, commentID)
 	if g, gerr := s.goals.Get(ctx, scope, goalID); gerr == nil {
-		action := domain.ActionCommentReopened
-		if resolved {
-			action = domain.ActionCommentResolved
-		}
 		teamID, periodID := g.TeamID, g.PeriodID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: userID, Category: domain.ActivityDiscussion, Action: action,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
-			EntityTitle: g.Title,
-			Payload:     map[string]any{"before": map[string]any{"resolved": !resolved}, "after": map[string]any{"resolved": resolved}},
-		})
+		meta := event.Meta{Scope: scope, ActorID: userID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()}
+		var ev event.Event = event.CommentReopened{
+			Meta: meta, GoalID: goalID, CommentID: commentID, GoalTitle: g.Title, AuthorUserID: author,
+		}
+		if resolved {
+			ev = event.CommentResolved{
+				Meta: meta, GoalID: goalID, CommentID: commentID, GoalTitle: g.Title, AuthorUserID: author,
+			}
+		}
+		s.events.Publish(ctx, ev)
 	}
 	return nil
 }
@@ -75,19 +83,16 @@ func (s *UseCase) DeleteComment(ctx context.Context, scope domain.TenantScope, g
 	if err := s.goals.DeleteComment(ctx, scope, goalID, commentID); err != nil {
 		return false, err
 	}
-	action := domain.ActionReplyDeleted
-	if isTask {
-		action = domain.ActionCommentDeleted
-	}
 	// The goal is not deleted by removing a comment, so it is still readable for the
-	// team/period/title snapshot of the journal entry.
+	// team/period/title snapshot of the event.
 	if g, gerr := s.goals.Get(ctx, scope, goalID); gerr == nil {
 		teamID, periodID := g.TeamID, g.PeriodID
-		s.activity.Record(ctx, scope, domain.ActivityEvent{
-			ActorUserID: requestingUserID, Category: domain.ActivityDiscussion, Action: action,
-			TeamID: &teamID, PeriodID: &periodID, GoalID: &goalID, CommentID: &commentID,
-			EntityTitle: g.Title,
-		})
+		meta := event.Meta{Scope: scope, ActorID: requestingUserID, TeamID: &teamID, PeriodID: &periodID, OccurredAt: time.Now()}
+		var ev event.Event = event.ReplyDeleted{Meta: meta, GoalID: goalID, CommentID: commentID, GoalTitle: g.Title}
+		if isTask {
+			ev = event.CommentDeleted{Meta: meta, GoalID: goalID, CommentID: commentID, GoalTitle: g.Title}
+		}
+		s.events.Publish(ctx, ev)
 	}
 	return isTask, nil
 }

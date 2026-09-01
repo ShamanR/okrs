@@ -74,7 +74,7 @@ func TestTeamExportEndpoint(t *testing.T) {
 	gc := grants.NewGrantsCache(repo.Grants)
 
 	// happy path: team scope, short
-	inScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
+	inScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID}))
 	defer inScope.Close()
 
 	resp, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/export?period_id=%d&scope=team", inScope.URL, teamID, periodID))
@@ -108,7 +108,7 @@ func TestTeamExportEndpoint(t *testing.T) {
 	}
 
 	// team out of scope -> 404
-	outScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{99999}))
+	outScope := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{99999}))
 	defer outScope.Close()
 	resp3, err := http.Get(fmt.Sprintf("%s/api/v1/teams/%d/export?period_id=%d&scope=team", outScope.URL, teamID, periodID))
 	if err != nil {

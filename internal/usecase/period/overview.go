@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 	"okrs/internal/core/progress"
-	activitysvc "okrs/internal/service/activity"
 	goalsvc "okrs/internal/service/goal"
 	hcsvc "okrs/internal/service/healthcheckin"
 	periodsvc "okrs/internal/service/period"
@@ -23,6 +23,14 @@ import (
 	teamstatussvc "okrs/internal/service/teamstatus"
 )
 
+// Publisher publishes domain events. *eventbus.Bus satisfies it.
+// Narrow port on the consumer side: the usecase must not know that a journal,
+// a notifier, or anything else is listening.
+type Publisher interface {
+	Publish(ctx context.Context, ev event.Event)
+	PublishBatch(ctx context.Context, evs []event.Event)
+}
+
 // Deps are the entity services this usecase orchestrates.
 type Deps struct {
 	Periods  *periodsvc.Service
@@ -30,7 +38,7 @@ type Deps struct {
 	Goals    *goalsvc.Service
 	Statuses *teamstatussvc.Service
 	Snaps    *progresssnapsvc.Service
-	Activity *activitysvc.Service
+	Events   Publisher
 	HCCache  *hcsvc.Cache
 	Logger   *slog.Logger
 }
@@ -41,14 +49,14 @@ type UseCase struct {
 	goals    *goalsvc.Service
 	statuses *teamstatussvc.Service
 	snaps    *progresssnapsvc.Service
-	activity *activitysvc.Service
+	events   Publisher
 	hcCache  *hcsvc.Cache
 	logger   *slog.Logger
 }
 
 func New(deps Deps) *UseCase {
 	return &UseCase{periods: deps.Periods, teams: deps.Teams, goals: deps.Goals,
-		statuses: deps.Statuses, snaps: deps.Snaps, activity: deps.Activity, hcCache: deps.HCCache, logger: deps.Logger}
+		statuses: deps.Statuses, snaps: deps.Snaps, events: deps.Events, hcCache: deps.HCCache, logger: deps.Logger}
 }
 
 // PeriodTeamSummary is one team's row in the period overview (drill-down source).

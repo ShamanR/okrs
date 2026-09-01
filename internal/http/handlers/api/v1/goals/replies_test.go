@@ -47,7 +47,7 @@ func TestReplyAndDeleteHandlers(t *testing.T) {
 	}
 
 	gc := grants.NewGrantsCache(repo.Grants)
-	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(repo, gc, []int64{teamID}))
+	server := httptest.NewServer(testutil.NewAPIV1RouterWithScope(t, repo, gc, []int64{teamID}))
 	defer server.Close()
 
 	post := func(path, body string) int {

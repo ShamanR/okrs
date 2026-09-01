@@ -2,10 +2,12 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"log/slog"
 	"net/http"
 	hcsvc "okrs/internal/service/healthcheckin"
+	"okrs/internal/service/notificationchannel"
 	onboardingsvc "okrs/internal/service/onboarding"
 	provisioningsvc "okrs/internal/service/provisioning"
 	settingssvc "okrs/internal/service/settings"
@@ -35,6 +37,8 @@ import (
 	adminfeedback "okrs/internal/http/handlers/api/v1/admin/settings/feedback"
 	admingeneral "okrs/internal/http/handlers/api/v1/admin/settings/general"
 	adminhc "okrs/internal/http/handlers/api/v1/admin/settings/healthcheckin"
+	adminnotif "okrs/internal/http/handlers/api/v1/admin/settings/notifications"
+	adminnotiftest "okrs/internal/http/handlers/api/v1/admin/settings/notifications/test"
 	adminteams "okrs/internal/http/handlers/api/v1/admin/teams"
 	adminhard "okrs/internal/http/handlers/api/v1/admin/teams/hard"
 	adminrestore "okrs/internal/http/handlers/api/v1/admin/teams/restore"
@@ -69,6 +73,10 @@ import (
 	krsnumerical "okrs/internal/http/handlers/api/v1/krs/progress/numerical"
 	krsproject "okrs/internal/http/handlers/api/v1/krs/progress/project"
 	apime "okrs/internal/http/handlers/api/v1/me"
+	apinotifications "okrs/internal/http/handlers/api/v1/notifications"
+	notificationsprefs "okrs/internal/http/handlers/api/v1/notifications/preferences"
+	notificationsread "okrs/internal/http/handlers/api/v1/notifications/read"
+	notificationsunread "okrs/internal/http/handlers/api/v1/notifications/unreadcount"
 	joinrequest "okrs/internal/http/handlers/api/v1/onboarding/joinrequest"
 	apiperiods "okrs/internal/http/handlers/api/v1/periods"
 	periodsoverview "okrs/internal/http/handlers/api/v1/periods/overview"
@@ -77,6 +85,7 @@ import (
 	sessionmemberships "okrs/internal/http/handlers/api/v1/session/memberships"
 	sessiontenant "okrs/internal/http/handlers/api/v1/session/tenant"
 	sessiontenants "okrs/internal/http/handlers/api/v1/session/tenants"
+	sysnotifchan "okrs/internal/http/handlers/api/v1/system/notificationchannels"
 	syssettings "okrs/internal/http/handlers/api/v1/system/settings"
 	sysdefreg "okrs/internal/http/handlers/api/v1/system/settings/defaultregistrationtenant"
 	sysnoaccess "okrs/internal/http/handlers/api/v1/system/settings/noaccessmessage"
@@ -109,7 +118,9 @@ import (
 	"okrs/internal/http/httpdeps"
 	"okrs/internal/http/middleware"
 	"okrs/internal/platform/entitlements"
+	"okrs/internal/platform/eventbus"
 	"okrs/internal/platform/nomembership"
+	"okrs/internal/platform/secretbox"
 
 	"okrs/internal/scheduler"
 	goalsvc "okrs/internal/service/goal"
@@ -123,6 +134,7 @@ import (
 	"okrs/internal/store/tenants"
 	"okrs/internal/store/tenantsettings"
 	hcuc "okrs/internal/usecase/healthcheckin"
+	"okrs/notifychannel"
 	"okrs/web"
 
 	"github.com/go-chi/chi/v5"
@@ -149,6 +161,7 @@ type Server struct {
 	provisioning     *provisioningsvc.Service
 	onboarding       *onboardingsvc.Service
 	entitlements     entitlements.Entitlements
+	notifChannels    *notificationchannel.Service
 	noMembershipName string
 	assetsDev        bool
 	publicRoutes     func(chi.Router)
@@ -185,13 +198,34 @@ type Options struct {
 	// AssetsDev serves the development (unminified) vendored React build instead of the
 	// production one; false (the OSS default) ships production React. Driven by WEB_ASSETS_DEV.
 	AssetsDev bool
+	// NotificationChannels are the delivery channels compiled into this build. Empty
+	// in the plain OSS box: in-app needs no channel. A build assembles them next to
+	// main (see app.Config), which is what lets a channel live in another module.
+	NotificationChannels []notifychannel.Channel
+	// NotificationSecretKey is the base64 32-byte key used to encrypt channel
+	// secrets at rest. Empty means channels with secrets cannot be configured; the
+	// rest of the application, in-app notifications included, works unchanged.
+	NotificationSecretKey string
 	// Route-mount hooks for an embedded control-plane (SaaS). Each nil → no extra routes.
 	PublicRoutes func(chi.Router) // outer: session loaded, no auth gate, no CSRF (webhooks)
 	AuthedRoutes func(chi.Router) // authed, not membership-gated (create-organization)
 	TenantRoutes func(chi.Router) // membership-gated, tenant-scoped (billing UI)
 }
 
-func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager, opts Options) (*Server, error) {
+// channelsWithSecret counts the channels whose configuration includes a secret at
+// rest. Only those are affected by a missing NOTIFICATIONS_SECRET_KEY; a channel
+// without a SecretField configures and runs fine without any key.
+func channelsWithSecret(chs []notifychannel.Channel) int {
+	n := 0
+	for _, ch := range chs {
+		if ch.Descriptor.SecretField != "" {
+			n++
+		}
+	}
+	return n
+}
+
+func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Logger, zone *time.Location, authMgr *auth.Manager, bus *eventbus.Bus, opts Options) (*Server, error) {
 	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, err
@@ -247,9 +281,33 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		noMembership = "stub"
 	}
 
+	// A missing key must not take the whole application down: a box that cannot
+	// encrypt channel secrets still serves in-app notifications and everything else.
+	// A key that is present but malformed is a different matter — that is an operator
+	// error which has to be seen, so it fails startup.
+	var secrets *secretbox.Box
+	if opts.NotificationSecretKey != "" {
+		secrets, err = secretbox.New(opts.NotificationSecretKey)
+		if err != nil {
+			return nil, fmt.Errorf("http: notification secret key: %w", err)
+		}
+	} else if n := channelsWithSecret(opts.NotificationChannels); n > 0 {
+		// Info, not Warn, and only for channels that actually store a secret. A box
+		// with no NOTIFICATIONS_SECRET_KEY is a fully supported deployment — in-app
+		// notifications and everything else work, those channels just stay
+		// unconfigurable. Warning on every start of a supported configuration is how
+		// operators learn to ignore warnings.
+		logger.Info("NOTIFICATIONS_SECRET_KEY is unset: channels that store a secret cannot be configured until it is set",
+			"channels", n)
+	}
+	notifChannels, err := notificationchannel.New(st.NotificationChannels, secrets, opts.NotificationChannels, ent, settingsSvc)
+	if err != nil {
+		return nil, fmt.Errorf("http: notification channels: %w", err)
+	}
+
 	return &Server{
 		store:            st,
-		deps:             httpdeps.Build(st, grantsCache, hcCache, logger),
+		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger),
 		logger:           logger,
 		tmpl:             tmpl,
 		zone:             zone,
@@ -264,6 +322,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		provisioning:     provisioning,
 		onboarding:       onboardingSvc,
 		entitlements:     ent,
+		notifChannels:    notifChannels,
 		noMembershipName: noMembership,
 		assetsDev:        opts.AssetsDev,
 		publicRoutes:     opts.PublicRoutes,
@@ -450,6 +509,10 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		// Admin health check-in settings API.
 		adminhc.RegisterRoutes(r, adminhc.New(s.settingsSvc, s.hcCache))
 
+		// Admin notification-channel settings + connectivity probe.
+		adminnotif.RegisterRoutes(r, adminnotif.New(s.notifChannels))
+		adminnotiftest.RegisterRoutes(r, adminnotiftest.New(s.notifChannels))
+
 		// Onboarding: tenant-admin invitations + access-request queue.
 		admininvitations.RegisterRoutes(r, admininvitations.New(s.store.Invitations, s.auth.Config().BaseURL))
 		admininvrevoke.RegisterRoutes(r, admininvrevoke.New(s.store.Invitations))
@@ -483,6 +546,7 @@ func (s *Server) registerSystemRoutes(r chi.Router, csrf *middleware.CSRFMiddlew
 		sysdeny.RegisterRoutes(r, sysdeny.New(s.provisioning))
 		sysrole.RegisterRoutes(r, sysrole.New(s.provisioning))
 		sysentitlements.RegisterRoutes(r, sysentitlements.New(s.provisioning, s.settingsSvc))
+		sysnotifchan.RegisterRoutes(r, sysnotifchan.New(s.notifChannels))
 		syssuspend.RegisterRoutes(r, syssuspend.New(s.provisioning))
 		sysrestore.RegisterRoutes(r, sysrestore.New(s.provisioning))
 		syspurge.RegisterRoutes(r, syspurge.New(s.store.Activity))
@@ -502,6 +566,15 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	// Каждый пакет получает ровно те сервисы и usecase, которые нужны его эндпоинтам.
 	d := s.deps
 	apihierarchy.RegisterRoutes(r, apihierarchy.New(d.Teams, d.Board, d.Periods, d.Users))
+	// Bell feed: tenant-scoped, per-user. POST /read is state-changing and browser-invoked,
+	// so it must live in this CSRF-protected group (spec 010, rule 7) — it does, registerApiRoutes
+	// is only called from the membership-gated group where csrf.Handler is already mounted.
+	apinotifications.RegisterRoutes(r, apinotifications.New(d.Notifications))
+	notificationsunread.RegisterRoutes(r, notificationsunread.New(d.Notifications))
+	notificationsread.RegisterRoutes(r, notificationsread.New(d.Notifications))
+	// PUT is state-changing and browser-invoked, so it must live in this same
+	// CSRF-protected, membership-gated group.
+	notificationsprefs.RegisterRoutes(r, notificationsprefs.New(d.NotificationPrefs))
 	// Журнал активности (лента + счётчики) — только для tenant-admin, как и очистка
 	// журнала (RequireTenantAdmin). При AUTH_MODE=disabled anonymous-local — admin, доступ есть.
 	r.Group(func(r chi.Router) {
@@ -564,15 +637,16 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 // Called by app.New once the server is assembled.
 func (s *Server) StartBackground(ctx context.Context) {
 	scheduler.New(scheduler.Deps{
-		DB:       s.store.DB,
-		HCCache:  s.hcCache,
-		Snapshot: s.deps.PeriodUC,
-		Periods:  s.deps.Periods,
-		Active:   s.store.Periods,
-		Snaps:    s.deps.Snaps,
-		Tenants:  s.store.Tenants,
-		Settings: s.settingsSvc,
-		Zone:     s.zone,
-		Logger:   s.logger,
+		DB:            s.store.DB,
+		HCCache:       s.hcCache,
+		Snapshot:      s.deps.PeriodUC,
+		Periods:       s.deps.Periods,
+		Active:        s.store.Periods,
+		Snaps:         s.deps.Snaps,
+		Tenants:       s.store.Tenants,
+		Settings:      s.settingsSvc,
+		Notifications: s.deps.Notifications,
+		Zone:          s.zone,
+		Logger:        s.logger,
 	}).Start(ctx)
 }
