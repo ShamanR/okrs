@@ -40,10 +40,14 @@ func idEqual(a, b *int64) bool {
 	return *a == *b
 }
 
-// Каждое из 22 событий обязано превращаться в строку журнала с той же категорией,
+// Каждое из 21 событий обязано превращаться в строку журнала с той же категорией,
 // action, entity id колонками (goal_id/kr_id/comment_id/team_id/period_id) и
 // payload, что писались до переезда на шину. Расхождение здесь — это молчаливая
 // порча ленты активности и её навигационных ссылок.
+//
+// KRCheckedIn — особый случай (0/1/2 строки в зависимости от того, что изменилось)
+// и здесь представлен только своей "прогресс-строкой": остальные его комбинации
+// покрыты отдельными тестами ниже (TestKRCheckedInToRows*).
 func TestToRowCoversEveryEventType(t *testing.T) {
 	// team_id/period_id come from Meta and are the same for every case below
 	// (meta() always sets them to 11/22); toRow's base() must copy them through
@@ -176,26 +180,18 @@ func TestToRowCoversEveryEventType(t *testing.T) {
 			}},
 		},
 		{
+			// KRCheckedIn only touching progress: the "progress row" half of its
+			// toRows split. Note unchanged (before==after) so no discussion row.
 			name: "kr_progress",
-			ev: event.KRProgressUpdated{Meta: meta(1), GoalID: 5, KRID: 6, KRTitle: "KR",
-				GoalTitle: "Цель", KRKind: domain.KRKind("NUMERICAL"), Before: 10, After: 60},
+			ev: event.KRCheckedIn{Meta: meta(1), GoalID: 5, KRID: 6, KRTitle: "KR",
+				GoalTitle: "Цель", KRKind: domain.KRKind("NUMERICAL"),
+				ProgressBefore: 10, ProgressAfter: 60},
 			category: domain.ActivityProgress, action: domain.ActionKRProgress,
 			title: "KR", goalID: ptr(5), krID: ptr(6),
 			payload: map[string]any{
 				"before": map[string]any{"progress": 10},
 				"after":  map[string]any{"progress": 60},
 				"kind":   "NUMERICAL", "goal_title": "Цель",
-			},
-		},
-		{
-			name: "kr_note_updated",
-			ev: event.KRNoteUpdated{Meta: meta(1), GoalID: 5, KRID: 6, KRTitle: "KR",
-				BeforeText: "было", AfterText: "стало"},
-			category: domain.ActivityDiscussion, action: domain.ActionKRNoteUpdated,
-			title: "KR", goalID: ptr(5), krID: ptr(6),
-			payload: map[string]any{
-				"before": map[string]any{"note": "было"},
-				"after":  map[string]any{"note": "стало"},
 			},
 		},
 		{
@@ -270,7 +266,7 @@ func TestToRowCoversEveryEventType(t *testing.T) {
 
 	// Every Kind event.AllKinds() lists must be represented — not just every Kind the
 	// table happens to mention. Counting the table's own cases (as an earlier version
-	// of this test did) would still report success after a 23rd event type was added
+	// of this test did) would still report success after a 22nd event type was added
 	// to the event package without a table entry for it, because the count is derived
 	// from the same table it is meant to check.
 	seen := map[event.Kind]bool{}
@@ -279,16 +275,17 @@ func TestToRowCoversEveryEventType(t *testing.T) {
 	}
 	for _, k := range event.AllKinds() {
 		if !seen[k] {
-			t.Errorf("Kind %q из event.AllKinds() не покрыт таблицей toRow", k)
+			t.Errorf("Kind %q из event.AllKinds() не покрыт таблицей toRows", k)
 		}
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			row, ok := activitysvc.ToRowForTest(tc.ev)
-			if !ok {
-				t.Fatalf("toRow отказался обрабатывать %T", tc.ev)
+			rows := activitysvc.ToRowsForTest(tc.ev)
+			if len(rows) != 1 {
+				t.Fatalf("toRows(%T) вернул %d строк, want 1", tc.ev, len(rows))
 			}
+			row := rows[0]
 			if row.Category != tc.category {
 				t.Errorf("category: got %q, want %q", row.Category, tc.category)
 			}
@@ -323,22 +320,95 @@ func TestToRowCoversEveryEventType(t *testing.T) {
 	}
 }
 
-// unknownTestEvent is a stand-in for an event.Event type toRow has no case for. It is
-// test-only: production code never sees an event.Event that isn't one of the 22
+// unknownTestEvent is a stand-in for an event.Event type toRows has no case for. It
+// is test-only: production code never sees an event.Event that isn't one of the 21
 // listed in event.AllKinds().
 type unknownTestEvent struct{ event.Meta }
 
 func (unknownTestEvent) Kind() event.Kind { return event.Kind("unknown_test_kind") }
 
-// toRow must skip an event type it does not recognise rather than emit a malformed,
+// toRows must skip an event type it does not recognise rather than emit a malformed,
 // mostly-zero row: a silent "unknown -> empty row" would be worse than dropping it,
-// since it would show up in the feed as a blank entry instead of being caught by
-// the "ok" bool at the call site.
+// since it would show up in the feed as a blank entry instead of being caught by an
+// empty slice at the call site.
 func TestToRowSkipsUnmappedEvents(t *testing.T) {
-	row, ok := activitysvc.ToRowForTest(unknownTestEvent{Meta: meta(1)})
-	if ok {
-		t.Fatalf("toRow accepted an unmapped event type, produced %+v", row)
+	rows := activitysvc.ToRowsForTest(unknownTestEvent{Meta: meta(1)})
+	if len(rows) != 0 {
+		t.Fatalf("toRows accepted an unmapped event type, produced %+v", rows)
 	}
+}
+
+// KRCheckedIn is the one event type that can produce zero, one or two rows,
+// depending on which of progress/note actually changed (health-only never
+// produces a row — see toRows' comment). These four cases are the ones
+// TestToRowCoversEveryEventType's single-scenario table cannot express.
+func TestKRCheckedInToRows(t *testing.T) {
+	base := event.KRCheckedIn{
+		Meta: meta(1), GoalID: 5, KRID: 6, KRTitle: "KR", GoalTitle: "Цель",
+		KRKind: domain.KRKind("NUMERICAL"),
+	}
+
+	t.Run("только прогресс — одна строка в ленте прогресса", func(t *testing.T) {
+		ev := base
+		ev.ProgressBefore, ev.ProgressAfter = 10, 60
+		rows := activitysvc.ToRowsForTest(ev)
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d: %+v", len(rows), rows)
+		}
+		if rows[0].Category != domain.ActivityProgress || rows[0].Action != domain.ActionKRProgress {
+			t.Errorf("row: got category=%q action=%q", rows[0].Category, rows[0].Action)
+		}
+	})
+
+	t.Run("только заметка — одна строка в обсуждении", func(t *testing.T) {
+		ev := base
+		ev.NoteBefore, ev.NoteAfter = "было", "стало"
+		rows := activitysvc.ToRowsForTest(ev)
+		if len(rows) != 1 {
+			t.Fatalf("want 1 row, got %d: %+v", len(rows), rows)
+		}
+		if rows[0].Category != domain.ActivityDiscussion || rows[0].Action != domain.ActionKRNoteUpdated {
+			t.Errorf("row: got category=%q action=%q", rows[0].Category, rows[0].Action)
+		}
+		wantPayload := map[string]any{
+			"before": map[string]any{"note": "было"},
+			"after":  map[string]any{"note": "стало"},
+		}
+		if !reflect.DeepEqual(rows[0].Payload, wantPayload) {
+			t.Errorf("payload:\n got %#v\nwant %#v", rows[0].Payload, wantPayload)
+		}
+	})
+
+	t.Run("прогресс и заметка — две строки", func(t *testing.T) {
+		ev := base
+		ev.ProgressBefore, ev.ProgressAfter = 10, 60
+		ev.NoteBefore, ev.NoteAfter = "было", "стало"
+		rows := activitysvc.ToRowsForTest(ev)
+		if len(rows) != 2 {
+			t.Fatalf("want 2 rows, got %d: %+v", len(rows), rows)
+		}
+		var gotProgress, gotDiscussion bool
+		for _, r := range rows {
+			switch r.Category {
+			case domain.ActivityProgress:
+				gotProgress = true
+			case domain.ActivityDiscussion:
+				gotDiscussion = true
+			}
+		}
+		if !gotProgress || !gotDiscussion {
+			t.Errorf("want one progress row and one discussion row, got %+v", rows)
+		}
+	})
+
+	t.Run("только health — ноль строк", func(t *testing.T) {
+		ev := base
+		ev.HealthBefore, ev.HealthAfter = domain.KRHealthAtRisk, domain.KRHealthOnTrack
+		rows := activitysvc.ToRowsForTest(ev)
+		if len(rows) != 0 {
+			t.Fatalf("want 0 rows for a health-only check-in, got %d: %+v", len(rows), rows)
+		}
+	})
 }
 
 // Handle пишет батч одним RecordBatch на тенант, а не циклом Record: иначе всплеск

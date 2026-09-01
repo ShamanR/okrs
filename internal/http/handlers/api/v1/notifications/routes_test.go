@@ -17,8 +17,12 @@ import (
 )
 
 type fakeSvc struct {
-	items []storenotif.Notification
-	err   error
+	deleteResult  bool
+	deleteErr     error
+	gotDeleteUser int64
+	gotDeleteID   int64
+	items         []storenotif.Notification
+	err           error
 	// next is what List returns as the opaque pagination token; "" means "no next page".
 	next string
 	// gotUserID records the userID the handler passed through, so a test can assert
@@ -222,4 +226,64 @@ func TestQueryParamsReachFilter(t *testing.T) {
 	if svc2.gotFilter.UnreadOnly {
 		t.Error("unread must default to false when absent")
 	}
+}
+
+// deleteResult/deleteErr задают исход удаления, а gotDeleteUser/gotDeleteID
+// записывают аргументы: тест обязан убедиться, что получатель взят из контекста
+// аутентификации, а не из запроса.
+func (f *fakeSvc) Delete(_ context.Context, _ domain.TenantScope, userID, id int64) (bool, error) {
+	f.gotDeleteUser, f.gotDeleteID = userID, id
+	return f.deleteResult, f.deleteErr
+}
+
+// Удаление: получатель обязан браться из контекста аутентификации, а не из
+// запроса — иначе идентификатор владельца стал бы управляемым клиентом.
+func TestDeleteUsesAuthenticatedUser(t *testing.T) {
+	svc := &fakeSvc{deleteResult: true}
+	h := notifications.New(svc)
+
+	w := handlertest.Do(h.Delete, http.MethodDelete, "/api/v1/notifications/7", "",
+		handlertest.Tenant(1), handlertest.UserID(42, "u42"), handlertest.URLParam("id", "7"))
+	handlertest.Status(t, w, http.StatusNoContent)
+
+	if svc.gotDeleteUser != 42 {
+		t.Errorf("получатель = %d, ожидался 42 из контекста", svc.gotDeleteUser)
+	}
+	if svc.gotDeleteID != 7 {
+		t.Errorf("id = %d, ожидался 7", svc.gotDeleteID)
+	}
+}
+
+// Чужое и несуществующее обязаны быть неразличимы: иначе по коду ответа можно
+// перебором подтвердить существование чужих уведомлений.
+func TestDeleteMissingAndForeignAreIndistinguishable(t *testing.T) {
+	h := notifications.New(&fakeSvc{deleteResult: false})
+
+	foreign := handlertest.Do(h.Delete, http.MethodDelete, "/api/v1/notifications/7", "",
+		handlertest.Tenant(1), handlertest.UserID(42, "u42"), handlertest.URLParam("id", "7"))
+	missing := handlertest.Do(h.Delete, http.MethodDelete, "/api/v1/notifications/999", "",
+		handlertest.Tenant(1), handlertest.UserID(42, "u42"), handlertest.URLParam("id", "999"))
+
+	handlertest.Status(t, foreign, http.StatusNotFound)
+	handlertest.Status(t, missing, http.StatusNotFound)
+	if foreign.Body.String() != missing.Body.String() {
+		t.Errorf("ответы различимы:\nчужое:        %s\nнесуществующее: %s",
+			foreign.Body.String(), missing.Body.String())
+	}
+}
+
+// Без активного пространства удалять нечего — и это не 404, а отказ в доступе.
+func TestDeleteRequiresTenantScope(t *testing.T) {
+	h := notifications.New(&fakeSvc{deleteResult: true})
+	w := handlertest.Do(h.Delete, http.MethodDelete, "/api/v1/notifications/7", "",
+		handlertest.UserID(42, "u42"), handlertest.URLParam("id", "7"))
+	handlertest.Status(t, w, http.StatusForbidden)
+}
+
+// Нечисловой id — ошибка запроса, а не 404: 404 означал бы «такого уведомления нет».
+func TestDeleteRejectsNonNumericID(t *testing.T) {
+	h := notifications.New(&fakeSvc{deleteResult: true})
+	w := handlertest.Do(h.Delete, http.MethodDelete, "/api/v1/notifications/abc", "",
+		handlertest.Tenant(1), handlertest.UserID(42, "u42"), handlertest.URLParam("id", "abc"))
+	handlertest.Status(t, w, http.StatusBadRequest)
 }

@@ -13,6 +13,7 @@ import (
 	"okrs/internal/store/invitations"
 	"okrs/internal/store/krs"
 	"okrs/internal/store/memberships"
+	"okrs/internal/store/notificationchannels"
 	"okrs/internal/store/notificationprefs"
 	"okrs/internal/store/notifications"
 	"okrs/internal/store/periods"
@@ -35,22 +36,23 @@ import (
 // Store also implements the auth.authStorage interface via forwarding methods
 // so it can be passed to auth.Manager without changes to the auth layer.
 type Store struct {
-	DB                *pgxpool.Pool
-	Teams             *teams.TeamRepository
-	Goals             *goals.GoalRepository
-	GoalLinks         *goallinks.GoalLinkRepository
-	Periods           *periods.PeriodRepository
-	KRs               *krs.KRRepository
-	Shares            *shares.GoalShareRepository
-	Statuses          *statuses.TeamStatusRepository
-	Users             *users.UserRepository
-	Sessions          *sessions.SessionRepository
-	Grants            *grants.GrantRepository
-	Settings          *settings.SettingsRepository
-	Activity          *activity.ActivityRepository
-	ProgressSnap      *progresssnap.Repository
-	Notifications     *notifications.Repository
-	NotificationPrefs *notificationprefs.Repository
+	DB                   *pgxpool.Pool
+	Teams                *teams.TeamRepository
+	Goals                *goals.GoalRepository
+	GoalLinks            *goallinks.GoalLinkRepository
+	Periods              *periods.PeriodRepository
+	KRs                  *krs.KRRepository
+	Shares               *shares.GoalShareRepository
+	Statuses             *statuses.TeamStatusRepository
+	Users                *users.UserRepository
+	Sessions             *sessions.SessionRepository
+	Grants               *grants.GrantRepository
+	Settings             *settings.SettingsRepository
+	Activity             *activity.ActivityRepository
+	ProgressSnap         *progresssnap.Repository
+	Notifications        *notifications.Repository
+	NotificationPrefs    *notificationprefs.Repository
+	NotificationChannels *notificationchannels.Repository
 
 	Tenants        *tenants.TenantRepository
 	Memberships    *memberships.MembershipRepository
@@ -63,22 +65,23 @@ type Store struct {
 func New(db *pgxpool.Pool) *Store {
 	krsRepo := krs.NewKRRepository(db)
 	return &Store{
-		DB:                db,
-		Teams:             teams.NewTeamRepository(db),
-		Goals:             goals.NewGoalRepository(db, krsRepo),
-		GoalLinks:         goallinks.NewGoalLinkRepository(db),
-		Periods:           periods.NewPeriodRepository(db),
-		KRs:               krsRepo,
-		Shares:            shares.NewGoalShareRepository(db),
-		Statuses:          statuses.NewTeamStatusRepository(db),
-		Users:             users.NewUserRepository(db),
-		Sessions:          sessions.NewSessionRepository(db),
-		Grants:            grants.NewGrantRepository(db),
-		Settings:          settings.NewSettingsRepository(db),
-		Activity:          activity.NewActivityRepository(db),
-		ProgressSnap:      progresssnap.NewRepository(db),
-		Notifications:     notifications.NewRepository(db),
-		NotificationPrefs: notificationprefs.NewRepository(db),
+		DB:                   db,
+		Teams:                teams.NewTeamRepository(db),
+		Goals:                goals.NewGoalRepository(db, krsRepo),
+		GoalLinks:            goallinks.NewGoalLinkRepository(db),
+		Periods:              periods.NewPeriodRepository(db),
+		KRs:                  krsRepo,
+		Shares:               shares.NewGoalShareRepository(db),
+		Statuses:             statuses.NewTeamStatusRepository(db),
+		Users:                users.NewUserRepository(db),
+		Sessions:             sessions.NewSessionRepository(db),
+		Grants:               grants.NewGrantRepository(db),
+		Settings:             settings.NewSettingsRepository(db),
+		Activity:             activity.NewActivityRepository(db),
+		ProgressSnap:         progresssnap.NewRepository(db),
+		Notifications:        notifications.NewRepository(db),
+		NotificationPrefs:    notificationprefs.NewRepository(db),
+		NotificationChannels: notificationchannels.NewRepository(db),
 
 		Tenants:        tenants.NewTenantRepository(db),
 		Memberships:    memberships.NewMembershipRepository(db),

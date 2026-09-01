@@ -20,6 +20,7 @@ import (
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
+	"okrs/notifychannel"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -36,6 +37,12 @@ type Config struct {
 	NoMembershipName     string   // "" → "stub"
 	ResolveStrategyNames []string // nil → ["session"]
 	AssetsDev            bool     // serve development vendored React; false → production build
+	// NotificationChannels are the delivery channels this build offers. Assembled by
+	// the caller, so a private module can add its own without touching this one; the
+	// OSS box passes the channels in cmd/server. Nil means in-app only.
+	NotificationChannels []notifychannel.Channel
+	// NotificationSecretKey (base64, 32 bytes) encrypts channel secrets at rest.
+	NotificationSecretKey string
 	// Embedded control-plane route mounts (SaaS), one per middleware tier; each nil in OSS.
 	PublicRoutes func(chi.Router)
 	AuthedRoutes func(chi.Router)
@@ -146,15 +153,17 @@ func New(cfg Config) (*App, error) {
 	bus := eventbus.New(logger)
 
 	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, bus, httpserver.Options{
-		Resolver:         auth.NewTenantResolver(strategies...),
-		TenantCache:      tenantCache,
-		MembershipCache:  membershipCache,
-		Entitlements:     entFactory(),
-		NoMembershipName: cfg.NoMembershipName,
-		AssetsDev:        cfg.AssetsDev,
-		PublicRoutes:     cfg.PublicRoutes,
-		AuthedRoutes:     cfg.AuthedRoutes,
-		TenantRoutes:     cfg.TenantRoutes,
+		Resolver:              auth.NewTenantResolver(strategies...),
+		TenantCache:           tenantCache,
+		MembershipCache:       membershipCache,
+		Entitlements:          entFactory(),
+		NoMembershipName:      cfg.NoMembershipName,
+		AssetsDev:             cfg.AssetsDev,
+		NotificationChannels:  cfg.NotificationChannels,
+		NotificationSecretKey: cfg.NotificationSecretKey,
+		PublicRoutes:          cfg.PublicRoutes,
+		AuthedRoutes:          cfg.AuthedRoutes,
+		TenantRoutes:          cfg.TenantRoutes,
 	})
 	if err != nil {
 		return nil, err

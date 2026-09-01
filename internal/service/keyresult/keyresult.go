@@ -92,11 +92,22 @@ func (s *Service) ApplyMeta(ctx context.Context, scope domain.TenantScope, krID 
 		return nil
 	}
 }
-func (s *Service) AutoCompleteHealth(ctx context.Context, scope domain.TenantScope, krID int64, kr domain.KeyResult, before, after int) {
+// AutoCompleteHealth auto-completes health status to "done" when progress crosses
+// from below 100% to exactly 100% and the KR is not already manually marked done.
+// It returns the KR's resulting health status and whether this call actually
+// changed it, so a caller that needs to report the outcome (e.g. in a published
+// event) reads the answer here rather than re-deriving the same condition a second
+// time — a second copy of "before<100 && after==100 && ..." would silently drift
+// from this one the next time the auto-complete rule changes.
+func (s *Service) AutoCompleteHealth(ctx context.Context, scope domain.TenantScope, krID int64, kr domain.KeyResult, before, after int) (domain.KRHealthStatus, bool) {
 	if before < 100 && after == 100 && kr.HealthStatus != domain.KRHealthDone {
-		// best-effort: an auto-complete failure must not fail the progress mutation
-		_ = s.repo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthDone)
+		// best-effort: an auto-complete failure must not fail the progress mutation,
+		// but it also must not be reported as having happened when it did not.
+		if err := s.repo.UpdateHealthStatus(ctx, scope, krID, domain.KRHealthDone); err == nil {
+			return domain.KRHealthDone, true
+		}
 	}
+	return kr.HealthStatus, false
 }
 
 // — Однострочные операции над сущностью, нужные сценариям слоя usecase. —

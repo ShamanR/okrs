@@ -18,8 +18,7 @@ const (
 	KindKRCreated         Kind = "kr_created"
 	KindKRDeleted         Kind = "kr_deleted"
 	KindKRFieldsChanged   Kind = "kr_fields_changed"
-	KindKRProgressUpdated Kind = "kr_progress"
-	KindKRNoteUpdated     Kind = "kr_note_updated"
+	KindKRCheckedIn       Kind = "kr_checked_in"
 	KindStatusChanged     Kind = "status_changed"
 	KindCommentAdded      Kind = "comment_added"
 	KindCommentResolved   Kind = "comment_resolved"
@@ -30,10 +29,10 @@ const (
 )
 
 // AllKinds lists every event Kind this package defines. Table-driven tests that claim
-// to cover "every event type" (e.g. the journal's toRow coverage test) should iterate
+// to cover "every event type" (e.g. the journal's toRows coverage test) should iterate
 // this instead of counting their own table entries: counting the table's own cases
 // only proves the table is internally consistent, not that it tracks this package. A
-// 23rd Kind added here without a matching test case then makes such a test fail
+// 22nd Kind added here without a matching test case then makes such a test fail
 // instead of silently staying green. Kept next to the constants so both are edited
 // together.
 func AllKinds() []Kind {
@@ -51,8 +50,7 @@ func AllKinds() []Kind {
 		KindKRCreated,
 		KindKRDeleted,
 		KindKRFieldsChanged,
-		KindKRProgressUpdated,
-		KindKRNoteUpdated,
+		KindKRCheckedIn,
 		KindStatusChanged,
 		KindCommentAdded,
 		KindCommentResolved,
@@ -213,28 +211,31 @@ type KRFieldsChanged struct {
 
 func (KRFieldsChanged) Kind() Kind { return KindKRFieldsChanged }
 
-// KRProgressUpdated carries KRKind and GoalTitle because the journal payload has
-// always included them ({before,after,kind,goal_title}); the feed renders from those.
-type KRProgressUpdated struct {
+// KRCheckedIn is one check-in on a key result: the user submits progress, health
+// status and note together, and this is the single event that operation produces.
+// Before/after pairs are always populated — "changed" is inequality, not a flag —
+// so a consumer decides for itself what mattered: the journal splits it into a
+// progress row and a discussion row, the notifier renders one line.
+//
+// Replaces the former KRProgressUpdated and KRNoteUpdated (spec: kr-checkin
+// notifications plan, Task 1). GoalTitle and KRKind are carried for the same reason
+// KRProgressUpdated carried them: the journal's progress-row payload has always
+// included {kind, goal_title}, and toRows reproduces that shape verbatim.
+type KRCheckedIn struct {
 	Meta
-	GoalID, KRID  int64
-	KRTitle       string
-	GoalTitle     string
-	KRKind        domain.KRKind
-	Before, After int
+	GoalID, KRID   int64
+	KRTitle        string
+	GoalTitle      string
+	KRKind         domain.KRKind
+	ProgressBefore int
+	ProgressAfter  int
+	HealthBefore   domain.KRHealthStatus
+	HealthAfter    domain.KRHealthStatus
+	NoteBefore     string
+	NoteAfter      string
 }
 
-func (KRProgressUpdated) Kind() Kind { return KindKRProgressUpdated }
-
-type KRNoteUpdated struct {
-	Meta
-	GoalID, KRID int64
-	KRTitle      string
-	BeforeText   string
-	AfterText    string
-}
-
-func (KRNoteUpdated) Kind() Kind { return KindKRNoteUpdated }
+func (KRCheckedIn) Kind() Kind { return KindKRCheckedIn }
 
 // --- Team period status ---
 

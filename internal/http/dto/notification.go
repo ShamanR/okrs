@@ -3,11 +3,17 @@ package dto
 // Notification is one bell entry. Title and Body are rendered server-side so the
 // wording lives in one place and phase 2's messengers reuse it verbatim.
 type Notification struct {
-	ID          int64  `json:"id"`
-	Type        string `json:"type"`
-	Kind        string `json:"kind"`
-	Title       string `json:"title"`
-	Body        string `json:"body"`
+	ID    int64  `json:"id"`
+	Type  string `json:"type"`
+	Kind  string `json:"kind"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+	// Subject names what the notification is about, shown as its own line in the
+	// card. Sent only when the body does not already name the entity — today that
+	// is the key-result check-in alone (internal/render/notify decides, not the
+	// client). Omitted when empty so the client renders nothing rather than an
+	// empty line.
+	Subject     string `json:"subject,omitempty"`
 	Count       int    `json:"count"`
 	CreatedAt   string `json:"created_at"`
 	Read        bool   `json:"read"`
@@ -15,6 +21,21 @@ type Notification struct {
 	ActorAvatar string `json:"actor_avatar,omitempty"`
 	// URL is where clicking the notification navigates. Empty when the target is gone.
 	URL string `json:"url,omitempty"`
+	// Context is where this happened, so a long list can be scanned without opening
+	// entries. Resolved on read, not frozen at write time: a renamed team or goal
+	// shows its current name, which is what makes the list navigable. Omitted whole
+	// when the notification has neither.
+	Context *NotificationContext `json:"context,omitempty"`
+}
+
+// NotificationContext is the notification's place in the org: the team with its
+// ancestors, root first, and the goal it happened on.
+type NotificationContext struct {
+	// Team is the path from the root, joined by " / " — "Компания / Платформа".
+	Team string `json:"team,omitempty"`
+	// Goal is the goal's title. Empty when the notification has no goal, or the
+	// goal was deleted after the notification was written.
+	Goal string `json:"goal,omitempty"`
 }
 
 type NotificationList struct {

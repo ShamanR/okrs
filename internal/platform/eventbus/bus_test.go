@@ -48,9 +48,9 @@ func TestSubscribeRoutesByType(t *testing.T) {
 		return nil
 	}, eventbus.WithMode(eventbus.Sync))
 
-	eventbus.Subscribe(b, "progress", func(_ context.Context, evs []event.KRProgressUpdated) error {
+	eventbus.Subscribe(b, "progress", func(_ context.Context, evs []event.KRCheckedIn) error {
 		for range evs {
-			progress.add(event.KindKRProgressUpdated)
+			progress.add(event.KindKRCheckedIn)
 		}
 		return nil
 	}, eventbus.WithMode(eventbus.Sync))
@@ -60,7 +60,7 @@ func TestSubscribeRoutesByType(t *testing.T) {
 
 	b.Publish(context.Background(), event.CommentAdded{GoalID: 1})
 	b.Publish(context.Background(), event.CommentAdded{GoalID: 2})
-	b.Publish(context.Background(), event.KRProgressUpdated{KRID: 3})
+	b.Publish(context.Background(), event.KRCheckedIn{KRID: 3})
 
 	if got := comments.len(); got != 2 {
 		t.Errorf("подписчик комментариев: got %d, want 2", got)
@@ -70,8 +70,8 @@ func TestSubscribeRoutesByType(t *testing.T) {
 	}
 }
 
-// SubscribeAll существует ради журнала: ему нужны все типы, и перечислять 22
-// подписки значит забыть про 23-ю.
+// SubscribeAll существует ради журнала: ему нужны все типы, и перечислять 21
+// подписку значит забыть про 22-ю.
 func TestSubscribeAllReceivesEveryType(t *testing.T) {
 	b := eventbus.New(quietLogger())
 	var all collector
@@ -87,7 +87,7 @@ func TestSubscribeAllReceivesEveryType(t *testing.T) {
 	defer b.Close(time.Second)
 
 	b.Publish(context.Background(), event.CommentAdded{})
-	b.Publish(context.Background(), event.KRProgressUpdated{})
+	b.Publish(context.Background(), event.KRCheckedIn{})
 	b.Publish(context.Background(), event.StatusChanged{})
 
 	if got := all.len(); got != 3 {
@@ -243,7 +243,7 @@ func TestPublishBatchArrivesAsOneSlice(t *testing.T) {
 	defer b.Close(time.Second)
 
 	b.PublishBatch(context.Background(), []event.Event{
-		event.CommentAdded{}, event.CommentAdded{}, event.KRProgressUpdated{},
+		event.CommentAdded{}, event.CommentAdded{}, event.KRCheckedIn{},
 	})
 
 	select {
@@ -348,7 +348,7 @@ func TestSyncHandlerPublishDuringCloseDoesNotDeadlock(t *testing.T) {
 
 	eventbus.Subscribe(b, "reentrant", func(ctx context.Context, _ []event.CommentAdded) error {
 		// Reenters the bus from inside a Sync handler.
-		b.Publish(ctx, event.KRProgressUpdated{KRID: 1})
+		b.Publish(ctx, event.KRCheckedIn{KRID: 1})
 		return nil
 	}, eventbus.WithMode(eventbus.Sync))
 

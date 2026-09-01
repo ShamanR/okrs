@@ -52,6 +52,37 @@ func ParseMeta(r *http.Request, kind domain.KRKind) (keyresultsvc.MetaInput, err
 	}
 }
 
+// NormalizeNoteText converts CRLF line endings to LF. Shared by all four endpoints
+// that accept a note field — the three progress/check-in endpoints and the
+// standalone note endpoint — so a note typed on Windows renders identically no
+// matter which endpoint carried it. Found in review: the note endpoint already
+// normalized, but the progress endpoints picked up the same `note` field without
+// picking up this step.
+func NormalizeNoteText(text string) string {
+	return strings.ReplaceAll(text, "\r\n", "\n")
+}
+
+// ParseHealthStatus parses the optional health_status field shared by the three
+// progress/check-in endpoints. s == nil means "not part of this submission": no
+// validation applies, so it returns (nil, false) and the caller proceeds as
+// normal. When s is set but is not a valid domain.KRHealthStatus, ParseHealthStatus
+// writes the 400 response itself and returns written == true — the caller must
+// return immediately without doing anything else. Extracted after review: the
+// three progress handlers had this validation copy-pasted verbatim, and a mutation
+// deleting it from just one handler was only caught by that one package's own
+// test — a single shared helper makes that impossible.
+func ParseHealthStatus(w http.ResponseWriter, s *string) (status *domain.KRHealthStatus, written bool) {
+	if s == nil {
+		return nil, false
+	}
+	if !domain.IsValidKRHealthStatus(*s) {
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid health_status", map[string]string{"health_status": "invalid"})
+		return nil, true
+	}
+	parsed := domain.KRHealthStatus(*s)
+	return &parsed, false
+}
+
 // ParseProjectStages parses project stage fields from a multipart form.
 func ParseProjectStages(r *http.Request) ([]krs.ProjectStageInput, error) {
 	stages := make([]krs.ProjectStageInput, 0, 4)

@@ -17,7 +17,7 @@ type Kind string
 type Event interface {
 	Kind() Kind
 	// Context exposes the embedded Meta, so a subscriber can read scope and actor
-	// without a type switch over all 22 types. Promoted through embedding.
+	// without a type switch over all 21 types. Promoted through embedding.
 	Context() Meta
 }
 
@@ -28,10 +28,13 @@ type Meta struct {
 	ActorID  int64
 	TeamID   *int64
 	PeriodID *int64
-	// OccurredAt is stamped at every publication site but not consumed by anything
-	// today: the activity journal's base() ignores it, and the journal row's
-	// created_at comes from the database instead. It is carried for the next
-	// phase's notification coalescing — do not assume it is load-bearing yet.
+	// OccurredAt is stamped at every publication site. The activity journal's
+	// base() ignores it — a journal row's created_at comes from the database
+	// instead — but notification coalescing does not: coalesceKey in
+	// internal/usecase/notification derives the collapse bucket from it
+	// (at.Unix() / CoalesceWindow), falling back to time.Now() only when it is
+	// zero. Leaving it unset therefore changes which events collapse into one
+	// notification, so it is load-bearing on that path.
 	OccurredAt time.Time
 }
 

@@ -46,7 +46,7 @@ function _notifAgo(iso) {
 
 // NotificationList — список записей. Вынесен отдельно от панели, чтобы его можно
 // было переиспользовать на отдельной странице уведомлений, не переписывая.
-function NotificationList({ items, onRead }) {
+function NotificationList({ items, onRead, onDelete }) {
   if (!items.length) {
     return (
       <div className="notif__empty">
@@ -59,12 +59,20 @@ function NotificationList({ items, onRead }) {
     <div className="notif__list">
       {items.map(n => {
         // Разрешаем переход только на локальный путь. Сегодня сервер шлёт только
-        // "" или "/?goal_id=...", но это защита в глубину: React лишь предупреждает
+        // "" или "/?team=&period=&goal=&kr=&comment=" (тот же формат, что строит
+        // buildTargetURL в ui.js), но это защита в глубину: React лишь предупреждает
         // про javascript:-href, а не блокирует его, так что единственный барьер —
         // здесь. Резолвим _notifSafeHref, а не сверяем префикс строки:
         // браузер нормализует "\" в "/", и префиксная проверка это пропускает.
         const href = _notifSafeHref(n.url);
         const cls = `notif__item${n.read ? '' : ' notif__item--unread'}`;
+        // Контекст собираем один раз: та же строка идёт и в текст, и в title.
+        // Строка в карточке обрезается многоточием (одна строка, nowrap), поэтому
+        // без title длинный путь команды нельзя прочитать вовсе — а он и есть то,
+        // ради чего контекст добавлен.
+        const contextText = n.context
+          ? [n.context.team, n.context.goal].filter(Boolean).join(' · ')
+          : '';
         const content = (
           <div className="notif__item-row">
             {/* SidebarAvatar (sidebar.js) уже умеет и картинку, и инициалы —
@@ -79,31 +87,60 @@ function NotificationList({ items, onRead }) {
                 <span className="notif__item-title">{n.title}</span>
                 <span className="notif__item-time" title={n.created_at}>{_notifAgo(n.created_at)}</span>
               </div>
+              {/* subject — «предмет» уведомления отдельной строкой: сервер шлёт его
+                  только тем видам, у которых название не входит в тело (сегодня это
+                  чек-ин по ключевому результату). Класс переиспользуем тот же, что у
+                  тела, чтобы строка не заводила собственных цветов и размеров. */}
+              {n.subject ? <div className="notif__item-body">{n.subject}</div> : null}
               <div className="notif__item-body">{n.body}</div>
+              {/* Контекст — где это произошло: команда с иерархией и цель. Нужен,
+                  чтобы длинный список читался без открытия каждой записи. Сервер
+                  шлёт объект целиком или не шлёт вовсе, поэтому пустой строки тут
+                  быть не может. Половина контекста (команда без цели) законна. */}
+              {contextText ? (
+                <div className="notif__item-context" title={contextText}>
+                  {contextText}
+                </div>
+              ) : null}
             </div>
           </div>
         );
-        if (href) {
-          return (
-            <a key={n.id} className={cls} href={href} onClick={() => onRead(n.id)}>
-              {content}
-            </a>
-          );
-        }
-        // Без ссылки переход невозможен, только пометка прочитанным — <a> без
-        // href не фокусируется и не активируется с клавиатуры, поэтому здесь
-        // доступный div с role="button" и обработкой Enter/Space.
-        const activate = () => onRead(n.id);
-        return (
+        // Кнопка удаления — сосед кликабельной части, а не потомок: <button> внутри
+        // <a> невалиден и ведёт себя непредсказуемо. Отсюда обёртка notif__entry.
+        const del = (
+          <button
+            className="notif__item-delete"
+            aria-label="Удалить уведомление"
+            title="Удалить"
+            onClick={e => {
+              // Без этого клик всплыл бы до карточки: запись успела бы пометиться
+              // прочитанной и увести браузер по ссылке ровно перед удалением.
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete(n.id);
+            }}
+          >✕</button>
+        );
+        const clickable = href ? (
+          <a className={cls} href={href} onClick={() => onRead(n.id)}>{content}</a>
+        ) : (
+          // Без ссылки переход невозможен, только пометка прочитанным — <a> без
+          // href не фокусируется и не активируется с клавиатуры, поэтому здесь
+          // доступный div с role="button" и обработкой Enter/Space.
           <div
-            key={n.id}
             className={cls}
             role="button"
             tabIndex={0}
-            onClick={activate}
-            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
+            onClick={() => onRead(n.id)}
+            onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onRead(n.id); } }}
           >
             {content}
+          </div>
+        );
+        return (
+          <div key={n.id} className="notif__entry">
+            {clickable}
+            {del}
           </div>
         );
       })}
@@ -133,6 +170,23 @@ function NotificationsPanel({ open, onClose, onChanged }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
+
+  // Удаление конкретной записи. Из списка убираем только после успешного ответа,
+  // а не сразу: при отказе запись иначе исчезла бы из панели и вернулась при
+  // следующем открытии, и пользователь решил бы, что удаление не работает.
+  const removeOne = id => {
+    fetch(`/api/v1/notifications/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'X-CSRF-Token': _notifCSRF() },
+    }).then(r => {
+      if (!r.ok) return;
+      setItems(prev => prev.filter(n => n.id !== id));
+      // Счётчик пересчитывает сервер: удалённое непрочитанное уменьшает его, и
+      // считать это на клиенте значило бы держать вторую копию правила.
+      onChanged();
+    });
+  };
 
   const markRead = (ids, all) => {
     fetch('/api/v1/notifications/read', {
@@ -164,11 +218,19 @@ function NotificationsPanel({ open, onClose, onChanged }) {
               Отметить все прочитанными
             </button>
           )}
+          {/* Шестерёнка — переход в настройки уведомлений. Обычная ссылка, а не кнопка
+              с onClick: это навигация, и она должна работать средним кликом и Ctrl+кликом. */}
+          <a
+            className="notif__gear"
+            href="/settings?section=notifications"
+            aria-label="Настройки уведомлений"
+            title="Настройки уведомлений"
+          >⚙</a>
           <button className="notif__close" onClick={onClose} aria-label="Закрыть">✕</button>
         </div>
         {loading
           ? <div className="notif__empty">Загрузка…</div>
-          : <NotificationList items={items} onRead={id => markRead([id], false)} />}
+          : <NotificationList items={items} onRead={id => markRead([id], false)} onDelete={removeOne} />}
       </div>
     </>
   );

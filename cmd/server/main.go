@@ -22,6 +22,8 @@ import (
 	"okrs/internal/platform/entitlements"
 	"okrs/internal/store"
 	"okrs/internal/store/periods"
+	"okrs/notifychannel"
+	"okrs/notifychannel/mattermost"
 
 	// Register OAuth2 providers via side-effect imports.
 	_ "okrs/internal/auth/providers/github"
@@ -120,6 +122,11 @@ func run() int {
 		Zone:      zone,
 		Auth:      authCfg,
 		AssetsDev: envBool("WEB_ASSETS_DEV"),
+		// Channels are assembled here, next to main, and not registered from a package
+		// init: that is the point of the seam — another build can swap this list for its
+		// own without the application knowing the channel's package exists.
+		NotificationChannels:  []notifychannel.Channel{mattermost.Channel()},
+		NotificationSecretKey: os.Getenv("NOTIFICATIONS_SECRET_KEY"),
 	})
 	if err != nil {
 		logger.Error("failed to assemble app", slog.String("error", err.Error()))

@@ -83,9 +83,11 @@
   flex-direction: column;
 }
 .notif__panel-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
-.notif__panel-title { font-size: 16px; font-weight: 700; color: #f1f5f9; }
-.notif__mark-all { margin-left: auto; background: none; border: none; color: #a78bfa; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
+.notif__panel-title { font-size: 16px; font-weight: 700; color: #f1f5f9; margin-right: auto;}
+.notif__mark-all { background: none; border: none; color: #a78bfa; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
 .notif__mark-all:hover { color: #c4b5fd; text-decoration: underline; }
+.notif__gear { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; text-decoration: none; }
+.notif__gear:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
 .notif__close { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .notif__close:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
 
@@ -114,3 +116,36 @@
 
 .notif__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; color: #475569; font-size: 14px; gap: 8px; }
 .notif__empty-icon { font-size: 32px; }
+
+/* Запись списка уведомлений: обёртка нужна, чтобы кнопка удаления была СОСЕДОМ
+   кликабельной части, а не потомком — <button> внутри <a> невалиден. */
+.notif__entry { position: relative; }
+/* Место справа под кнопку: без этого время в шапке уезжает под неё. */
+.notif__entry .notif__item { padding-right: 40px; }
+.notif__item-context {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notif__item-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  /* Видима всегда, а не только по наведению: на тач-устройствах наведения нет,
+     и скрытая кнопка была бы недоступна вовсе. Приглушена, чтобы не спорить
+     с текстом уведомления. */
+  opacity: 0.55;
+}
+.notif__item-delete:hover { opacity: 1; color: #f87171; background: rgba(248,113,113,0.12); }
+.notif__item-delete:focus-visible { opacity: 1; outline: 2px solid #c4b5fd; outline-offset: 1px; }

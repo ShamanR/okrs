@@ -12,7 +12,10 @@ const post = (u, b) => api(u, {method:'POST', headers:csrfHeaders(), body: b===u
 const put  = (u, b) => api(u, {method:'PUT',  headers:csrfHeaders(), body: JSON.stringify(b)});
 const del  = (u)    => api(u, {method:'DELETE', headers:csrfHeaders()});
 const patch = (u, b) => api(u, {method:'PATCH', headers:csrfHeaders(), body: JSON.stringify(b)});
-async function errMsg(res){ try { const j = await res.json(); return j.error || ('Ошибка '+res.status); } catch { return 'Ошибка '+res.status; } }
+// errMsg — читает текст ошибки из тела ответа ({error:"..."}), иначе падает на код
+// статуса. res может быть null: api() возвращает null на 401, уже уводя на /login,
+// и без этой проверки обработчик ошибки сам падал бы необработанным исключением.
+async function errMsg(res){ if (!res) return 'Ошибка авторизации'; try { const j = await res.json(); return j.error || ('Ошибка '+res.status); } catch { return 'Ошибка '+res.status; } }
 
 // Единая тема управляющих плоскостей (совпадает с admin.js T): тёмный сайдбар,
 // фиолетовый акцент, светлая контент-область. Держит /system визуально в одном
@@ -207,6 +210,46 @@ function EntitlementsSection({tenants}) {
   </div>;
 }
 
+// Каналы уведомлений: список берётся из сборки, а выдача пространству — это
+// обычный entitlement. Отдельного эндпоинта записи здесь нет намеренно: он бы
+// дублировал /entitlements и дал второй путь к тем же данным.
+function NotificationChannelsSection({tenants}) {
+  const [channels,setChannels]=useState([]);
+  const [loadErr,setLoadErr]=useState('');
+  const [tid,setTid]=useState(''); const [ent,setEnt]=useState({}); const [msg,setMsg]=useState('');
+  useEffect(()=>{ (async()=>{ const r=await get('/api/v1/system/notification-channels'); if(r&&r.ok){ const j=await r.json(); setChannels(j.channels||[]); } else { setLoadErr(await errMsg(r)); } })(); },[]);
+  const load = useCallback(async(id)=>{ if(!id){setEnt({});return;} const r=await get(`/api/v1/system/tenants/${id}/entitlements`); if(r&&r.ok) setEnt(await r.json()||{}); },[]);
+  useEffect(()=>{ load(tid); },[tid,load]);
+  const toggle = async (key, on)=>{ setMsg(''); const r=await put(`/api/v1/system/tenants/${tid}/entitlements`, {[key]: on}); if(r&&r.status===204){ load(tid); setMsg('Сохранено'); } else setMsg(await errMsg(r)); };
+  return <div style={box}>
+    <h2 style={{fontSize:15,marginBottom:6}}>Каналы уведомлений</h2>
+    <div style={{color:C.muted,marginBottom:10}}>
+      Список каналов задаётся сборкой. Здесь выбирается, какие из них доступны пространству;
+      подключает и настраивает канал уже администратор пространства. Внутренние уведомления
+      (колокольчик) доступны всегда и в этот список не входят.
+    </div>
+    {loadErr && <div style={{color:C.danger,marginBottom:10}}>Список каналов не загрузился: {loadErr}</div>}
+    {!loadErr && !channels.length && <div style={{color:C.muted}}>В этой сборке нет внешних каналов.</div>}
+    {!loadErr && !!channels.length && <select style={inp} value={tid} onChange={e=>setTid(e.target.value)}>
+      <option value="">— выберите пространство —</option>
+      {(tenants||[]).map(t=><option key={t.id} value={t.id}>{t.name} ({t.slug})</option>)}
+    </select>}
+    {tid && <div style={{marginTop:12,display:'flex',flexDirection:'column',gap:8}}>
+      {channels.map(ch=>{
+        const on = ent[ch.entitlement_key]===true;
+        return <div key={ch.name} style={{display:'flex',gap:8,alignItems:'center'}}>
+          <span style={{minWidth:160,fontWeight:600}}>{ch.title}</span>
+          <code style={{minWidth:220,color:C.muted}}>entitlement.{ch.entitlement_key}</code>
+          <button style={{...btn,background: on?C.ok:C.muted}} onClick={()=>toggle(ch.entitlement_key, !on)}>
+            {on?'доступен':'выключен'}
+          </button>
+        </div>;
+      })}
+      {msg && <div style={{color:msg==='Сохранено'?C.ok:C.danger}}>{msg}</div>}
+    </div>}
+  </div>;
+}
+
 function MessagesSection() {
   const [msg, setMsg] = useState('');
   const [saved, setSaved] = useState('');
@@ -249,12 +292,13 @@ function UsersSection({users, reload}) {
 // Зеркалит admin.js: тёмный сайдбар с контекстной навигацией + верхняя строка-
 // хлебные крошки + скролл-регион контента.
 const SYSTEM_SECTIONS = [
-  {id:'tenants',      label:'Пространства',   icon:'🏢'},
-  {id:'members',      label:'Участники',      icon:'👥'},
-  {id:'users',        label:'Пользователи',   icon:'🔑'},
-  {id:'registration', label:'Регистрация',    icon:'📝'},
-  {id:'entitlements', label:'Entitlements',   icon:'🎚'},
-  {id:'messages',     label:'Сообщения',      icon:'💬'},
+  {id:'tenants',       label:'Пространства', icon:'🏢'},
+  {id:'members',       label:'Участники',    icon:'👥'},
+  {id:'users',         label:'Пользователи', icon:'🔑'},
+  {id:'registration',  label:'Регистрация',  icon:'📝'},
+  {id:'entitlements',  label:'Entitlements', icon:'🎚'},
+  {id:'notifications', label:'Уведомления',  icon:'🔔'},
+  {id:'messages',      label:'Сообщения',    icon:'💬'},
 ];
 
 function Shell({section, setSection, currentUser, children}) {
@@ -314,6 +358,7 @@ function App() {
     {section==='users' && <UsersSection users={users} reload={reloadUsers}/>}
     {section==='registration' && <RegistrationSection tenants={tenants}/>}
     {section==='entitlements' && <EntitlementsSection tenants={tenants}/>}
+    {section==='notifications' && <NotificationChannelsSection tenants={tenants}/>}
     {section==='messages' && <MessagesSection/>}
   </Shell>;
 }

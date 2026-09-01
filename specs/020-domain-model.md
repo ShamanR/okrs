@@ -234,6 +234,7 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 **Инварианты:**
 
 - журнал **append-only**; событие пишется **best-effort после** успешной мутации в service-слое — ошибка записи логируется, но не роняет действие пользователя (источник правды — сама мутация);
+- одно событие шины даёт **0, 1 или 2** строки журнала. Больше одной — только у чек-ина по KR (`KRCheckedIn`, `internal/service/activity/journal.go`): он разворачивается в строку `progress`/`kr_progress`, если изменился прогресс, и в строку `discussion`/`kr_note_updated`, если изменилась заметка (в обе — если изменилось и то, и другое). Ни одной — если чек-ин изменил только health-статус KR: статус KR журнал не ведёт вовсе (сознательное решение, см. реестр техдолга `docs/superpowers/plans/2026-08-27-notifications-tech-debt.md`). Все остальные события дают ровно одну строку;
 - actor резолвится tenant-scoped на чтении: активный участник тенанта → имя + аватар; не участник (кроме системных, provider=`system`) → нейтральный плейсхолдер `removed=true` **без** email/аватара/UDID (PII бывшего участника не утекает);
 - хранимые `team_id`/`period_id` — исторический контекст (scope, счётчики, бейдж периода); навигационный target собирается на чтении;
 - очистка журнала — только через admin-действие (tenant-admin своего пространства / system-admin по любому тенанту), см. `040-api-contract.md` и `050-permissions-and-lifecycle.md`.
@@ -250,9 +251,16 @@ Append-only журнал событий OKR (таблица `activity_events`, �
 - tenant_id (FK → tenants.id, ON DELETE CASCADE)
 - user_id (FK → users.id, ON DELETE CASCADE) — получатель
 - type — `goal_comment` | `my_comment_resolved` | `goal_changed` | `kr_progress`; из какого события какой тип
-  получается, см. `notifyType` в `internal/usecase/notification/mapping.go` — часть событий шины (9 из 22)
-  не порождает уведомления вовсе (напр. `status_changed`, `goal_shared`, `kr_note_updated`)
-- kind — исходное действие события (те же значения, что `action` у ActivityEvent)
+  получается, см. `notifyType` в `internal/usecase/notification/mapping.go` — часть событий шины (8 из 21)
+  не порождает уведомления вовсе (напр. `status_changed`, `goal_shared`, `comment_deleted`)
+- kind — `event.Kind()` исходного события; для большинства типов совпадает со значением `action` у
+  ActivityEvent, но не для чек-ина KR: событие `KRCheckedIn` пишет `kind = kr_checked_in` (поле `type`
+  выше при этом остаётся `kr_progress`, как и было для прогресса), тогда как журнал по тому же
+  событию разворачивает его в строку(и) с `action = kr_progress` и/или `kr_note_updated` (см.
+  ActivityEvent выше — одно событие даёт 0, 1 или 2 строки журнала в зависимости от того, что
+  изменилось). Строки `notifications`, вставленные до перехода на `KRCheckedIn`, несут прежнее
+  значение `kind = kr_progress` навсегда — upsert повторного схлопывания его не переписывает (см.
+  legacy-ветку `internal/render/notify`, которая рендерит такие строки прежним текстом)
 - actor_user_id (FK → users.id) — кто совершил действие
 - team_id, period_id, goal_id, kr_id, comment_id — ссылки на сущности (**не** FK — как и у
   ActivityEvent, уведомление переживает удаление сущности, на которую указывает)

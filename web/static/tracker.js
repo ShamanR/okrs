@@ -677,16 +677,21 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     setSaving(true);
     try {
       const healthField = healthTouched ? { health_status: health } : {};
-      if (form.krType === 'NUMERICAL') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0, ...healthField });
-      } else if (form.krType === 'BOOLEAN') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done, ...healthField });
-      } else if (form.krType === 'PROJECT') {
-        await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })), ...healthField });
-      }
+      // Заметка едет вместе с прогрессом одним запросом — это и есть чек-ин: одно
+      // действие пользователя, один usecase-вызов CheckIn, одно событие/уведомление.
+      // Отдельного POST /note в интерфейсе больше нет: единственный путь правки
+      // заметки — эта форма, а форма всегда бьёт вместе с прогрессом/статусом.
+      // Сохранено прежнее поведение "не отправлять пустую и не отправлять
+      // неизменившуюся" — очистка заметки через эту форму как не работала, так и
+      // не работает; это не относится к переносу заметки в тело запроса прогресса.
       const trimmed = note.trim();
-      if (trimmed && trimmed !== (kr.note?.text ?? '')) {
-        await apiPost(`/api/v1/krs/${kr.id}/note`, { text: trimmed });
+      const noteField = (trimmed && trimmed !== (kr.note?.text ?? '')) ? { note: trimmed } : {};
+      if (form.krType === 'NUMERICAL') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/numerical`, { current_value: parseFloat(form.current) || 0, ...healthField, ...noteField });
+      } else if (form.krType === 'BOOLEAN') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/boolean`, { done: !!form.done, ...healthField, ...noteField });
+      } else if (form.krType === 'PROJECT') {
+        await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })), ...healthField, ...noteField });
       }
       const trimmedDesc = descDraft.trim();
       if (descEditing && trimmedDesc) {

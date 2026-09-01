@@ -132,7 +132,6 @@ func TestNonNotifyingEventsAreIgnored(t *testing.T) {
 	err := uc.Handle(context.Background(), []event.Event{
 		event.GoalShared{Meta: meta(), GoalID: 1, Title: "Цель"},
 		event.GoalLinked{Meta: meta(), ChildGoalID: 1, Title: "Цель"},
-		event.KRNoteUpdated{Meta: meta(), GoalID: 1, KRID: 2, KRTitle: "KR"},
 		event.StatusChanged{Meta: meta(), TeamTitle: "Команда"},
 		event.CommentReopened{Meta: meta(), GoalID: 1, CommentID: 2, GoalTitle: "Цель"},
 	})
@@ -141,6 +140,24 @@ func TestNonNotifyingEventsAreIgnored(t *testing.T) {
 	}
 	if len(w.rows) != 0 {
 		t.Fatalf("эти события не должны порождать уведомлений, got %d", len(w.rows))
+	}
+}
+
+// Регресс дефекта, который нашёл пользователь: раньше в mapping.go не было ветки
+// для KRNoteUpdated вовсе, и правка ТОЛЬКО заметки никогда не доходила до
+// уведомлений (см. план kr-checkin-notifications, "попутная находка"). KRCheckedIn
+// заменяет оба старых события одним — и обязан нотифицировать, даже когда из
+// трёх величин изменилась только заметка.
+func TestNoteOnlyCheckInNotifies(t *testing.T) {
+	uc, w, _ := newUC()
+	err := uc.Handle(context.Background(), []event.Event{
+		event.KRCheckedIn{Meta: meta(), GoalID: 1, KRID: 2, KRTitle: "KR", NoteBefore: "", NoteAfter: "стало"},
+	})
+	if err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if len(w.rows) != 1 {
+		t.Fatalf("чек-ин только с заметкой обязан породить уведомление, got %d", len(w.rows))
 	}
 }
 
@@ -171,8 +188,8 @@ func TestGoalAndItsKRsShareOneCoalesceKey(t *testing.T) {
 func TestProgressCoalescesPerKR(t *testing.T) {
 	uc, w, _ := newUC()
 	err := uc.Handle(context.Background(), []event.Event{
-		event.KRProgressUpdated{Meta: meta(), GoalID: 10, KRID: 20, KRTitle: "A", After: 50},
-		event.KRProgressUpdated{Meta: meta(), GoalID: 10, KRID: 21, KRTitle: "B", After: 70},
+		event.KRCheckedIn{Meta: meta(), GoalID: 10, KRID: 20, KRTitle: "A", ProgressAfter: 50},
+		event.KRCheckedIn{Meta: meta(), GoalID: 10, KRID: 21, KRTitle: "B", ProgressAfter: 70},
 	})
 	if err != nil {
 		t.Fatalf("handle: %v", err)

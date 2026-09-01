@@ -25,6 +25,7 @@ type Repo interface {
 	List(ctx context.Context, scope domain.TenantScope, userID int64, f notifications.ListFilter) ([]notifications.Notification, *notifications.Cursor, error)
 	UnreadCount(ctx context.Context, scope domain.TenantScope, userID int64) (int, error)
 	MarkRead(ctx context.Context, scope domain.TenantScope, userID int64, ids []int64, all bool) error
+	Delete(ctx context.Context, scope domain.TenantScope, userID, id int64) (bool, error)
 	PurgeOlderThan(ctx context.Context, readDays, anyDays int) (int64, error)
 }
 
@@ -103,6 +104,12 @@ func (s *Service) MarkRead(ctx context.Context, scope domain.TenantScope, userID
 }
 
 // Purge is the retention pass, run from the scheduler.
+// Delete removes one of the user's own notifications; false means there was
+// nothing to remove — either it never existed or it belongs to somebody else.
+func (s *Service) Delete(ctx context.Context, scope domain.TenantScope, userID, id int64) (bool, error) {
+	return s.repo.Delete(ctx, scope, userID, id)
+}
+
 func (s *Service) Purge(ctx context.Context, readDays, anyDays int) (int64, error) {
 	return s.repo.PurgeOlderThan(ctx, readDays, anyDays)
 }

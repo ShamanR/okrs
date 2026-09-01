@@ -29,13 +29,34 @@ type Store struct {
 	BooleanUpdates   map[int64]bool
 	ProjectStages    map[int64][]domain.KRProjectStage
 	StageUpdates     map[int64]bool
-	MovedGoals       map[int64]int
-	MovedKRs         map[int64]int
-	SoftDeleted      []int64
-	Restored         []int64
-	HardDeleted      []int64
-	BulkSetTeamIDs   []int64
-	BulkSetStatus    domain.TeamPeriodStatus
+	// Notes links UpsertKeyResultNote/GetKeyResultNote for tests that assert on the
+	// note actually read back — without this, a caller reordering "read the note"
+	// after "write the note" would still pass every note-related test, because both
+	// methods used to be independent no-ops (found in kr-checkin-notifications
+	// review: a mutation swapping that order in usecase/keyresult.CheckIn survived
+	// the whole suite).
+	Notes map[int64]domain.KeyResultNote
+	// Goals backs GetGoal. A goal that is not in the map reads back as the zero
+	// domain.Goal, which is what GetGoal always returned before — so tests that do
+	// not care keep working. Tests that assert on what a published event says about
+	// the parent goal DO care: with a zero goal the goal's title is "" and cannot be
+	// told apart from a KR title copied into the wrong field (found in
+	// kr-checkin-notifications review: a mutation putting the goal's title into
+	// KRCheckedIn.KRTitle survived the whole suite).
+	Goals map[int64]domain.Goal
+	// ListProjectStagesErr, when set, is returned by ListProjectStages instead of
+	// ProjectStages[krID] — lets a test simulate a read failure (e.g. to prove that
+	// a note-only check-in on a project-kind KR still saves the note even when the
+	// best-effort "actual current progress" read fails; see checkInProgress in
+	// internal/usecase/keyresult).
+	ListProjectStagesErr error
+	MovedGoals           map[int64]int
+	MovedKRs             map[int64]int
+	SoftDeleted          []int64
+	Restored             []int64
+	HardDeleted          []int64
+	BulkSetTeamIDs       []int64
+	BulkSetStatus        domain.TeamPeriodStatus
 
 	// Снимки прогресса
 	Snapshots        []progresssnap.Snapshot
@@ -55,6 +76,8 @@ func NewStore() *Store {
 		BooleanUpdates:   make(map[int64]bool),
 		ProjectStages:    make(map[int64][]domain.KRProjectStage),
 		StageUpdates:     make(map[int64]bool),
+		Notes:            make(map[int64]domain.KeyResultNote),
+		Goals:            make(map[int64]domain.Goal),
 		MovedGoals:       make(map[int64]int),
 		MovedKRs:         make(map[int64]int),
 	}
@@ -242,6 +265,9 @@ func (f *Store) UpdateBoolean(_ context.Context, _ domain.TenantScope, krID int6
 	return nil
 }
 func (f *Store) ListProjectStages(_ context.Context, _ domain.TenantScope, krID int64) ([]domain.KRProjectStage, error) {
+	if f.ListProjectStagesErr != nil {
+		return nil, f.ListProjectStagesErr
+	}
 	return f.ProjectStages[krID], nil
 }
 func (f *Store) UpdateProjectStageDone(_ context.Context, _ domain.TenantScope, stageID int64, done bool) error {
@@ -263,11 +289,15 @@ func (f *Store) UpdateGoalTeamWeight(context.Context, domain.TenantScope, int64,
 func (f *Store) GetKeyResult(_ context.Context, _ domain.TenantScope, id int64) (domain.KeyResult, error) {
 	return f.KeyResults[id], nil
 }
-func (f *Store) GetBooleanMeta(context.Context, domain.TenantScope, int64) (*domain.KRBoolean, error) {
-	return nil, nil
+func (f *Store) GetBooleanMeta(_ context.Context, _ domain.TenantScope, id int64) (*domain.KRBoolean, error) {
+	return f.KeyResults[id].Boolean, nil
 }
-func (f *Store) GetKeyResultNote(context.Context, domain.TenantScope, int64) (*domain.KeyResultNote, error) {
-	return nil, nil
+func (f *Store) GetKeyResultNote(_ context.Context, _ domain.TenantScope, krID int64) (*domain.KeyResultNote, error) {
+	note, ok := f.Notes[krID]
+	if !ok {
+		return nil, nil
+	}
+	return &note, nil
 }
 func (f *Store) BatchLoadNotes(context.Context, domain.TenantScope, []int64) (map[int64]*domain.KeyResultNote, error) {
 	return nil, nil
@@ -287,14 +317,15 @@ func (f *Store) GetGoalCommentMeta(context.Context, domain.TenantScope, int64, i
 func (f *Store) DeleteGoalComment(context.Context, domain.TenantScope, int64, int64) error {
 	return nil
 }
-func (f *Store) UpsertKeyResultNote(context.Context, domain.TenantScope, int64, string, int64) error {
+func (f *Store) UpsertKeyResultNote(_ context.Context, _ domain.TenantScope, krID int64, text string, authorUserID int64) error {
+	f.Notes[krID] = domain.KeyResultNote{KeyResultID: krID, Text: text}
 	return nil
 }
 func (f *Store) UpdateKeyResultDescription(context.Context, domain.TenantScope, int64, string) error {
 	return nil
 }
-func (f *Store) GetGoal(context.Context, domain.TenantScope, int64) (domain.Goal, error) {
-	return domain.Goal{}, nil
+func (f *Store) GetGoal(_ context.Context, _ domain.TenantScope, id int64) (domain.Goal, error) {
+	return f.Goals[id], nil
 }
 func (f *Store) UpdateGoal(context.Context, domain.TenantScope, goals.GoalUpdateInput) error {
 	return nil

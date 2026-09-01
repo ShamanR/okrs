@@ -7,6 +7,8 @@ import (
 	"okrs/internal/core/domain"
 	"okrs/internal/store/notifications"
 	"okrs/internal/store/testutil"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func newRepo(t *testing.T) (*notifications.Repository, context.Context, domain.TenantScope, func()) {
@@ -368,5 +370,214 @@ func TestInsertBatchIsBatched(t *testing.T) {
 	}
 	if n, _ := repo.UnreadCount(ctx, scope, 1); n != 3 {
 		t.Fatalf("после батча непрочитанных %d, want 3", n)
+	}
+}
+
+// --- Контекст уведомления: путь команды и название цели ---
+
+// setupContext заводит трёхуровневое дерево команд, период и цель, возвращая
+// пул (нужен для фикстур), репозиторий и идентификаторы листовой команды и цели.
+func setupContext(t *testing.T) (*pgxpool.Pool, *notifications.Repository, context.Context, domain.TenantScope, int64, int64, func()) {
+	t.Helper()
+	pool, cleanup := testutil.SetupDB(t)
+	ctx := context.Background()
+
+	var root, mid, leaf, periodID, goalID int64
+	mustScan := func(q string, dst *int64, args ...any) {
+		t.Helper()
+		if err := pool.QueryRow(ctx, q, args...).Scan(dst); err != nil {
+			cleanup()
+			t.Fatalf("фикстура %q: %v", q, err)
+		}
+	}
+	mustScan(`INSERT INTO teams (name) VALUES ('Компания') RETURNING id`, &root)
+	mustScan(`INSERT INTO teams (name, parent_id) VALUES ('Платформа', $1) RETURNING id`, &mid, root)
+	mustScan(`INSERT INTO teams (name, parent_id) VALUES ('Биллинг', $1) RETURNING id`, &leaf, mid)
+	mustScan(`INSERT INTO periods (name, start_date, end_date) VALUES ('P', '2026-01-01', '2026-03-31') RETURNING id`, &periodID)
+	mustScan(`INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order)
+	          VALUES ($1,$2,'Снизить отток','P1',100,'Delivery','STABILITY',1) RETURNING id`, &goalID, leaf, periodID)
+
+	return pool, notifications.NewRepository(pool), ctx, domain.TenantScope{TenantID: 1}, leaf, goalID, cleanup
+}
+
+func contextInput(teamID, goalID *int64, key string) notifications.InsertInput {
+	return notifications.InsertInput{
+		UserID: 1, Type: "goal_changed", Kind: "goal_fields_changed",
+		ActorUserID: 2, TeamID: teamID, GoalID: goalID, EntityTitle: "Цель",
+		Payload: map[string]any{"changed": map[string]any{}}, CoalesceKey: key,
+	}
+}
+
+// Путь строится от корня к листу — так его читают глазами, сверху вниз по дереву.
+func TestListReturnsTeamPathAndGoalTitle(t *testing.T) {
+	_, repo, ctx, scope, teamID, goalID, cleanup := setupContext(t)
+	defer cleanup()
+
+	if _, err := repo.Insert(ctx, scope, contextInput(&teamID, &goalID, "ctx:1")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	items, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("записей: %d", len(items))
+	}
+	if items[0].TeamPath != "Компания / Платформа / Биллинг" {
+		t.Fatalf("путь команды = %q", items[0].TeamPath)
+	}
+	if items[0].GoalTitle != "Снизить отток" {
+		t.Fatalf("название цели = %q", items[0].GoalTitle)
+	}
+}
+
+// Уведомление без команды и цели не должно ломать запрос и не выдумывает контекст.
+func TestListWithoutTeamOrGoalHasEmptyContext(t *testing.T) {
+	_, repo, ctx, scope, _, _, cleanup := setupContext(t)
+	defer cleanup()
+
+	if _, err := repo.Insert(ctx, scope, contextInput(nil, nil, "ctx:2")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	items, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("записей: %d", len(items))
+	}
+	if items[0].TeamPath != "" || items[0].GoalTitle != "" {
+		t.Fatalf("контекст должен быть пуст: путь=%q цель=%q", items[0].TeamPath, items[0].GoalTitle)
+	}
+}
+
+// Подъём по parent_id обязан упираться в границу тенанта. Родитель из чужого
+// тенанта в путь не попадает — иначе имя чужой команды показали бы пользователю.
+func TestTeamPathStopsAtTenantBoundary(t *testing.T) {
+	pool, repo, ctx, scope, _, _, cleanup := setupContext(t)
+	defer cleanup()
+
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO tenants (id, slug, name) OVERRIDING SYSTEM VALUE VALUES (2,'t2','T2')`); err != nil {
+		t.Fatalf("второй тенант: %v", err)
+	}
+
+	var foreignParent, ourChild int64
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO teams (name, tenant_id) VALUES ('Чужая', 2) RETURNING id`).Scan(&foreignParent); err != nil {
+		t.Fatalf("чужая команда: %v", err)
+	}
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO teams (name, parent_id) VALUES ('Наша', $1) RETURNING id`, foreignParent).Scan(&ourChild); err != nil {
+		t.Fatalf("наша команда: %v", err)
+	}
+	if _, err := repo.Insert(ctx, scope, contextInput(&ourChild, nil, "ctx:3")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	items, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("записей: %d", len(items))
+	}
+	if items[0].TeamPath != "Наша" {
+		t.Fatalf("путь = %q, ожидался только %q — чужой родитель просочился", items[0].TeamPath, "Наша")
+	}
+}
+
+// --- Удаление одной записи ---
+
+// Своё уведомление удаляется, и повторное удаление сообщает «нечего удалять».
+func TestDeleteOwnNotification(t *testing.T) {
+	repo, ctx, scope, cleanup := newRepo(t)
+	defer cleanup()
+
+	if _, err := repo.Insert(ctx, scope, input("del:1")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	items, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("list: %v, записей %d", err, len(items))
+	}
+	removed, err := repo.Delete(ctx, scope, 1, items[0].ID)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !removed {
+		t.Fatal("удаление своей записи должно сообщать об успехе")
+	}
+	after, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("list после: %v", err)
+	}
+	if len(after) != 0 {
+		t.Fatalf("запись осталась: %d", len(after))
+	}
+	again, err := repo.Delete(ctx, scope, 1, items[0].ID)
+	if err != nil {
+		t.Fatalf("повторное удаление вернуло ошибку вместо признака: %v", err)
+	}
+	if again {
+		t.Fatal("повторное удаление не должно сообщать об успехе")
+	}
+}
+
+// Главная проверка задачи: зная id, участник того же тенанта не должен удалить
+// чужое уведомление. Без условия по user_id это ровно то, что произошло бы.
+func TestDeleteDoesNotTouchAnotherUsersNotification(t *testing.T) {
+	repo, ctx, scope, cleanup := newRepo(t)
+	defer cleanup()
+
+	in := input("del:2")
+	in.UserID = 1
+	if _, err := repo.Insert(ctx, scope, in); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	items, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil || len(items) != 1 {
+		t.Fatalf("list: %v, записей %d", err, len(items))
+	}
+
+	// Пользователь 2 пытается удалить уведомление пользователя 1.
+	removed, err := repo.Delete(ctx, scope, 2, items[0].ID)
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if removed {
+		t.Fatal("чужое уведомление не должно удаляться")
+	}
+	still, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("list после: %v", err)
+	}
+	if len(still) != 1 {
+		t.Fatalf("запись владельца исчезла: %d", len(still))
+	}
+}
+
+// Удаление непрочитанного уменьшает счётчик — иначе бейдж показывал бы записи,
+// которых уже нет.
+func TestDeleteUnreadDecrementsCount(t *testing.T) {
+	repo, ctx, scope, cleanup := newRepo(t)
+	defer cleanup()
+
+	if _, err := repo.Insert(ctx, scope, input("del:3")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	before, err := repo.UnreadCount(ctx, scope, 1)
+	if err != nil || before != 1 {
+		t.Fatalf("счётчик до: %d (%v)", before, err)
+	}
+	items, _, _ := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if _, err := repo.Delete(ctx, scope, 1, items[0].ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	after, err := repo.UnreadCount(ctx, scope, 1)
+	if err != nil {
+		t.Fatalf("счётчик после: %v", err)
+	}
+	if after != 0 {
+		t.Fatalf("счётчик = %d, ожидался 0", after)
 	}
 }

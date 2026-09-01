@@ -26,7 +26,7 @@ AI должен сохранять разделение ответственно
 - `internal/platform/nomembership` — реестр страницы «нет доступа» (бывший `internal/onboarding`);
 - `internal/platform/eventbus` — внутрипроцессная шина доменных событий с типизированной подпиской;
 - `internal/render/export` — рендер OKR в Markdown;
-- `internal/render/notify` — рендер текста уведомлений: kind + payload события → {title, body} (plain-текст для in-app; симметрично `render/export`), единый источник формулировок, чтобы колокольчик и будущие внешние каналы не разошлись в тексте;
+- `internal/render/notify` — рендер текста уведомлений: kind + payload события → {title, body, subject} (plain-текст для in-app; `subject` необязателен — название сущности отдельной строкой для тех kind, чьё тело её не называет; симметрично `render/export`), единый источник формулировок, чтобы колокольчик и будущие внешние каналы не разошлись в тексте;
 - `internal/store` — SQL и persistence; каждый тип сущности имеет свой отдельный repository-тип; `store.Store` — composite-фабрика; auth-методы (users, sessions, grants, settings) живут здесь;
 - `internal/service` — сервисы по сущностям, по пакету на сущность: `team`, `goal`, `keyresult`, `period`, `goalshare`, `goallink`, `teamstatus`, `user`, `activity`, `progresssnap`, `notification`, `notificationpref`, плюс `settings`, `provisioning`, `onboarding`, `healthcheckin`. Каждый работает **с одной** сущностью через **один** репозиторий, объявленный интерфейсом на стороне потребителя (`team.Repo`, `goal.Repo` и т.д.), и не публикует доменные события. Исключение — `service/activity`: он не публикует, а подписан на шину (`Handle` — обработчик `eventbus.SubscribeAll`) и сам пишет журнал по событиям, полученным от usecase; это делает его единственным сервисом, знающим форму строки журнала. `internal/service/servicetest` — общие fake-репозитории для тестов всех сервисов и usecase. Файлов в корне `internal/service` нет: фасад `service.Service` удалён, каждый обработчик получает ровно те сервисы и usecase, которые вызывает;
 - `internal/usecase` — бизнес-сценарии: `okrboard`, `goal`, `keyresult`, `period`, `goaltree`, `export`, `user`, `healthcheckin`, `notification`. Каждый оркестрирует **сервисы сущностей**, а не репозитории: цепочка `handler → usecase → service → store`, у store одна дверь;
@@ -49,7 +49,24 @@ AI должен сохранять разделение ответственно
   Существует потому, что `//go:embed` не может ссылаться за пределы каталога своего пакета —
   директива в `internal/http` не дотянулась бы до `/web/templates`.
 
-Публичных пакетов ровно два: `app` — фасад приложения, и `web` — SSR-ассеты. Всё остальное — `internal/`.
+Публичных пакетов ровно три: `app` — фасад приложения, `web` — SSR-ассеты, и `notifychannel` —
+контракт канала уведомлений. Всё остальное — `internal/`.
+
+**Пакет `notifychannel`.** Публичный, а не `internal/`, ровно по той же причине, что `app` и
+`web`: канал уведомлений должен собираться во внешнем модуле, а Go запрещает импорт `internal/`
+за пределами `okrs/`. Пакет содержит только контракт (`Channel`, `Sender`, `Descriptor`, `Target`,
+`Message`, `Field`) и не зависит ни от чего, кроме стандартной библиотеки — сегодня это
+подтверждено вручную (`go list -deps ./notifychannel/` не выводит ничего, кроме stdlib), а не
+отдельным тестом.
+
+Каналы подключаются значением через `app.Config.NotificationChannels`, а не регистрацией в
+`init()`: список каналов сборки должен быть виден в одном месте рядом с `main`, а не собираться
+из побочных эффектов импортов. Пример реализации — `notifychannel/mattermost`: адресуется по
+email, `Linker` не реализует.
+
+Секреты каналов шифруются AES-256-GCM (`internal/platform/secretbox`) ключом из переменной
+окружения `NOTIFICATIONS_SECRET_KEY` (base64, 32 байта). Ключ не задан — каналы с секретом
+настроить нельзя (`ErrNoSecretKey`), остальное приложение работает без изменений.
 
 **Группировка в `internal/`.** В корне `internal/` лежат только слои и группы, не отдельные доменные пакеты: `core/` — чистая логика без I/O; `platform/` — инфраструктурные сеймы, не привязанные к одной сущности: registry-сеймы OSS/SaaS (`entitlements`, `nomembership`) и общая межслойная машинерия (`eventbus`); `render/` — форматтеры; плюс `auth/`, `http/`, `service/`, `store/`. Новый пакет кладётся в существующую группу; заводить пакет в корне `internal/` — повод сначала решить, к какой группе он относится.
 
@@ -103,6 +120,7 @@ import (
 | `ProgressSnap` | `store/progresssnap` | `*progresssnap.Repository` | снимки прогресса |
 | `Notifications` | `store/notifications` | `*notifications.Repository` | уведомления (лента, счётчик, пометка прочитанным, ретенция) |
 | `NotificationPrefs` | `store/notificationprefs` | `*notificationprefs.Repository` | настройки уведомлений + резолв получателей по дереву команд |
+| `NotificationChannels` | `store/notificationchannels` | `*notificationchannels.Repository` | конфигурация каналов уведомлений в тенанте (секрет — зашифрован) + привязки внешних аккаунтов (`Linker`) |
 | `Tenants` | `store/tenants` | `*tenants.TenantRepository` | тенанты (+ кэш) |
 | `Memberships` | `store/memberships` | `*memberships.MembershipRepository` | членства (+ кэш) |
 | `TenantSettings` | `store/tenantsettings` | `*tenantsettings.TenantSettingsRepository` | настройки тенанта (+ кэш) |

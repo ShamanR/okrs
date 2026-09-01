@@ -1,7 +1,7 @@
 // Package notification turns domain events into per-recipient notifications.
 //
 // It is the bus subscriber registered for the 13 event types that notify anyone;
-// the other 9 never reach it. Registered asynchronously — resolving recipients and
+// the other 8 never reach it. Registered asynchronously — resolving recipients and
 // inserting rows has no business holding up an HTTP response.
 package notification
 

@@ -37,6 +37,10 @@ func (r *capturingRepo) UnreadCount(context.Context, domain.TenantScope, int64) 
 func (r *capturingRepo) MarkRead(context.Context, domain.TenantScope, int64, []int64, bool) error {
 	return nil
 }
+func (r *capturingRepo) Delete(context.Context, domain.TenantScope, int64, int64) (bool, error) {
+	return false, nil
+}
+
 func (r *capturingRepo) PurgeOlderThan(context.Context, int, int) (int64, error) {
 	return 0, nil
 }

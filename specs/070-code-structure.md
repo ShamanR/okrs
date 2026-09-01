@@ -10,9 +10,10 @@
 ```
 app/                 точка сборки: конфиг, стор, auth, сервер, фоновые задачи
 web/                 templates/ и static/ + embed для шаблонов
+notifychannel/       публичный контракт канала уведомлений (только stdlib)
 internal/
   core/              домен без зависимостей: domain (сущности, ошибки), progress (расчёт)
-  platform/          инфраструктурные мелочи: entitlements, nomembership
+  platform/          инфраструктурные мелочи: entitlements, nomembership, secretbox
   render/            представление, не привязанное к HTTP: export
   store/             репозитории и кэши, по пакету на агрегат
   service/           операции над одной сущностью, по пакету на сущность
@@ -21,7 +22,19 @@ internal/
   http/              сервер, сборка зависимостей, DTO ответов, обработчики
 ```
 
-Публичных пакетов ровно два: `app` и `web`. Всё остальное — под `internal/`.
+Публичных пакетов ровно три: `app`, `web` и `notifychannel`. Всё остальное — под `internal/`.
+
+Карта пакетов уведомлений, добавленных фазой 2a-1 (контракт канала и его первая
+серверная сторона — обоснование см. в [010-architecture-constraints.md](010-architecture-constraints.md)):
+
+- `notifychannel/` — публичный контракт канала уведомлений (только stdlib)
+- `notifychannel/mattermost/` — канал Mattermost; образец для внешних реализаций
+- `internal/platform/secretbox/` — AES-256-GCM для секретов каналов
+- `internal/store/notificationchannels/` — конфигурация каналов и привязки аккаунтов
+- `internal/service/notificationchannel/` — конфиг, шифрование, гейт по entitlements, резолв `Sender`
+- `internal/http/handlers/api/v1/system/notificationchannels/` — список каналов сборки
+- `internal/http/handlers/api/v1/admin/settings/notifications/` — настройки каналов пространства
+- `internal/http/handlers/api/v1/admin/settings/notifications/test/` — проверочная отправка
 
 Внутри `http/` кроме `handlers/` лежат `httpdeps/` (сборка графа сервисов и
 usecase), `middleware/` и `dto/` — структуры JSON-ответов с их тегами. `dto`
@@ -140,6 +153,9 @@ web/common                     web/auth
 | `/api/v1/admin/settings/feedback` | GET POST | `api/v1/admin/settings/feedback` |
 | `/api/v1/admin/settings/general` | GET POST | `api/v1/admin/settings/general` |
 | `/api/v1/admin/settings/health-checkin` | GET POST | `api/v1/admin/settings/healthcheckin` |
+| `/api/v1/admin/settings/notifications` | GET | `api/v1/admin/settings/notifications` |
+| `/api/v1/admin/settings/notifications/{channel}` | PUT | ↑ |
+| `/api/v1/admin/settings/notifications/{channel}/test` | POST | `api/v1/admin/settings/notifications/test` |
 | `/api/v1/admin/teams` | GET POST | `api/v1/admin/teams` |
 | `/api/v1/admin/teams/{teamID}` | PATCH DELETE | ↑ |
 | `/api/v1/admin/teams/{teamID}/hard` | DELETE | `api/v1/admin/teams/hard` |
@@ -178,6 +194,7 @@ web/common                     web/auth
 | `/api/v1/krs/{krID}/progress/project` | POST | `api/v1/krs/progress/project` |
 | `/api/v1/me` | GET | `api/v1/me` |
 | `/api/v1/notifications` | GET | `api/v1/notifications` |
+| `/api/v1/notifications/{id}` | DELETE | ↑ |
 | `/api/v1/notifications/preferences` | GET PUT | `api/v1/notifications/preferences` |
 | `/api/v1/notifications/read` | POST | `api/v1/notifications/read` |
 | `/api/v1/notifications/unread-count` | GET | `api/v1/notifications/unreadcount` |
@@ -190,6 +207,7 @@ web/common                     web/auth
 | `/api/v1/session/memberships/{tenantID}` | DELETE | ↑ |
 | `/api/v1/session/tenant` | POST | `api/v1/session/tenant` |
 | `/api/v1/session/tenants` | GET | `api/v1/session/tenants` |
+| `/api/v1/system/notification-channels` | GET | `api/v1/system/notificationchannels` |
 | `/api/v1/system/settings` | GET | `api/v1/system/settings` |
 | `/api/v1/system/settings/default-registration-tenant` | PUT | `api/v1/system/settings/defaultregistrationtenant` |
 | `/api/v1/system/settings/no-access-message` | PUT | `api/v1/system/settings/noaccessmessage` |

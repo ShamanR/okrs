@@ -15,14 +15,13 @@ func TestKindsAreUniqueAndNonEmpty(t *testing.T) {
 		event.GoalCreated{}, event.GoalCopied{}, event.GoalMoved{}, event.GoalDeleted{},
 		event.GoalFieldsChanged{}, event.GoalOwnerChanged{}, event.GoalShared{}, event.GoalUnshared{},
 		event.GoalLinked{}, event.GoalUnlinked{},
-		event.KRCreated{}, event.KRDeleted{}, event.KRFieldsChanged{}, event.KRProgressUpdated{},
-		event.KRNoteUpdated{},
+		event.KRCreated{}, event.KRDeleted{}, event.KRFieldsChanged{}, event.KRCheckedIn{},
 		event.StatusChanged{},
 		event.CommentAdded{}, event.CommentResolved{}, event.CommentReopened{},
 		event.CommentDeleted{}, event.ReplyAdded{}, event.ReplyDeleted{},
 	}
-	if len(all) != 22 {
-		t.Fatalf("ожидалось 22 типа событий, перечислено %d", len(all))
+	if len(all) != 21 {
+		t.Fatalf("ожидалось 21 тип событий, перечислено %d", len(all))
 	}
 	seen := map[event.Kind]bool{}
 	for _, ev := range all {
@@ -57,8 +56,8 @@ func TestMetaIsEmbedded(t *testing.T) {
 // и схлопывается по цели. Без этого поля подписчику пришлось бы догружать цель
 // запросом на каждое событие — N+1.
 func TestKREventsCarryGoalID(t *testing.T) {
-	ev := event.KRProgressUpdated{GoalID: 11, KRID: 22, Before: 10, After: 60}
+	ev := event.KRCheckedIn{GoalID: 11, KRID: 22, ProgressBefore: 10, ProgressAfter: 60}
 	if ev.GoalID == 0 {
-		t.Fatal("KRProgressUpdated обязан нести GoalID")
+		t.Fatal("KRCheckedIn обязан нести GoalID")
 	}
 }

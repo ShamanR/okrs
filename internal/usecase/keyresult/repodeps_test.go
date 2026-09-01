@@ -6,6 +6,12 @@ import (
 	"okrs/internal/service/servicetest"
 )
 
+// ptr — общий по пакету хелпер для тестов, которые зовут CheckIn напрямую и
+// строят CheckInInput с указателем на литерал (после удаления однополевых обёрток
+// UpdateProgressNumerical/Boolean/Project и UpsertNote это единственный способ
+// получить *float64/*bool/*string из значения в одну строку).
+func ptr[T any](v T) *T { return &v }
+
 // newTestUC wires the shared in-memory fake into the entity services this usecase
 // orchestrates. The migrated tests keep poking the store directly; only wiring moved.
 func newTestUC(store *servicetest.Store) *UseCase {
