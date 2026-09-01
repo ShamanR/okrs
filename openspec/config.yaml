@@ -1,0 +1,80 @@
+schema: spec-driven
+
+context: |
+  Проект — приложение для управления OKR.
+
+  OpenSpec является нормативным source of truth для текущего поведения системы.
+
+  Дополнительный контекст:
+  - docs/product-overview.md
+  - docs/architecture-constraints.md
+  - docs/domain-model.md
+  - docs/api-contract.md
+  - docs/code-structure.md
+
+  Архитектура следует принципам clean architecture и layered architecture.
+
+  Приложение разворачивается в Kubernetes в нескольких экземплярах.
+
+  Документация, design-доки и спецификации пишутся на русском языке.
+
+rules:
+  proposal:
+    - Явно указывай затронутые capabilities.
+    - Не включай unrelated изменения.
+    - Явно указывай обнаруженные противоречия между кодом, тестами и текущими specs.
+    - Implementation details помещай в design, а не proposal.
+
+  specs:
+    - Пиши спецификации на русском языке.
+    - Описывай observable behavior системы.
+    - Каждый нормативный requirement должен использовать SHALL или MUST.
+    - Каждый requirement должен иметь как минимум один проверяемый Scenario.
+    - Учитывай значимые happy path, error cases, permissions и lifecycle.
+    - Не описывай implementation details как requirements.
+
+  design:
+    - Пиши design-доки на русском языке.
+    - Следуй clean architecture и layered architecture.
+    - Не допускай протекания абстракций между слоями.
+    - Проверяй отсутствие N+1 и запросов к базе данных в циклах.
+    - Учитывай multi-instance Kubernetes deployment при проектировании кеширования.
+    - Сохраняй консистентность UI и переиспользуй общие компоненты.
+
+  tasks:
+    - Включай добавление или обновление тестов для изменяемого поведения.
+    - При изменении структуры БД включай обновление seed demo.
+    - Каждая задача должна иметь проверяемый результат.
+    - Не включай unrelated refactoring.
+
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
