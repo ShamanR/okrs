@@ -24,35 +24,43 @@ func TestTargetURL(t *testing.T) {
 	}{
 		{
 			name: "только цель",
-			n:    storenotif.Notification{GoalID: idPtr(5)},
+			n:    storenotif.Notification{GoalID: idPtr(5), GoalTitle: "Снизить отток"},
 			want: "/?goal=5",
 		},
 		{
 			name: "цель с командой и периодом",
-			n:    storenotif.Notification{GoalID: idPtr(5), TeamID: idPtr(9), PeriodID: idPtr(3)},
+			n:    storenotif.Notification{GoalID: idPtr(5), TeamID: idPtr(9), PeriodID: idPtr(3), GoalTitle: "Снизить отток"},
 			want: "/?team=9&period=3&goal=5",
 		},
 		{
 			name: "цель с ключевым результатом",
-			n:    storenotif.Notification{GoalID: idPtr(5), KRID: idPtr(7)},
+			n:    storenotif.Notification{GoalID: idPtr(5), KRID: idPtr(7), GoalTitle: "Снизить отток"},
 			want: "/?goal=5&kr=7",
 		},
 		{
 			name: "цель с комментарием",
-			n:    storenotif.Notification{GoalID: idPtr(5), CommentID: idPtr(11)},
+			n:    storenotif.Notification{GoalID: idPtr(5), CommentID: idPtr(11), GoalTitle: "Снизить отток"},
 			want: "/?goal=5&comment=11",
 		},
 		{
 			name: "полный набор",
 			n: storenotif.Notification{
 				GoalID: idPtr(5), TeamID: idPtr(9), PeriodID: idPtr(3),
-				KRID: idPtr(7), CommentID: idPtr(11),
+				KRID: idPtr(7), CommentID: idPtr(11), GoalTitle: "Снизить отток",
 			},
 			want: "/?team=9&period=3&goal=5&kr=7&comment=11",
 		},
 		{
 			name: "нет цели — ссылки нет",
 			n:    storenotif.Notification{TeamID: idPtr(9), PeriodID: idPtr(3)},
+			want: "",
+		},
+		{
+			// Идентификатор цели переживает саму цель: уведомление сохраняет якорь
+			// после жёсткого удаления, а goal_deleted и вовсе всегда про исчезнувшую
+			// цель. Пустое название из LEFT JOIN — признак того, что вести некуда.
+			name: "цель удалена — ссылки нет",
+			n:    storenotif.Notification{GoalID: idPtr(5), TeamID: idPtr(9), GoalTitle: ""},
 			want: "",
 		},
 	}

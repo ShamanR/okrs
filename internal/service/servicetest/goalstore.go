@@ -346,6 +346,14 @@ func (f *GoalStore) FindGoalIDByStage(_ context.Context, _ domain.TenantScope, _
 func (f *GoalStore) UpdateNumericalCurrent(_ context.Context, _ domain.TenantScope, _ int64, _ float64) error {
 	return nil
 }
+
+// ApplyCheckIn: GoalStore — узкий фейк для целевых сценариев, чек-ин в них не
+// участвует, поэтому запись не имитируется. Делать иначе значило бы завести здесь
+// второе состояние KR, которого у этого фейка нет.
+func (f *GoalStore) ApplyCheckIn(context.Context, domain.TenantScope, int64, krs.CheckInWrites) error {
+	return nil
+}
+
 func (f *GoalStore) UpdateHealthStatus(_ context.Context, _ domain.TenantScope, _ int64, _ domain.KRHealthStatus) error {
 	return nil
 }

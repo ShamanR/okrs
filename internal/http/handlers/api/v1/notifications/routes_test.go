@@ -66,6 +66,10 @@ func TestGetRendersTitleAndBody(t *testing.T) {
 		EntityTitle:   "Снизить отток",
 		Payload:       map[string]any{"text": "Уточните метрику"},
 		CoalesceCount: 1, CreatedAt: time.Now(), GoalID: &goalID, TeamID: &teamID,
+		// Непустое название = цель существует. targetURL строит ссылку только тогда:
+		// идентификатор переживает жёсткое удаление цели, и без этого признака
+		// уведомление вело бы на несуществующую цель.
+		GoalTitle: "Снизить отток",
 	}}}
 
 	h := notifications.New(svc)

@@ -15,7 +15,7 @@ import (
 	"okrs/internal/core/progress"
 	goalsvc "okrs/internal/service/goal"
 	keyresultsvc "okrs/internal/service/keyresult"
-	"okrs/internal/store/krs"
+	krsstore "okrs/internal/store/krs"
 )
 
 // Publisher publishes domain events. *eventbus.Bus satisfies it.
@@ -102,50 +102,41 @@ func (s *UseCase) CheckIn(ctx context.Context, scope domain.TenantScope, krID in
 		return err
 	}
 
-	// 2. Apply progress, health status and note.
-	switch {
-	case in.Numerical != nil:
-		if err := s.krs.UpdateNumericalCurrent(ctx, scope, krID, *in.Numerical); err != nil {
-			return err
-		}
-	case in.Boolean != nil:
-		if err := s.krs.UpdateBoolean(ctx, scope, krID, *in.Boolean); err != nil {
-			return err
-		}
-	case in.Project != nil:
-		if err := s.krs.BatchUpdateProjectStagesDone(ctx, scope, krID, projectUpdates); err != nil {
-			return err
-		}
-	}
+	// 2. Decide the final state BEFORE writing anything. Auto-complete on reaching
+	// 100% applies only when this check-in did not also set health explicitly —
+	// otherwise it would silently overwrite the status the user just chose in the
+	// same request. The condition itself lives in one place, keyresultsvc's pure
+	// AutoCompleteDecision: it must not be restated here, or the rule drifts the
+	// first time it changes.
 	afterHealth := beforeHealth
 	if in.Health != nil {
 		afterHealth = *in.Health
-		if err := s.krs.UpdateHealthStatus(ctx, scope, krID, *in.Health); err != nil {
-			return err
-		}
+	} else if in.Numerical != nil || in.Boolean != nil || in.Project != nil {
+		afterHealth, _ = keyresultsvc.AutoCompleteDecision(beforeHealth, beforeProg, afterProg)
 	}
 	afterNote := beforeNote
 	if in.Note != nil {
 		afterNote = *in.Note
-		if err := s.krs.UpsertNote(ctx, scope, krID, *in.Note, actorUserID); err != nil {
-			return err
-		}
 	}
 
-	// 3. Auto-complete on reaching 100% only applies when this check-in did not
-	// also set health explicitly — otherwise the auto-complete's guard (which
-	// reads the KR's health as it was BEFORE this call) could silently overwrite
-	// the status the user just chose in the same request. A CheckIn call that only
-	// sets progress (Health == nil) is unaffected by this guard. The returned
-	// status/changed pair, not a re-check of the
-	// condition, is what decides afterHealth: AutoCompleteHealth may have just
-	// written KRHealthDone to the store, and the event must report that, not the
-	// stale beforeHealth — otherwise a check-in that crosses 100% renders as if
-	// the status never moved, when the status transition is the actual news.
-	if in.Health == nil && (in.Numerical != nil || in.Boolean != nil || in.Project != nil) {
-		if newHealth, changed := s.krs.AutoCompleteHealth(ctx, scope, krID, kr, beforeProg, afterProg); changed {
-			afterHealth = newHealth
-		}
+	// 3. One transaction for the whole check-in. Progress, health and note used to
+	// be three separately committed writes: a failure on the second left the first
+	// persisted, the caller got an error, and no event was published — the database
+	// moved while the journal and notifications did not. The event is the record of
+	// what happened, so what it describes has to land or not land together.
+	writes := krsstore.CheckInWrites{Numerical: in.Numerical, Boolean: in.Boolean}
+	if in.Project != nil {
+		writes.Stages = projectUpdates
+	}
+	if afterHealth != beforeHealth {
+		h := afterHealth
+		writes.Health = &h
+	}
+	if in.Note != nil {
+		writes.Note = &krsstore.CheckInNote{Text: *in.Note, AuthorUserID: actorUserID}
+	}
+	if err := s.krs.ApplyCheckIn(ctx, scope, krID, writes); err != nil {
+		return err
 	}
 
 	// 4. Nothing to publish if nothing actually changed — today's defect is a
@@ -175,10 +166,10 @@ func (s *UseCase) CheckIn(ctx context.Context, scope domain.TenantScope, krID in
 
 // checkInProgress computes the KR's progress percent before and after this
 // check-in. For numerical KRs it always returns the real current progress — free
-// to compute, since krs.Get already loaded kr.Numerical — even when this check-in
+// to compute, since krsstore.Get already loaded kr.Numerical — even when this check-in
 // does not touch progress at all, so before == after in that case.
 //
-// Boolean and project progress are NOT populated by krs.Get, so reporting the real
+// Boolean and project progress are NOT populated by krsstore.Get, so reporting the real
 // before value costs an actual query (GetBooleanMeta / ListProjectStages), run
 // unconditionally now — even for a note-only or health-only check-in — so the
 // published event carries the KR's real current progress in both fields rather
@@ -253,7 +244,7 @@ func (s *UseCase) checkInProgress(ctx context.Context, scope domain.TenantScope,
 	return before, after, projectUpdates, nil
 }
 
-func (s *UseCase) CreateWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultInput, meta keyresultsvc.MetaInput, actorUserID int64) (int64, error) {
+func (s *UseCase) CreateWithMeta(ctx context.Context, scope domain.TenantScope, input krsstore.KeyResultInput, meta keyresultsvc.MetaInput, actorUserID int64) (int64, error) {
 	krID, err := s.krs.Create(ctx, scope, input)
 	if err != nil {
 		return 0, err
@@ -270,7 +261,7 @@ func (s *UseCase) CreateWithMeta(ctx context.Context, scope domain.TenantScope, 
 	}
 	return krID, nil
 }
-func (s *UseCase) UpdateWithMeta(ctx context.Context, scope domain.TenantScope, input krs.KeyResultUpdateInput, meta keyresultsvc.MetaInput, actorUserID int64) error {
+func (s *UseCase) UpdateWithMeta(ctx context.Context, scope domain.TenantScope, input krsstore.KeyResultUpdateInput, meta keyresultsvc.MetaInput, actorUserID int64) error {
 	before, _ := s.krs.Get(ctx, scope, input.ID)
 	if err := s.krs.Update(ctx, scope, input); err != nil {
 		return err

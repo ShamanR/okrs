@@ -18,7 +18,9 @@ import (
 // PrefService is the port this handler needs. *notificationpref.Service satisfies it.
 type PrefService interface {
 	GetAll(ctx context.Context, scope domain.TenantScope, userID int64) ([]notificationprefs.Preference, error)
-	Set(ctx context.Context, scope domain.TenantScope, userID int64, p notificationprefs.Preference) error
+	// SetAll writes the whole matrix, validating every row before writing any — a
+	// per-row Set would let a rejected payload leave its earlier rows applied.
+	SetAll(ctx context.Context, scope domain.TenantScope, userID int64, ps []notificationprefs.Preference) error
 }
 
 type Handler struct{ svc PrefService }
@@ -89,31 +91,34 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := auth.UserIDFromContext(r.Context())
-	// Loop over at most len(notificationprefs.AllTypes) items, not a batch upsert:
-	// the checks above reject anything longer or carrying a repeated type before this
-	// point, so the type set being fixed and closed by a database CHECK constraint is
-	// what keeps this from ever growing into an N+1.
+	prefs := make([]notificationprefs.Preference, 0, len(req.Items))
 	for _, it := range req.Items {
-		err := h.svc.Set(r.Context(), scope, userID, notificationprefs.Preference{
+		prefs = append(prefs, notificationprefs.Preference{
 			Type: it.Type, Enabled: it.Enabled, Scope: it.Scope, Channels: it.Channels,
 		})
-		switch {
-		case errors.Is(err, notificationprefsvc.ErrInvalidType):
-			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown notification type",
-				map[string]string{"type": "invalid"})
-			return
-		case errors.Is(err, notificationprefsvc.ErrInvalidScope):
-			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown scope",
-				map[string]string{"scope": "invalid"})
-			return
-		case errors.Is(err, notificationprefsvc.ErrInvalidChannel):
-			v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown channel",
-				map[string]string{"channels": "invalid"})
-			return
-		case err != nil:
-			v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to save preferences", nil)
-			return
-		}
+	}
+	// SetAll, not a Set per item: it validates the whole matrix before writing any of
+	// it. Writing row by row meant a bad type in the third item left the first two
+	// applied while the response said the matrix was rejected — the user saw settings
+	// they never asked for. At most len(notificationprefs.AllTypes) rows reach here,
+	// rejected above for length and duplicates, so this is not an N+1 waiting to grow.
+	err := h.svc.SetAll(r.Context(), scope, userID, prefs)
+	switch {
+	case errors.Is(err, notificationprefsvc.ErrInvalidType):
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown notification type",
+			map[string]string{"type": "invalid"})
+		return
+	case errors.Is(err, notificationprefsvc.ErrInvalidScope):
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown scope",
+			map[string]string{"scope": "invalid"})
+		return
+	case errors.Is(err, notificationprefsvc.ErrInvalidChannel):
+		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown channel",
+			map[string]string{"channels": "invalid"})
+		return
+	case err != nil:
+		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to save preferences", nil)
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

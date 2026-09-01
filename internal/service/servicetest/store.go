@@ -249,6 +249,40 @@ func (f *Store) HardDeleteTeam(_ context.Context, _ domain.TenantScope, id int64
 	f.HardDeleted = append(f.HardDeleted, id)
 	return nil
 }
+
+// ApplyCheckIn делегирует уже существующим методам фейка, а не заводит собственные
+// карты: тесты по всему репозиторию проверяют именно NumericalUpdates/BooleanUpdates/
+// StageUpdates/HealthUpdates/Notes, и вторая копия состояния тихо развела бы то, что
+// они утверждают, с тем, что происходит на самом деле. Транзакционности здесь нет и
+// быть не может — атомарность проверяется на настоящей БД, не на фейке.
+func (f *Store) ApplyCheckIn(ctx context.Context, scope domain.TenantScope, krID int64, w krs.CheckInWrites) error {
+	switch {
+	case w.Numerical != nil:
+		if err := f.UpdateNumericalCurrent(ctx, scope, krID, *w.Numerical); err != nil {
+			return err
+		}
+	case w.Boolean != nil:
+		if err := f.UpdateBoolean(ctx, scope, krID, *w.Boolean); err != nil {
+			return err
+		}
+	case w.Stages != nil:
+		if err := f.BatchUpdateProjectStagesDone(ctx, scope, krID, w.Stages); err != nil {
+			return err
+		}
+	}
+	if w.Health != nil {
+		if err := f.UpdateHealthStatus(ctx, scope, krID, *w.Health); err != nil {
+			return err
+		}
+	}
+	if w.Note != nil {
+		if err := f.UpsertKeyResultNote(ctx, scope, krID, w.Note.Text, w.Note.AuthorUserID); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (f *Store) UpdateNumericalCurrent(_ context.Context, _ domain.TenantScope, krID int64, current float64) error {
 	f.NumericalUpdates[krID] = current
 	return nil

@@ -114,3 +114,46 @@ func TestSetRejectsMixOfKnownAndUnknownChannel(t *testing.T) {
 		t.Fatalf("got %v, want ErrInvalidChannel", err)
 	}
 }
+
+// Ядро находки ревью: матрица проверяется целиком ДО первой записи. Иначе валидная
+// первая строка успевала бы примениться, а ответ сообщал, что матрица отвергнута —
+// пользователь получал настройки, которых не просил.
+func TestSetAllWritesNothingWhenALaterRowIsInvalid(t *testing.T) {
+	repo := &fakeRepo{}
+	svc := notificationprefsvc.New(repo)
+
+	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42,
+		[]notificationprefs.Preference{
+			{Type: notificationprefs.TypeGoalComment, Enabled: true, Scope: notificationprefs.ScopeOwn, Channels: []string{"in_app"}},
+			{Type: "made_up", Enabled: true, Scope: notificationprefs.ScopeOwn, Channels: []string{"in_app"}},
+		})
+	if !errors.Is(err, notificationprefsvc.ErrInvalidType) {
+		t.Fatalf("err = %v, want ErrInvalidType", err)
+	}
+	if len(repo.saved) != 0 {
+		t.Fatalf("до отказа не должно быть записано ничего, записано: %+v", repo.saved)
+	}
+}
+
+// Валидная матрица записывается целиком, с подставленными значениями по умолчанию.
+func TestSetAllWritesEveryRow(t *testing.T) {
+	repo := &fakeRepo{}
+	svc := notificationprefsvc.New(repo)
+
+	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42,
+		[]notificationprefs.Preference{
+			{Type: notificationprefs.TypeGoalComment, Enabled: true, Channels: []string{"in_app"}},
+			{Type: notificationprefs.TypeKRProgress, Enabled: false, Channels: []string{"in_app"}},
+		})
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	if len(repo.saved) != 2 {
+		t.Fatalf("записано строк: %d, ожидалось 2", len(repo.saved))
+	}
+	// Пустой scope у не-адресного типа обязан замениться значением по умолчанию —
+	// нормализация не должна теряться при переходе на пакетную запись.
+	if repo.saved[0].Scope != notificationprefs.ScopeOwn {
+		t.Errorf("scope по умолчанию не подставлен: %q", repo.saved[0].Scope)
+	}
+}

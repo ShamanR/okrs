@@ -43,9 +43,12 @@ func (s *Service) GetAll(ctx context.Context, scope domain.TenantScope, userID i
 
 // Set validates before writing. The DB CHECK constraints are a backstop, not the
 // place a user-facing error should come from.
-func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int64, p notificationprefs.Preference) error {
+// normalize validates one preference and fills in the defaults the client may omit.
+// Pure: it writes nothing, which is what lets SetAll check a whole matrix before
+// touching the store.
+func normalize(p notificationprefs.Preference) (notificationprefs.Preference, error) {
 	if !slices.Contains(notificationprefs.AllTypes, p.Type) {
-		return ErrInvalidType
+		return p, ErrInvalidType
 	}
 	if notificationprefs.IsAddressed(p.Type) {
 		// Scope is meaningless for an addressed type; drop whatever the client sent.
@@ -56,7 +59,7 @@ func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int6
 		}
 		valid := []string{notificationprefs.ScopeOwn, notificationprefs.ScopeOwnAndChildren, notificationprefs.ScopeSubtree}
 		if !slices.Contains(valid, p.Scope) {
-			return ErrInvalidScope
+			return p, ErrInvalidScope
 		}
 	}
 	if len(p.Channels) == 0 {
@@ -66,10 +69,44 @@ func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int6
 	}
 	for _, c := range p.Channels {
 		if !slices.Contains(AvailableChannels, c) {
-			return ErrInvalidChannel
+			return p, ErrInvalidChannel
 		}
 	}
+	return p, nil
+}
+
+func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int64, p notificationprefs.Preference) error {
+	p, err := normalize(p)
+	if err != nil {
+		return err
+	}
 	return s.repo.Set(ctx, scope, userID, p)
+}
+
+// SetAll writes a whole preferences matrix, validating every row BEFORE writing any
+// of them. Validating as it writes would leave the earlier rows applied when a later
+// one is rejected: the caller is told the matrix was refused while half of it already
+// took effect, and the settings screen then shows a state the user never asked for.
+//
+// The writes themselves are still separate statements, so a store failure midway can
+// still land a partial matrix — that needs a transactional repository method and is
+// recorded as debt. What this closes is the reachable-from-the-client half: a bad
+// type, scope or channel anywhere in the payload now changes nothing at all.
+func (s *Service) SetAll(ctx context.Context, scope domain.TenantScope, userID int64, ps []notificationprefs.Preference) error {
+	checked := make([]notificationprefs.Preference, 0, len(ps))
+	for _, p := range ps {
+		n, err := normalize(p)
+		if err != nil {
+			return err
+		}
+		checked = append(checked, n)
+	}
+	for _, p := range checked {
+		if err := s.repo.Set(ctx, scope, userID, p); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Батчевая операция: не превращать в цикл по событиям — это N+1.

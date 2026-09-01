@@ -24,6 +24,11 @@ type fakeSvc struct {
 	getErr    error
 	setErr    error
 	gotUserID int64
+	// gotCalled — строки, с которыми позвали сервис; gotSets — строки, которые он
+	// в итоге записал. Различие несёт смысл: при отказе первое непусто, второе
+	// пусто, и это ровно то свойство, которое проверяется — валидация всей матрицы
+	// до первой записи.
+	gotCalled []notificationprefs.Preference
 	gotSets   []notificationprefs.Preference
 }
 
@@ -32,10 +37,17 @@ func (f *fakeSvc) GetAll(_ context.Context, _ domain.TenantScope, userID int64) 
 	return f.getAll, f.getErr
 }
 
-func (f *fakeSvc) Set(_ context.Context, _ domain.TenantScope, userID int64, p notificationprefs.Preference) error {
+func (f *fakeSvc) SetAll(_ context.Context, _ domain.TenantScope, userID int64, ps []notificationprefs.Preference) error {
 	f.gotUserID = userID
-	f.gotSets = append(f.gotSets, p)
-	return f.setErr
+	f.gotCalled = append(f.gotCalled, ps...)
+	// При ошибке НИЧЕГО не записываем: настоящий сервис проверяет всю матрицу до
+	// первой записи, и фейк, копящий строки перед отказом, скрыл бы регресс этого
+	// свойства — тест на «отказ ничего не меняет» проходил бы при сломанном коде.
+	if f.setErr != nil {
+		return f.setErr
+	}
+	f.gotSets = append(f.gotSets, ps...)
+	return nil
 }
 
 // fullMatrix is what the real service returns for a user who never opened settings:
@@ -132,8 +144,11 @@ func TestPutRejectsUnknownType(t *testing.T) {
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
 	handlertest.ErrorCode(t, w, http.StatusBadRequest, "VALIDATION_ERROR")
-	if len(svc.gotSets) != 1 || svc.gotSets[0].Type != "made_up" {
-		t.Fatalf("Set must still be called with the offending row so the service is what rejects it: got %+v", svc.gotSets)
+	if len(svc.gotCalled) != 1 || svc.gotCalled[0].Type != "made_up" {
+		t.Fatalf("сервис обязан получить спорную строку — отвергает её он, а не хендлер: got %+v", svc.gotCalled)
+	}
+	if len(svc.gotSets) != 0 {
+		t.Errorf("при отказе не должно быть записано ничего: got %+v", svc.gotSets)
 	}
 	if got := errorField(t, w); got != "type" {
 		t.Errorf("details field = %q, want %q", got, "type")

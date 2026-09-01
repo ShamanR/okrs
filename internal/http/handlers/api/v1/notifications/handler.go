@@ -146,6 +146,15 @@ func targetURL(n storenotif.Notification) string {
 	if n.GoalID == nil {
 		return ""
 	}
+	// The goal id survives the goal itself: notifications keep their anchor after a
+	// hard DELETE FROM goals, and goal_deleted notifications are about a goal that
+	// is gone by definition. Linking there sends the tracker looking for a goal it
+	// cannot find — it opens the board and silently fails to scroll. GoalTitle is
+	// the signal: List LEFT JOINs goals, so an empty title means the row is gone
+	// (goals are hard-deleted, there is no soft-delete state to confuse this with).
+	if n.GoalTitle == "" {
+		return ""
+	}
 	// Values are formatted int64s only (no user input reaches this string), so a
 	// hand-built query string is safe and keeps the param order — team, period,
 	// goal, kr, comment — matching buildTargetURL exactly, unlike url.Values.Encode
