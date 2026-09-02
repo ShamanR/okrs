@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,6 +81,30 @@ type Delivered struct {
 	// publisher's cancellation but carrying its values.
 	Ctx   context.Context
 	Event event.Event
+}
+
+// kindsOfEvents собирает отсортированный набор уникальных типов событий.
+//
+// Нужен записям о потере и о сбое обработчика: без типа потерянное событие
+// неотличимо от любого другого, а именно тип и определяет, что именно не
+// произошло.
+func kindsOfEvents(evs []event.Event) []string {
+	seen := make(map[string]struct{}, len(evs))
+	out := make([]string, 0, len(evs))
+	for _, ev := range evs {
+		k := string(ev.Kind())
+		if _, dup := seen[k]; dup {
+			continue
+		}
+		seen[k] = struct{}{}
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func kindsOf(evs []queued) []string {
+	return kindsOfEvents(events(evs))
 }
 
 // events unwraps the queued batch for handlers that do not need per-event context.
@@ -313,9 +338,16 @@ func (b *Bus) run(s *subscriber) {
 func (b *Bus) invoke(s *subscriber, ctx context.Context, evs []queued) {
 	defer func() {
 		if r := recover(); r != nil {
-			b.logger.Error("eventbus: handler panicked",
+			// ErrorContext: без контекста запись о сорвавшемся обработчике невозможно
+			// связать с мутацией, которая её вызвала. Для батча из одного события
+			// контекст точен; для коалесцированного он принадлежит первому событию,
+			// поэтому рядом идёт размер батча — читатель видит, что сбой мог
+			// затронуть и другие запросы.
+			b.logger.ErrorContext(ctx, "eventbus: handler panicked",
 				slog.String(logging.KeyEvent, logging.EventDomainEvent),
 				slog.String("subscriber", s.name),
+				slog.Int("batch_size", len(evs)),
+				slog.Any("kinds", kindsOf(evs)),
 				slog.String("panic", fmt.Sprint(r)),
 				slog.String("stack", string(debug.Stack())))
 		}
@@ -323,9 +355,11 @@ func (b *Bus) invoke(s *subscriber, ctx context.Context, evs []queued) {
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	if err := s.fn(ctx, evs); err != nil {
-		b.logger.Warn("eventbus: handler failed",
+		b.logger.WarnContext(ctx, "eventbus: handler failed",
 			slog.String(logging.KeyEvent, logging.EventDomainEvent),
 			slog.String("subscriber", s.name),
+			slog.Int("batch_size", len(evs)),
+			slog.Any("kinds", kindsOf(evs)),
 			slog.String("err", err.Error()))
 	}
 }
@@ -401,6 +435,9 @@ func (b *Bus) PublishBatch(ctx context.Context, evs []event.Event) {
 				slog.String(logging.KeyEvent, logging.EventEventDropped),
 				slog.String("subscriber", s.name),
 				slog.String("reason", "bus closed"),
+				// Типы обязательны: без них потерянный goal_created неотличим
+				// от любого другого события.
+				slog.Any("kinds", kindsOfEvents(batch)),
 				slog.Int("count", len(batch)))
 			continue
 		}

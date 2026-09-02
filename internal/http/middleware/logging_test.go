@@ -333,6 +333,50 @@ func TestPanicIsLoggedWithStackAndAnswered500(t *testing.T) {
 	}
 }
 
+// Recovery стоит снаружи и видит запрос до разрешения сессии и организации,
+// поэтому берёт накопленный scope из обёртки ответа. Без этого запись
+// о панике в защищённом обработчике не сказала бы, чью организацию затронуло.
+func TestPanicRecordKeepsResolvedTenantAndActor(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	user := &domain.User{ID: 42, Provider: "github"}
+	tenant := &domain.Tenant{ID: 7, Status: domain.TenantActive}
+
+	var handler http.Handler = http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("сломалось внутри защищённой группы")
+	})
+	handler = LogContext(handler)
+	// Подменяет сессию и резолв организации: важно, что они кладут
+	// значения в НОВЫЙ request, который внешний recovery не видит.
+	handler = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.WithUser(r.Context(), user)
+			ctx = auth.WithTenant(ctx, tenant)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}(handler)
+	handler = Recovery(logger)(handler)
+	handler = AccessLog(logger)(handler)
+	handler = RequestID(handler)
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/goals", nil))
+
+	panics := byEvent(decode(t, buf), logging.EventHTTPPanic)
+	if len(panics) != 1 {
+		t.Fatalf("ожидалась одна запись о панике: %s", buf.String())
+	}
+	if panics[0][logging.KeyTenantID] != float64(7) {
+		t.Errorf("tenant_id = %v, ожидалось 7", panics[0][logging.KeyTenantID])
+	}
+	if panics[0][logging.KeyActorID] != float64(42) {
+		t.Errorf("actor_id = %v, ожидалось 42", panics[0][logging.KeyActorID])
+	}
+	if panics[0][logging.KeyRequestID] == nil {
+		t.Error("запись о панике потеряла связь с запросом")
+	}
+}
+
 func TestPanicDoesNotAffectTheNextRequest(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := logging.New(logging.Config{Output: buf})

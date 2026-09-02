@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -187,16 +188,21 @@ func runWith(logOutput io.Writer, seed bool) int {
 	// write happens-before the read without any extra synchronization.
 	var serveErr error
 
-	addr := fmt.Sprintf(":%s", port)
-	srv := &http.Server{Addr: addr, Handler: a.Handler}
+	// Слушатель открывается ДО записи о готовности: ListenAndServe связывает сокет
+	// уже внутри себя, поэтому при занятом порте «готов» уходило в лог раньше, чем
+	// становилось известно, что принять запрос не удастся. Алерт по event=app_ready
+	// видел бы инстанс работающим, хотя тот не обслужил ни одного запроса.
+	ln, err := listenAndAnnounce(logger, fmt.Sprintf(":%s", port))
+	if err != nil {
+		return 1
+	}
+
+	srv := &http.Server{Handler: a.Handler}
 	go func() {
-		logger.Info("listening",
-			slog.String(logging.KeyEvent, logging.EventAppReady),
-			slog.String("addr", addr))
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed",
 				slog.String(logging.KeyEvent, logging.EventAppStart),
-				slog.String("addr", addr),
+				slog.String("addr", ln.Addr().String()),
 				slog.String("err", err.Error()))
 			serveErr = err
 			stop()
@@ -227,6 +233,32 @@ const (
 	httpShutdownTimeout = 15 * time.Second
 	busDrainTimeout     = 5 * time.Second
 )
+
+// listenAndAnnounce связывает сокет и только после успеха объявляет готовность.
+//
+// Порядок значим: ListenAndServe связывает сокет внутри себя, поэтому запись
+// о готовности рядом с ним уходила в лог раньше, чем становилось известно,
+// что порт занят. Алерт по event=app_ready счёл бы инстанс работающим, хотя тот
+// не обслужил ни одного запроса.
+//
+// Вынесено отдельной функцией по той же причине, что и shutdownSequence: иначе
+// порядок проверялся бы только живым запуском с поднятой базой.
+func listenAndAnnounce(logger *slog.Logger, addr string) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		logger.Error("failed to bind",
+			slog.String(logging.KeyEvent, logging.EventAppStart),
+			slog.String("addr", addr),
+			slog.String("err", err.Error()))
+		return nil, err
+	}
+	// Адрес берётся у слушателя, а не из конфигурации: при PORT=0 ядро выбирает
+	// порт само, и в логе должен быть тот, что реально занят.
+	logger.Info("listening",
+		slog.String(logging.KeyEvent, logging.EventAppReady),
+		slog.String("addr", ln.Addr().String()))
+	return ln, nil
+}
 
 // shutdownSequence останавливает приём запросов, затем дренит event bus, логируя
 // исход каждого шага.

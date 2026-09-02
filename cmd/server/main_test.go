@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +85,55 @@ func TestStartupFailureIsLoggedBeforeExit(t *testing.T) {
 				t.Errorf("запись об отказе не содержит причину: %v", rec)
 			}
 		})
+	}
+}
+
+// Готовность объявляется только после связывания сокета: иначе алерт по
+// event=app_ready счёл бы инстанс работающим, хотя тот не принял ни одного
+// запроса.
+func TestReadinessIsNotAnnouncedWhenBindFails(t *testing.T) {
+	// Занимаем порт заранее, чтобы связывание гарантированно отказало.
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("не удалось занять порт: %v", err)
+	}
+	defer busy.Close()
+
+	buf := &bytes.Buffer{}
+	ln, err := listenAndAnnounce(logging.New(logging.Config{Output: buf}), busy.Addr().String())
+	if err == nil {
+		ln.Close()
+		t.Fatal("связывание с занятым портом не должно было удаться")
+	}
+
+	recs := decodeRecords(t, buf)
+	for _, r := range recs {
+		if r[logging.KeyEvent] == logging.EventAppReady {
+			t.Fatalf("готовность объявлена при неудавшемся связывании: %v", r)
+		}
+	}
+	if findRecord(recs, logging.EventAppStart, "failed to bind") == nil {
+		t.Errorf("отказ связывания не залогирован: %v", recs)
+	}
+}
+
+func TestReadinessIsAnnouncedWithTheBoundAddress(t *testing.T) {
+	buf := &bytes.Buffer{}
+
+	// Порт 0: ядро выбирает его само, и в логе должен оказаться реальный адрес,
+	// а не то, что просили.
+	ln, err := listenAndAnnounce(logging.New(logging.Config{Output: buf}), "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("связывание не удалось: %v", err)
+	}
+	defer ln.Close()
+
+	rec := findRecord(decodeRecords(t, buf), logging.EventAppReady, "listening")
+	if rec == nil {
+		t.Fatalf("готовность не объявлена: %s", buf.String())
+	}
+	if rec["addr"] != ln.Addr().String() {
+		t.Errorf("addr = %v, ожидался реальный адрес %q", rec["addr"], ln.Addr().String())
 	}
 }
 

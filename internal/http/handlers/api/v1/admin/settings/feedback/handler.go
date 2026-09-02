@@ -3,11 +3,13 @@ package feedback
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"okrs/internal/auth"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 )
 
 type Handler struct {
@@ -62,11 +64,15 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		admincommon.WriteError(w, http.StatusForbidden, "no active tenant")
 		return
 	}
+	// Каждая запись фиксируется сразу после своего успеха: записи идут поочерёдно
+	// и не в одной транзакции, поэтому отказ на последующей не должен отменять
+	// запись о уже применённой.
 	set := func(key string, val any) bool {
 		if err := h.settings.SetTenantProduct(r.Context(), scope, key, val); err != nil {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return false
 		}
+		logging.AccessChanged(r.Context(), "tenant_setting_saved", slog.String("setting", key))
 		return true
 	}
 	if !set(admincommon.SettingKeyFeedbackURL, link) ||

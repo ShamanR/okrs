@@ -9,6 +9,8 @@ package scheduler
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -213,23 +215,35 @@ func (s *Scheduler) activePeriods(ctx context.Context) []hcsvc.Active {
 // snapshotDuePeriods returns every active period whose configured interval
 // (progress_snapshot_interval_days, ≥1) has elapsed since its last recorded point.
 // Nested periods (year + quarter) each get their own points.
-func (s *Scheduler) snapshotDuePeriods(ctx context.Context) []hcsvc.Active {
+// Ошибки обнаружения возвращаются вызывающему, а не превращаются в пустой список:
+// иначе недоступная база даёт «ничего не надо делать», и проход отчитывается
+// об успехе, молча пропустив организации.
+//
+// Частичный результат возвращается вместе с ошибкой: снять снимки с тех
+// организаций, где обнаружение удалось, полезнее, чем отказаться от всего
+// прохода целиком — но исход задачи всё равно отразит отказ.
+func (s *Scheduler) snapshotDuePeriods(ctx context.Context) ([]hcsvc.Active, error) {
 	now := time.Now().In(s.deps.Zone)
 	tenants, err := s.deps.Tenants.List(ctx)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("список организаций: %w", err)
 	}
-	var due []hcsvc.Active
+	var (
+		due  []hcsvc.Active
+		errs []error
+	)
 	for _, tn := range tenants {
 		scope := domain.TenantScope{TenantID: tn.ID}
 		intervalDays := hcsvc.LoadProgressSnapshotIntervalDays(ctx, scope, s.deps.Settings)
 		periods, err := s.deps.Active.ListActivePeriodsForDate(ctx, scope, now)
 		if err != nil {
+			errs = append(errs, fmt.Errorf("активные периоды организации %d: %w", tn.ID, err))
 			continue
 		}
 		for _, p := range periods {
 			latest, has, err := s.deps.Snaps.LatestDate(ctx, scope, p.ID)
 			if err != nil {
+				errs = append(errs, fmt.Errorf("последний снимок периода %d: %w", p.ID, err))
 				continue
 			}
 			key := [2]int64{tn.ID, p.ID}
@@ -244,7 +258,7 @@ func (s *Scheduler) snapshotDuePeriods(ctx context.Context) []hcsvc.Active {
 			}
 		}
 	}
-	return due
+	return due, errors.Join(errs...)
 }
 
 // startProgressSnapshotLoop runs a background goroutine that materialises each active
@@ -253,7 +267,10 @@ func (s *Scheduler) startProgressSnapshotLoop(ctx context.Context, interval time
 	run := func() {
 		s.runLockedPass(ctx, "progress_snapshot", progressSnapshotLockKey, func(ctx context.Context) ([]any, error) {
 			day := time.Now().In(s.deps.Zone)
-			return nil, s.deps.Snapshot.SnapshotActivePeriods(ctx, day, s.snapshotDuePeriods(ctx))
+			due, discoverErr := s.snapshotDuePeriods(ctx)
+			// Снимки снимаются по тому, что удалось обнаружить, но отказ
+			// обнаружения попадает в исход задачи.
+			return nil, errors.Join(discoverErr, s.deps.Snapshot.SnapshotActivePeriods(ctx, day, due))
 		})
 	}
 	go func() {

@@ -34,7 +34,17 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 					panic(rv)
 				}
 
-				logger.ErrorContext(r.Context(), "unhandled panic",
+				// Контекст пересобирается из обёртки ответа: recovery стоит снаружи
+				// и видит тот request, который был до разрешения сессии и организации
+				// (внутренние middleware создают копию запроса). Без этого запись
+				// о панике несла бы только request_id, хотя организация и пользователь
+				// уже известны и накоплены в обёртке.
+				ctx := r.Context()
+				if rec, ok := w.(*Recorder); ok {
+					ctx = logging.WithScope(ctx, rec.scope)
+				}
+
+				logger.ErrorContext(ctx, "unhandled panic",
 					slog.String(logging.KeyEvent, logging.EventHTTPPanic),
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),

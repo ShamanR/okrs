@@ -1,12 +1,16 @@
 package eventbus_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"okrs/internal/core/event"
 	"okrs/internal/platform/eventbus"
+	"okrs/internal/platform/logging"
 )
 
 type ctxKey string
@@ -78,6 +82,58 @@ func TestCoalescingPreservesPerEventContext(t *testing.T) {
 			t.Errorf("событие %d получило контекст публикатора %v, ожидался %d", i, byGoal[i], i)
 		}
 	}
+}
+
+// Паника подписчика — это несостоявшееся следствие чьей-то мутации, поэтому
+// запись о ней обязана нести контекст публикатора и тип события.
+func TestHandlerPanicRecordCarriesPublisherContextAndKind(t *testing.T) {
+	buf := &bytes.Buffer{}
+	b := eventbus.New(logging.New(logging.Config{Output: buf}))
+
+	eventbus.Subscribe(b, "panicky", func(context.Context, []event.GoalCreated) error {
+		panic("boom")
+	}, eventbus.WithMode(eventbus.Sync))
+	b.Start(context.Background())
+	defer b.Close(time.Second)
+
+	ctx := logging.WithScope(
+		logging.WithRequestID(context.Background(), "req-panic"),
+		logging.Scope{TenantID: 5, ActorID: 55},
+	)
+	b.Publish(ctx, event.GoalCreated{GoalID: 1})
+
+	rec := findRecord(t, buf, "eventbus: handler panicked")
+	if rec == nil {
+		t.Fatalf("паника обработчика не оставила записи: %s", buf.String())
+	}
+	if rec[logging.KeyRequestID] != "req-panic" {
+		t.Errorf("request_id = %v, ожидался req-panic", rec[logging.KeyRequestID])
+	}
+	if rec[logging.KeyTenantID] != float64(5) || rec[logging.KeyActorID] != float64(55) {
+		t.Errorf("tenant/actor = %v/%v", rec[logging.KeyTenantID], rec[logging.KeyActorID])
+	}
+	kinds, _ := rec["kinds"].([]any)
+	if len(kinds) != 1 || kinds[0] != string(event.KindGoalCreated) {
+		t.Errorf("kinds = %v, ожидался [%s]", rec["kinds"], event.KindGoalCreated)
+	}
+}
+
+// findRecord ищет первую запись с заданным сообщением.
+func findRecord(t *testing.T, buf *bytes.Buffer, msg string) map[string]any {
+	t.Helper()
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("запись не является валидным JSON: %v\n%s", err, line)
+		}
+		if rec["msg"] == msg {
+			return rec
+		}
+	}
+	return nil
 }
 
 // Синхронная доставка коалесценции не знает: контекст один на всю публикацию

@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
+	"okrs/internal/core/domain"
 	"okrs/internal/platform/logging"
 )
 
@@ -90,6 +92,58 @@ func TestBackgroundPassLogsFailureWithCause(t *testing.T) {
 	}
 	if rec["err"] != "снимок не построен" {
 		t.Errorf("запись не содержит причину: %v", rec["err"])
+	}
+}
+
+type failingTenants struct{ err error }
+
+func (f failingTenants) List(context.Context) ([]domain.Tenant, error) { return nil, f.err }
+
+// Отказ обнаружения обязан возвращаться вызывающему, а не превращаться в пустой
+// список: иначе недоступная база даёт «нечего делать», и проход отчитывается
+// об успехе, молча пропустив организации.
+func TestDiscoveryFailureIsReturnedNotSwallowed(t *testing.T) {
+	s := New(Deps{
+		Zone:    time.UTC,
+		Tenants: failingTenants{err: errors.New("соединение потеряно")},
+	})
+
+	due, err := s.snapshotDuePeriods(context.Background())
+
+	if err == nil {
+		t.Fatal("отказ списка организаций проглочен")
+	}
+	if !strings.Contains(err.Error(), "соединение потеряно") {
+		t.Errorf("причина потеряна: %v", err)
+	}
+	if due != nil {
+		t.Errorf("при отказе списка организаций делать нечего: %v", due)
+	}
+}
+
+// И этот отказ должен дойти до исхода задачи в логе.
+func TestDiscoveryFailureMakesThePassFail(t *testing.T) {
+	buf := &bytes.Buffer{}
+	s := New(Deps{
+		Zone:    time.UTC,
+		Tenants: failingTenants{err: errors.New("соединение потеряно")},
+		Logger:  logging.New(logging.Config{Output: buf}),
+	})
+
+	s.runPass(context.Background(), "progress_snapshot", func(ctx context.Context) ([]any, error) {
+		_, err := s.snapshotDuePeriods(ctx)
+		return nil, err
+	})
+
+	rec := find(records(t, buf), "background task failed")
+	if rec == nil {
+		t.Fatalf("отказ обнаружения не сделал проход неуспешным: %s", buf.String())
+	}
+	if rec["outcome"] != "failed" {
+		t.Errorf("outcome = %v, ожидался failed", rec["outcome"])
+	}
+	if !strings.Contains(rec["err"].(string), "соединение потеряно") {
+		t.Errorf("причина обнаружения не дошла до записи: %v", rec["err"])
 	}
 }
 

@@ -131,4 +131,9 @@ func TestPublishAfterCloseIsLoggedAsDropped(t *testing.T) {
 	if recs[0]["reason"] != "bus closed" {
 		t.Errorf("причина потери = %v, ожидалась \"bus closed\"", recs[0]["reason"])
 	}
+	// Без типа потерянное событие неотличимо от любого другого.
+	kinds, _ := recs[0]["kinds"].([]any)
+	if len(kinds) != 1 || kinds[0] != string(event.KindGoalCreated) {
+		t.Errorf("kinds = %v, ожидался [%s]", recs[0]["kinds"], event.KindGoalCreated)
+	}
 }
