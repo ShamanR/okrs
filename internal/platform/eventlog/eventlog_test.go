@@ -66,15 +66,15 @@ func samples() []event.Event {
 
 // logOne воспроизводит тот же путь, что и подписчик: контекст собирается из Meta
 // события, а атрибуты — из его полей.
-func logOne(buf *bytes.Buffer, ctx context.Context, ev event.Event, ownsContext bool) {
+func logOne(buf *bytes.Buffer, ctx context.Context, ev event.Event) {
 	logging.New(logging.Config{Output: buf}).
-		InfoContext(recordContext(ctx, ev, ownsContext), "domain event", attrsFor(ev)...)
+		InfoContext(recordContext(ctx, ev), "domain event", attrsFor(ev)...)
 }
 
 func record(t *testing.T, ev event.Event) map[string]any {
 	t.Helper()
 	buf := &bytes.Buffer{}
-	logOne(buf, context.Background(), ev, true)
+	logOne(buf, context.Background(), ev)
 
 	var rec map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &rec); err != nil {
@@ -105,7 +105,7 @@ func TestNoUserTextReachesTheLog(t *testing.T) {
 	const marker = "СЕКРЕТНЫЙ-ПОЛЬЗОВАТЕЛЬСКИЙ-ТЕКСТ"
 	for _, ev := range samples() {
 		buf := &bytes.Buffer{}
-		logOne(buf, context.Background(), ev, true)
+		logOne(buf, context.Background(), ev)
 
 		if strings.Contains(buf.String(), marker) {
 			t.Errorf("%s: пользовательский текст попал в лог: %s", ev.Kind(), buf.String())
@@ -269,34 +269,10 @@ func TestSubscriberNeedsNothingButBusAndLogger(t *testing.T) {
 	}
 }
 
-// Батч может смешивать события разных организаций: шина сохраняет контекст только
-// первого публикатора. Каждая запись обязана нести идентификаторы СВОЕГО события —
-// иначе аудит связывает действие с чужой организацией.
-func TestCoalescedBatchDoesNotMixTenants(t *testing.T) {
-	buf := &bytes.Buffer{}
-	logger := logging.New(logging.Config{Output: buf})
-
-	first := event.Meta{Scope: domain.TenantScope{TenantID: 1}, ActorID: 11}
-	second := event.Meta{Scope: domain.TenantScope{TenantID: 2}, ActorID: 22}
-	evs := []event.Event{
-		event.GoalCreated{Meta: first, GoalID: 100, Title: "цель первой организации"},
-		event.GoalCreated{Meta: second, GoalID: 200, Title: "цель второй организации"},
-	}
-
-	// Контекст батча принадлежит первому событию — ровно как его отдаёт шина.
-	batchCtx := logging.WithScope(
-		logging.WithRequestID(context.Background(), "req-first"),
-		logging.Scope{TenantID: 1, ActorID: 11},
-	)
-	for i, ev := range evs {
-		logger.InfoContext(recordContext(batchCtx, ev, i == 0), "domain event", attrsFor(ev)...)
-	}
-
+func decodeAll(t *testing.T, buf *bytes.Buffer) ([]string, []map[string]any) {
+	t.Helper()
 	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("ожидались две записи, получено %d", len(lines))
-	}
-	var recs []map[string]any
+	recs := make([]map[string]any, 0, len(lines))
 	for _, l := range lines {
 		var r map[string]any
 		if err := json.Unmarshal([]byte(l), &r); err != nil {
@@ -304,30 +280,100 @@ func TestCoalescedBatchDoesNotMixTenants(t *testing.T) {
 		}
 		recs = append(recs, r)
 	}
+	return lines, recs
+}
 
-	if recs[0][logging.KeyTenantID] != float64(1) || recs[0][logging.KeyActorID] != float64(11) {
-		t.Errorf("первое событие: tenant/actor = %v/%v", recs[0][logging.KeyTenantID], recs[0][logging.KeyActorID])
+// Один запрос может опубликовать событие на каждую затронутую сущность —
+// так делает bulk-переход статусов. Все такие записи обязаны ссылаться на этот
+// запрос: иначе из лога не восстановить, что массовое изменение было одним
+// действием одного человека.
+func TestEveryEventOfOneRequestKeepsItsRequestID(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	bus := eventbus.New(logging.Discard())
+	Subscribe(bus, logger)
+	bus.Start(t.Context())
+
+	m := event.Meta{Scope: domain.TenantScope{TenantID: 1}, ActorID: 11}
+	ctx := logging.WithRequestID(t.Context(), "req-bulk")
+	bus.PublishBatch(ctx, []event.Event{
+		event.GoalCreated{Meta: m, GoalID: 1, Title: "первая"},
+		event.GoalCreated{Meta: m, GoalID: 2, Title: "вторая"},
+		event.GoalCreated{Meta: m, GoalID: 3, Title: "третья"},
+	})
+
+	if err := bus.Close(2 * time.Second); err != nil {
+		t.Fatalf("шина не сдренилась: %v", err)
 	}
-	if recs[1][logging.KeyTenantID] != float64(2) || recs[1][logging.KeyActorID] != float64(22) {
-		t.Errorf("второе событие получило чужую организацию: tenant/actor = %v/%v",
-			recs[1][logging.KeyTenantID], recs[1][logging.KeyActorID])
+
+	_, recs := decodeAll(t, buf)
+	if len(recs) != 3 {
+		t.Fatalf("ожидались три записи, получено %d: %s", len(recs), buf.String())
+	}
+	for i, r := range recs {
+		if r[logging.KeyRequestID] != "req-bulk" {
+			t.Errorf("событие %d потеряло связь с запросом: request_id = %v", i, r[logging.KeyRequestID])
+		}
+	}
+}
+
+// Батч после коалесценции может смешивать публикации разных запросов и разных
+// организаций. Каждая запись обязана нести контекст СВОЕГО события — иначе аудит
+// связывает действие с чужим запросом и чужой организацией.
+func TestCoalescedBatchDoesNotMixRequestsOrTenants(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	firstMeta := event.Meta{Scope: domain.TenantScope{TenantID: 1}, ActorID: 11}
+	secondMeta := event.Meta{Scope: domain.TenantScope{TenantID: 2}, ActorID: 22}
+
+	// Ровно то, что отдаёт шина после коалесценции: одна пачка, но у каждого
+	// события свой контекст публикации.
+	batch := []eventbus.Delivered{
+		{
+			Ctx:   logging.WithRequestID(context.Background(), "req-one"),
+			Event: event.GoalCreated{Meta: firstMeta, GoalID: 100, Title: "цель первой организации"},
+		},
+		{
+			Ctx:   logging.WithRequestID(context.Background(), "req-two"),
+			Event: event.GoalCreated{Meta: secondMeta, GoalID: 200, Title: "цель второй организации"},
+		},
+	}
+	for _, d := range batch {
+		logger.InfoContext(recordContext(d.Ctx, d.Event), "domain event", attrsFor(d.Event)...)
+	}
+
+	lines, recs := decodeAll(t, buf)
+	if len(recs) != 2 {
+		t.Fatalf("ожидались две записи, получено %d", len(recs))
+	}
+
+	want := []struct {
+		requestID string
+		tenant    float64
+		actor     float64
+	}{
+		{"req-one", 1, 11},
+		{"req-two", 2, 22},
+	}
+	for i, w := range want {
+		if recs[i][logging.KeyRequestID] != w.requestID {
+			t.Errorf("событие %d: request_id = %v, ожидался %q", i, recs[i][logging.KeyRequestID], w.requestID)
+		}
+		if recs[i][logging.KeyTenantID] != w.tenant || recs[i][logging.KeyActorID] != w.actor {
+			t.Errorf("событие %d: tenant/actor = %v/%v, ожидались %v/%v",
+				i, recs[i][logging.KeyTenantID], recs[i][logging.KeyActorID], w.tenant, w.actor)
+		}
 	}
 
 	// Дублирующиеся ключи в JSON: побеждает последний, поэтому дубль и означал бы
 	// подмену организации. Проверяем по сырой строке — распарсенная map их скрывает.
 	for i, l := range lines {
-		for _, key := range []string{logging.KeyTenantID, logging.KeyActorID} {
+		for _, key := range []string{logging.KeyTenantID, logging.KeyActorID, logging.KeyRequestID} {
 			if n := strings.Count(l, `"`+key+`"`); n != 1 {
 				t.Errorf("запись %d: ключ %s встречается %d раз: %s", i, key, n, l)
 			}
 		}
-	}
-
-	// Чужой request_id не приписывается: он принадлежит только первому событию.
-	if recs[0][logging.KeyRequestID] != "req-first" {
-		t.Errorf("первое событие потеряло request_id: %v", recs[0][logging.KeyRequestID])
-	}
-	if _, ok := recs[1][logging.KeyRequestID]; ok {
-		t.Errorf("второму событию приписан чужой request_id: %v", recs[1][logging.KeyRequestID])
 	}
 }

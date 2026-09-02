@@ -32,9 +32,12 @@ const SubscriberName = "logging"
 // внесло бы в лог пользовательский текст, которого там быть не должно. Сопоставить
 // идентификатор с названием — задача того, кто расследует инцидент.
 func Subscribe(bus *eventbus.Bus, logger *slog.Logger) {
-	eventbus.SubscribeAll(bus, SubscriberName, func(ctx context.Context, evs []event.Event) error {
-		for i, ev := range evs {
-			logger.InfoContext(recordContext(ctx, ev, i == 0), "domain event", attrsFor(ev)...)
+	// SubscribeAllWithContext, а не SubscribeAll: запись обязана ссылаться на запрос,
+	// породивший именно это событие, а батч после коалесценции может смешивать
+	// публикации разных запросов.
+	eventbus.SubscribeAllWithContext(bus, SubscriberName, func(_ context.Context, evs []eventbus.Delivered) error {
+		for _, d := range evs {
+			logger.InfoContext(recordContext(d.Ctx, d.Event), "domain event", attrsFor(d.Event)...)
 		}
 		return nil
 	})
@@ -42,24 +45,18 @@ func Subscribe(bus *eventbus.Bus, logger *slog.Logger) {
 
 // recordContext собирает контекст для записи об одном событии.
 //
-// Контекст батча для этого не годится: при коалесценции шина сохраняет контекст
-// только первого публикатора (см. Bus.run), а батч может смешивать события разных
-// запросов и разных организаций. С общим контекстом второе событие получало бы
-// tenant_id и actor_id первого — то есть аудит связывал бы действие с чужой
-// организацией.
+// ctx — контекст публикации именно этого события: шина доносит его через
+// коалесценцию (см. eventbus.Delivered). Из него берётся только request_id — связь
+// с породившим запросом.
 //
-// request_id переносится только на первое событие батча: именно ему принадлежит
-// сохранённый контекст (Bus.run строит батч, начиная с него, и порядок внутри
-// подписчика FIFO). Остальным событиям чужой request_id не приписывается:
-// отсутствие поля честнее неверного значения.
-func recordContext(ctx context.Context, ev event.Event, ownsContext bool) context.Context {
+// Организация и действующий пользователь берутся из Meta события, а не из контекста:
+// событие — авторитетный источник того, чьё действие оно описывает.
+func recordContext(ctx context.Context, ev event.Event) context.Context {
 	m := ev.Context()
 
 	out := context.Background()
-	if ownsContext {
-		if id, ok := logging.RequestIDFromContext(ctx); ok {
-			out = logging.WithRequestID(out, id)
-		}
+	if id, ok := logging.RequestIDFromContext(ctx); ok {
+		out = logging.WithRequestID(out, id)
 	}
 	return logging.WithScope(out, logging.Scope{
 		TenantID: m.Scope.TenantID,

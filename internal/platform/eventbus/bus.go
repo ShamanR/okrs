@@ -54,13 +54,41 @@ func WithMode(m Mode) Option             { return func(o *options) { o.mode = m 
 func WithTimeout(d time.Duration) Option { return func(o *options) { o.timeout = d } }
 
 // deliver is the type-erased handler stored per subscription.
-type deliver func(ctx context.Context, evs []event.Event) error
+//
+// It receives the queued events rather than bare ones so that each event's own
+// publication context survives coalescing: a batch can mix publishers, and a
+// subscriber that correlates records with the request that caused them needs the
+// context of the event it is handling, not of whichever event happened to arrive
+// first.
+type deliver func(ctx context.Context, evs []queued) error
 
 // queued carries the detached context alongside the event, so an async handler runs
 // with the publisher's values but not its cancellation.
 type queued struct {
 	ctx context.Context
 	ev  event.Event
+}
+
+// Delivered is one event together with the context it was published in.
+//
+// Handlers registered with SubscribeAllWithContext receive these instead of bare
+// events. Everything else keeps the plain Handler shape: carrying the context per
+// event only matters to subscribers that attribute an event to its originating
+// request, and the rest should not have to unwrap a struct for nothing.
+type Delivered struct {
+	// Ctx is the context of THIS event's publication, detached from the
+	// publisher's cancellation but carrying its values.
+	Ctx   context.Context
+	Event event.Event
+}
+
+// events unwraps the queued batch for handlers that do not need per-event context.
+func events(evs []queued) []event.Event {
+	out := make([]event.Event, len(evs))
+	for i, q := range evs {
+		out[i] = q.ev
+	}
+	return out
 }
 
 type subscriber struct {
@@ -149,10 +177,10 @@ func Subscribe[T event.Event](b *Bus, name string, h Handler[T], opts ...Option)
 	kind := zero.Kind()
 	o := resolve(opts)
 
-	fn := func(ctx context.Context, evs []event.Event) error {
+	fn := func(ctx context.Context, evs []queued) error {
 		typed := make([]T, 0, len(evs))
-		for _, ev := range evs {
-			if t, ok := any(ev).(T); ok {
+		for _, q := range evs {
+			if t, ok := any(q.ev).(T); ok {
 				typed = append(typed, t)
 			}
 		}
@@ -177,14 +205,44 @@ func Subscribe[T event.Event](b *Bus, name string, h Handler[T], opts ...Option)
 // the 23rd.
 func SubscribeAll(b *Bus, name string, h Handler[event.Event], opts ...Option) {
 	o := resolve(opts)
-	s := newSubscriber(name, o.mode, o.buffer, o.timeout, func(ctx context.Context, evs []event.Event) error {
-		return h(ctx, evs)
+	s := newSubscriber(name, o.mode, o.buffer, o.timeout, func(ctx context.Context, evs []queued) error {
+		return h(ctx, events(evs))
 	})
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.started {
 		panic("eventbus: SubscribeAll after Start")
+	}
+	b.all = append(b.all, s)
+}
+
+// SubscribeAllWithContext registers a handler for every event type that also needs
+// each event's own publication context.
+//
+// It exists because coalescing merges events from different publishers into one
+// batch: a handler that reads context off the batch would attribute every event to
+// whichever publisher arrived first. The logging subscriber needs the real one to
+// tie a record to the request that caused it — and one HTTP request can publish an
+// event per affected entity, so "the first event's context" is not good enough
+// either.
+//
+// ctx is the batch's context and carries the handler timeout; Delivered.Ctx is the
+// per-event one. Must be called before Start.
+func SubscribeAllWithContext(b *Bus, name string, h func(ctx context.Context, evs []Delivered) error, opts ...Option) {
+	o := resolve(opts)
+	s := newSubscriber(name, o.mode, o.buffer, o.timeout, func(ctx context.Context, evs []queued) error {
+		out := make([]Delivered, len(evs))
+		for i, q := range evs {
+			out[i] = Delivered{Ctx: q.ctx, Event: q.ev}
+		}
+		return h(ctx, out)
+	})
+
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.started {
+		panic("eventbus: SubscribeAllWithContext after Start")
 	}
 	b.all = append(b.all, s)
 }
@@ -226,12 +284,13 @@ func (b *Bus) subscribersLocked() []*subscriber {
 func (b *Bus) run(s *subscriber) {
 	defer b.wg.Done()
 	for first := range s.ch {
-		// Only first.ctx is kept: a coalesced batch can mix events from several
-		// publishers, and there is no single "right" context to pick for all of
-		// them. Acceptable because Meta (scope, actor, timestamps) travels on each
-		// event itself, not on the context — a subscriber reads it per event, not
-		// off ctx. Inherited from the original design.
-		ctx, batch := first.ctx, []event.Event{first.ev}
+		// Каждое событие переносится в батч ВМЕСТЕ со своим контекстом.
+		// Раньше сохранялся только контекст первого публикатора, и подписчик,
+		// связывающий событие с породившим его запросом, либо приписывал всем
+		// событиям чужой запрос, либо терял связь для всех, кроме первого.
+		// Оба исхода плохи: один HTTP-запрос может опубликовать событие на каждую
+		// затронутую сущность (bulk-переход статусов).
+		batch := []queued{first}
 	drain:
 		for {
 			select {
@@ -239,17 +298,19 @@ func (b *Bus) run(s *subscriber) {
 				if !ok {
 					break drain
 				}
-				batch = append(batch, next.ev)
+				batch = append(batch, next)
 			default:
 				break drain
 			}
 		}
-		b.invoke(s, ctx, batch)
+		// Для таймаута и отмены берётся контекст первого события: это одно решение
+		// на весь вызов обработчика, и выбрать тут нечего кроме первого.
+		b.invoke(s, batch[0].ctx, batch)
 	}
 }
 
 // invoke calls the handler with panic and error containment plus a timeout.
-func (b *Bus) invoke(s *subscriber, ctx context.Context, evs []event.Event) {
+func (b *Bus) invoke(s *subscriber, ctx context.Context, evs []queued) {
 	defer func() {
 		if r := recover(); r != nil {
 			b.logger.Error("eventbus: handler panicked",
@@ -364,8 +425,14 @@ func (b *Bus) PublishBatch(ctx context.Context, evs []event.Event) {
 	b.mu.RUnlock()
 
 	// Sync handlers run here, with no lock held at all — see doc comment above.
+	// У синхронного пути контекст один на всю публикацию и верен для каждого
+	// её события: коалесценции здесь нет.
 	for _, call := range syncCalls {
-		b.invoke(call.s, ctx, call.batch)
+		queue := make([]queued, len(call.batch))
+		for i, ev := range call.batch {
+			queue[i] = queued{ctx: ctx, ev: ev}
+		}
+		b.invoke(call.s, ctx, queue)
 	}
 }
 
