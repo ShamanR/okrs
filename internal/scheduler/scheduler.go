@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/platform/logging"
 	hcsvc "okrs/internal/service/healthcheckin"
 	progresssnapsvc "okrs/internal/service/progresssnap"
 )
@@ -113,6 +114,82 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.startNotificationRetentionLoop(ctx, notificationRetentionInterval)
 }
 
+// logger возвращает логгер планировщика. Deps.Logger может быть nil в тестах,
+// поэтому проверка живёт в одном месте, а не перед каждой записью.
+func (s *Scheduler) logger() *slog.Logger {
+	if s.deps.Logger == nil {
+		return logging.Discard()
+	}
+	return s.deps.Logger
+}
+
+// runLockedPass выполняет один проход фоновой задачи под advisory-lock и логирует
+// его запуск, завершение и ошибки.
+//
+// Логирование живёт здесь, а не в каждом цикле, чтобы у всех фоновых задач был
+// одинаковый состав полей: иначе выборка «что сейчас падает в фоне» в Kibana не
+// строится одним запросом.
+func (s *Scheduler) runLockedPass(ctx context.Context, name string, lockKey int, pass func(context.Context) ([]any, error)) {
+	logger := s.logger()
+
+	conn, err := s.deps.DB.Acquire(ctx)
+	if err != nil {
+		logger.WarnContext(ctx, "background task could not acquire a connection",
+			taskAttrs(name, slog.String("outcome", "skipped"), slog.String("err", err.Error()))...)
+		return
+	}
+	defer conn.Release()
+
+	var got bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, lockKey).Scan(&got); err != nil {
+		logger.WarnContext(ctx, "background task could not take its lock",
+			taskAttrs(name, slog.String("outcome", "skipped"), slog.String("err", err.Error()))...)
+		return
+	}
+	if !got {
+		// Лок держит другая реплика. В Kubernetes это ожидаемый исход на всех
+		// репликах, кроме одной, и на info он завалил бы лог шумом.
+		logger.DebugContext(ctx, "background task skipped, lock held by another replica",
+			taskAttrs(name, slog.String("outcome", "skipped"))...)
+		return
+	}
+	defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, lockKey) }()
+
+	s.runPass(ctx, name, pass)
+}
+
+// runPass выполняет проход и логирует его запуск, длительность и исход.
+//
+// Вынесено из runLockedPass, чтобы состав записей проверялся тестом без базы данных:
+// сам advisory-lock к логированию исхода ничего не добавляет, а требовать поднятый
+// Postgres ради проверки набора полей — плохой обмен.
+func (s *Scheduler) runPass(ctx context.Context, name string, pass func(context.Context) ([]any, error)) {
+	logger := s.logger()
+
+	logger.InfoContext(ctx, "background task started", taskAttrs(name)...)
+	start := time.Now()
+	extra, err := pass(ctx)
+	done := func(more ...any) []any {
+		return taskAttrs(name, append([]any{slog.Int64("duration_ms", time.Since(start).Milliseconds())}, more...)...)
+	}
+	if err != nil {
+		logger.WarnContext(ctx, "background task failed",
+			done(slog.String("outcome", "failed"), slog.String("err", err.Error()))...)
+		return
+	}
+	logger.InfoContext(ctx, "background task finished",
+		done(append([]any{slog.String("outcome", "ok")}, extra...)...)...)
+}
+
+// taskAttrs — общий префикс полей записи фоновой задачи. Один источник, чтобы
+// выборка «что сейчас падает в фоне» в Kibana строилась одним запросом.
+func taskAttrs(name string, extra ...any) []any {
+	return append([]any{
+		slog.String(logging.KeyEvent, logging.EventBackgroundTask),
+		slog.String("task", name),
+	}, extra...)
+}
+
 // activePeriods enumerates each tenant's currently-active (date-based) period,
 // so closed/archived periods are naturally excluded.
 func (s *Scheduler) activePeriods(ctx context.Context) []hcsvc.Active {
@@ -174,21 +251,10 @@ func (s *Scheduler) snapshotDuePeriods(ctx context.Context) []hcsvc.Active {
 // period's per-team progress once per interval. An initial pass runs at startup.
 func (s *Scheduler) startProgressSnapshotLoop(ctx context.Context, interval time.Duration) {
 	run := func() {
-		conn, err := s.deps.DB.Acquire(ctx)
-		if err != nil {
-			return
-		}
-		defer conn.Release()
-		var got bool
-		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, progressSnapshotLockKey).Scan(&got); err != nil || !got {
-			return // another replica holds the lock this cycle
-		}
-		defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, progressSnapshotLockKey) }()
-
-		day := time.Now().In(s.deps.Zone)
-		if err := s.deps.Snapshot.SnapshotActivePeriods(ctx, day, s.snapshotDuePeriods(ctx)); err != nil && s.deps.Logger != nil {
-			s.deps.Logger.Warn("progress snapshot failed", "err", err)
-		}
+		s.runLockedPass(ctx, "progress_snapshot", progressSnapshotLockKey, func(ctx context.Context) ([]any, error) {
+			day := time.Now().In(s.deps.Zone)
+			return nil, s.deps.Snapshot.SnapshotActivePeriods(ctx, day, s.snapshotDuePeriods(ctx))
+		})
 	}
 	go func() {
 		run() // capture today at startup
@@ -211,27 +277,13 @@ func (s *Scheduler) startProgressSnapshotLoop(ctx context.Context, interval time
 // two passes never wait on each other.
 func (s *Scheduler) startNotificationRetentionLoop(ctx context.Context, interval time.Duration) {
 	run := func() {
-		conn, err := s.deps.DB.Acquire(ctx)
-		if err != nil {
-			return
-		}
-		defer conn.Release()
-		var got bool
-		if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, notificationRetentionLockKey).Scan(&got); err != nil || !got {
-			return // another replica holds the lock this cycle
-		}
-		defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, notificationRetentionLockKey) }()
-
-		n, err := s.deps.Notifications.Purge(ctx, notificationReadRetentionDays, notificationAnyRetentionDays)
-		if err != nil {
-			if s.deps.Logger != nil {
-				s.deps.Logger.Warn("notification retention purge failed", "err", err)
+		s.runLockedPass(ctx, "notification_retention", notificationRetentionLockKey, func(ctx context.Context) ([]any, error) {
+			n, err := s.deps.Notifications.Purge(ctx, notificationReadRetentionDays, notificationAnyRetentionDays)
+			if err != nil {
+				return nil, err
 			}
-			return
-		}
-		if s.deps.Logger != nil && n > 0 {
-			s.deps.Logger.Info("notification retention purge", "deleted", n)
-		}
+			return []any{slog.Int64("deleted", n)}, nil
+		})
 	}
 	go func() {
 		run() // capture today at startup

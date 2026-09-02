@@ -3,10 +3,12 @@ package access
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"okrs/internal/auth"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 )
 
 type Handler struct {
@@ -57,5 +59,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	logging.AccessChanged(r.Context(), "tenant_access_settings_saved",
+		slog.String("new_user_policy", body.NewUserPolicy))
 	w.WriteHeader(http.StatusNoContent)
 }

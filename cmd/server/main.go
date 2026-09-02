@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/platform/entitlements"
+	"okrs/internal/platform/logging"
 	"okrs/internal/store"
 	"okrs/internal/store/periods"
 	"okrs/notifychannel"
@@ -45,18 +47,39 @@ func main() {
 	os.Exit(run())
 }
 
+// Разбор флагов живёт здесь, а не в runWith: flag.BoolVar регистрирует флаг в
+// глобальном наборе процесса, и повторный вызов паникует — тест вызывает runWith
+// несколько раз.
 func run() int {
 	var seed bool
 	flag.BoolVar(&seed, "seed", false, "seed demo data")
 	flag.Parse()
+	return runWith(os.Stdout, seed)
+}
 
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
+// runWith принимает поток вывода логов параметром, чтобы тест мог наблюдать записи
+// жизненного цикла: в остальном это и есть run.
+func runWith(logOutput io.Writer, seed bool) int {
+	// Конфигурация логирования читается только здесь, в composition root:
+	// app.New намеренно не трогает окружение, иначе его нельзя было бы собрать
+	// в тесте без переменных среды.
+	logger := logging.New(logging.Config{
+		Level:   os.Getenv("LOG_LEVEL"),
+		Format:  os.Getenv("LOG_FORMAT"),
+		Service: envOrDefault("SERVICE_NAME", logging.DefaultService),
+		Env:     envOrDefault("ENV", logging.DefaultEnv),
+		Output:  logOutput,
+	})
+	logger.Info("starting", slog.String(logging.KeyEvent, logging.EventAppStart))
 
 	port := envOrDefault("PORT", "8080")
 	zoneName := envOrDefault("TZ", "Asia/Bangkok")
 	zone, err := time.LoadLocation(zoneName)
 	if err != nil {
-		logger.Error("invalid timezone", slog.String("tz", zoneName))
+		logger.Error("invalid timezone",
+			slog.String(logging.KeyEvent, logging.EventAppStart),
+			slog.String("tz", zoneName),
+			slog.String("err", err.Error()))
 		return 1
 	}
 
@@ -64,15 +87,20 @@ func run() int {
 
 	pool, err := pgxpool.New(context.Background(), databaseURL)
 	if err != nil {
-		logger.Error("failed to connect db", slog.String("error", err.Error()))
+		logger.Error("failed to connect db",
+			slog.String(logging.KeyEvent, logging.EventAppStart),
+			slog.String("err", err.Error()))
 		return 1
 	}
 	defer pool.Close()
 
 	if err := runMigrations(databaseURL); err != nil {
-		logger.Error("failed to migrate", slog.String("error", err.Error()))
+		logger.Error("failed to migrate",
+			slog.String(logging.KeyEvent, logging.EventMigration),
+			slog.String("err", err.Error()))
 		return 1
 	}
+	logger.Info("migrations applied", slog.String(logging.KeyEvent, logging.EventMigration))
 
 	pgstore := store.New(pool)
 	if seed {
@@ -89,21 +117,27 @@ func run() int {
 					EndDate:   endDate,
 				})
 				if err != nil {
-					logger.Error("failed to create seed period", slog.String("error", err.Error()))
+					logger.Error("failed to create seed period",
+						slog.String(logging.KeyEvent, logging.EventAppStart),
+						slog.String("err", err.Error()))
 					return 1
 				}
 			} else {
-				logger.Error("failed to resolve seed period", slog.String("error", err.Error()))
+				logger.Error("failed to resolve seed period",
+					slog.String(logging.KeyEvent, logging.EventAppStart),
+					slog.String("err", err.Error()))
 				return 1
 			}
 		} else {
 			periodID = period.ID
 		}
 		if err := pgstore.SeedDemo(context.Background(), periodID); err != nil {
-			logger.Error("failed to seed", slog.String("error", err.Error()))
+			logger.Error("failed to seed",
+				slog.String(logging.KeyEvent, logging.EventAppStart),
+				slog.String("err", err.Error()))
 			return 1
 		}
-		logger.Info("seed data created")
+		logger.Info("seed data created", slog.String(logging.KeyEvent, logging.EventAppStart))
 	}
 
 	// OSS feature-gating: every feature is on, every limit is unlimited. A SaaS
@@ -111,7 +145,9 @@ func run() int {
 	entitlements.Register("unlimited", func() entitlements.Entitlements { return entitlements.UnlimitedEntitlements{} })
 
 	authCfg := loadAuthConfig()
-	logger.Info("auth mode", slog.String("mode", string(authCfg.Mode)),
+	logger.Info("auth mode",
+		slog.String(logging.KeyEvent, logging.EventAppStart),
+		slog.String("mode", string(authCfg.Mode)),
 		slog.Any("providers", authCfg.EnabledProviders))
 
 	// Assemble the box via the public façade on OSS defaults (session resolver, unlimited
@@ -129,7 +165,9 @@ func run() int {
 		NotificationSecretKey: os.Getenv("NOTIFICATIONS_SECRET_KEY"),
 	})
 	if err != nil {
-		logger.Error("failed to assemble app", slog.String("error", err.Error()))
+		logger.Error("failed to assemble app",
+			slog.String(logging.KeyEvent, logging.EventAppStart),
+			slog.String("err", err.Error()))
 		return 1
 	}
 
@@ -152,9 +190,14 @@ func run() int {
 	addr := fmt.Sprintf(":%s", port)
 	srv := &http.Server{Addr: addr, Handler: a.Handler}
 	go func() {
-		logger.Info("listening", slog.String("addr", addr))
+		logger.Info("listening",
+			slog.String(logging.KeyEvent, logging.EventAppReady),
+			slog.String("addr", addr))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server failed", slog.String("error", err.Error()))
+			logger.Error("server failed",
+				slog.String(logging.KeyEvent, logging.EventAppStart),
+				slog.String("addr", addr),
+				slog.String("err", err.Error()))
 			serveErr = err
 			stop()
 		}
@@ -166,22 +209,51 @@ func run() int {
 	// the pool via the deferred pool.Close() above. Reversing this loses events to a
 	// closed pool. This ordering holds regardless of why we got here — a signal or a
 	// failed listener — so a failed bind still exits cleanly, just with exit code 1.
-	logger.Info("shutting down")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		logger.Warn("http shutdown did not complete cleanly", slog.String("error", err.Error()))
-	}
-	if err := a.Close(5 * time.Second); err != nil {
-		logger.Warn("event bus did not drain cleanly", slog.String("error", err.Error()))
-	}
+	shutdownSequence(logger, srv.Shutdown, a.Close)
 
 	if serveErr != nil {
 		// pool.Close() still runs: it is deferred above, and a deferred call fires
 		// when run() returns, before main() ever sees this exit code.
+		logger.Error("shutdown complete after serve failure",
+			slog.String(logging.KeyEvent, logging.EventAppShutdown),
+			slog.String("err", serveErr.Error()))
 		return 1
 	}
+	logger.Info("shutdown complete", slog.String(logging.KeyEvent, logging.EventAppShutdown))
 	return 0
+}
+
+const (
+	httpShutdownTimeout = 15 * time.Second
+	busDrainTimeout     = 5 * time.Second
+)
+
+// shutdownSequence останавливает приём запросов, затем дренит event bus, логируя
+// исход каждого шага.
+//
+// Вынесено из runWith отдельной функцией с внедрёнными шагами, потому что иначе
+// последовательность остановки проверялась бы только живым запуском: тест передаёт
+// сюда заглушки и наблюдает записи, которых требует спецификация.
+func shutdownSequence(logger *slog.Logger, stopServing func(context.Context) error, drainBus func(time.Duration) error) {
+	logger.Info("shutdown signal received", slog.String(logging.KeyEvent, logging.EventAppShutdown))
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
+	defer cancel()
+	if err := stopServing(shutdownCtx); err != nil {
+		logger.Warn("http shutdown did not complete cleanly",
+			slog.String(logging.KeyEvent, logging.EventAppShutdown),
+			slog.String("err", err.Error()))
+	} else {
+		logger.Info("http server stopped serving", slog.String(logging.KeyEvent, logging.EventAppShutdown))
+	}
+
+	if err := drainBus(busDrainTimeout); err != nil {
+		logger.Warn("event bus did not drain cleanly",
+			slog.String(logging.KeyEvent, logging.EventAppShutdown),
+			slog.String("err", err.Error()))
+	} else {
+		logger.Info("event bus drained", slog.String(logging.KeyEvent, logging.EventAppShutdown))
+	}
 }
 
 func loadAuthConfig() auth.Config {

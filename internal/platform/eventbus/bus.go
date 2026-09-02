@@ -11,11 +11,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"okrs/internal/core/event"
+	"okrs/internal/platform/logging"
 )
 
 // Mode selects how a subscriber is invoked.
@@ -250,13 +252,20 @@ func (b *Bus) run(s *subscriber) {
 func (b *Bus) invoke(s *subscriber, ctx context.Context, evs []event.Event) {
 	defer func() {
 		if r := recover(); r != nil {
-			b.logger.Error("eventbus: handler panicked", "subscriber", s.name, "panic", fmt.Sprint(r))
+			b.logger.Error("eventbus: handler panicked",
+				slog.String(logging.KeyEvent, logging.EventDomainEvent),
+				slog.String("subscriber", s.name),
+				slog.String("panic", fmt.Sprint(r)),
+				slog.String("stack", string(debug.Stack())))
 		}
 	}()
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	if err := s.fn(ctx, evs); err != nil {
-		b.logger.Warn("eventbus: handler failed", "subscriber", s.name, "err", err)
+		b.logger.Warn("eventbus: handler failed",
+			slog.String(logging.KeyEvent, logging.EventDomainEvent),
+			slog.String("subscriber", s.name),
+			slog.String("err", err.Error()))
 	}
 }
 
@@ -325,7 +334,10 @@ func (b *Bus) PublishBatch(ctx context.Context, evs []event.Event) {
 			// as a full buffer would, and counted the same in Dropped().
 			b.dropped.Add(int64(len(batch)))
 			b.logger.Warn("eventbus: bus closed, events dropped",
-				"subscriber", s.name, "count", len(batch))
+				slog.String(logging.KeyEvent, logging.EventEventDropped),
+				slog.String("subscriber", s.name),
+				slog.String("reason", "bus closed"),
+				slog.Int("count", len(batch)))
 			continue
 		}
 		if s.mode == Sync {
@@ -342,7 +354,10 @@ func (b *Bus) PublishBatch(ctx context.Context, evs []event.Event) {
 			default:
 				b.dropped.Add(1)
 				b.logger.Warn("eventbus: buffer full, event dropped",
-					"subscriber", s.name, "kind", string(ev.Kind()))
+					slog.String(logging.KeyEvent, logging.EventEventDropped),
+					slog.String("subscriber", s.name),
+					slog.String("reason", "subscriber buffer full"),
+					slog.String("kind", string(ev.Kind())))
 			}
 		}
 	}

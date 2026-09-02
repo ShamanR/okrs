@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
+	"okrs/internal/platform/logging"
 	keyresultsvc "okrs/internal/service/keyresult"
 )
 
@@ -21,16 +23,37 @@ type Dependencies struct {
 	Zone      *time.Location
 }
 
+// RenderError отвечает 500 и передаёт причину в лог через обёртку ответа.
+//
+// Прямой записи в логгер здесь нет: её сделает access-log middleware, одной записью
+// на запрос — дублировать её значило бы две записи об одной ошибке. logger
+// остаётся в сигнатуре и служит запасным путём для вызовов вне цепочки
+// middleware, где записывать ошибку больше некому.
 func RenderError(w http.ResponseWriter, logger *slog.Logger, err error) {
-	logger.Error("request failed", slog.String("error", err.Error()))
+	recordOrLog(w, logger, err)
 	http.Error(w, "Произошла ошибка", http.StatusInternalServerError)
 }
 
+// RenderJSONError отвечает 500 общим текстом.
+//
+// Раньше в теле ответа уезжал err.Error() — то есть текст ошибки из слоёв usecase
+// и store. Теперь техническая причина идёт только в лог.
 func RenderJSONError(w http.ResponseWriter, logger *slog.Logger, err error) {
-	logger.Error("api failed", slog.String("error", err.Error()))
+	recordOrLog(w, logger, err)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusInternalServerError)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": httperr.InternalErrorMessage})
+}
+
+func recordOrLog(w http.ResponseWriter, logger *slog.Logger, err error) {
+	if httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err) {
+		return
+	}
+	if logger != nil {
+		logger.Error("request failed",
+			slog.String(logging.KeyEvent, logging.EventHTTPRequest),
+			slog.String("err", err.Error()))
+	}
 }
 
 func WriteJSON(w http.ResponseWriter, payload any) {

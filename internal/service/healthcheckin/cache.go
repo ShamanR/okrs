@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/platform/logging"
 )
 
 // periodLoader loads raw data for a period (within a tenant) from the DB.
@@ -93,7 +94,13 @@ func (c *Cache) StartRefreshLoop(ctx context.Context, interval time.Duration, ac
 					}
 					if _, err := c.reload(ctx, a.Scope, a.PeriodID); err != nil {
 						if c.logger != nil {
-							c.logger.Warn("health-checkin cache refresh failed", "tenant", a.Scope.TenantID, "period", a.PeriodID, "err", err)
+							c.logger.WarnContext(ctx, "health-checkin cache refresh failed",
+								slog.String(logging.KeyEvent, logging.EventBackgroundTask),
+								slog.String("task", "healthcheckin_cache_refresh"),
+								slog.String("outcome", "failed"),
+								slog.Int64(logging.KeyTenantID, a.Scope.TenantID),
+								slog.Int64("period_id", a.PeriodID),
+								slog.String("err", err.Error()))
 						}
 					}
 				}

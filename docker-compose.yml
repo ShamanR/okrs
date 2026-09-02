@@ -16,6 +16,12 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/okrs?sslmode=disable
       PORT: "8080"
       TZ: Asia/Bangkok
+      # Логи: JSON в stdout для сборщика (Filebeat/Fluent Bit/Vector → Logstash).
+      # Для локальной отладки удобнее LOG_FORMAT=text.
+      LOG_FORMAT: json
+      LOG_LEVEL: info
+      SERVICE_NAME: okrs
+      ENV: local
       # AUTH_MODE: enabled
       # AUTH_ENABLED_PROVIDERS: google,github
       # AUTH_GOOGLE_CLIENT_ID: ...

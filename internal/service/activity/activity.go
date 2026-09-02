@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/platform/logging"
 	storeactivity "okrs/internal/store/activity"
 )
 
@@ -38,7 +39,11 @@ func (s *Service) Record(ctx context.Context, scope domain.TenantScope, ev domai
 		return
 	}
 	if _, err := s.repo.Record(ctx, scope, ev); err != nil && s.logger != nil {
-		s.logger.Warn("activity: record failed", "action", string(ev.Action), "tenant", scope.TenantID, "err", err)
+		s.logger.WarnContext(ctx, "activity: record failed",
+			slog.String(logging.KeyEvent, logging.EventDomainEvent),
+			slog.String("action", string(ev.Action)),
+			slog.Int64(logging.KeyTenantID, scope.TenantID),
+			slog.String("err", err.Error()))
 	}
 }
 

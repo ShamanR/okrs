@@ -4,6 +4,7 @@
 package admincommon
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -17,6 +18,8 @@ import (
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/web/common"
+	"okrs/internal/http/httperr"
+	"okrs/internal/platform/logging"
 	hcsvc "okrs/internal/service/healthcheckin"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
@@ -124,9 +127,7 @@ func WriteJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func WriteError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	httperr.WriteJSON(w, status, msg)
 }
 
 // — Ключи настроек и типизированные аксессоры к ним. —
@@ -238,5 +239,8 @@ func SetMemberRole(w http.ResponseWriter, r *http.Request, roles MemberRoleSette
 		WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "member_role_set",
+		slog.Int64("target_user_id", userID),
+		slog.String("role", string(role)))
 	w.WriteHeader(http.StatusNoContent)
 }

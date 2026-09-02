@@ -12,6 +12,7 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
 	"okrs/internal/store/memberships"
 
 	"github.com/go-chi/chi/v5"
@@ -55,9 +56,7 @@ func AccessRequestAction(w http.ResponseWriter, r *http.Request, fn func(context
 }
 
 func WriteError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	httperr.WriteJSON(w, status, msg)
 }
 func WriteJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

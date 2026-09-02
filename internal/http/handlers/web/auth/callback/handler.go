@@ -5,11 +5,13 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	authpkg "okrs/internal/auth"
 	"okrs/internal/core/domain"
 	webauth "okrs/internal/http/handlers/web/auth"
+	"okrs/internal/platform/logging"
 )
 
 // Onboarder routes a freshly logged-in user: redeem an invite token or register a new
@@ -56,16 +58,25 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
 	identity, err := p.Exchange(r.Context(), code)
+	logging.ExternalCall(r.Context(), "oauth_provider", time.Since(start), err,
+		slog.String("provider", name))
 	if err != nil {
-		h.logger.Error("oauth exchange", slog.String("provider", name), slog.String("error", err.Error()))
+		h.logger.WarnContext(r.Context(), "oauth exchange failed",
+			slog.String(logging.KeyEvent, logging.EventAuthFailed),
+			slog.String("provider", name),
+			slog.String("err", err.Error()))
 		http.Error(w, "authentication failed", http.StatusBadGateway)
 		return
 	}
 
 	user, sess, err := h.mgr.Login(r.Context(), identity, r.UserAgent(), r.RemoteAddr)
 	if err != nil {
-		h.logger.Error("login", slog.String("error", err.Error()))
+		h.logger.ErrorContext(r.Context(), "login failed",
+			slog.String(logging.KeyEvent, logging.EventAuthFailed),
+			slog.String("provider", name),
+			slog.String("err", err.Error()))
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -75,10 +86,12 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.onboardAfterLogin(w, r, user.ID, sess.ID)
 
-	h.logger.Info("user logged in",
-		slog.Int64("user_id", user.ID),
+	// Пользователь опознаётся числовым идентификатором: отображаемое имя и адрес
+	// почты в логи не попадают. Раньше здесь писался display_name.
+	h.logger.InfoContext(r.Context(), "user logged in",
+		slog.String(logging.KeyEvent, logging.EventAuthLogin),
+		slog.Int64(logging.KeyActorID, user.ID),
 		slog.String("provider", identity.Provider),
-		slog.String("display_name", user.DisplayName),
 	)
 
 	next := "/teamOkrs"
@@ -105,6 +118,9 @@ func (h *Handler) onboardAfterLogin(w http.ResponseWriter, r *http.Request, user
 		// Invalid invite falls through to normal new-user routing below.
 	}
 	if _, err := h.onboard.EnsureRegistration(r.Context(), userID); err != nil {
-		h.logger.Error("ensure registration", slog.String("error", err.Error()))
+		h.logger.ErrorContext(r.Context(), "ensure registration failed",
+			slog.String(logging.KeyEvent, logging.EventAuthLogin),
+			slog.Int64(logging.KeyActorID, userID),
+			slog.String("err", err.Error()))
 	}
 }

@@ -2,7 +2,10 @@ package v1
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+
+	"okrs/internal/http/httperr"
 )
 
 type ErrorResponse struct {
@@ -22,6 +25,12 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
+	// Код и причина уходят в итоговую запись о запросе через обёртку ответа:
+	// так ни одно из сотен мест вызова не нуждается ни в логгере, ни в контексте.
+	// Тело ответа не подменяется, в отличие от простых writer'ов: здесь message —
+	// отдельный параметр рядом с code, то есть заведомо предназначенный пользователю
+	// текст, а не подставленный err.Error().
+	_ = httperr.Record(w, code, errors.New(message))
 	writeJSON(w, status, ErrorResponse{Error: ErrorDetail{Code: code, Message: message, Fields: fields}})
 }
 

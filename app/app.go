@@ -9,13 +9,14 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os"
 	"time"
 
 	"okrs/internal/auth"
 	httpserver "okrs/internal/http"
 	"okrs/internal/platform/entitlements"
 	"okrs/internal/platform/eventbus"
+	"okrs/internal/platform/eventlog"
+	"okrs/internal/platform/logging"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/memberships"
@@ -98,7 +99,10 @@ func New(cfg Config) (*App, error) {
 	}
 	logger := cfg.Logger
 	if logger == nil {
-		logger = slog.New(slog.NewTextHandler(os.Stdout, nil))
+		// Значения по умолчанию, без чтения окружения: конфигурация логирования —
+		// забота composition root (cmd/server), а app должен собираться в тесте
+		// без единой переменной среды.
+		logger = logging.New(logging.Config{})
 	}
 	zone := cfg.Zone
 	if zone == nil {
@@ -151,6 +155,10 @@ func New(cfg Config) (*App, error) {
 	// assembly is done — Subscribe after Start panics by design, so this order is
 	// what catches an assembly-ordering mistake immediately instead of in prod.
 	bus := eventbus.New(logger)
+	// Логирование событий подписывается первым и здесь, а не внутри httpdeps:
+	// оно не зависит ни от хранилищ, ни от сервисов, и не должно теряться вместе
+	// с ними при пересборке зависимостей.
+	eventlog.Subscribe(bus, logger)
 
 	srv, err := httpserver.NewServer(st, grantsCache, logger, zone, authMgr, bus, httpserver.Options{
 		Resolver:              auth.NewTenantResolver(strategies...),

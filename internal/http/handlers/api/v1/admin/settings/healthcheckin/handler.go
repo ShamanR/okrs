@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
 	hcsvc "okrs/internal/service/healthcheckin"
 )
 
@@ -84,9 +85,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	httperr.WriteJSON(w, status, msg)
 }
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
