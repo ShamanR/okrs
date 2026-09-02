@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
 )
 
 // MembershipLookup lists the caller's memberships so the switch target can be verified.
@@ -73,6 +74,8 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.sessions.SetActiveTenant(r.Context(), sess.ID, targetID); err != nil {
+		// Причина уходит в итоговую запись о запросе, а не в тело ответа.
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}

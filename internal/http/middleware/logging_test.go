@@ -240,6 +240,63 @@ func TestClientErrorKeepsItsMessage(t *testing.T) {
 	}
 }
 
+// Часть обработчиков отвечает напрямую через http.Error, мимо общих error-writer'ов.
+// Такой ответ обязан всё равно нести машиночитаемый код: иначе выборка по error_code
+// молча теряет часть отказов.
+func TestDirectHTTPErrorStillGetsErrorCode(t *testing.T) {
+	cases := []struct {
+		status int
+		code   string
+	}{
+		{http.StatusUnauthorized, "unauthorized"},
+		{http.StatusForbidden, "forbidden"},
+		{http.StatusNotFound, "not_found"},
+		{http.StatusInternalServerError, "internal_error"},
+	}
+	for _, c := range cases {
+		_, recs := serve(t, func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, `{"error":"internal"}`, c.status)
+		}, httptest.NewRequest(http.MethodGet, "/api/v1/session/tenants", nil))
+
+		rec := byEvent(recs, logging.EventHTTPRequest)[0]
+		if rec["error_code"] != c.code {
+			t.Errorf("статус %d: error_code = %v, ожидался %q", c.status, rec["error_code"], c.code)
+		}
+	}
+}
+
+// Успешный ответ кода ошибки не получает: иначе он засоряет выборку отказов.
+func TestSuccessfulResponseHasNoErrorCode(t *testing.T) {
+	_, recs := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}, httptest.NewRequest(http.MethodGet, "/api/v1/goals", nil))
+
+	if got, ok := byEvent(recs, logging.EventHTTPRequest)[0]["error_code"]; ok {
+		t.Errorf("успешный ответ не должен нести error_code: %v", got)
+	}
+}
+
+// Обработчик, отвечающий через http.Error, может передать причину в обёртку ответа:
+// она попадает в лог и не попадает в тело.
+func TestCauseRecordedAlongsideDirectHTTPError(t *testing.T) {
+	const cause = `pq: connection refused`
+	rec, recs := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), errors.New(cause))
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+	}, httptest.NewRequest(http.MethodGet, "/api/v1/session/tenants", nil))
+
+	if strings.Contains(rec.Body.String(), cause) {
+		t.Fatalf("причина утекла в тело ответа: %s", rec.Body.String())
+	}
+	r := byEvent(recs, logging.EventHTTPRequest)[0]
+	if r["err"] != cause {
+		t.Errorf("причина не попала в лог: %v", r["err"])
+	}
+	if r["error_code"] != "internal_error" || r["level"] != "ERROR" {
+		t.Errorf("код/уровень = %v/%v", r["error_code"], r["level"])
+	}
+}
+
 // — паника —
 
 func TestPanicIsLoggedWithStackAndAnswered500(t *testing.T) {

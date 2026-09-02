@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
 )
 
 // MembershipLookup lists the caller's memberships so the switcher can name the tenants.
@@ -49,6 +50,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	ms, err := h.members.ListByUser(r.Context(), user.ID)
 	if err != nil {
+		// Причина уходит в итоговую запись о запросе, а не в тело ответа.
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}

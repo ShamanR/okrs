@@ -11,6 +11,7 @@ import (
 	authpkg "okrs/internal/auth"
 	"okrs/internal/core/domain"
 	webauth "okrs/internal/http/handlers/web/auth"
+	"okrs/internal/http/httperr"
 	"okrs/internal/platform/logging"
 )
 
@@ -77,6 +78,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 			slog.String(logging.KeyEvent, logging.EventAuthFailed),
 			slog.String("provider", name),
 			slog.String("err", err.Error()))
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

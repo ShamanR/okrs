@@ -7,6 +7,7 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
 	"okrs/internal/platform/logging"
 )
 
@@ -107,8 +108,14 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			} else {
 				attrs = append(attrs, slog.Bool("authenticated", false))
 			}
-			if rec.errCode != "" {
-				attrs = append(attrs, slog.String("error_code", rec.errCode))
+			// Код ошибки обязателен для любого ошибочного ответа, а часть
+			// обработчиков отвечает напрямую через http.Error, мимо общих
+			// error-writer'ов, и код не записывает. Выводим его из статуса:
+			// выборка по error_code не должна молча терять часть отказов.
+			if code := rec.errCode; code != "" {
+				attrs = append(attrs, slog.String("error_code", code))
+			} else if rec.status >= http.StatusBadRequest {
+				attrs = append(attrs, slog.String("error_code", httperr.CodeForStatus(rec.status)))
 			}
 			if rec.errCause != nil {
 				attrs = append(attrs, slog.String("err", rec.errCause.Error()))

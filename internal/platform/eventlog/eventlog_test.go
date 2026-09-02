@@ -2,6 +2,7 @@ package eventlog
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"reflect"
 	"strings"
@@ -63,10 +64,17 @@ func samples() []event.Event {
 	}
 }
 
+// logOne воспроизводит тот же путь, что и подписчик: контекст собирается из Meta
+// события, а атрибуты — из его полей.
+func logOne(buf *bytes.Buffer, ctx context.Context, ev event.Event, ownsContext bool) {
+	logging.New(logging.Config{Output: buf}).
+		InfoContext(recordContext(ctx, ev, ownsContext), "domain event", attrsFor(ev)...)
+}
+
 func record(t *testing.T, ev event.Event) map[string]any {
 	t.Helper()
 	buf := &bytes.Buffer{}
-	logging.New(logging.Config{Output: buf}).Info("domain event", attrsFor(ev)...)
+	logOne(buf, context.Background(), ev, true)
 
 	var rec map[string]any
 	if err := json.Unmarshal(bytes.TrimSpace(buf.Bytes()), &rec); err != nil {
@@ -97,7 +105,7 @@ func TestNoUserTextReachesTheLog(t *testing.T) {
 	const marker = "СЕКРЕТНЫЙ-ПОЛЬЗОВАТЕЛЬСКИЙ-ТЕКСТ"
 	for _, ev := range samples() {
 		buf := &bytes.Buffer{}
-		logging.New(logging.Config{Output: buf}).Info("domain event", attrsFor(ev)...)
+		logOne(buf, context.Background(), ev, true)
 
 		if strings.Contains(buf.String(), marker) {
 			t.Errorf("%s: пользовательский текст попал в лог: %s", ev.Kind(), buf.String())
@@ -258,5 +266,68 @@ func TestSubscriberNeedsNothingButBusAndLogger(t *testing.T) {
 	// новой зависимости невозможно, а новая зависимость сломает эту сверку.
 	if got := reflect.TypeOf(Subscribe).NumIn(); got != 2 {
 		t.Errorf("Subscribe принимает %d аргументов; появление третьего означает новую зависимость", got)
+	}
+}
+
+// Батч может смешивать события разных организаций: шина сохраняет контекст только
+// первого публикатора. Каждая запись обязана нести идентификаторы СВОЕГО события —
+// иначе аудит связывает действие с чужой организацией.
+func TestCoalescedBatchDoesNotMixTenants(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	first := event.Meta{Scope: domain.TenantScope{TenantID: 1}, ActorID: 11}
+	second := event.Meta{Scope: domain.TenantScope{TenantID: 2}, ActorID: 22}
+	evs := []event.Event{
+		event.GoalCreated{Meta: first, GoalID: 100, Title: "цель первой организации"},
+		event.GoalCreated{Meta: second, GoalID: 200, Title: "цель второй организации"},
+	}
+
+	// Контекст батча принадлежит первому событию — ровно как его отдаёт шина.
+	batchCtx := logging.WithScope(
+		logging.WithRequestID(context.Background(), "req-first"),
+		logging.Scope{TenantID: 1, ActorID: 11},
+	)
+	for i, ev := range evs {
+		logger.InfoContext(recordContext(batchCtx, ev, i == 0), "domain event", attrsFor(ev)...)
+	}
+
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("ожидались две записи, получено %d", len(lines))
+	}
+	var recs []map[string]any
+	for _, l := range lines {
+		var r map[string]any
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatalf("запись не является валидным JSON: %v\n%s", err, l)
+		}
+		recs = append(recs, r)
+	}
+
+	if recs[0][logging.KeyTenantID] != float64(1) || recs[0][logging.KeyActorID] != float64(11) {
+		t.Errorf("первое событие: tenant/actor = %v/%v", recs[0][logging.KeyTenantID], recs[0][logging.KeyActorID])
+	}
+	if recs[1][logging.KeyTenantID] != float64(2) || recs[1][logging.KeyActorID] != float64(22) {
+		t.Errorf("второе событие получило чужую организацию: tenant/actor = %v/%v",
+			recs[1][logging.KeyTenantID], recs[1][logging.KeyActorID])
+	}
+
+	// Дублирующиеся ключи в JSON: побеждает последний, поэтому дубль и означал бы
+	// подмену организации. Проверяем по сырой строке — распарсенная map их скрывает.
+	for i, l := range lines {
+		for _, key := range []string{logging.KeyTenantID, logging.KeyActorID} {
+			if n := strings.Count(l, `"`+key+`"`); n != 1 {
+				t.Errorf("запись %d: ключ %s встречается %d раз: %s", i, key, n, l)
+			}
+		}
+	}
+
+	// Чужой request_id не приписывается: он принадлежит только первому событию.
+	if recs[0][logging.KeyRequestID] != "req-first" {
+		t.Errorf("первое событие потеряло request_id: %v", recs[0][logging.KeyRequestID])
+	}
+	if _, ok := recs[1][logging.KeyRequestID]; ok {
+		t.Errorf("второму событию приписан чужой request_id: %v", recs[1][logging.KeyRequestID])
 	}
 }

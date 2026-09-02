@@ -269,6 +269,59 @@ func TestRedactionHidesOriginalValue(t *testing.T) {
 	}
 }
 
+// Адрес почты попадает в лог не отдельным атрибутом, а внутри чужого текста:
+// внешний канал адресует получателя путём /api/v4/users/email/<escaped email>
+// и оборачивает этот путь в текст ошибки. Редакция по имени ключа такое не видит.
+func TestEmailInsideAnotherValueIsMasked(t *testing.T) {
+	cases := map[string]string{
+		"в тексте ошибки внешнего канала": `mattermost: /api/v4/users/email/admin%40example.com: status 404`,
+		"в открытом виде":                 "не найден получатель admin@example.com",
+		"в пути запроса":                  "/api/v1/users/a.b+c@sub.example.co.uk",
+	}
+	for name, value := range cases {
+		t.Run(name, func(t *testing.T) {
+			logger, buf := newTestLogger(t, Config{})
+
+			logger.Error("внешний вызов не удался",
+				slog.String(KeyEvent, EventExternalCall),
+				slog.String("err", value))
+
+			out := buf.String()
+			for _, leak := range []string{"admin@example.com", "admin%40example.com", "a.b+c@sub.example.co.uk"} {
+				if strings.Contains(out, leak) {
+					t.Fatalf("адрес попал в лог (%q): %s", leak, out)
+				}
+			}
+			if !strings.Contains(out, Mask) {
+				t.Errorf("адрес не заменён маской: %s", out)
+			}
+		})
+	}
+}
+
+// Маскирование по содержимому не должно трогать обычные значения: оно узкое,
+// только про адреса почты.
+func TestNonEmailValuesAreUntouched(t *testing.T) {
+	logger, buf := newTestLogger(t, Config{})
+
+	logger.Info("запрос",
+		slog.String(KeyEvent, EventHTTPRequest),
+		slog.String("path", "/api/v1/goals/42"),
+		slog.String("err", "pq: relation \"goals\" does not exist"),
+		slog.String("host", "mm.internal:8065"))
+
+	rec := decodeLines(t, buf)[0]
+	if rec["path"] != "/api/v1/goals/42" {
+		t.Errorf("path изменён: %v", rec["path"])
+	}
+	if rec["err"] != `pq: relation "goals" does not exist` {
+		t.Errorf("текст ошибки изменён: %v", rec["err"])
+	}
+	if rec["host"] != "mm.internal:8065" {
+		t.Errorf("host изменён: %v", rec["host"])
+	}
+}
+
 func TestContextFieldsAddedOnContextualCall(t *testing.T) {
 	logger, buf := newTestLogger(t, Config{})
 	team := int64(7)
