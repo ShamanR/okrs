@@ -127,24 +127,38 @@ func New(cfg Config) *slog.Logger {
 		env = DefaultEnv
 	}
 
-	opts := &slog.HandlerOptions{Level: level, ReplaceAttr: RedactAttr}
-	var base slog.Handler
-	if format == FormatText {
-		base = slog.NewTextHandler(out, opts)
-	} else {
-		base = slog.NewJSONHandler(out, opts)
+	build := func(lvl slog.Leveler) *slog.Logger {
+		opts := &slog.HandlerOptions{Level: lvl, ReplaceAttr: RedactAttr}
+		var base slog.Handler
+		if format == FormatText {
+			base = slog.NewTextHandler(out, opts)
+		} else {
+			base = slog.NewJSONHandler(out, opts)
+		}
+		return slog.New(newContextHandler(base)).With(
+			slog.String(KeyService, service),
+			slog.String(KeyEnv, env),
+		)
 	}
 
-	logger := slog.New(newContextHandler(base)).With(
-		slog.String(KeyService, service),
-		slog.String(KeyEnv, env),
-	)
+	logger := build(level)
 
-	for _, p := range problems {
-		logger.Warn("некорректная настройка логирования, применено значение по умолчанию",
-			slog.String(KeyEvent, EventConfigInvalid),
-			slog.String("problem", p),
-		)
+	if len(problems) > 0 {
+		// Диагностика конфигурации выводится отдельным логгером, не подчинённым
+		// настроенному порогу.
+		//
+		// Иначе она бесполезна ровно тогда, когда нужна: при LOG_LEVEL=error
+		// предупреждение о некорректном LOG_FORMAT отфильтровывалось бы самим
+		// уровнем, о соседе которого сообщает, и опечатка в манифесте тихо меняла
+		// бы формат вывода. Уровень записи остаётся warn — сообщение об откате
+		// к значению по умолчанию не является отказом.
+		diag := build(slog.LevelWarn)
+		for _, p := range problems {
+			diag.Warn("некорректная настройка логирования, применено значение по умолчанию",
+				slog.String(KeyEvent, EventConfigInvalid),
+				slog.String("problem", p),
+			)
+		}
 	}
 	return logger
 }

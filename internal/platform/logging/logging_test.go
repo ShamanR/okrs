@@ -205,6 +205,45 @@ func TestInvalidFormatFallsBackToJSON(t *testing.T) {
 	}
 }
 
+// Диагностика о некорректной настройке обязана быть видна при ЛЮБОМ допустимом
+// уровне. Иначе она бесполезна ровно тогда, когда нужна: при LOG_LEVEL=error
+// предупреждение о некорректном LOG_FORMAT отфильтровывалось бы тем самым
+// уровнем, о соседе которого сообщает.
+func TestConfigDiagnosticIsNotFilteredByTheConfiguredLevel(t *testing.T) {
+	for _, level := range []string{"debug", "info", "warn", "error"} {
+		t.Run(level, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			New(Config{Level: level, Format: "xml", Output: buf})
+
+			recs := decodeLines(t, buf)
+			if len(recs) != 1 {
+				t.Fatalf("ожидалось предупреждение о некорректном формате, получено %d записей: %s",
+					len(recs), buf.String())
+			}
+			if recs[0][KeyEvent] != EventConfigInvalid || recs[0]["level"] != "WARN" {
+				t.Errorf("event/level = %v/%v, ожидались %s/WARN", recs[0][KeyEvent], recs[0]["level"], EventConfigInvalid)
+			}
+		})
+	}
+}
+
+// Обход порога распространяется только на диагностику конфигурации: обычные
+// записи по-прежнему подчиняются настроенному уровню.
+func TestConfiguredLevelStillFiltersOrdinaryRecords(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := New(Config{Level: "error", Format: "xml", Output: buf})
+	buf.Reset()
+
+	logger.Warn("обычное предупреждение")
+	logger.Info("обычная информация")
+	logger.Error("настоящая ошибка")
+
+	recs := decodeLines(t, buf)
+	if len(recs) != 1 || recs[0]["msg"] != "настоящая ошибка" {
+		t.Fatalf("на уровне error должна остаться только error-запись: %v", recs)
+	}
+}
+
 func TestAllEventsAreUnique(t *testing.T) {
 	seen := make(map[string]bool)
 	for _, e := range AllEvents() {

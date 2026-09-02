@@ -47,19 +47,26 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		admincommon.WriteError(w, http.StatusForbidden, "no active tenant")
 		return
 	}
+	// Каждое изменение фиксируется СРАЗУ после своего успеха, а не одной записью
+	// в конце: записи идут поочерёдно и не в одной транзакции, так что отказ
+	// на второй оставил бы первую применённой, но незапротоколированной.
 	if body.NewUserPolicy != "" {
 		if err := h.settings.SetTenantProduct(r.Context(), scope, "new_user_policy", body.NewUserPolicy); err != nil {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		logging.AccessChanged(r.Context(), "tenant_setting_saved",
+			slog.String("setting", "new_user_policy"),
+			slog.String("value", body.NewUserPolicy))
 	}
 	if body.DefaultHierarchyNodeID != nil {
 		if err := h.settings.SetTenantProduct(r.Context(), scope, "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		logging.AccessChanged(r.Context(), "tenant_setting_saved",
+			slog.String("setting", "default_hierarchy_node_id"),
+			slog.Int64("value_id", *body.DefaultHierarchyNodeID))
 	}
-	logging.AccessChanged(r.Context(), "tenant_access_settings_saved",
-		slog.String("new_user_policy", body.NewUserPolicy))
 	w.WriteHeader(http.StatusNoContent)
 }

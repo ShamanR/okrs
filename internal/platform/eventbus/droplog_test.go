@@ -77,6 +77,41 @@ func TestDroppedEventIsLoggedWithKindAndReason(t *testing.T) {
 	_ = bus.Close(2 * time.Second)
 }
 
+// Потерянное событие — это несостоявшееся следствие чьего-то действия, поэтому
+// запись о потере обязана нести контекст публикатора: без него неизвестно, чей
+// запрос лишился своего события.
+func TestDropRecordCarriesThePublisherContext(t *testing.T) {
+	buf := &bytes.Buffer{}
+	bus := New(logging.New(logging.Config{Output: buf}))
+	Subscribe(bus, "any", func(context.Context, []event.GoalCreated) error { return nil })
+	bus.Start(context.Background())
+	if err := bus.Close(2 * time.Second); err != nil {
+		t.Fatalf("шина не закрылась: %v", err)
+	}
+	buf.Reset()
+
+	ctx := logging.WithScope(
+		logging.WithRequestID(context.Background(), "req-dropped"),
+		logging.Scope{TenantID: 3, ActorID: 33},
+	)
+	bus.Publish(ctx, event.GoalCreated{GoalID: 1})
+
+	recs := dropRecords(t, buf)
+	if len(recs) != 1 {
+		t.Fatalf("потеря не оставила записи: %s", buf.String())
+	}
+	want := map[string]any{
+		logging.KeyRequestID: "req-dropped",
+		logging.KeyTenantID:  float64(3),
+		logging.KeyActorID:   float64(33),
+	}
+	for k, v := range want {
+		if recs[0][k] != v {
+			t.Errorf("%s = %v, ожидалось %v", k, recs[0][k], v)
+		}
+	}
+}
+
 func TestPublishAfterCloseIsLoggedAsDropped(t *testing.T) {
 	buf := &bytes.Buffer{}
 	bus := New(logging.New(logging.Config{Output: buf}))

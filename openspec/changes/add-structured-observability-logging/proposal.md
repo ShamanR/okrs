@@ -82,6 +82,26 @@
 - `internal/usecase/notification` — логирование результата доставки
   во внешние каналы.
 
+Дополнено по итогам реализации и code review:
+
+- `internal/platform/eventbus` — аддитивное дополнение публичного API
+  (`SubscribeAllWithContext`, тип `Delivered`) и перенос контекста публикации
+  каждого события через коалесценцию. Существующие `Subscribe`/`SubscribeAll`
+  и тип `Handler[T]` не меняются.
+- `internal/http/httperr` — новый пакет с общим поведением ошибочных ответов;
+  через него проходят все шесть error-writer'ов слоя API, а не два, как
+  предполагалось изначально.
+- `internal/http/handlers/api/v1/session/*`, `internal/http/handlers/web/auth/*` —
+  передача технической причины в обёртку ответа на 5xx-путях, отвечающих
+  через `http.Error`.
+- `internal/http/handlers/web/common` — устранение утечки `err.Error()`
+  в тело ответа.
+- `internal/service/activity`, `internal/service/healthcheckin`,
+  `internal/scheduler` — перевод существующих записей на контекстные варианты
+  и на константы типов записей.
+- `README.md`, `docker-compose.yml` — переменные `LOG_LEVEL`, `LOG_FORMAT`,
+  `SERVICE_NAME`, `ENV` и требование к настройке сбора логов.
+
 **Инфраструктура:** формат строки в stdout меняется с текста на JSON —
 конфигурация Logstash/collector'а должна разбирать JSON (`json` codec/filter)
 вместо `grok` по текстовой строке. Это единственное внешнее ожидание,

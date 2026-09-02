@@ -5,16 +5,19 @@ package logout
 // иначе он останется «залогинен» с мёртвым токеном.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	authpkg "okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/platform/logging"
 	"okrs/internal/store/users"
 )
 
@@ -112,5 +115,73 @@ func TestStoreErrorStillLogsOut(t *testing.T) {
 	w := post(t, &fakeStore{delErr: errors.New("boom")}, &http.Cookie{Name: cookieName, Value: "sess-1"})
 	if w.Code != http.StatusFound || w.Header().Get("Location") != "/login" {
 		t.Fatalf("код=%d Location=%q, want 302 /login", w.Code, w.Header().Get("Location"))
+	}
+}
+
+// — аудит выхода —
+
+// postLogged повторяет post, но с логгером в контексте, чтобы видеть записи.
+func postLogged(t *testing.T, st *fakeStore, user *domain.User) []map[string]any {
+	t.Helper()
+	buf := &bytes.Buffer{}
+
+	r := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	r.AddCookie(&http.Cookie{Name: cookieName, Value: "sess-1"})
+	ctx := logging.WithLogger(r.Context(), logging.New(logging.Config{Output: buf}))
+	if user != nil {
+		ctx = authpkg.WithUser(ctx, user)
+	}
+	New(manager(t, st)).Post(httptest.NewRecorder(), r.WithContext(ctx))
+
+	var out []map[string]any
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("запись не является валидным JSON: %v\n%s", err, line)
+		}
+		out = append(out, rec)
+	}
+	return out
+}
+
+func TestSuccessfulLogoutIsAudited(t *testing.T) {
+	recs := postLogged(t, &fakeStore{}, &domain.User{ID: 42, DisplayName: "Кто-то", Email: "a@example.com"})
+
+	if len(recs) != 1 {
+		t.Fatalf("ожидалась одна запись, получено %d: %v", len(recs), recs)
+	}
+	rec := recs[0]
+	if rec[logging.KeyEvent] != logging.EventAuthLogout || rec["level"] != "INFO" {
+		t.Errorf("event/level = %v/%v, ожидались %s/INFO", rec[logging.KeyEvent], rec["level"], logging.EventAuthLogout)
+	}
+	if rec[logging.KeyActorID] != float64(42) {
+		t.Errorf("actor_id = %v, ожидалось 42", rec[logging.KeyActorID])
+	}
+}
+
+// Если серверная сессия не удалена, она остаётся действующей — назвать это
+// успешным выходом значило бы записать в аудит ложь о безопасности.
+func TestFailedSessionDeletionIsNotReportedAsLogout(t *testing.T) {
+	recs := postLogged(t, &fakeStore{delErr: errors.New("db is down")},
+		&domain.User{ID: 42, DisplayName: "Кто-то"})
+
+	if len(recs) != 1 {
+		t.Fatalf("ожидалась одна запись, получено %d: %v", len(recs), recs)
+	}
+	rec := recs[0]
+	if rec["level"] != "ERROR" {
+		t.Errorf("уровень = %v, ожидался ERROR", rec["level"])
+	}
+	if rec["outcome"] != "failed" {
+		t.Errorf("outcome = %v, ожидался failed", rec["outcome"])
+	}
+	if rec["err"] != "db is down" {
+		t.Errorf("причина не записана: %v", rec["err"])
+	}
+	if rec["msg"] == "user logged out" {
+		t.Error("отказ удаления сессии записан как успешный выход")
 	}
 }

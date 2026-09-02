@@ -394,7 +394,10 @@ func (b *Bus) PublishBatch(ctx context.Context, evs []event.Event) {
 			// pool the caller is free to tear down right after. Either way: drop, same
 			// as a full buffer would, and counted the same in Dropped().
 			b.dropped.Add(int64(len(batch)))
-			b.logger.Warn("eventbus: bus closed, events dropped",
+			// WarnContext, а не Warn: контекст публикации несёт запрос, организацию
+			// и действующего пользователя, а запись о потере без них не позволяет
+			// узнать, чьё действие потеряло событие.
+			b.logger.WarnContext(ctx, "eventbus: bus closed, events dropped",
 				slog.String(logging.KeyEvent, logging.EventEventDropped),
 				slog.String("subscriber", s.name),
 				slog.String("reason", "bus closed"),
@@ -414,7 +417,8 @@ func (b *Bus) PublishBatch(ctx context.Context, evs []event.Event) {
 			case s.ch <- queued{ctx: async, ev: ev}:
 			default:
 				b.dropped.Add(1)
-				b.logger.Warn("eventbus: buffer full, event dropped",
+				// См. комментарий выше о WarnContext.
+				b.logger.WarnContext(ctx, "eventbus: buffer full, event dropped",
 					slog.String(logging.KeyEvent, logging.EventEventDropped),
 					slog.String("subscriber", s.name),
 					slog.String("reason", "subscriber buffer full"),
