@@ -194,6 +194,14 @@ func runWith(logOutput io.Writer, seed bool) int {
 	// видел бы инстанс работающим, хотя тот не обслужил ни одного запроса.
 	ln, err := listenAndAnnounce(logger, fmt.Sprintf(":%s", port))
 	if err != nil {
+		// Просто вернуться нельзя: app.New уже запустил шину и фоновые задачи,
+		// а отложенный pool.Close() сработает сразу после возврата — петли
+		// продолжали бы работать против закрываемого пула. Обслуживание останавливать
+		// нечего — оно не начиналось, — поэтому только дренаж.
+		drainApp(logger, a.Close)
+		logger.Error("shutdown complete after bind failure",
+			slog.String(logging.KeyEvent, logging.EventAppShutdown),
+			slog.String("err", err.Error()))
 		return 1
 	}
 
@@ -214,7 +222,8 @@ func runWith(logOutput io.Writer, seed bool) int {
 	// notifications subscriber gets to run against a live pool), and only then close
 	// the pool via the deferred pool.Close() above. Reversing this loses events to a
 	// closed pool. This ordering holds regardless of why we got here — a signal or a
-	// failed listener — so a failed bind still exits cleanly, just with exit code 1.
+	// failed serve. Отказ связывания сюда не доходит вовсе и дренится выше,
+	// своей веткой.
 	shutdownSequence(logger, srv.Shutdown, a.Close)
 
 	if serveErr != nil {
@@ -279,13 +288,22 @@ func shutdownSequence(logger *slog.Logger, stopServing func(context.Context) err
 		logger.Info("http server stopped serving", slog.String(logging.KeyEvent, logging.EventAppShutdown))
 	}
 
+	drainApp(logger, drainBus)
+}
+
+// drainApp дожидается обработки отложенных событий и остановки фоновых задач.
+//
+// Вынесено из shutdownSequence отдельно, потому что есть второй путь выхода:
+// при отказе связывания сокета обслуживание не начиналось, но шина и фоновые
+// задачи уже запущены и их всё равно надо остановить до закрытия пула.
+func drainApp(logger *slog.Logger, drainBus func(time.Duration) error) {
 	if err := drainBus(busDrainTimeout); err != nil {
 		logger.Warn("event bus did not drain cleanly",
 			slog.String(logging.KeyEvent, logging.EventAppShutdown),
 			slog.String("err", err.Error()))
-	} else {
-		logger.Info("event bus drained", slog.String(logging.KeyEvent, logging.EventAppShutdown))
+		return
 	}
+	logger.Info("event bus drained", slog.String(logging.KeyEvent, logging.EventAppShutdown))
 }
 
 func loadAuthConfig() auth.Config {

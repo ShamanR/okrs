@@ -188,6 +188,43 @@ func TestShutdownSequenceWarnsWhenStepDoesNotComplete(t *testing.T) {
 	}
 }
 
+// Отказ связывания сокета — второй путь выхода: обслуживание не начиналось,
+// но шина и фоновые задачи уже запущены и их надо остановить до закрытия пула.
+func TestDrainAppStopsTheBusAndReportsOutcome(t *testing.T) {
+	t.Run("чистый дренаж", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		var gotTimeout time.Duration
+
+		drainApp(logging.New(logging.Config{Output: buf}), func(d time.Duration) error {
+			gotTimeout = d
+			return nil
+		})
+
+		if gotTimeout != busDrainTimeout {
+			t.Errorf("таймаут дренажа = %v, ожидался %v", gotTimeout, busDrainTimeout)
+		}
+		if findRecord(decodeRecords(t, buf), logging.EventAppShutdown, "event bus drained") == nil {
+			t.Fatalf("дренаж не запротоколирован: %s", buf.String())
+		}
+	})
+
+	t.Run("незавершённый дренаж", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+
+		drainApp(logging.New(logging.Config{Output: buf}), func(time.Duration) error {
+			return errors.New("не уложился в таймаут")
+		})
+
+		rec := findRecord(decodeRecords(t, buf), logging.EventAppShutdown, "event bus did not drain cleanly")
+		if rec == nil {
+			t.Fatalf("отказ дренажа не запротоколирован: %s", buf.String())
+		}
+		if rec["level"] != "WARN" || rec["err"] != "не уложился в таймаут" {
+			t.Errorf("уровень/причина = %v/%v", rec["level"], rec["err"])
+		}
+	})
+}
+
 func TestShutdownSequencePassesTimeoutsToSteps(t *testing.T) {
 	buf := &bytes.Buffer{}
 	var gotDrainTimeout time.Duration

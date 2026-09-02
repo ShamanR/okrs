@@ -55,9 +55,12 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		// Фиксируется факт изменения, но не значение: new_user_policy не проверяется
+		// против перечисления, то есть в него попадает произвольная строка от
+		// клиента. Под общим ключом value редакция по имени ключа её не маскирует,
+		// и содержимое вида токена или пароля утекло бы в лог.
 		logging.AccessChanged(r.Context(), "tenant_setting_saved",
-			slog.String("setting", "new_user_policy"),
-			slog.String("value", body.NewUserPolicy))
+			slog.String("setting", "new_user_policy"))
 	}
 	if body.DefaultHierarchyNodeID != nil {
 		if err := h.settings.SetTenantProduct(r.Context(), scope, "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
