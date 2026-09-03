@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/httperr"
@@ -511,6 +513,49 @@ func TestAccessDeniedIsLoggedAsItsOwnRecord(t *testing.T) {
 	}
 }
 
+// Отказ по приостановленной организации обязан её называть: организация к этому
+// моменту уже разрешена, и без её идентификатора отказ невозможно отнести
+// к пострадавшей организации. Порядок значим — LogContext стоит ДО гейта членства.
+func TestSuspendedTenantDenialNamesTheTenant(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	user := &domain.User{ID: 99, Provider: "github"}
+	suspended := &domain.Tenant{ID: 7, Status: domain.TenantSuspended}
+
+	var handler http.Handler = http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("обработчик не должен был выполниться")
+	})
+	handler = auth.RequireMembershipMiddleware(handler)
+	handler = LogContext(handler)
+	// Подменяет сессию и резолв организации — оба кладут значения в НОВЫЙ request.
+	handler = func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.WithUser(r.Context(), user)
+			ctx = auth.WithTenant(ctx, suspended)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}(handler)
+	handler = AccessLog(logger)(handler)
+	handler = RequestID(handler)
+
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/goals", nil))
+
+	denied := byEvent(decode(t, buf), logging.EventAuthzDenied)
+	if len(denied) != 1 {
+		t.Fatalf("ожидалась одна запись об отказе: %s", buf.String())
+	}
+	if denied[0][logging.KeyTenantID] != float64(7) {
+		t.Errorf("tenant_id = %v, ожидалось 7", denied[0][logging.KeyTenantID])
+	}
+	if denied[0][logging.KeyActorID] != float64(99) {
+		t.Errorf("actor_id = %v, ожидалось 99", denied[0][logging.KeyActorID])
+	}
+	if denied[0]["reason"] != "tenant is not active" {
+		t.Errorf("причина = %v", denied[0]["reason"])
+	}
+}
+
 func TestDeniedRecordCarriesUserIDWhenKnown(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := logging.New(logging.Config{Output: buf})
@@ -604,5 +649,96 @@ func TestHandlerRecordsInheritTheRequestID(t *testing.T) {
 		if r[logging.KeyRequestID] != id {
 			t.Errorf("запись %q не связана с запросом: %v", r["msg"], r[logging.KeyRequestID])
 		}
+	}
+}
+
+// — шаблон маршрута вместо конкретного пути —
+
+// Маршрут /invite/{token} несёт в пути действующий токен приглашения. Записывать
+// конкретный путь значило бы класть в лог учётные данные: любой, у кого есть
+// доступ к логам, смог бы принять чужое приглашение.
+func TestRoutePatternIsLoggedInsteadOfSecretPathParam(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	const token = "s3cret-invite-token"
+	r := chi.NewRouter()
+	r.Use(RequestID)
+	r.Use(AccessLog(logger))
+	r.Get("/invite/{token}", func(http.ResponseWriter, *http.Request) {})
+
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/invite/"+token, nil))
+
+	out := buf.String()
+	if strings.Contains(out, token) {
+		t.Fatalf("токен приглашения попал в лог: %s", out)
+	}
+	rec := byEvent(decode(t, buf), logging.EventHTTPRequest)[0]
+	if rec["path"] != "/invite/{token}" {
+		t.Errorf("path = %v, ожидался шаблон маршрута", rec["path"])
+	}
+}
+
+// Несовпавший путь шаблона не имеет, и в запись идёт запрошенный путь: иначе
+// не увидеть, что именно отдаёт 404 после выката.
+func TestUnmatchedPathFallsBackToTheRequestedPath(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	r := chi.NewRouter()
+	r.Use(RequestID)
+	r.Use(AccessLog(logger))
+	r.Get("/goals", func(http.ResponseWriter, *http.Request) {})
+
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/nope", nil))
+
+	rec := byEvent(decode(t, buf), logging.EventHTTPRequest)[0]
+	if rec["path"] != "/nope" {
+		t.Errorf("path = %v, ожидался /nope", rec["path"])
+	}
+	if rec["status"] != float64(http.StatusNotFound) {
+		t.Errorf("status = %v, ожидался 404", rec["status"])
+	}
+}
+
+// — паника после начала ответа —
+
+// Дописать 500 уже нельзя, но и завершать ответ штатно нельзя: клиент получил бы
+// усечённое тело со статусом успеха. Поток обрывается, а запись помечается.
+func TestPanicAfterHeaderAbortsAndIsNotReportedAsSuccess(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("частичное тело"))
+		panic("сломалось на середине ответа")
+	})
+	handler = Recovery(logger)(handler)
+	handler = AccessLog(logger)(handler)
+	handler = RequestID(handler)
+
+	func() {
+		defer func() {
+			if rv := recover(); rv != http.ErrAbortHandler {
+				t.Errorf("ожидался обрыв потока через ErrAbortHandler, получено: %v", rv)
+			}
+		}()
+		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/goals", nil))
+	}()
+
+	recs := decode(t, buf)
+	if len(byEvent(recs, logging.EventHTTPPanic)) != 1 {
+		t.Fatalf("паника не запротоколирована: %s", buf.String())
+	}
+	req := byEvent(recs, logging.EventHTTPRequest)
+	if len(req) != 1 {
+		t.Fatalf("запись о запросе потеряна при обрыве: %s", buf.String())
+	}
+	if req[0]["aborted"] != true {
+		t.Errorf("ответ не помечен прерванным: %v", req[0])
+	}
+	if req[0]["level"] != "ERROR" {
+		t.Errorf("уровень = %v, ожидался ERROR: успехом это называть нельзя", req[0]["level"])
 	}
 }

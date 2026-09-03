@@ -460,11 +460,13 @@ func (s *Server) Routes() http.Handler {
 			if !s.auth.Disabled() {
 				r.Use(auth.RequireAuthMiddleware)
 				r.Use(auth.TenantResolveMiddleware(s.tenantResolver))
+				// Сразу после резолва организации и ДО гейтов: отказ по
+				// приостановленной организации должен уметь её назвать — она уже
+				// известна, а после гейта этот middleware уже не выполнится.
+				r.Use(middleware.LogContext)
 				r.Use(auth.RequireMembershipMiddleware)
 				r.Use(auth.ScopeMiddleware(s.policy, s.auth))
 			}
-			// Организация разрешена только здесь — дополняем контекст tenant_id.
-			r.Use(middleware.LogContext)
 			r.Use(csrf.Handler)
 
 			s.registerWebRoutes(r, deps)

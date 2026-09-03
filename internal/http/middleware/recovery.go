@@ -54,10 +54,16 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 
 				_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError),
 					fmt.Errorf("panic: %v", rv))
-				// Если заголовок уже ушёл, дописать 500 нельзя — но запись о панике
-				// уже сделана, и это главное.
+				// Заголовок уже ушёл: дописать 500 нельзя, но и завершать ответ
+				// штатно нельзя. Клиент получил бы усечённое тело со статусом
+				// успеха и никак не отличил бы его от полного. Поэтому помечаем
+				// запись как прерванную и обрываем поток: ErrAbortHandler —
+				// договорённый способ закрыть соединение без собственного вывода
+				// net/http. Запись о запросе при этом не теряется — access-log
+				// пишет её из defer.
 				if rec, ok := w.(*Recorder); ok && rec.wroteHeader {
-					return
+					rec.markAborted()
+					panic(http.ErrAbortHandler)
 				}
 				http.Error(w, "internal server error", http.StatusInternalServerError)
 			}()

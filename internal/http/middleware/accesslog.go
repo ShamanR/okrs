@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/httperr"
@@ -30,7 +32,15 @@ type Recorder struct {
 
 	user  *domain.User
 	scope logging.Scope
+
+	// aborted отмечает ответ, оборванный паникой уже после отправки заголовка.
+	// Статус на проводе к этому моменту уже отправлен и обычно равен 200,
+	// поэтому без этого флага запись о запросе выглядела бы чистым успехом.
+	aborted bool
 }
+
+// markAborted фиксирует, что ответ не был доведён до конца.
+func (rec *Recorder) markAborted() { rec.aborted = true }
 
 func (rec *Recorder) WriteHeader(status int) {
 	if !rec.wroteHeader {
@@ -88,46 +98,77 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			// места для зависимости — в первую очередь гейты доступа в internal/auth.
 			r = r.WithContext(logging.WithLogger(r.Context(), logger))
 
+			// Запись отложена: паника, оборвавшая уже начатый ответ, проходит
+			// сквозь этот кадр наружу, и без defer запрос не оставил бы следа вовсе.
+			defer func() {
+				attrs := []any{
+					slog.String(logging.KeyEvent, logging.EventHTTPRequest),
+					slog.String("method", r.Method),
+					// Шаблон маршрута, а не конкретный путь: параметр пути может
+					// быть учётными данными (/invite/{token} — действующий токен
+					// приглашения), а редакция по имени ключа произвольную строку
+					// не маскирует. Шаблон ко всему прочему и агрегируется.
+					slog.String("path", routePattern(r)),
+					slog.Int("status", rec.status),
+					slog.Int64("duration_ms", time.Since(start).Milliseconds()),
+				}
+				if rec.aborted {
+					attrs = append(attrs, slog.Bool("aborted", true))
+				}
+				if rec.user != nil {
+					attrs = append(attrs,
+						slog.Bool("authenticated", true),
+						slog.String("provider", rec.user.Provider),
+						slog.Bool("is_system_admin", rec.user.IsSystemAdmin),
+					)
+				} else {
+					attrs = append(attrs, slog.Bool("authenticated", false))
+				}
+				// Код ошибки обязателен для любого ошибочного ответа, а часть
+				// обработчиков отвечает напрямую через http.Error, мимо общих
+				// error-writer'ов, и код не записывает. Выводим его из статуса:
+				// выборка по error_code не должна молча терять часть отказов.
+				if code := rec.errCode; code != "" {
+					attrs = append(attrs, slog.String("error_code", code))
+				} else if rec.status >= http.StatusBadRequest {
+					attrs = append(attrs, slog.String("error_code", httperr.CodeForStatus(rec.status)))
+				}
+				if rec.errCause != nil {
+					attrs = append(attrs, slog.String("err", rec.errCause.Error()))
+				}
+
+				// Контекст пересобирается с накопленным scope: идентификаторы
+				// организации и пользователя добавит обработчик логгера, теми же
+				// ключами, что и у любой другой записи.
+				ctx := logging.WithScope(r.Context(), rec.scope)
+				level := levelForStatus(rec.status)
+				if rec.aborted {
+					// На проводе остался статус успеха, но ответ не состоялся.
+					level = slog.LevelError
+				}
+				logger.Log(ctx, level, "request", attrs...)
+			}()
+
 			next.ServeHTTP(rec, r)
-
-			attrs := []any{
-				slog.String(logging.KeyEvent, logging.EventHTTPRequest),
-				slog.String("method", r.Method),
-				// Только путь: строка запроса может нести персональные данные
-				// и разрушает агрегацию по маршруту.
-				slog.String("path", r.URL.Path),
-				slog.Int("status", rec.status),
-				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-			}
-			if rec.user != nil {
-				attrs = append(attrs,
-					slog.Bool("authenticated", true),
-					slog.String("provider", rec.user.Provider),
-					slog.Bool("is_system_admin", rec.user.IsSystemAdmin),
-				)
-			} else {
-				attrs = append(attrs, slog.Bool("authenticated", false))
-			}
-			// Код ошибки обязателен для любого ошибочного ответа, а часть
-			// обработчиков отвечает напрямую через http.Error, мимо общих
-			// error-writer'ов, и код не записывает. Выводим его из статуса:
-			// выборка по error_code не должна молча терять часть отказов.
-			if code := rec.errCode; code != "" {
-				attrs = append(attrs, slog.String("error_code", code))
-			} else if rec.status >= http.StatusBadRequest {
-				attrs = append(attrs, slog.String("error_code", httperr.CodeForStatus(rec.status)))
-			}
-			if rec.errCause != nil {
-				attrs = append(attrs, slog.String("err", rec.errCause.Error()))
-			}
-
-			// Контекст пересобирается с накопленным scope: идентификаторы
-			// организации и пользователя добавит обработчик логгера, теми же
-			// ключами, что и у любой другой записи.
-			ctx := logging.WithScope(r.Context(), rec.scope)
-			logger.Log(ctx, levelForStatus(rec.status), "request", attrs...)
 		})
 	}
+}
+
+// routePattern возвращает шаблон совпавшего маршрута вида /invite/{token}.
+//
+// chi кладёт свой RouteContext в запрос до запуска middleware и заполняет его
+// по ходу маршрутизации, поэтому после обработки шаблон уже известен.
+//
+// Если маршрут не совпал (404), шаблона нет и в запись идёт запрошенный путь:
+// без него невозможно увидеть, что именно отдаёт 404 после выката, а несовпавший
+// путь по определению не принадлежит ни одному из маршрутов с учётными данными.
+func routePattern(r *http.Request) string {
+	if rctx := chi.RouteContext(r.Context()); rctx != nil {
+		if p := rctx.RoutePattern(); p != "" {
+			return p
+		}
+	}
+	return r.URL.Path
 }
 
 // levelForStatus: ответ об ошибке сервера — error, об ошибке клиента —
