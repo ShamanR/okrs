@@ -5,11 +5,14 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	authpkg "okrs/internal/auth"
 	"okrs/internal/core/domain"
 	webauth "okrs/internal/http/handlers/web/auth"
+	"okrs/internal/http/httperr"
+	"okrs/internal/platform/logging"
 )
 
 // Onboarder routes a freshly logged-in user: redeem an invite token or register a new
@@ -56,16 +59,26 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	start := time.Now()
 	identity, err := p.Exchange(r.Context(), code)
+	logging.ExternalCall(r.Context(), "oauth_provider", time.Since(start), err,
+		slog.String("provider", name))
 	if err != nil {
-		h.logger.Error("oauth exchange", slog.String("provider", name), slog.String("error", err.Error()))
+		h.logger.WarnContext(r.Context(), "oauth exchange failed",
+			slog.String(logging.KeyEvent, logging.EventAuthFailed),
+			slog.String("provider", name),
+			slog.String("err", err.Error()))
 		http.Error(w, "authentication failed", http.StatusBadGateway)
 		return
 	}
 
 	user, sess, err := h.mgr.Login(r.Context(), identity, r.UserAgent(), r.RemoteAddr)
 	if err != nil {
-		h.logger.Error("login", slog.String("error", err.Error()))
+		h.logger.ErrorContext(r.Context(), "login failed",
+			slog.String(logging.KeyEvent, logging.EventAuthFailed),
+			slog.String("provider", name),
+			slog.String("err", err.Error()))
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -75,11 +88,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.onboardAfterLogin(w, r, user.ID, sess.ID)
 
-	h.logger.Info("user logged in",
-		slog.Int64("user_id", user.ID),
-		slog.String("provider", identity.Provider),
-		slog.String("display_name", user.DisplayName),
-	)
+	h.logLogin(r.Context(), user.ID, identity.Provider)
 
 	next := "/teamOkrs"
 	if nc, err := r.Cookie("okrs_oauth_next"); err == nil && nc.Value != "" {
@@ -89,6 +98,22 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "okrs_oauth_next", MaxAge: -1, Path: "/"})
 	}
 	http.Redirect(w, r, next, http.StatusFound)
+}
+
+// logLogin фиксирует успешный вход.
+//
+// Отдельный метод, а не вызов логгера по месту: состав полей этой записи —
+// требование безопасности, а не деталь оформления. Пользователь опознаётся
+// числовым идентификатором; отображаемое имя и адрес почты в лог не попадают
+// (раньше здесь писался display_name). Иначе это правило нечем закрепить:
+// Get требует настоящего Manager с провайдером и базой, поэтому запись о входе
+// оставалась бы единственной auth-записью без гарда.
+func (h *Handler) logLogin(ctx context.Context, userID int64, provider string) {
+	h.logger.InfoContext(ctx, "user logged in",
+		slog.String(logging.KeyEvent, logging.EventAuthLogin),
+		slog.Int64(logging.KeyActorID, userID),
+		slog.String("provider", provider),
+	)
 }
 
 // onboardAfterLogin redeems a pending invite (priority) or registers a new user into the
@@ -105,6 +130,9 @@ func (h *Handler) onboardAfterLogin(w http.ResponseWriter, r *http.Request, user
 		// Invalid invite falls through to normal new-user routing below.
 	}
 	if _, err := h.onboard.EnsureRegistration(r.Context(), userID); err != nil {
-		h.logger.Error("ensure registration", slog.String("error", err.Error()))
+		h.logger.ErrorContext(r.Context(), "ensure registration failed",
+			slog.String(logging.KeyEvent, logging.EventAuthLogin),
+			slog.Int64(logging.KeyActorID, userID),
+			slog.String("err", err.Error()))
 	}
 }

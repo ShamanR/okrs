@@ -4,12 +4,14 @@ package systemadmin
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"okrs/internal/auth"
 	"okrs/internal/http/handlers/api/v1/system/systemcommon"
+	"okrs/internal/platform/logging"
 	"okrs/internal/service/provisioning"
 	"okrs/internal/store/users"
 )
@@ -48,6 +50,9 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		systemcommon.WriteError(w, http.StatusInternalServerError, err.Error())
 	default:
+		logging.AccessChanged(r.Context(), "system_admin_set",
+			slog.Int64("target_user_id", userID),
+			slog.Bool("is_system_admin", body.IsSystemAdmin))
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

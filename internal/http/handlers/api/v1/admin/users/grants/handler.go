@@ -3,10 +3,12 @@ package grants
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"okrs/internal/auth"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 )
 
 type Handler struct {
@@ -59,6 +61,9 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "grant_added",
+		slog.Int64("target_user_id", userID),
+		slog.Int64(logging.KeyTeamID, body.TeamID))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -83,5 +88,8 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "grant_removed",
+		slog.Int64("target_user_id", userID),
+		slog.Int64(logging.KeyTeamID, teamID))
 	w.WriteHeader(http.StatusNoContent)
 }

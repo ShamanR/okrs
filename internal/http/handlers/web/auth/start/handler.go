@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	authpkg "okrs/internal/auth"
 	webauth "okrs/internal/http/handlers/web/auth"
+	"okrs/internal/http/httperr"
 )
 
 type Handler struct {
@@ -24,6 +25,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	state, err := webauth.GenerateState()
 	if err != nil {
+		// Причина уходит в итоговую запись о запросе, а не в тело ответа.
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/platform/logging"
 )
 
 // periodLoader loads raw data for a period (within a tenant) from the DB.
@@ -79,6 +80,32 @@ func (c *Cache) InvalidateAll() {
 // StartRefreshLoop runs a background goroutine that proactively refreshes the active period
 // of every tenant. activePeriodsFn returns one entry per tenant that has an active period.
 func (c *Cache) StartRefreshLoop(ctx context.Context, interval time.Duration, activePeriodsFn func(ctx context.Context) []Active) {
+	// Один тик — одна защищённая единица работы. Перехват стоит вокруг тела
+	// тика, а не вокруг всей горутины: снаружи паника остановила бы обновление
+	// кеша навсегда, и кеш молча отдавал бы устаревшие данные до перезапуска.
+	// Без перехвата вовсе паника здесь уносит весь процесс, не оставляя
+	// структурированной записи о причине.
+	tick := func() {
+		defer logging.RecoverBackground(ctx, c.logger, "healthcheckin_cache_refresh")
+
+		for _, a := range activePeriodsFn(ctx) {
+			if a.PeriodID == 0 {
+				continue
+			}
+			if _, err := c.reload(ctx, a.Scope, a.PeriodID); err != nil {
+				if c.logger != nil {
+					c.logger.WarnContext(ctx, "health-checkin cache refresh failed",
+						slog.String(logging.KeyEvent, logging.EventBackgroundTask),
+						slog.String("task", "healthcheckin_cache_refresh"),
+						slog.String("outcome", "failed"),
+						slog.Int64(logging.KeyTenantID, a.Scope.TenantID),
+						slog.Int64("period_id", a.PeriodID),
+						slog.String("err", err.Error()))
+				}
+			}
+		}
+	}
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -87,16 +114,7 @@ func (c *Cache) StartRefreshLoop(ctx context.Context, interval time.Duration, ac
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				for _, a := range activePeriodsFn(ctx) {
-					if a.PeriodID == 0 {
-						continue
-					}
-					if _, err := c.reload(ctx, a.Scope, a.PeriodID); err != nil {
-						if c.logger != nil {
-							c.logger.Warn("health-checkin cache refresh failed", "tenant", a.Scope.TenantID, "period", a.PeriodID, "err", err)
-						}
-					}
-				}
+				tick()
 			}
 		}
 	}()

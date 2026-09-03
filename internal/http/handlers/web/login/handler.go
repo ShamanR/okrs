@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	authpkg "okrs/internal/auth"
+	"okrs/internal/platform/logging"
 )
 
 type Handler struct {
@@ -30,6 +31,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		"Providers": providers,
 		"Next":      r.URL.Query().Get("next"),
 	}); err != nil {
-		h.logger.Error("login template", slog.String("error", err.Error()))
+		h.logger.ErrorContext(r.Context(), "login template failed",
+			slog.String(logging.KeyEvent, logging.EventHTTPRequest),
+			slog.String("err", err.Error()))
 	}
 }

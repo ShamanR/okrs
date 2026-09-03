@@ -4,9 +4,12 @@ package healthcheckin
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
+	"okrs/internal/platform/logging"
 	hcsvc "okrs/internal/service/healthcheckin"
 )
 
@@ -77,6 +80,8 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "tenant_setting_saved",
+		slog.String("setting", "health_checkin_config"))
 	if h.cache != nil {
 		h.cache.InvalidateAll()
 	}
@@ -84,9 +89,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	httperr.WriteJSON(w, status, msg)
 }
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

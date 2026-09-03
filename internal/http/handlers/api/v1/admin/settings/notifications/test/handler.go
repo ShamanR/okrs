@@ -9,13 +9,16 @@ package test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
+	"time"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
 	adminnotifications "okrs/internal/http/handlers/api/v1/admin/settings/notifications"
+	"okrs/internal/platform/logging"
 	notificationchannelsvc "okrs/internal/service/notificationchannel"
 	"okrs/notifychannel"
 
@@ -47,7 +50,8 @@ func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sender, err := h.svc.Sender(r.Context(), scope, chi.URLParam(r, "channel"))
+	channel := chi.URLParam(r, "channel")
+	sender, err := h.svc.Sender(r.Context(), scope, channel)
 	switch {
 	case err == nil:
 	case errors.Is(err, notificationchannelsvc.ErrNotConfigured):
@@ -81,7 +85,13 @@ func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
 		Title: "Проверка канала уведомлений",
 		Body:  "Если вы видите это сообщение, канал настроен верно.",
 	}
-	if err := sender.Send(r.Context(), notifychannel.Target{Email: user.Email}, msg); err != nil {
+	// Адресат в запись не попадает: это почта администратора. В лог идёт имя
+	// канала, длительность и исход — то, чего достаточно для расследования.
+	start := time.Now()
+	sendErr := sender.Send(r.Context(), notifychannel.Target{Email: user.Email}, msg)
+	logging.ExternalCall(r.Context(), "notification_channel", time.Since(start), sendErr,
+		slog.String("channel", channel))
+	if err := sendErr; err != nil {
 		// The channel's own message is the only thing that tells the admin whether the
 		// token is revoked or the URL is wrong, so an answer from the channel's API is
 		// passed through rather than replaced by a generic failure. It describes the

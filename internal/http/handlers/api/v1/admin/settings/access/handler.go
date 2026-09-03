@@ -3,10 +3,12 @@ package access
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"okrs/internal/auth"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 )
 
 type Handler struct {
@@ -45,17 +47,29 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		admincommon.WriteError(w, http.StatusForbidden, "no active tenant")
 		return
 	}
+	// Каждое изменение фиксируется СРАЗУ после своего успеха, а не одной записью
+	// в конце: записи идут поочерёдно и не в одной транзакции, так что отказ
+	// на второй оставил бы первую применённой, но незапротоколированной.
 	if body.NewUserPolicy != "" {
 		if err := h.settings.SetTenantProduct(r.Context(), scope, "new_user_policy", body.NewUserPolicy); err != nil {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		// Фиксируется факт изменения, но не значение: new_user_policy не проверяется
+		// против перечисления, то есть в него попадает произвольная строка от
+		// клиента. Под общим ключом value редакция по имени ключа её не маскирует,
+		// и содержимое вида токена или пароля утекло бы в лог.
+		logging.AccessChanged(r.Context(), "tenant_setting_saved",
+			slog.String("setting", "new_user_policy"))
 	}
 	if body.DefaultHierarchyNodeID != nil {
 		if err := h.settings.SetTenantProduct(r.Context(), scope, "default_hierarchy_node_id", *body.DefaultHierarchyNodeID); err != nil {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		logging.AccessChanged(r.Context(), "tenant_setting_saved",
+			slog.String("setting", "default_hierarchy_node_id"),
+			slog.Int64("value_id", *body.DefaultHierarchyNodeID))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -3,20 +3,27 @@ package general
 // Тесты переехали из пакета admin вместе с обработчиками GET/POST /api/v1/admin/settings/general.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"okrs/internal/auth"
-	"okrs/internal/core/domain"
 	"strconv"
 	"strings"
 	"testing"
+
+	"okrs/internal/auth"
+	"okrs/internal/core/domain"
+	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 )
 
 type fakeSettings struct {
 	data map[string]json.RawMessage
+	// failOn заставляет запись именно этого ключа отказать — чтобы проверить
+	// судьбу изменений, которые успели примениться до него.
+	failOn string
 }
 
 func newFakeSettings() *fakeSettings { return &fakeSettings{data: map[string]json.RawMessage{}} }
@@ -32,6 +39,9 @@ func (f *fakeSettings) GetTenant(_ context.Context, scope domain.TenantScope, ke
 func (f *fakeSettings) SetTenantProduct(_ context.Context, scope domain.TenantScope, key string, value any) error {
 	if strings.HasPrefix(key, "entitlement.") {
 		return errors.New("entitlement.* is system-admin only")
+	}
+	if f.failOn != "" && key == f.failOn {
+		return errors.New("хранилище недоступно")
 	}
 	raw, err := json.Marshal(value)
 	if err != nil {
@@ -187,6 +197,46 @@ func TestHandleUpdateGeneralSettingsRenamesTenant(t *testing.T) {
 	}
 	if fr.id != 1 || fr.name != "Acme LLC" {
 		t.Fatalf("rename call = {id:%d name:%q}, want {1 Acme LLC}", fr.id, fr.name)
+	}
+}
+
+// Записи идут поочерёдно и не в одной транзакции: отказ на второй настройке
+// оставляет уже применённое переименование организации в силе. Аудит обязан
+// увидеть его — иначе изменение, которое реально произошло, не оставит следа.
+func TestCommittedChangesAreAuditedEvenIfALaterWriteFails(t *testing.T) {
+	buf := &bytes.Buffer{}
+	fs := newFakeSettings()
+	fs.failOn = admincommon.SettingKeyDocumentationURL
+	fr := &fakeRenamer{}
+
+	body := strings.NewReader(`{"name":"Acme LLC","documentation_url":"https://docs.example.com"}`)
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/general", body))
+	r = r.WithContext(logging.WithLogger(r.Context(), logging.New(logging.Config{Output: buf})))
+	w := httptest.NewRecorder()
+	New(fr, fs).Post(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("код = %d, ожидался 500", w.Code)
+	}
+	if fr.name != "Acme LLC" {
+		t.Fatalf("переименование не применилось, проверять нечего: %q", fr.name)
+	}
+
+	var actions []string
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("запись не является валидным JSON: %v\n%s", err, line)
+		}
+		if rec[logging.KeyEvent] == logging.EventAccessChanged {
+			actions = append(actions, rec["action"].(string))
+		}
+	}
+	if len(actions) != 1 || actions[0] != "tenant_renamed" {
+		t.Errorf("зафиксированные изменения = %v, ожидалось [tenant_renamed]", actions)
 	}
 }
 

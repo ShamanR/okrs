@@ -3,16 +3,19 @@ package feedback
 // Тесты переехали из пакета admin вместе с обработчиками GET/POST /api/v1/admin/settings/feedback.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"okrs/internal/auth"
-	"okrs/internal/core/domain"
 	"strconv"
 	"strings"
 	"testing"
+
+	"okrs/internal/auth"
+	"okrs/internal/core/domain"
+	"okrs/internal/platform/logging"
 )
 
 type fakeSettings struct {
@@ -56,6 +59,39 @@ func (f *fakeSettings) get(key string) (json.RawMessage, bool) {
 // withTenant attaches the default tenant #1 so TenantScopeFromContext returns {1}.
 func withTenant(r *http.Request) *http.Request {
 	return r.WithContext(auth.WithTenant(r.Context(), &domain.Tenant{ID: 1, Name: "Acme", Status: domain.TenantActive}))
+}
+
+// Настройки обратной связи — такое же административное изменение организации,
+// как остальные: без записи оно не попадает в аудит.
+func TestFeedbackSettingsAreAudited(t *testing.T) {
+	buf := &bytes.Buffer{}
+
+	body := strings.NewReader(`{"feedback_url":"https://f.example.com","feedback_frequency_days":30}`)
+	r := withTenant(httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/feedback", body))
+	r = r.WithContext(logging.WithLogger(r.Context(), logging.New(logging.Config{Output: buf})))
+	w := httptest.NewRecorder()
+	New(newFakeSettings()).Post(w, r)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("код = %d (%s)", w.Code, w.Body.String())
+	}
+
+	var settings []string
+	for _, line := range strings.Split(strings.TrimRight(buf.String(), "\n"), "\n") {
+		if line == "" {
+			continue
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(line), &rec); err != nil {
+			t.Fatalf("запись не является валидным JSON: %v\n%s", err, line)
+		}
+		if rec[logging.KeyEvent] == logging.EventAccessChanged {
+			settings = append(settings, rec["setting"].(string))
+		}
+	}
+	if len(settings) != 4 {
+		t.Fatalf("зафиксировано %d изменений, ожидалось 4: %v", len(settings), settings)
+	}
 }
 
 func TestHandleGetFeedbackSettingsDefaults(t *testing.T) {

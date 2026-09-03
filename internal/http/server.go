@@ -119,6 +119,7 @@ import (
 	"okrs/internal/http/middleware"
 	"okrs/internal/platform/entitlements"
 	"okrs/internal/platform/eventbus"
+	"okrs/internal/platform/logging"
 	"okrs/internal/platform/nomembership"
 	"okrs/internal/platform/secretbox"
 
@@ -298,6 +299,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		// unconfigurable. Warning on every start of a supported configuration is how
 		// operators learn to ignore warnings.
 		logger.Info("NOTIFICATIONS_SECRET_KEY is unset: channels that store a secret cannot be configured until it is set",
+			slog.String(logging.KeyEvent, logging.EventAppStart),
 			"channels", n)
 	}
 	notifChannels, err := notificationchannel.New(st.NotificationChannels, secrets, opts.NotificationChannels, ent, settingsSvc)
@@ -348,6 +350,23 @@ func (s *Server) Routes() http.Handler {
 
 	csrf := middleware.NewCSRF()
 
+	// Наблюдаемость монтируется на корневой роутер, а не внутри группы ниже: chi
+	// отдаёт 404 на несовпавший путь своим NotFound-обработчиком, мимо middleware
+	// любой внутренней группы. При монтаже внутри группы такой 404 не оставлял
+	// ни одной записи — то есть ошибочный ответ без следа в логе.
+	//
+	// Побочный эффект: запросы за статикой тоже попадают в лог. Это осознанный
+	// выбор: полный access-log позволяет увидеть 404 на ассеты после неудачного
+	// выката, а отфильтровать их по path:/static/* на стороне сборщика дешевле,
+	// чем восстанавливать то, чего в логе нет.
+	//
+	// Порядок значим: RequestID снаружи, чтобы всё остальное логировалось с ним;
+	// Recovery ВНУТРИ AccessLog, чтобы паника превращалась в 500 до того, как
+	// access-log снимет статус — иначе упавший запрос не оставит записи о себе.
+	r.Use(middleware.RequestID)
+	r.Use(middleware.AccessLog(s.logger))
+	r.Use(middleware.Recovery(s.logger))
+
 	// Force the browser to revalidate static assets (the SPA bundles and vendored libs)
 	// on every load instead of applying heuristic caching. FileServer answers with a cheap
 	// 304 when the file is unchanged and fresh content once it changes, so clients never run
@@ -363,13 +382,13 @@ func (s *Server) Routes() http.Handler {
 	}))
 
 	r.Group(func(r chi.Router) {
-		r.Use(auth.AccessLogMiddleware(s.logger))
-
 		if s.auth.Disabled() {
 			r.Use(auth.AnonymousUserMiddleware)
 		} else {
 			r.Use(auth.SessionMiddleware(s.auth))
 		}
+		// Личность разрешена — переносим её в контекст логирования.
+		r.Use(middleware.LogContext)
 
 		// Auth routes — public, no CSRF (OAuth callbacks use GET).
 		// Auth-эндпоинты — по пакету на URI. /login в disabled-режиме уводит на корень:
@@ -441,6 +460,10 @@ func (s *Server) Routes() http.Handler {
 			if !s.auth.Disabled() {
 				r.Use(auth.RequireAuthMiddleware)
 				r.Use(auth.TenantResolveMiddleware(s.tenantResolver))
+				// Сразу после резолва организации и ДО гейтов: отказ по
+				// приостановленной организации должен уметь её назвать — она уже
+				// известна, а после гейта этот middleware уже не выполнится.
+				r.Use(middleware.LogContext)
 				r.Use(auth.RequireMembershipMiddleware)
 				r.Use(auth.ScopeMiddleware(s.policy, s.auth))
 			}

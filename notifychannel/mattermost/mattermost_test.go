@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	neturl "net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -528,5 +529,41 @@ func TestTransportFailureStaysRecognisableAsNetError(t *testing.T) {
 	// И заодно фиксируем, ради чего всё: сырой текст содержит адрес.
 	if !strings.Contains(sendErr.Error(), "127.0.0.1") {
 		t.Fatalf("ожидался адрес в сыром тексте ошибки: %v", sendErr)
+	}
+}
+
+// Ошибка канала уходит вызывающему и попадает в лог приложения, поэтому адрес
+// получателя в её тексте оказаться не должен. Отлавливать его из готового текста
+// шаблоном ненадёжно: принимаемые формы адреса шире любого разумного шаблона —
+// однобуквенный TLD, интернационализированные домены. Поэтому адрес просто
+// не попадает в сообщение.
+func TestErrorTextNeverCarriesTheAddress(t *testing.T) {
+	addresses := []string{
+		"nobody@example.com",
+		"a@b.c",
+		"почта@пример.рф",
+	}
+	for _, addr := range addresses {
+		t.Run(addr, func(t *testing.T) {
+			f := &fakeMM{emailErr: http.StatusNotFound}
+			srv := httptest.NewServer(f.handler())
+			defer srv.Close()
+
+			err := newSender(t, srv).Send(context.Background(),
+				notifychannel.Target{Email: addr},
+				notifychannel.Message{Title: "t", Body: "b"})
+			if err == nil {
+				t.Fatal("ожидалась ошибка")
+			}
+
+			text := err.Error()
+			if strings.Contains(text, addr) || strings.Contains(text, neturl.PathEscape(addr)) {
+				t.Fatalf("адрес попал в текст ошибки: %s", text)
+			}
+			// Диагностика при этом сохраняется: видно, какая ручка и какой статус.
+			if !strings.Contains(text, "users/email") || !strings.Contains(text, "404") {
+				t.Errorf("ошибка потеряла диагностику: %s", text)
+			}
+		})
 	}
 }

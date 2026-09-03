@@ -3,11 +3,13 @@ package general
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"okrs/internal/auth"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 )
 
 type Handler struct {
@@ -67,18 +69,31 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		admincommon.WriteError(w, http.StatusForbidden, "no active tenant")
 		return
 	}
+	// Каждое изменение фиксируется СРАЗУ после своего успеха, а не одной записью
+	// в конце: записи идут поочерёдно и не в одной транзакции, поэтому отказ на
+	// любой из последующих оставил бы уже применённое переименование организации
+	// незапротоколированным — а это как раз то изменение, о котором аудит должен
+	// узнать в первую очередь.
 	if err := h.renamer.RenameTenant(r.Context(), scope.TenantID, name); err != nil {
 		admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "tenant_renamed")
+
 	if err := h.settings.SetTenantProduct(r.Context(), scope, admincommon.SettingKeyDocumentationURL, link); err != nil {
 		admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "tenant_setting_saved",
+		slog.String("setting", admincommon.SettingKeyDocumentationURL))
+
 	if err := h.settings.SetTenantProduct(r.Context(), scope, admincommon.SettingKeyEmptyHierarchyMessage, body.EmptyHierarchyMessage); err != nil {
 		admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	logging.AccessChanged(r.Context(), "tenant_setting_saved",
+		slog.String("setting", admincommon.SettingKeyEmptyHierarchyMessage))
+
 	if body.ProgressSnapshotIntervalDays != nil {
 		snapshotDays := *body.ProgressSnapshotIntervalDays
 		if snapshotDays < 1 {
@@ -88,6 +103,9 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 			admincommon.WriteError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		logging.AccessChanged(r.Context(), "tenant_setting_saved",
+			slog.String("setting", admincommon.SettingKeyProgressSnapshotIntervalDays),
+			slog.Int("value", snapshotDays))
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

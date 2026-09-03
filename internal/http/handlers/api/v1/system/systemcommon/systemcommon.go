@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/http/httperr"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
 
@@ -99,9 +100,7 @@ func WriteJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 func WriteError(w http.ResponseWriter, status int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	httperr.WriteJSON(w, status, msg)
 }
 
 // Transition applies a tenant status change (suspend/restore); the two endpoints

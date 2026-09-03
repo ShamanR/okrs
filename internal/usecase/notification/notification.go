@@ -14,6 +14,7 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/event"
+	"okrs/internal/platform/logging"
 	"okrs/internal/store/notificationprefs"
 	"okrs/internal/store/notifications"
 )
@@ -108,8 +109,12 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 				// not a reason to crash the whole batch (this handler runs async,
 				// where the bus recovers panics and would silently drop everything).
 				if u.logger != nil {
-					u.logger.Error("notification: recipient Ord out of range",
-						"ord", rc.Ord, "items", len(items), "type", k.typ, "tenant_id", k.tenantID)
+					u.logger.ErrorContext(ctx, "notification: recipient Ord out of range",
+						slog.String(logging.KeyEvent, logging.EventDomainEvent),
+						slog.Int("ord", rc.Ord),
+						slog.Int("items", len(items)),
+						slog.String("type", k.typ),
+						slog.Int64(logging.KeyTenantID, k.tenantID))
 				}
 				continue
 			}

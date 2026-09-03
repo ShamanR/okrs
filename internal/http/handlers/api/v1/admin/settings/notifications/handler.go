@@ -13,12 +13,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	"okrs/internal/http/handlers/api/v1/admin/admincommon"
+	"okrs/internal/platform/logging"
 	notificationchannelsvc "okrs/internal/service/notificationchannel"
 	"okrs/notifychannel"
 
@@ -141,6 +143,11 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	err := h.svc.Save(r.Context(), scope, in, auth.UserIDFromContext(r.Context()))
 	switch {
 	case err == nil:
+		// Значения настроек в запись не попадают: среди них секрет канала.
+		// Фиксируется факт изменения и то, что проверяемо безопасно.
+		logging.AccessChanged(r.Context(), "notification_channel_saved",
+			slog.String("channel", in.Channel),
+			slog.Bool("enabled", in.Enabled))
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, notificationchannelsvc.ErrUnknownChannel),
 		errors.Is(err, notificationchannelsvc.ErrNotAvailable):

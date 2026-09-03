@@ -116,9 +116,11 @@ func (GoalDeleted) Kind() Kind { return KindGoalDeleted }
 // field name → {before, after}.
 type GoalFieldsChanged struct {
 	Meta
-	GoalID  int64
-	Title   string
-	Changed map[string][2]any
+	GoalID int64
+	Title  string
+	// Тег log:"keys" — для лога: в запись идут только имена изменённых полей,
+	// но не значения — значения здесь это текст, введённый пользователем.
+	Changed map[string][2]any `log:"keys"`
 }
 
 func (GoalFieldsChanged) Kind() Kind { return KindGoalFieldsChanged }
@@ -206,7 +208,8 @@ type KRFieldsChanged struct {
 	Meta
 	GoalID, KRID int64
 	KRTitle      string
-	Changed      map[string][2]any
+	// См. комментарий к GoalFieldsChanged.Changed.
+	Changed map[string][2]any `log:"keys"`
 }
 
 func (KRFieldsChanged) Kind() Kind { return KindKRFieldsChanged }
@@ -223,14 +226,15 @@ func (KRFieldsChanged) Kind() Kind { return KindKRFieldsChanged }
 // included {kind, goal_title}, and toRows reproduces that shape verbatim.
 type KRCheckedIn struct {
 	Meta
-	GoalID, KRID   int64
-	KRTitle        string
-	GoalTitle      string
-	KRKind         domain.KRKind
+	GoalID, KRID int64
+	KRTitle      string
+	GoalTitle    string
+	// Перечислимые значения, а не введённый текст, поэтому безопасны для лога.
+	KRKind         domain.KRKind `log:"safe"`
 	ProgressBefore int
 	ProgressAfter  int
-	HealthBefore   domain.KRHealthStatus
-	HealthAfter    domain.KRHealthStatus
+	HealthBefore   domain.KRHealthStatus `log:"safe"`
+	HealthAfter    domain.KRHealthStatus `log:"safe"`
 	NoteBefore     string
 	NoteAfter      string
 }
@@ -244,9 +248,10 @@ func (KRCheckedIn) Kind() Kind { return KindKRCheckedIn }
 type StatusChanged struct {
 	Meta
 	TeamTitle string
-	Before    domain.TeamPeriodStatus
-	After     domain.TeamPeriodStatus
-	Bulk      bool
+	// Перечислимые значения, а не введённый текст, поэтому безопасны для лога.
+	Before domain.TeamPeriodStatus `log:"safe"`
+	After  domain.TeamPeriodStatus `log:"safe"`
+	Bulk   bool
 }
 
 func (StatusChanged) Kind() Kind { return KindStatusChanged }

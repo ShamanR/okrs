@@ -4,12 +4,14 @@ package role
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/system/systemcommon"
+	"okrs/internal/platform/logging"
 	"okrs/internal/service/provisioning"
 	"okrs/internal/store/memberships"
 )
@@ -51,6 +53,10 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		systemcommon.WriteError(w, http.StatusInternalServerError, err.Error())
 	default:
+		logging.AccessChanged(r.Context(), "member_role_set",
+			slog.Int64(logging.KeyTenantID, tenantID),
+			slog.Int64("target_user_id", userID),
+			slog.String("role", string(role)))
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

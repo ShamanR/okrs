@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/httproute"
+	"okrs/internal/platform/logging"
 )
 
 // SessionMiddleware resolves the session cookie and loads user+session into context.
@@ -34,6 +36,7 @@ func SessionMiddleware(mgr *Manager) func(http.Handler) http.Handler {
 func RequireAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if UserFromContext(r.Context()) == nil {
+			logDenied(r, "no authenticated user")
 			if isAPIRequest(r) {
 				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
@@ -52,6 +55,7 @@ func RequireTenantAdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		role, ok := ActiveRoleFromContext(r.Context())
 		if !ok || role != domain.RoleAdmin {
+			logDenied(r, "active role is not tenant admin")
 			if isAPIRequest(r) {
 				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
@@ -96,6 +100,11 @@ func RequireSystemAdminMiddleware(provisioningToken string) func(http.Handler) h
 			// need to sign in as a system admin. In disabled mode anonymous-local is always
 			// present (non-nil), so this branch is skipped and the request falls through to
 			// 403, matching the spec that disabled-mode system access requires the token.
+			if user == nil {
+				logDenied(r, "no system-admin session and no valid provisioning token")
+			} else {
+				logDenied(r, "user is not a system admin")
+			}
 			if user == nil && !isAPIRequest(r) {
 				http.Redirect(w, r, "/login?next="+r.URL.RequestURI(), http.StatusFound)
 				return
@@ -154,6 +163,11 @@ func RequireMembershipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tn := TenantFromContext(r.Context())
 		if tn == nil || tn.Status != domain.TenantActive {
+			if tn == nil {
+				logDenied(r, "no active tenant membership")
+			} else {
+				logDenied(r, "tenant is not active")
+			}
 			if isAPIRequest(r) {
 				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
 				return
@@ -165,34 +179,37 @@ func RequireMembershipMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// AccessLogMiddleware logs every request with auth fields.
-func AccessLogMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			start := time.Now()
-			rw := &responseWriter{ResponseWriter: w, status: http.StatusOK}
-			next.ServeHTTP(rw, r)
+// Логирование запросов живёт в internal/http/middleware: это не забота
+// аутентификации, а обёртка ответа теперь несёт ещё и код с причиной
+// ошибки ответа.
 
-			user := UserFromContext(r.Context())
-			attrs := []any{
-				slog.String("method", r.Method),
-				slog.String("path", r.URL.Path),
-				slog.Int("status", rw.status),
-				slog.Int64("duration_ms", time.Since(start).Milliseconds()),
-			}
-			if user != nil {
-				attrs = append(attrs,
-					slog.Bool("authenticated", true),
-					slog.Int64("user_id", user.ID),
-					slog.String("provider", user.Provider),
-					slog.Bool("is_system_admin", user.IsSystemAdmin),
-				)
-			} else {
-				attrs = append(attrs, slog.Bool("authenticated", false))
-			}
-			logger.Info("request", attrs...)
-		})
+// logDenied фиксирует отказ в доступе отдельной записью.
+//
+// Отдельная запись, а не только повышенный уровень итоговой записи о запросе:
+// на event=authz_denied строится алерт «кого и куда перестали пускать», и он не
+// должен зависеть от разбора статуса и кода ошибки.
+//
+// Логгер берётся из контекста, потому что сигнатуры гейтов заданы типом
+// func(http.Handler) http.Handler и места для зависимости в них нет; вне цепочки
+// middleware (юнит-тест гейта) FromContext вернёт slog.Default(), и отказ всё равно
+// не потеряется.
+func logDenied(r *http.Request, reason string) {
+	ctx := r.Context()
+	attrs := []any{
+		slog.String(logging.KeyEvent, logging.EventAuthzDenied),
+		slog.String("reason", reason),
+		slog.String("method", r.Method),
+		// Шаблон маршрута, а не конкретный путь: за гейтом может оказаться
+		// маршрут, чей параметр является учётными данными, и отказ записал бы
+		// их в лог. Гейты стоят внутри группы роутера, где шаблон уже известен.
+		slog.String("path", httproute.Pattern(r)),
 	}
+	if u := UserFromContext(ctx); u != nil {
+		// Пользователь опознаётся числовым идентификатором: адрес почты и имя
+		// в логи не попадают.
+		attrs = append(attrs, slog.Int64(logging.KeyActorID, u.ID))
+	}
+	logging.FromContext(ctx).WarnContext(ctx, "access denied", attrs...)
 }
 
 // SetSessionCookie writes the session cookie to the response.
@@ -244,14 +261,4 @@ func AnonymousUserMiddleware(next http.Handler) http.Handler {
 		ctx = WithActiveRole(ctx, domain.RoleAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-type responseWriter struct {
-	http.ResponseWriter
-	status int
-}
-
-func (rw *responseWriter) WriteHeader(status int) {
-	rw.status = status
-	rw.ResponseWriter.WriteHeader(status)
 }

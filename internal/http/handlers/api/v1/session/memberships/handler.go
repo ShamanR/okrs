@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"net/http"
 	"okrs/internal/auth"
+	"okrs/internal/http/httperr"
 	"okrs/internal/service/provisioning"
 	"okrs/internal/store/memberships"
 	"strconv"
@@ -49,6 +50,8 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	list, err := h.members.ListByUserWithTenant(r.Context(), user.ID)
 	if err != nil {
+		// Причина уходит в итоговую запись о запросе, а не в тело ответа.
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 		return
 	}
@@ -76,6 +79,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, provisioning.ErrLastAdmin):
 		http.Error(w, `{"error":"last admin cannot leave"}`, http.StatusConflict)
 	case err != nil:
+		_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
 		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
 	default:
 		w.WriteHeader(http.StatusNoContent)
