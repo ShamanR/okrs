@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/httproute"
 	"okrs/internal/platform/logging"
 )
 
@@ -198,7 +199,10 @@ func logDenied(r *http.Request, reason string) {
 		slog.String(logging.KeyEvent, logging.EventAuthzDenied),
 		slog.String("reason", reason),
 		slog.String("method", r.Method),
-		slog.String("path", r.URL.Path),
+		// Шаблон маршрута, а не конкретный путь: за гейтом может оказаться
+		// маршрут, чей параметр является учётными данными, и отказ записал бы
+		// их в лог. Гейты стоят внутри группы роутера, где шаблон уже известен.
+		slog.String("path", httproute.Pattern(r)),
 	}
 	if u := UserFromContext(ctx); u != nil {
 		// Пользователь опознаётся числовым идентификатором: адрес почты и имя

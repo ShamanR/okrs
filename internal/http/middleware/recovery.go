@@ -7,6 +7,7 @@ import (
 	"runtime/debug"
 
 	"okrs/internal/http/httperr"
+	"okrs/internal/httproute"
 	"okrs/internal/platform/logging"
 )
 
@@ -50,7 +51,7 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 					// Шаблон маршрута, как и в записи о запросе: параметр пути
 					// может быть учётными данными (/invite/{token}), и запись
 					// о панике не должна обходить эту защиту.
-					slog.String("path", routePattern(r)),
+					slog.String("path", httproute.Pattern(r)),
 					slog.String("panic", fmt.Sprint(rv)),
 					slog.String("stack", string(debug.Stack())),
 				)

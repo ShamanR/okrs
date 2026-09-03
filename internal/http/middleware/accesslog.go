@@ -5,11 +5,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/httperr"
+	"okrs/internal/httproute"
 	"okrs/internal/platform/logging"
 )
 
@@ -108,7 +107,7 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 					// быть учётными данными (/invite/{token} — действующий токен
 					// приглашения), а редакция по имени ключа произвольную строку
 					// не маскирует. Шаблон ко всему прочему и агрегируется.
-					slog.String("path", routePattern(r)),
+					slog.String("path", httproute.Pattern(r)),
 					slog.Int("status", rec.status),
 					slog.Int64("duration_ms", time.Since(start).Milliseconds()),
 				}
@@ -152,23 +151,6 @@ func AccessLog(logger *slog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(rec, r)
 		})
 	}
-}
-
-// routePattern возвращает шаблон совпавшего маршрута вида /invite/{token}.
-//
-// chi кладёт свой RouteContext в запрос до запуска middleware и заполняет его
-// по ходу маршрутизации, поэтому после обработки шаблон уже известен.
-//
-// Если маршрут не совпал (404), шаблона нет и в запись идёт запрошенный путь:
-// без него невозможно увидеть, что именно отдаёт 404 после выката, а несовпавший
-// путь по определению не принадлежит ни одному из маршрутов с учётными данными.
-func routePattern(r *http.Request) string {
-	if rctx := chi.RouteContext(r.Context()); rctx != nil {
-		if p := rctx.RoutePattern(); p != "" {
-			return p
-		}
-	}
-	return r.URL.Path
 }
 
 // levelForStatus: ответ об ошибке сервера — error, об ошибке клиента —

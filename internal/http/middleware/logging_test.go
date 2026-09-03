@@ -556,6 +556,42 @@ func TestSuspendedTenantDenialNamesTheTenant(t *testing.T) {
 	}
 }
 
+// Отказ в доступе тоже называет ресурс, и если за гейтом окажется маршрут
+// с секретом в пути, конкретный путь записал бы этот секрет. Гейты стоят внутри
+// группы роутера, где шаблон маршрута уже известен.
+func TestDenialRecordUsesTheRoutePattern(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	const token = "s3cret-invite-token"
+	r := chi.NewRouter()
+	r.Use(RequestID)
+	r.Use(AccessLog(logger))
+	r.Group(func(r chi.Router) {
+		// Гейт откажет: пользователя в контексте нет.
+		r.Use(auth.RequireAuthMiddleware)
+		r.Get("/invite/{token}", func(http.ResponseWriter, *http.Request) {
+			t.Error("обработчик не должен был выполниться")
+		})
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/invite/"+token, nil)
+	req.Header.Set("Accept", "application/json")
+	r.ServeHTTP(httptest.NewRecorder(), req)
+
+	out := buf.String()
+	if strings.Contains(out, token) {
+		t.Fatalf("токен приглашения попал в лог: %s", out)
+	}
+	denied := byEvent(decode(t, buf), logging.EventAuthzDenied)
+	if len(denied) != 1 {
+		t.Fatalf("отказ не запротоколирован: %s", out)
+	}
+	if denied[0]["path"] != "/invite/{token}" {
+		t.Errorf("path = %v, ожидался шаблон маршрута", denied[0]["path"])
+	}
+}
+
 func TestDeniedRecordCarriesUserIDWhenKnown(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := logging.New(logging.Config{Output: buf})
