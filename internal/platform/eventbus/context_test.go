@@ -106,6 +106,12 @@ func TestHandlerPanicRecordCarriesPublisherContextAndKind(t *testing.T) {
 	if rec == nil {
 		t.Fatalf("паника обработчика не оставила записи: %s", buf.String())
 	}
+	// Тип записи, а не только её текст: искать панику по сообщению — ровно то,
+	// что спецификация запрещает делать потребителю лога, и именно поэтому
+	// этот тест проходил, пока паника писалась под типом штатного события.
+	if rec[logging.KeyEvent] != logging.EventBackgroundPanic {
+		t.Errorf("event = %v, ожидался %q", rec[logging.KeyEvent], logging.EventBackgroundPanic)
+	}
 	if rec[logging.KeyRequestID] != "req-panic" {
 		t.Errorf("request_id = %v, ожидался req-panic", rec[logging.KeyRequestID])
 	}

@@ -155,3 +155,60 @@ func TestBackgroundPassSurvivesNilLogger(t *testing.T) {
 		return nil, errors.New("любая ошибка")
 	})
 }
+
+// Паника прохода не должна ронять процесс: фоновая горутина без перехвата уносит
+// с собой всё приложение, а рантайм печатает в stderr многострочный дамп, который
+// построчный сборщик логов разобрать не может.
+func TestBackgroundPassPanicIsLoggedAndContained(t *testing.T) {
+	buf := &bytes.Buffer{}
+	s := New(Deps{Logger: logging.New(logging.Config{Output: buf})})
+
+	s.runPass(context.Background(), "progress_snapshot", func(context.Context) ([]any, error) {
+		panic("проход сорвался")
+	})
+
+	rec := find(records(t, buf), "background task panicked")
+	if rec == nil {
+		t.Fatalf("паника прохода не оставила записи: %v", records(t, buf))
+	}
+	if rec["level"] != "ERROR" {
+		t.Errorf("уровень = %v, ожидался ERROR", rec["level"])
+	}
+	if rec[logging.KeyEvent] != logging.EventBackgroundPanic {
+		t.Errorf("event = %v, ожидался %q", rec[logging.KeyEvent], logging.EventBackgroundPanic)
+	}
+	if rec["task"] != "progress_snapshot" {
+		t.Errorf("task = %v", rec["task"])
+	}
+	if stack, _ := rec["stack"].(string); stack == "" {
+		t.Error("запись о панике без стека")
+	}
+}
+
+// Сорвавшийся проход не должен останавливать цикл: тикер продолжает работать,
+// и следующий тик обязан отработать штатно. Иначе снимки прогресса тихо
+// перестали бы сниматься до перезапуска пода.
+func TestLoopSurvivesAPanickingPass(t *testing.T) {
+	buf := &bytes.Buffer{}
+	s := New(Deps{Logger: logging.New(logging.Config{Output: buf})})
+	ctx := context.Background()
+
+	s.runPass(ctx, "progress_snapshot", func(context.Context) ([]any, error) {
+		panic("первый тик сорвался")
+	})
+	s.runPass(ctx, "progress_snapshot", func(context.Context) ([]any, error) {
+		return nil, nil
+	})
+
+	recs := records(t, buf)
+	if find(recs, "background task panicked") == nil {
+		t.Fatalf("нет записи о панике первого тика: %v", recs)
+	}
+	finished := find(recs, "background task finished")
+	if finished == nil {
+		t.Fatalf("второй тик не отработал после паники первого: %v", recs)
+	}
+	if finished["outcome"] != "ok" {
+		t.Errorf("исход второго тика = %v, ожидался ok", finished["outcome"])
+	}
+}

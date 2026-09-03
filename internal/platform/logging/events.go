@@ -2,7 +2,9 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"time"
 )
 
@@ -39,6 +41,12 @@ const (
 
 	EventBackgroundTask = "background_task"
 	EventExternalCall   = "external_call"
+
+	// EventBackgroundPanic — паника в обработчике, выполняющемся вне запроса.
+	// Отдельный тип, а не domain_event: под общим типом паника неотличима
+	// от штатной записи о событии, и «показать все паники» не собирается
+	// одним фильтром — тогда как для HTTP-стороны это делает http_panic.
+	EventBackgroundPanic = "background_panic"
 )
 
 // AccessChanged фиксирует изменение прав доступа: смену роли участника, выдачу или
@@ -92,6 +100,35 @@ func ExternalCall(ctx context.Context, target string, took time.Duration, err er
 		append(attrs, slog.String("outcome", "ok"))...)
 }
 
+// RecoverBackground перехватывает панику единицы фоновой работы и записывает её.
+// Применяется как `defer logging.RecoverBackground(ctx, logger, "имя_задачи")`.
+//
+// Без него паника в фоновой горутине уносит весь процесс: рантайм печатает в
+// stderr многострочный дамп, который построчный сборщик логов разобрать не может,
+// а под перезапускается без единой структурированной записи о причине. Перехват
+// на границе одной единицы работы к тому же оставляет цикл живым — следующий тик
+// выполнится, тогда как перехват вокруг всей горутины остановил бы её молча.
+//
+// Логгер передаётся явно, а не берётся только из контекста: фоновые циклы
+// стартуют вне запроса, и их контекст логгера обычно не несёт. nil допустим —
+// тогда берётся логгер из контекста.
+func RecoverBackground(ctx context.Context, logger *slog.Logger, task string) {
+	rv := recover()
+	if rv == nil {
+		return
+	}
+	if logger == nil {
+		logger = FromContext(ctx)
+	}
+	logger.ErrorContext(ctx, "background task panicked",
+		slog.String(KeyEvent, EventBackgroundPanic),
+		slog.String("task", task),
+		slog.String("outcome", "panicked"),
+		slog.String("panic", fmt.Sprint(rv)),
+		slog.String("stack", string(debug.Stack())),
+	)
+}
+
 // AllEvents перечисляет все объявленные идентификаторы типов записей. Существует
 // ради теста на уникальность: дубль значения молча слил бы в Kibana два разных
 // типа записей в один.
@@ -113,6 +150,7 @@ func AllEvents() []string {
 		EventAppShutdown,
 		EventMigration,
 		EventBackgroundTask,
+		EventBackgroundPanic,
 		EventExternalCall,
 	}
 }

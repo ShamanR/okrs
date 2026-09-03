@@ -383,6 +383,7 @@ docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql
 | `app_shutdown`     | Этапы грациозной остановки                                        |
 | `migration`        | Результат применения миграций                                    |
 | `background_task`  | Запуск, завершение и ошибки фоновых задач                        |
+| `background_panic` | Паника в обработчике, выполняющемся вне запроса                  |
 | `external_call`    | Исход обращения во внешнюю систему                                |
 | `config_invalid`   | Некорректная настройка логирования                                |
 

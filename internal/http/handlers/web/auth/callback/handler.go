@@ -88,13 +88,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 
 	h.onboardAfterLogin(w, r, user.ID, sess.ID)
 
-	// Пользователь опознаётся числовым идентификатором: отображаемое имя и адрес
-	// почты в логи не попадают. Раньше здесь писался display_name.
-	h.logger.InfoContext(r.Context(), "user logged in",
-		slog.String(logging.KeyEvent, logging.EventAuthLogin),
-		slog.Int64(logging.KeyActorID, user.ID),
-		slog.String("provider", identity.Provider),
-	)
+	h.logLogin(r.Context(), user.ID, identity.Provider)
 
 	next := "/teamOkrs"
 	if nc, err := r.Cookie("okrs_oauth_next"); err == nil && nc.Value != "" {
@@ -104,6 +98,22 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		http.SetCookie(w, &http.Cookie{Name: "okrs_oauth_next", MaxAge: -1, Path: "/"})
 	}
 	http.Redirect(w, r, next, http.StatusFound)
+}
+
+// logLogin фиксирует успешный вход.
+//
+// Отдельный метод, а не вызов логгера по месту: состав полей этой записи —
+// требование безопасности, а не деталь оформления. Пользователь опознаётся
+// числовым идентификатором; отображаемое имя и адрес почты в лог не попадают
+// (раньше здесь писался display_name). Иначе это правило нечем закрепить:
+// Get требует настоящего Manager с провайдером и базой, поэтому запись о входе
+// оставалась бы единственной auth-записью без гарда.
+func (h *Handler) logLogin(ctx context.Context, userID int64, provider string) {
+	h.logger.InfoContext(ctx, "user logged in",
+		slog.String(logging.KeyEvent, logging.EventAuthLogin),
+		slog.Int64(logging.KeyActorID, userID),
+		slog.String("provider", provider),
+	)
 }
 
 // onboardAfterLogin redeems a pending invite (priority) or registers a new user into the

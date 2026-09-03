@@ -133,6 +133,11 @@ func (s *Scheduler) logger() *slog.Logger {
 // строится одним запросом.
 func (s *Scheduler) runLockedPass(ctx context.Context, name string, lockKey int, pass func(context.Context) ([]any, error)) {
 	logger := s.logger()
+	// Перехват на этом уровне закрывает работу с соединением и advisory-локом;
+	// сам проход прикрыт таким же перехватом внутри runPass. Оба нужны:
+	// внутренний проверяется тестом без базы данных, внешний — единственное,
+	// что стоит между паникой в драйвере и падением всего процесса.
+	defer logging.RecoverBackground(ctx, logger, name)
 
 	conn, err := s.deps.DB.Acquire(ctx)
 	if err != nil {
@@ -167,6 +172,9 @@ func (s *Scheduler) runLockedPass(ctx context.Context, name string, lockKey int,
 // Postgres ради проверки набора полей — плохой обмен.
 func (s *Scheduler) runPass(ctx context.Context, name string, pass func(context.Context) ([]any, error)) {
 	logger := s.logger()
+	// Паника прохода не должна ни ронять процесс, ни останавливать цикл:
+	// перехват здесь оставляет тикер живым, и следующий тик отработает.
+	defer logging.RecoverBackground(ctx, logger, name)
 
 	logger.InfoContext(ctx, "background task started", taskAttrs(name)...)
 	start := time.Now()

@@ -344,7 +344,10 @@ func (b *Bus) invoke(s *subscriber, ctx context.Context, evs []queued) {
 			// поэтому рядом идёт размер батча — читатель видит, что сбой мог
 			// затронуть и другие запросы.
 			b.logger.ErrorContext(ctx, "eventbus: handler panicked",
-				slog.String(logging.KeyEvent, logging.EventDomainEvent),
+				// background_panic, а не domain_event: под общим типом паника
+				// теряется среди штатных записей о событиях, и алерт на срыв
+				// фонового обработчика построить не на чем.
+				slog.String(logging.KeyEvent, logging.EventBackgroundPanic),
 				slog.String("subscriber", s.name),
 				slog.Int("batch_size", len(evs)),
 				slog.Any("kinds", kindsOf(evs)),
