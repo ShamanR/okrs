@@ -316,6 +316,14 @@ func TestEmailInsideAnotherValueIsMasked(t *testing.T) {
 		"в тексте ошибки внешнего канала": `mattermost: /api/v4/users/email/admin%40example.com: status 404`,
 		"в открытом виде":                 "не найден получатель admin@example.com",
 		"в пути запроса":                  "/api/v1/users/a.b+c@sub.example.co.uk",
+		// Приложение не валидирует адрес от провайдера, поэтому в лог может
+		// прийти и короткий домен, и нелатинский адрес.
+		"однобуквенный TLD":      "не найден получатель a@b.c",
+		"интернационализованный": "не найден получатель почта@пример.рф",
+	}
+	leaks := []string{
+		"admin@example.com", "admin%40example.com", "a.b+c@sub.example.co.uk",
+		"a@b.c", "почта@пример.рф",
 	}
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -326,7 +334,7 @@ func TestEmailInsideAnotherValueIsMasked(t *testing.T) {
 				slog.String("err", value))
 
 			out := buf.String()
-			for _, leak := range []string{"admin@example.com", "admin%40example.com", "a.b+c@sub.example.co.uk"} {
+			for _, leak := range leaks {
 				if strings.Contains(out, leak) {
 					t.Fatalf("адрес попал в лог (%q): %s", leak, out)
 				}

@@ -120,17 +120,18 @@ func (s *sender) Send(ctx context.Context, target notifychannel.Target, msg noti
 	var user struct {
 		ID string `json:"id"`
 	}
-	if err := s.call(ctx, http.MethodGet, "/api/v4/users/email/"+url.PathEscape(target.Email), nil, &user); err != nil {
+	// Метка эндпоинта вместо пути: путь здесь содержит адрес получателя.
+	if err := s.call(ctx, http.MethodGet, "/api/v4/users/email/"+url.PathEscape(target.Email), "users/email", nil, &user); err != nil {
 		return err
 	}
 	var dm struct {
 		ID string `json:"id"`
 	}
-	if err := s.call(ctx, http.MethodPost, "/api/v4/channels/direct", []string{botID, user.ID}, &dm); err != nil {
+	if err := s.call(ctx, http.MethodPost, "/api/v4/channels/direct", "channels/direct", []string{botID, user.ID}, &dm); err != nil {
 		return err
 	}
 	body := map[string]any{"channel_id": dm.ID, "message": format(msg)}
-	return s.call(ctx, http.MethodPost, "/api/v4/posts", body, nil)
+	return s.call(ctx, http.MethodPost, "/api/v4/posts", "posts", body, nil)
 }
 
 func (s *sender) resolveBotID(ctx context.Context) (string, error) {
@@ -170,7 +171,7 @@ func (s *sender) resolveBotID(ctx context.Context) (string, error) {
 	var me struct {
 		ID string `json:"id"`
 	}
-	err := s.call(ctx, http.MethodGet, "/api/v4/users/me", nil, &me)
+	err := s.call(ctx, http.MethodGet, "/api/v4/users/me", "users/me", nil, &me)
 
 	// Record result in the wave
 	s.mu.Lock()
@@ -206,12 +207,20 @@ func format(m notifychannel.Message) string {
 	return b.String()
 }
 
-func (s *sender) call(ctx context.Context, method, path string, in, out any) error {
+// call выполняет запрос к API.
+//
+// endpoint — устойчивая метка ручки для сообщений об ошибках, отдельная от path.
+// Разделение обязательное: путь адресации содержит адрес почты получателя, а
+// ошибка канала уходит вызывающему и попадает в лог. Отлавливать адрес из готового
+// текста шаблоном ненадёжно — принимаемые формы адреса шире любого разумного
+// шаблона (однобуквенный TLD, интернационализованные домены), — поэтому адрес
+// просто не попадает в текст.
+func (s *sender) call(ctx context.Context, method, path, endpoint string, in, out any) error {
 	var body *bytes.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
 		if err != nil {
-			return permanent("mattermost: encode %s: %v", path, err)
+			return permanent("mattermost: encode %s: %v", endpoint, err)
 		}
 		body = bytes.NewReader(raw)
 	} else {
@@ -219,7 +228,7 @@ func (s *sender) call(ctx context.Context, method, path string, in, out any) err
 	}
 	req, err := http.NewRequestWithContext(ctx, method, s.baseURL+path, body)
 	if err != nil {
-		return permanent("mattermost: build request %s: %v", path, err)
+		return permanent("mattermost: build request %s: %v", endpoint, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+s.token)
 	if in != nil {
@@ -229,7 +238,7 @@ func (s *sender) call(ctx context.Context, method, path string, in, out any) err
 	resp, err := s.http.Do(req)
 	if err != nil {
 		// Network failures are transient by nature — the worker should retry.
-		return fmt.Errorf("mattermost: %s: %w", path, err)
+		return fmt.Errorf("mattermost: %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -237,16 +246,16 @@ func (s *sender) call(ctx context.Context, method, path string, in, out any) err
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		if out != nil {
 			if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-				return fmt.Errorf("mattermost: decode %s: %w", path, err)
+				return fmt.Errorf("mattermost: decode %s: %w", endpoint, err)
 			}
 		}
 		return nil
 	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 		// Rate limiting and server errors are worth retrying.
-		return fmt.Errorf("mattermost: %s: status %d", path, resp.StatusCode)
+		return fmt.Errorf("mattermost: %s: status %d", endpoint, resp.StatusCode)
 	default:
 		// 4xx: a missing addressee, a revoked token, a bad request. Retrying the
 		// same call cannot change the outcome.
-		return permanent("mattermost: %s: status %d", path, resp.StatusCode)
+		return permanent("mattermost: %s: status %d", endpoint, resp.StatusCode)
 	}
 }
