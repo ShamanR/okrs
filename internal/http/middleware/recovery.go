@@ -47,7 +47,10 @@ func Recovery(logger *slog.Logger) func(http.Handler) http.Handler {
 				logger.ErrorContext(ctx, "unhandled panic",
 					slog.String(logging.KeyEvent, logging.EventHTTPPanic),
 					slog.String("method", r.Method),
-					slog.String("path", r.URL.Path),
+					// Шаблон маршрута, как и в записи о запросе: параметр пути
+					// может быть учётными данными (/invite/{token}), и запись
+					// о панике не должна обходить эту защиту.
+					slog.String("path", routePattern(r)),
 					slog.String("panic", fmt.Sprint(rv)),
 					slog.String("stack", string(debug.Stack())),
 				)

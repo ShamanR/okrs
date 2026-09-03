@@ -679,6 +679,36 @@ func TestRoutePatternIsLoggedInsteadOfSecretPathParam(t *testing.T) {
 	}
 }
 
+// Запись о панике не должна обходить защиту пути: она рядом с записью о запросе,
+// и токен приглашения в ней так же пригоден к использованию.
+func TestPanicRecordAlsoUsesTheRoutePattern(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := logging.New(logging.Config{Output: buf})
+
+	const token = "s3cret-invite-token"
+	r := chi.NewRouter()
+	r.Use(RequestID)
+	r.Use(AccessLog(logger))
+	r.Use(Recovery(logger))
+	r.Get("/invite/{token}", func(http.ResponseWriter, *http.Request) {
+		panic("обработчик приглашения упал")
+	})
+
+	r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/invite/"+token, nil))
+
+	out := buf.String()
+	if strings.Contains(out, token) {
+		t.Fatalf("токен приглашения попал в лог: %s", out)
+	}
+	panics := byEvent(decode(t, buf), logging.EventHTTPPanic)
+	if len(panics) != 1 {
+		t.Fatalf("паника не запротоколирована: %s", out)
+	}
+	if panics[0]["path"] != "/invite/{token}" {
+		t.Errorf("path = %v, ожидался шаблон маршрута", panics[0]["path"])
+	}
+}
+
 // Несовпавший путь шаблона не имеет, и в запись идёт запрошенный путь: иначе
 // не увидеть, что именно отдаёт 404 после выката.
 func TestUnmatchedPathFallsBackToTheRequestedPath(t *testing.T) {
