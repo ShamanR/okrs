@@ -41,6 +41,23 @@ const PO_PRIO_COLORS = { P0: '#dc2626', P1: '#f59e0b', P2: '#3b82f6', P3: '#94a3
 const PO_HEALTH_LABELS = { not_started: 'Not Started', on_track: 'On Track', at_risk: 'At Risk', done: 'Closed' };
 const PO_HEALTH_COLORS = { not_started: '#6b7280', on_track: '#16a34a', at_risk: '#d97706', done: '#15803d' };
 
+// Строка раскрытого состава — переход на доску целей. Адрес собирает buildTargetURL
+// (ui.js): это единственный в проекте конструктор адреса доски, на нём же построены
+// переход из журнала активностей и «скопировать ссылку» с карточки цели.
+// Обычная ссылка, а не обработчик клика: не блокируется как всплывающее окно, работают
+// средняя кнопка, «открыть в фоне» и клавиатура. rel="noopener" обязателен — иначе
+// открытая вкладка получает доступ к window.opener.
+// Если адрес собрать не из чего (нет идентификаторов) — строка остаётся текстом,
+// без «мёртвой» ссылки.
+function PODrillRow({ target, children }) {
+  const href = buildTargetURL(target);
+  const style = { display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px',
+    borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 };
+  if (!href) return <div style={style}>{children}</div>;
+  return <a href={href} target="_blank" rel="noopener noreferrer"
+    style={{ ...style, color: 'inherit', textDecoration: 'none' }}>{children}</a>;
+}
+
 function POPrimaryBtn({ disabled, onClick, children }) {
   return <button type="button" onClick={onClick} disabled={disabled}
     style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '8px 16px',
@@ -107,10 +124,10 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
       <div style={{ maxHeight: 220, overflowY: 'auto' }}>
         {dt.length === 0
           ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
-          : dt.map(t => <div key={t.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
-              <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(t.path || []).join(' › ') || t.name}</span>
+          : dt.map(t => <PODrillRow key={t.id} target={{ team_id: t.id, period_id: data.period_id }}>
+              <span title={(t.path || []).join(' › ') || t.name} style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(t.path || []).join(' › ') || t.name}</span>
               <span style={{ color: t.weight_error ? PO.danger : PO.mutedFg, flexShrink: 0 }}>{t.goals_count > 0 ? `${t.progress}% · веса ${t.weight_sum}` : 'нет целей'}</span>
-            </div>)}
+            </PODrillRow>)}
       </div>
     </div>; })()}
 
@@ -141,10 +158,10 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
         <div style={{ maxHeight: 220, overflowY: 'auto' }}>
           {dg.length === 0
             ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
-            : dg.map(g => <div key={g.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
-                <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title} <span style={{ color: PO.dimFg }}>· {g.team_name}</span></span>
+            : dg.map(g => <PODrillRow key={g.id} target={{ team_id: g.team_id, period_id: data.period_id, goal_id: g.id }}>
+                <span title={`${g.title} · ${g.team_name}`} style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title} <span style={{ color: PO.dimFg }}>· {g.team_name}</span></span>
                 <span style={{ color: PO.mutedFg, flexShrink: 0 }}>{g.progress}%</span>
-              </div>)}
+              </PODrillRow>)}
         </div>
       </div>;
     })()}
@@ -160,10 +177,10 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
         <div style={{ maxHeight: 220, overflowY: 'auto' }}>
           {dk.length === 0
             ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
-            : dk.map(kr => <div key={kr.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: '8px 14px', borderTop: '1px solid ' + PO.hairline, fontSize: 12.5 }}>
-                <span style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kr.title} <span style={{ color: PO.dimFg }}>· {kr.goal_title} · {kr.team_name}</span></span>
+            : dk.map(kr => <PODrillRow key={kr.id} target={{ team_id: kr.team_id, period_id: data.period_id, goal_id: kr.goal_id, kr_id: kr.id }}>
+                <span title={`${kr.title} · ${kr.goal_title} · ${kr.team_name}`} style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kr.title} <span style={{ color: PO.dimFg }}>· {kr.goal_title} · {kr.team_name}</span></span>
                 <span style={{ color: PO.mutedFg, flexShrink: 0 }}>{kr.progress}%</span>
-              </div>)}
+              </PODrillRow>)}
         </div>
       </div>;
     })()}

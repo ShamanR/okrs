@@ -6,11 +6,11 @@ context: |
   OpenSpec является нормативным source of truth для текущего поведения системы.
 
   Дополнительный контекст:
-  - docs/product-overview.md
-  - docs/architecture-constraints.md
-  - docs/domain-model.md
-  - docs/api-contract.md
-  - docs/code-structure.md
+  - docs/old_specs/product-overview.md
+  - docs/old_specs/architecture-constraints.md
+  - docs/old_specs/domain-model.md
+  - docs/old_specs/api-contract.md
+  - docs/old_specs/code-structure.md
 
   Архитектура следует принципам clean architecture и layered architecture.
 
@@ -28,10 +28,11 @@ rules:
   specs:
     - Пиши спецификации на русском языке.
     - Описывай observable behavior системы.
-    - Каждый нормативный requirement должен использовать SHALL или MUST.
+    - Каждый нормативный requirement должен использовать ОБЯЗАН, НЕОБХОДИМО вместо SHALL \ MUST для лучшей читаемости.
     - Каждый requirement должен иметь как минимум один проверяемый Scenario.
     - Учитывай значимые happy path, error cases, permissions и lifecycle.
     - Не описывай implementation details как requirements.
+    - Делай весь spec емким, с хорошей человеко-читаемостью.
 
   design:
     - Пиши design-доки на русском языке.
