@@ -4,13 +4,16 @@ package overview
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	hcsvc "okrs/internal/service/healthcheckin"
 	"okrs/internal/store/grants"
 	perioduc "okrs/internal/usecase/period"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -100,6 +103,56 @@ func TestHandlePeriodOverviewScoped_MyTeamsResolvesLeadScope(t *testing.T) {
 	}
 	if !fg.leadScopeCalled {
 		t.Fatalf("expected ListLeadTeamScope to be consulted for my_teams")
+	}
+}
+
+// The overview response is serialized straight from the usecase struct, so this pins
+// the wire contract the drill-down links rely on: a KR row must carry goal_id and
+// team_id, not only the titles it displays, and its team must be the same team its
+// goal is bound to — otherwise the two rows would link to different boards.
+func TestHandlePeriodOverview_KRRowsCarryLinkTargets(t *testing.T) {
+	goal := domain.Goal{ID: 10, TeamID: 1, Title: "G1", Weight: 100, KeyResults: []domain.KeyResult{{
+		ID: 100, Title: "KR1", Kind: domain.KRKindNumerical, Weight: 100,
+		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 40},
+	}}}
+	data := &hcsvc.PeriodData{
+		PeriodID:    1,
+		Teams:       []domain.Team{{ID: 1, Name: "T1"}},
+		GoalsByTeam: map[int64][]domain.Goal{1: {goal}},
+		Statuses:    map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress},
+		CachedAt:    time.Now(),
+	}
+	loader := func(context.Context, domain.TenantScope, int64) (*hcsvc.PeriodData, error) { return data, nil }
+	h := New(perioduc.New(perioduc.Deps{HCCache: hcsvc.NewCache(loader, time.Minute, nil)}), nil, nil, &fakeGrants{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/periods/1/overview?scope=org", nil)
+	req = withURLParam(withTenant(withUserRole(req, "admin-1", true)), "periodID", "1")
+	w := httptest.NewRecorder()
+	h.Get(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	var body struct {
+		Goals []map[string]json.RawMessage `json:"goals"`
+		KRs   []map[string]json.RawMessage `json:"krs"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v (%s)", err, w.Body.String())
+	}
+	if len(body.Goals) != 1 || len(body.KRs) != 1 {
+		t.Fatalf("expected one goal row and one KR row, got %d and %d (%s)", len(body.Goals), len(body.KRs), w.Body.String())
+	}
+	for _, key := range []string{"goal_id", "team_id", "goal_title", "team_name"} {
+		if _, ok := body.KRs[0][key]; !ok {
+			t.Fatalf("KR row is missing %q: %v", key, body.KRs[0])
+		}
+	}
+	if string(body.KRs[0]["goal_id"]) != "10" || string(body.KRs[0]["team_id"]) != "1" {
+		t.Fatalf("KR link target wrong: goal_id=%s team_id=%s, want 10 and 1", body.KRs[0]["goal_id"], body.KRs[0]["team_id"])
+	}
+	if string(body.KRs[0]["team_id"]) != string(body.Goals[0]["team_id"]) {
+		t.Fatalf("KR team_id %s must match its goal team_id %s", body.KRs[0]["team_id"], body.Goals[0]["team_id"])
 	}
 }
 

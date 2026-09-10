@@ -221,6 +221,67 @@ func TestServicePeriodOverview_UsesCache(t *testing.T) {
 	}
 }
 
+// A shared goal sits on several boards, but a drill-down row names exactly one team
+// and links to its board. The owner wins: that is where the goal is editable, not
+// merely visible. Team 3 owns the goal here and has the higher id on purpose — first
+// sight in id order would pick team 2.
+func TestComputePeriodOverview_SharedGoalBoundToOwnerInScope(t *testing.T) {
+	shared := domain.Goal{ID: 10, TeamID: 3, Title: "Shared", Weight: 100, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}}
+	data := &hcsvc.PeriodData{
+		PeriodID:    7,
+		Teams:       []domain.Team{{ID: 2, Name: "Participant"}, {ID: 3, Name: "Owner"}},
+		GoalsByTeam: map[int64][]domain.Goal{2: {shared}, 3: {shared}},
+		Statuses: map[int64]domain.TeamPeriodStatus{
+			2: domain.TeamPeriodStatusInProgress,
+			3: domain.TeamPeriodStatusInProgress,
+		},
+	}
+
+	ov := computePeriodOverview(data, 0, nil)
+
+	if len(ov.Goals) != 1 {
+		t.Fatalf("shared goal must appear once, got %d rows", len(ov.Goals))
+	}
+	if ov.Goals[0].TeamID != 3 || ov.Goals[0].TeamName != "Owner" {
+		t.Fatalf("shared goal bound to team %d (%q), want owner team 3 (\"Owner\")", ov.Goals[0].TeamID, ov.Goals[0].TeamName)
+	}
+}
+
+// When the owner is outside the caller's scope the row must still name a team the
+// caller can open — the lowest-id team in scope the goal is shared into — and must
+// name the same one on every call, since the link is built from it.
+func TestComputePeriodOverview_SharedGoalOwnerOutOfScopeFallsBackToScope(t *testing.T) {
+	shared := domain.Goal{ID: 10, TeamID: 1, Title: "Shared", Weight: 100, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}}
+	data := &hcsvc.PeriodData{
+		PeriodID: 7,
+		Teams:    []domain.Team{{ID: 1, Name: "OwnerOutOfScope"}, {ID: 2, Name: "InScopeLow"}, {ID: 3, Name: "InScopeHigh"}},
+		GoalsByTeam: map[int64][]domain.Goal{
+			1: {shared},
+			2: {shared},
+			3: {shared},
+		},
+		Statuses: map[int64]domain.TeamPeriodStatus{
+			1: domain.TeamPeriodStatusInProgress,
+			2: domain.TeamPeriodStatusInProgress,
+			3: domain.TeamPeriodStatusInProgress,
+		},
+	}
+	scope := map[int64]bool{2: true, 3: true} // owner (1) deliberately excluded
+
+	for call := 1; call <= 2; call++ {
+		ov := computePeriodOverview(data, 0, scope)
+		if len(ov.Goals) != 1 {
+			t.Fatalf("call %d: shared goal must appear once, got %d rows", call, len(ov.Goals))
+		}
+		if ov.Goals[0].TeamID != 2 || ov.Goals[0].TeamName != "InScopeLow" {
+			t.Fatalf("call %d: goal bound to team %d (%q), want in-scope team 2 (\"InScopeLow\")", call, ov.Goals[0].TeamID, ov.Goals[0].TeamName)
+		}
+		if len(ov.KRs) != 1 || ov.KRs[0].TeamID != ov.Goals[0].TeamID {
+			t.Fatalf("call %d: KRs %+v must carry the same team as their goal (%d)", call, ov.KRs, ov.Goals[0].TeamID)
+		}
+	}
+}
+
 // healthKR builds a numerical KR with an explicit health status.
 func healthKR(id int64, h domain.KRHealthStatus) domain.KeyResult {
 	kr := numericKR(id, 100, 0)
@@ -276,5 +337,27 @@ func TestComputePeriodOverview_HealthBalanceAndKRList(t *testing.T) {
 	}
 	if byID[103].HealthStatus != "not_started" {
 		t.Fatalf("empty health should normalize to not_started, got %q", byID[103].HealthStatus)
+	}
+
+	// Every KR row is addressable, and it addresses the same board as its goal — a KR
+	// row and its goal row must never link to two different teams.
+	goalTeam := map[int64]int64{}
+	for _, g := range ov.Goals {
+		goalTeam[g.ID] = g.TeamID
+	}
+	for _, kr := range ov.KRs {
+		if kr.GoalID == 0 || kr.TeamID == 0 {
+			t.Fatalf("KR %d not addressable: %+v", kr.ID, kr)
+		}
+		want, ok := goalTeam[kr.GoalID]
+		if !ok {
+			t.Fatalf("KR %d points at goal %d, which is not in the goal list", kr.ID, kr.GoalID)
+		}
+		if kr.TeamID != want {
+			t.Fatalf("KR %d team = %d, but its goal %d is bound to team %d", kr.ID, kr.TeamID, kr.GoalID, want)
+		}
+	}
+	if byID[100].GoalID != 10 || byID[102].GoalID != 11 {
+		t.Fatalf("KR goal ids wrong: 100 -> %d (want 10), 102 -> %d (want 11)", byID[100].GoalID, byID[102].GoalID)
 	}
 }

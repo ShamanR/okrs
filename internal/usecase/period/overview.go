@@ -111,10 +111,15 @@ type PeriodGoalItem struct {
 }
 
 // PeriodKRItem is a slim KR row for the health-status breakdown drill-down.
+// GoalID/TeamID address the same goal and team the titles name: the row links to the
+// board (buildTargetURL in web/static/ui.js) and a title is not an address. TeamID is
+// the team picked for the parent goal, so a KR and its goal lead to the same board.
 type PeriodKRItem struct {
 	ID           int64  `json:"id"`
 	Title        string `json:"title"`
+	GoalID       int64  `json:"goal_id"`
 	GoalTitle    string `json:"goal_title"`
+	TeamID       int64  `json:"team_id"`
 	TeamName     string `json:"team_name"`
 	HealthStatus string `json:"health_status"`
 	Progress     int    `json:"progress"`
@@ -224,7 +229,32 @@ func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilt
 	krItems := make([]PeriodKRItem, 0)
 	healthCounts := map[string]int{}
 
-	for id, team := range teamsByID {
+	// Walk teams by ascending id, not by map order: Go randomizes map iteration, and a
+	// shared goal is deduped by first sight — so the team shown next to it (and the board
+	// a row links to) would differ between requests over identical data.
+	teamIDs := make([]int64, 0, len(teamsByID))
+	for id := range teamsByID {
+		teamIDs = append(teamIDs, id)
+	}
+	sort.Slice(teamIDs, func(i, j int) bool { return teamIDs[i] < teamIDs[j] })
+
+	// One team per goal, decided before the rows are built: the owner when it is in
+	// scope, otherwise the lowest-id team in scope the goal is shared into. A row names
+	// that team and links to its board, and the owner's board is where the goal is
+	// editable — a participant's board only shows it. The fallback keeps the link inside
+	// the caller's scope when the owner is outside it.
+	goalTeam := make(map[int64]int64)
+	for _, id := range teamIDs {
+		for _, g := range data.GoalsByTeam[id] {
+			cur, seen := goalTeam[g.ID]
+			if !seen || (id == g.TeamID && cur != g.TeamID) {
+				goalTeam[g.ID] = id
+			}
+		}
+	}
+
+	for _, id := range teamIDs {
+		team := teamsByID[id]
 		// Copy goals so progress.ForGoal writes don't mutate shared cache data.
 		src := data.GoalsByTeam[id]
 		goals := make([]domain.Goal, len(src))
@@ -278,11 +308,15 @@ func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilt
 					continue
 				}
 				seenGoals[goals[i].ID] = true
+				// Not the team we are iterating: the one goalTeam picked, so a shared
+				// goal always names the same board no matter which team reaches it first.
+				gTeamID := goalTeam[goals[i].ID]
+				gTeamName := teamsByID[gTeamID].Name
 				goalItems = append(goalItems, PeriodGoalItem{
 					ID:        goals[i].ID,
 					Title:     goals[i].Title,
-					TeamID:    id,
-					TeamName:  team.Name,
+					TeamID:    gTeamID,
+					TeamName:  gTeamName,
 					WorkType:  string(goals[i].WorkType),
 					FocusType: string(goals[i].FocusType),
 					Priority:  string(goals[i].Priority),
@@ -297,8 +331,10 @@ func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilt
 					krItems = append(krItems, PeriodKRItem{
 						ID:           kr.ID,
 						Title:        kr.Title,
+						GoalID:       goals[i].ID,
 						GoalTitle:    goals[i].Title,
-						TeamName:     team.Name,
+						TeamID:       gTeamID,
+						TeamName:     gTeamName,
 						HealthStatus: hs,
 						Progress:     progress.ForKR(kr),
 					})
