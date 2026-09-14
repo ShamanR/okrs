@@ -189,6 +189,7 @@ func setup(t *testing.T) (*harness, func()) {
 	deliveryUC := delivery.New(delivery.Deps{
 		Channels: channelsSvc,
 		Contacts: usersvc.New(st.Users),
+		BaseURL:  "https://okr.example.com",
 	})
 	notifyUC := notificationuc.New(notificationuc.Deps{
 		Notifications: notificationsvc.New(st.Notifications),

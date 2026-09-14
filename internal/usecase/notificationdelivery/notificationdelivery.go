@@ -12,6 +12,8 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
+	"sync"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/event"
@@ -45,6 +47,10 @@ type Contacts interface {
 type Deps struct {
 	Channels Channels
 	Contacts Contacts
+	// BaseURL is the product's own address, used to turn a notification's
+	// site-relative link into one that works from outside the site. Empty when the
+	// deployment did not configure AUTH_BASE_URL — see the note on absoluteURL.
+	BaseURL string
 	// Logger is optional; a nil logger silently skips logging.
 	Logger *slog.Logger
 }
@@ -52,11 +58,51 @@ type Deps struct {
 type UseCase struct {
 	channels Channels
 	contacts Contacts
+	baseURL  string
 	logger   *slog.Logger
+	// warnNoBase fires the "no base address" warning once per process rather than
+	// once per batch: an unconfigured deployment would otherwise repeat it forever.
+	warnNoBase sync.Once
 }
 
 func New(deps Deps) *UseCase {
-	return &UseCase{channels: deps.Channels, contacts: deps.Contacts, logger: deps.Logger}
+	return &UseCase{
+		channels: deps.Channels,
+		contacts: deps.Contacts,
+		baseURL:  strings.TrimRight(deps.BaseURL, "/"),
+		logger:   deps.Logger,
+	}
+}
+
+// absoluteURL turns a notification's site-relative link into one a messenger can
+// open, and returns empty when it cannot.
+//
+// The bell gets away with "/?team=13&goal=72": the browser resolves it against
+// the page it is already on. A message in Mattermost has no such page — the same
+// string arrives as plain text the reader cannot click, or worse, resolves
+// against the messenger's own host.
+//
+// The base can only come from configuration here. Invite links reconstruct it
+// from the request and its X-Forwarded-* headers, but delivery runs on a
+// background goroutine long after the request is gone.
+//
+// With no base configured the link is dropped rather than sent relative: a link
+// that cannot be opened is not a link, and one pointing at the messenger's own
+// host is actively misleading. The message itself still says what happened.
+func (u *UseCase) absoluteURL(path string) string {
+	if path == "" {
+		return ""
+	}
+	if u.baseURL == "" {
+		u.warnNoBase.Do(func() {
+			if u.logger != nil {
+				u.logger.Warn("notificationdelivery: AUTH_BASE_URL не задан — ссылки в сообщения внешних каналов не попадут",
+					slog.String(logging.KeyEvent, logging.EventAppStart))
+			}
+		})
+		return ""
+	}
+	return u.baseURL + path
 }
 
 // Deliver renders each notification and hands it to every channel its recipient
@@ -161,7 +207,7 @@ func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Cont
 	return notifychannel.Message{
 		Title: text.Title,
 		Body:  body,
-		URL: notify.TargetURL(notify.LinkInput{
+		URL: u.absoluteURL(notify.TargetURL(notify.LinkInput{
 			GoalID:    it.GoalID,
 			TeamID:    it.TeamID,
 			PeriodID:  it.PeriodID,
@@ -170,6 +216,6 @@ func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Cont
 			// The event has just happened, so its goal exists. Only the feed, which
 			// reads rows written long ago, has to consider that it may not.
 			GoalMissing: false,
-		}),
+		})),
 	}
 }

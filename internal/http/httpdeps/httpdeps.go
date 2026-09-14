@@ -79,7 +79,11 @@ type Deps struct {
 // sender of each. nil is legitimate and is what the plain OSS box passes — with
 // no channels there is nothing to deliver to but the bell, and the notification
 // path behaves exactly as it did before delivery existed.
-func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, bus *eventbus.Bus, logger *slog.Logger, channels *notificationchannelsvc.Service) Deps {
+// baseURL is the product's own address. Delivery needs it to make a
+// notification's link openable from a messenger; it runs on a background
+// goroutine, so it cannot reconstruct the address from a request the way invite
+// links do.
+func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, bus *eventbus.Bus, logger *slog.Logger, channels *notificationchannelsvc.Service, baseURL string) Deps {
 	hc := hcsvc.New(hcCache)
 	teams := teamsvc.New(st.Teams)
 	goals := goalsvc.New(st.Goals)
@@ -102,6 +106,7 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 		delivery = notificationdeliveryuc.New(notificationdeliveryuc.Deps{
 			Channels: channels,
 			Contacts: users,
+			BaseURL:  baseURL,
 			Logger:   logger,
 		})
 	}

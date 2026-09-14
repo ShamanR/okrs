@@ -121,7 +121,9 @@ func item(userID, actorID int64, channels ...string) notificationuc.Delivery {
 // же текст, которым уведомление показывается в ленте.
 func TestDeliversToEveryChannelOfTheRecipient(t *testing.T) {
 	ch := newChannels("mattermost", "telegram")
-	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: people()})
+	uc := delivery.New(delivery.Deps{
+		Channels: ch, Contacts: people(), BaseURL: "https://okr.example.com",
+	})
 
 	err := uc.Deliver(context.Background(), scope,
 		[]notificationuc.Delivery{item(1, 2, "mattermost", "telegram")})
@@ -253,5 +255,79 @@ func TestEmptyBatchDoesNothing(t *testing.T) {
 	}
 	if contacts.calls != 0 || len(ch.calls) != 0 {
 		t.Fatalf("пустая пачка сходила наружу: contacts=%d channels=%v", contacts.calls, ch.calls)
+	}
+}
+
+// Ссылка в сообщении внешнего канала обязана быть абсолютной: получатель читает
+// его в мессенджере, где «/?team=13&goal=72» либо остаётся нежимаемым текстом,
+// либо разрешается относительно хоста самого мессенджера.
+func TestDeliveredLinkIsAbsolute(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{
+		Channels: ch, Contacts: people(), BaseURL: "https://okr.example.com",
+	})
+
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	got := ch.senders["mattermost"].accepted[0].msg.URL
+	if !strings.HasPrefix(got, "https://okr.example.com/?") {
+		t.Fatalf("ссылка не абсолютная: %q", got)
+	}
+	if !strings.Contains(got, "goal=7") || !strings.Contains(got, "comment=11") {
+		t.Fatalf("ссылка потеряла адресацию: %q", got)
+	}
+}
+
+// Завершающий слэш в настройке не должен давать двойной слэш в ссылке.
+func TestTrailingSlashInBaseIsNormalised(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{
+		Channels: ch, Contacts: people(), BaseURL: "https://okr.example.com/",
+	})
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	got := ch.senders["mattermost"].accepted[0].msg.URL
+	if strings.Contains(got, "com//") {
+		t.Fatalf("двойной слэш в ссылке: %q", got)
+	}
+}
+
+// Без настроенного адреса ссылка не отправляется вовсе: относительная в
+// мессенджере не работает, а указывающая на хост мессенджера — обманывает.
+// Само сообщение при этом уходит.
+func TestWithoutBaseURLTheLinkIsDroppedNotSentRelative(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: people()})
+
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	msg := ch.senders["mattermost"].accepted[0].msg
+	if msg.URL != "" {
+		t.Fatalf("без базового адреса ссылка обязана отсутствовать, got %q", msg.URL)
+	}
+	if msg.Title == "" {
+		t.Fatal("сообщение обязано уйти и без ссылки")
+	}
+}
+
+// Уведомление без цели ссылки не несёт и без базового адреса ничего не ломает.
+func TestNotificationWithoutGoalHasNoLink(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{
+		Channels: ch, Contacts: people(), BaseURL: "https://okr.example.com",
+	})
+	it := item(1, 2, "mattermost")
+	it.GoalID = nil
+	if err := uc.Deliver(context.Background(), scope, []notificationuc.Delivery{it}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if got := ch.senders["mattermost"].accepted[0].msg.URL; got != "" {
+		t.Fatalf("ссылка появилась без цели: %q", got)
 	}
 }

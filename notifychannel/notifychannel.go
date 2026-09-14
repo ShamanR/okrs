@@ -32,7 +32,9 @@ type Target struct {
 type Message struct {
 	Title string
 	Body  string
-	// URL is an absolute or site-relative link back to the goal, may be empty.
+	// URL links back to the goal. Absolute, or empty when the deployment has no
+	// configured address to build one from: a channel's reader is outside the
+	// product, where a site-relative link resolves against the wrong host.
 	URL string
 }
 

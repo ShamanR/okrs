@@ -1051,3 +1051,46 @@ func containsText(texts []string, want string) bool {
 	}
 	return false
 }
+
+// Ссылка уходит разметкой, а не голым адресом: получателю нужен кликабельный
+// текст, а не строка запроса. Ровно то, чего не хватало в первом же реально
+// доставленном сообщении.
+func TestMessageRendersTheLinkAsAClickableMarkdownLink(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+
+	const url = "https://okr.example.com/?team=13&period=2&goal=72&comment=615"
+	err := newSender(t, srv).SendNow(context.Background(),
+		notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "Пётр изменил цель", Body: "Прозрачность", URL: url})
+	if err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	posts := f.sentPosts()
+	if len(posts) != 1 {
+		t.Fatalf("постов: %d", len(posts))
+	}
+	if !strings.Contains(posts[0], "]("+url+")") {
+		t.Fatalf("ссылка ушла без разметки: %q", posts[0])
+	}
+	if strings.Contains(posts[0], "\n"+url) {
+		t.Fatalf("ссылка ушла голым адресом: %q", posts[0])
+	}
+}
+
+// Сообщение без ссылки не должно получать пустую разметку.
+func TestMessageWithoutURLHasNoLinkMarkup(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+
+	if err := newSender(t, srv).SendNow(context.Background(),
+		notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "Заголовок", Body: "Тело"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if posts := f.sentPosts(); strings.Contains(posts[0], "](") {
+		t.Fatalf("появилась разметка ссылки при отсутствии ссылки: %q", posts[0])
+	}
+}

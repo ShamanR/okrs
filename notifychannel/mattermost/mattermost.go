@@ -467,6 +467,9 @@ func updatesWord(n int) string {
 	}
 }
 
+// openLinkLabel is what the link to the product reads as in a message.
+const openLinkLabel = "Открыть в трекере"
+
 // format renders the message as Markdown: bold title, body, then the link.
 // The core already produced the wording; this only adds Mattermost's syntax.
 func format(m notifychannel.Message) string {
@@ -479,8 +482,15 @@ func format(m notifychannel.Message) string {
 		b.WriteString(m.Body)
 	}
 	if m.URL != "" {
-		b.WriteString("\n")
+		// A Markdown link, not a bare address: the reader gets something to click
+		// with a label instead of a query string. The core supplies an absolute URL
+		// or none at all — a relative one would resolve against the messenger's own
+		// host, which is why it never sends one.
+		b.WriteString("\n[")
+		b.WriteString(openLinkLabel)
+		b.WriteString("](")
 		b.WriteString(m.URL)
+		b.WriteString(")")
 	}
 	return b.String()
 }

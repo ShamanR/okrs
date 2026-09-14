@@ -324,7 +324,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 
 	return &Server{
 		store:            st,
-		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger, notifChannels),
+		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger, notifChannels, authMgr.Config().BaseURL),
 		logger:           logger,
 		tmpl:             tmpl,
 		zone:             zone,
