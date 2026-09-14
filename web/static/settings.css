@@ -134,9 +134,17 @@
 
 /* ── notification preferences ─────────────────────────────────────────────── */
 /* .notif-prefs-scroll — horizontal scroll container so the table stays readable
-   at 3 columns (phase 1b, no channels) and at 6+ (phase 2, channel columns added). */
+   at 3 columns (bell only, nothing to choose between) and at 6+ (one column per
+   delivery channel). The table scrolls inside its own box rather than widening
+   the page: the type column stays put while channel columns scroll into view. */
 .notif-prefs-scroll { overflow-x: auto; }
 .notif-prefs { width: 100%; min-width: 480px; border-collapse: collapse; }
+/* Первая колонка не сжимается до нечитаемого: заголовок типа с подсказкой
+   иначе рассыпается по одному слову в строку, как только появляются каналы. */
+.notif-prefs td:first-child { min-width: 220px; }
+/* Колонки каналов — флажки, и их место под собственным заголовком, а не у
+   левого края ячейки: иначе при четырёх типах взгляд теряет столбец. */
+.notif-prefs__ch { text-align: center; }
 .notif-prefs th { text-align: left; font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 12px 10px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
 .notif-prefs th:first-child { padding-left: 0; }
 .notif-prefs td { padding: 14px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }

@@ -51,7 +51,7 @@ func (f *fakePrefs) Resolve(_ context.Context, scope domain.TenantScope, _ strin
 	f.resolveTargets = append(f.resolveTargets, append([]notificationprefs.Target(nil), targets...))
 	out := make([]notificationprefs.Recipient, 0, len(targets))
 	for i := range targets {
-		out = append(out, notificationprefs.Recipient{Ord: i, UserID: 42, Channels: []string{"in_app"}})
+		out = append(out, notificationprefs.Recipient{Ord: i, UserID: 42})
 	}
 	return out, nil
 }
@@ -60,7 +60,7 @@ func (f *fakePrefs) ResolveAddressed(_ context.Context, _ domain.TenantScope, _ 
 	f.calls++
 	out := make([]notificationprefs.Recipient, 0, len(userIDs))
 	for i, id := range userIDs {
-		out = append(out, notificationprefs.Recipient{Ord: i, UserID: id, Channels: []string{"in_app"}})
+		out = append(out, notificationprefs.Recipient{Ord: i, UserID: id})
 	}
 	return out, nil
 }
@@ -82,7 +82,7 @@ func (emptyPrefs) ResolveAddressed(context.Context, domain.TenantScope, string, 
 type badOrdPrefs struct{}
 
 func (badOrdPrefs) Resolve(_ context.Context, _ domain.TenantScope, _ string, targets []notificationprefs.Target) ([]notificationprefs.Recipient, error) {
-	return []notificationprefs.Recipient{{Ord: len(targets) + 5, UserID: 1, Channels: []string{"in_app"}}}, nil
+	return []notificationprefs.Recipient{{Ord: len(targets) + 5, UserID: 1}}, nil
 }
 
 func (badOrdPrefs) ResolveAddressed(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
@@ -100,7 +100,7 @@ type ordAwarePrefs struct{}
 func (ordAwarePrefs) Resolve(_ context.Context, _ domain.TenantScope, _ string, targets []notificationprefs.Target) ([]notificationprefs.Recipient, error) {
 	out := make([]notificationprefs.Recipient, 0, len(targets))
 	for i := range targets {
-		out = append(out, notificationprefs.Recipient{Ord: i, UserID: int64(1000 + i), Channels: []string{"in_app"}})
+		out = append(out, notificationprefs.Recipient{Ord: i, UserID: int64(1000 + i)})
 	}
 	return out, nil
 }
@@ -576,4 +576,20 @@ func TestEmptyRecipientGroupDoesNotCallCreateBatch(t *testing.T) {
 	if w.calls != 0 {
 		t.Fatalf("CreateBatch не должен вызываться для пустой группы получателей, got %d вызовов", w.calls)
 	}
+}
+
+func (*fakePrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
+	return map[string]bool{notificationprefs.ChannelInApp: true}, nil
+}
+
+func (emptyPrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
+	return map[string]bool{notificationprefs.ChannelInApp: true}, nil
+}
+
+func (badOrdPrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
+	return map[string]bool{notificationprefs.ChannelInApp: true}, nil
+}
+
+func (ordAwarePrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
+	return map[string]bool{notificationprefs.ChannelInApp: true}, nil
 }

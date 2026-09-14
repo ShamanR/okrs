@@ -5,15 +5,26 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	v1 "okrs/internal/http/handlers/api/v1"
+	notificationchannelsvc "okrs/internal/service/notificationchannel"
 	notificationprefsvc "okrs/internal/service/notificationpref"
 	"okrs/internal/store/notificationprefs"
 )
+
+// inAppTitle labels the bell column. The bell is a reserved pseudo-channel with
+// no descriptor of its own, so its label lives here; every other column is
+// labelled by the channel itself.
+const inAppTitle = "В приложении"
+
+// loadFailed — то, что видит клиент при любом отказе чтения: какой именно шаг
+// не удался, ему не поможет. Причина и шаг уходят в запись о запросе.
+const loadFailed = "failed to load preferences"
 
 // PrefService is the port this handler needs. *notificationpref.Service satisfies it.
 type PrefService interface {
@@ -21,11 +32,56 @@ type PrefService interface {
 	// SetAll writes the whole matrix, validating every row before writing any — a
 	// per-row Set would let a rejected payload leave its earlier rows applied.
 	SetAll(ctx context.Context, scope domain.TenantScope, userID int64, ps []notificationprefs.Preference) error
+	// DeliveryDefaults is what the matrix falls back to per channel for a user who
+	// never chose. The screen shows effective state, so rendering it needs this.
+	DeliveryDefaults(ctx context.Context, scope domain.TenantScope) (map[string]bool, error)
 }
 
-type Handler struct{ svc PrefService }
+// Channels supplies the matrix columns. Declared consumer-side;
+// *notificationchannel.Service satisfies it. nil in a build with no channels —
+// the bell alone is a complete matrix.
+type Channels interface {
+	List(ctx context.Context, scope domain.TenantScope) ([]notificationchannelsvc.ChannelState, error)
+}
 
-func New(svc PrefService) *Handler { return &Handler{svc: svc} }
+type Handler struct {
+	svc      PrefService
+	channels Channels
+}
+
+func New(svc PrefService, channels Channels) *Handler {
+	return &Handler{svc: svc, channels: channels}
+}
+
+// columns builds the matrix header: the bell first, then every external channel
+// the tenant has switched on, in build order.
+//
+// A channel the administrator has not enabled is left out entirely rather than
+// shown disabled: nothing can be delivered through it, so a column for it would
+// only invite people to configure something that does nothing.
+func (h *Handler) columns(ctx context.Context, scope domain.TenantScope) ([]dto.NotificationChannelOption, error) {
+	out := []dto.NotificationChannelOption{
+		{Name: notificationprefs.ChannelInApp, Title: inAppTitle, DefaultOn: true},
+	}
+	if h.channels == nil {
+		return out, nil
+	}
+	states, err := h.channels.List(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	for _, st := range states {
+		if !st.Enabled || st.Descriptor.Name == notificationprefs.ChannelInApp {
+			continue
+		}
+		out = append(out, dto.NotificationChannelOption{
+			Name:      st.Descriptor.Name,
+			Title:     st.Descriptor.Title,
+			DefaultOn: st.DefaultOn,
+		})
+	}
+	return out, nil
+}
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	v1.SetAPICacheControl(w)
@@ -34,20 +90,45 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		v1.WriteError(w, http.StatusForbidden, "FORBIDDEN", "forbidden", nil)
 		return
 	}
+	// Три разных отказа отвечают клиенту одинаково — ему всё равно, какой из них
+	// случился, — но в запись о запросе каждый уходит со своей причиной и своим
+	// шагом. Без этого «failed to load preferences» одинаково выглядит и при
+	// отвалившейся базе, и при недоступном канале, и расследовать его приходится
+	// подключением к базе.
 	prefs, err := h.svc.GetAll(r.Context(), scope, auth.UserIDFromContext(r.Context()))
 	if err != nil {
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to load preferences", nil)
+		v1.WriteInternalError(w, "INTERNAL", loadFailed, fmt.Errorf("preferences: %w", err))
 		return
 	}
+	defaults, err := h.svc.DeliveryDefaults(r.Context(), scope)
+	if err != nil {
+		v1.WriteInternalError(w, "INTERNAL", loadFailed, fmt.Errorf("channel defaults: %w", err))
+		return
+	}
+	cols, err := h.columns(r.Context(), scope)
+	if err != nil {
+		v1.WriteInternalError(w, "INTERNAL", loadFailed, fmt.Errorf("channel columns: %w", err))
+		return
+	}
+
 	out := dto.NotificationPreferences{
-		Items: make([]dto.NotificationPreference, 0, len(prefs)),
-		// Same list notificationpref.Service.Set validates a caller's channels
-		// against — one source of truth for what this build can deliver to.
-		Channels: notificationprefsvc.AvailableChannels,
+		Items:    make([]dto.NotificationPreference, 0, len(prefs)),
+		Channels: cols,
 	}
 	for _, p := range prefs {
+		// Effective state, not stored state: a cell the user never touched shows
+		// the administrator's current default, which is exactly what will happen
+		// to their notifications.
+		state := make(map[string]bool, len(cols))
+		for _, c := range cols {
+			on := defaults[c.Name]
+			if choice, chose := p.ChannelOverrides[c.Name]; chose {
+				on = choice
+			}
+			state[c.Name] = on
+		}
 		out.Items = append(out.Items, dto.NotificationPreference{
-			Type: p.Type, Enabled: p.Enabled, Scope: p.Scope, Channels: p.Channels,
+			Type: p.Type, Enabled: p.Enabled, Scope: p.Scope, Channels: state,
 			Addressed: notificationprefs.IsAddressed(p.Type),
 		})
 	}
@@ -58,6 +139,11 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 // untouched, not reset to defaults. The settings screen always sends the whole
 // matrix, so in practice this behaves like a replace, but a partial payload does not
 // erase preferences for the types it leaves out.
+//
+// The payload carries effective state — the checkboxes as the user left them.
+// Turning that into stored deviations is the service's job: a cell that agrees
+// with the tenant default is recorded as "no opinion", so a later change of that
+// default still reaches this user.
 func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	scope, ok := auth.TenantScopeFromContext(r.Context())
 	if !ok {
@@ -94,7 +180,7 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	prefs := make([]notificationprefs.Preference, 0, len(req.Items))
 	for _, it := range req.Items {
 		prefs = append(prefs, notificationprefs.Preference{
-			Type: it.Type, Enabled: it.Enabled, Scope: it.Scope, Channels: it.Channels,
+			Type: it.Type, Enabled: it.Enabled, Scope: it.Scope, ChannelOverrides: it.Channels,
 		})
 	}
 	// SetAll, not a Set per item: it validates the whole matrix before writing any of
@@ -117,7 +203,7 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 			map[string]string{"channels": "invalid"})
 		return
 	case err != nil:
-		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to save preferences", nil)
+		v1.WriteInternalError(w, "INTERNAL", "failed to save preferences", err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

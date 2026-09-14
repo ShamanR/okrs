@@ -41,3 +41,22 @@ func WriteJSON(w http.ResponseWriter, status int, payload any) {
 func WriteError(w http.ResponseWriter, status int, code, message string, fields map[string]string) {
 	writeError(w, status, code, message, fields)
 }
+
+// WriteInternalError отвечает 500 и отправляет в запись о запросе ТЕХНИЧЕСКУЮ
+// причину, а клиенту — тот же обезличенный текст, что и WriteError.
+//
+// Зачем отдельная форма: writeError записывает причиной сам message, потому что
+// больше ничего не знает. Для 4xx это и есть причина, а для 500 message намеренно
+// лишён деталей — и в логе оставался бы ровно тот текст, который клиент уже
+// увидел. Расследовать по нему нечего: «failed to load preferences» одинаково
+// выглядит и при отвалившейся базе, и при отсутствующей колонке.
+//
+// Порядок вызовов значим: обёртка ответа хранит ПЕРВУЮ причину (см.
+// middleware.Recorder.RecordError), поэтому настоящая ошибка записывается до
+// того, как writeError подставит обобщённый текст.
+func WriteInternalError(w http.ResponseWriter, code, message string, cause error) {
+	if cause != nil {
+		_ = httperr.Record(w, code, cause)
+	}
+	writeError(w, http.StatusInternalServerError, code, message, nil)
+}

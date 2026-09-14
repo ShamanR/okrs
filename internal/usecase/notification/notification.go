@@ -32,11 +32,53 @@ type NotificationWriter interface {
 type PrefResolver interface {
 	Resolve(ctx context.Context, scope domain.TenantScope, notifType string, targets []notificationprefs.Target) ([]notificationprefs.Recipient, error)
 	ResolveAddressed(ctx context.Context, scope domain.TenantScope, notifType string, userIDs []int64) ([]notificationprefs.Recipient, error)
+	// DeliveryDefaults is what a recipient who never chose gets, per channel.
+	// Read once per group, not per recipient: a recipient's own answer travels in
+	// Recipient.ChannelOverrides, and only the tenant-wide default is missing.
+	DeliveryDefaults(ctx context.Context, scope domain.TenantScope) (map[string]bool, error)
+}
+
+// Delivery is one created notification on its way to a recipient's external
+// channels: what happened, to whom, and where it has to be said.
+//
+// It carries ids and payload rather than rendered text, so this usecase stays out
+// of both wording and addressing. Turning it into a message is the delivery
+// side's job — see usecase/notificationdelivery.
+type Delivery struct {
+	// UserID is the recipient; ActorUserID is the person whose action caused it.
+	UserID      int64
+	ActorUserID int64
+	// Channels are the external channels this recipient gets it in — never the
+	// bell, which is the stored row itself.
+	Channels []string
+
+	Kind        string
+	EntityTitle string
+	Count       int
+	Payload     map[string]any
+
+	GoalID    *int64
+	TeamID    *int64
+	PeriodID  *int64
+	KRID      *int64
+	CommentID *int64
+}
+
+// Deliverer takes created notifications to external channels.
+//
+// Declared consumer-side per specs/010, and deliberately free of any channel
+// type: a channel is a notifychannel.Sender, and this usecase must not know that
+// — it decides who is notified, not how a messenger is spoken to.
+type Deliverer interface {
+	Deliver(ctx context.Context, scope domain.TenantScope, items []Delivery) error
 }
 
 type Deps struct {
 	Notifications NotificationWriter
 	Prefs         PrefResolver
+	// Delivery sends notifications to external channels. nil means the build has
+	// none: the bell is written exactly as before.
+	Delivery Deliverer
 	// Logger is optional; a nil logger silently skips logging. Used only for the
 	// out-of-range Ord guard below, which should never fire on correct data.
 	Logger *slog.Logger
@@ -45,11 +87,17 @@ type Deps struct {
 type UseCase struct {
 	notifications NotificationWriter
 	prefs         PrefResolver
+	delivery      Deliverer
 	logger        *slog.Logger
 }
 
 func New(deps Deps) *UseCase {
-	return &UseCase{notifications: deps.Notifications, prefs: deps.Prefs, logger: deps.Logger}
+	return &UseCase{
+		notifications: deps.Notifications,
+		prefs:         deps.Prefs,
+		delivery:      deps.Delivery,
+		logger:        deps.Logger,
+	}
 }
 
 // pending is one event already classified, awaiting its recipients.
@@ -102,7 +150,21 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 			errs = append(errs, err)
 			continue
 		}
+		// Read once per group. A recipient's own answer already travelled in
+		// Recipient.ChannelOverrides; what is missing is only the tenant-wide
+		// default, and asking for it per recipient would be an N+1 over a value
+		// that cannot change inside one batch.
+		var defaults map[string]bool
+		if u.delivery != nil {
+			defaults, err = u.prefs.DeliveryDefaults(ctx, scope)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+		}
+
 		rows := make([]notifications.InsertInput, 0, len(recipients))
+		var deliveries []Delivery
 		for _, rc := range recipients {
 			if rc.Ord < 0 || rc.Ord >= len(items) {
 				// A resolver returning an out-of-range Ord is a bug in that resolver,
@@ -119,13 +181,21 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 				continue
 			}
 			p := items[rc.Ord]
-			// rc.Channels is resolved in SQL, validated by notificationpref.Service.Set,
-			// and carried this far in Recipient — then dropped: phase 1b writes one
-			// in-app row regardless of what the recipient's channel preference says,
-			// because in-app is the only channel this build can deliver to. A phase-2
-			// author adding a second channel must not assume filtering by Channels
-			// already happens here; it does not yet.
+			// The row is written whatever the recipient chose about channels. It is
+			// the journal entry every reader works from — the feed hides it when the
+			// bell is switched off, and the digest an external channel sends is
+			// assembled from exactly these. Not writing it would leave the external
+			// channel with nothing to say.
 			rows = append(rows, u.row(p, rc.UserID))
+
+			if u.delivery == nil {
+				continue
+			}
+			external := notificationprefs.ExternalChannels(defaults, rc.ChannelOverrides)
+			if len(external) == 0 {
+				continue
+			}
+			deliveries = append(deliveries, u.deliveryFor(p, rc.UserID, external))
 		}
 		if len(rows) == 0 {
 			// Nobody left to notify for this group: say so, rather than calling
@@ -134,6 +204,14 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 		}
 		if err := u.notifications.CreateBatch(ctx, scope, rows); err != nil {
 			errs = append(errs, err)
+			// The row is the record of what happened; without it there is nothing
+			// to have delivered, so a failed write must not produce messages.
+			continue
+		}
+		if len(deliveries) > 0 {
+			if err := u.delivery.Deliver(ctx, scope, deliveries); err != nil {
+				errs = append(errs, err)
+			}
 		}
 	}
 	return errors.Join(errs...)
@@ -172,6 +250,27 @@ func (u *UseCase) row(p pending, userID int64) notifications.InsertInput {
 		EntityTitle: p.anchor.title,
 		Payload:     payloadOf(p.ev),
 		CoalesceKey: coalesceKey(p, m),
+	}
+}
+
+// deliveryFor describes one created notification for the delivery side. Count is 1:
+// it reports this event, not the coalesced total of the row it may have merged
+// into — the accumulated message names how many updates it carries itself.
+func (u *UseCase) deliveryFor(p pending, userID int64, channels []string) Delivery {
+	m := p.ev.Context()
+	return Delivery{
+		UserID:      userID,
+		ActorUserID: m.ActorID,
+		Channels:    channels,
+		Kind:        string(p.ev.Kind()),
+		EntityTitle: p.anchor.title,
+		Count:       1,
+		Payload:     payloadOf(p.ev),
+		GoalID:      p.anchor.goalID,
+		TeamID:      m.TeamID,
+		PeriodID:    m.PeriodID,
+		KRID:        p.anchor.krID,
+		CommentID:   p.anchor.commentID,
 	}
 }
 

@@ -217,3 +217,101 @@ func TestEmptyRequiredFieldIsUnprocessableAndNamesTheField(t *testing.T) {
 		t.Fatalf("ответ не называет поле: %s", handlertest.Body(rec))
 	}
 }
+
+// «Включён по умолчанию у всех» доходит до сервиса отдельным признаком: это не то
+// же самое, что «канал активен», и перепутать их значит либо разослать всем
+// сообщения, либо не разослать никому.
+func TestSavePassesDefaultOnSeparatelyFromEnabled(t *testing.T) {
+	cases := map[string]struct {
+		body          string
+		wantEnabled   bool
+		wantDefaultOn bool
+	}{
+		"активен и включён по умолчанию": {
+			body:        `{"enabled":true,"default_on":true,"values":{"base_url":"https://mm"},"secret":"t"}`,
+			wantEnabled: true, wantDefaultOn: true,
+		},
+		"активен, но по умолчанию выключен": {
+			body:        `{"enabled":true,"default_on":false,"values":{"base_url":"https://mm"},"secret":"t"}`,
+			wantEnabled: true, wantDefaultOn: false,
+		},
+		"признак сохраняется и у выключенного канала": {
+			body:        `{"enabled":false,"default_on":true,"values":{"base_url":"https://mm"}}`,
+			wantEnabled: false, wantDefaultOn: true,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			svc := &fakeSvc{states: []notificationchannelsvc.ChannelState{state()}}
+			h := adminnotifications.New(svc)
+			rec := handlertest.Do(h.Save, http.MethodPut,
+				"/api/v1/admin/settings/notifications/mattermost", tc.body,
+				handlertest.Tenant(1), handlertest.UserID(42, "udid-42"),
+				handlertest.URLParam("channel", "mattermost"))
+			handlertest.Status(t, rec, http.StatusNoContent)
+
+			if svc.saved.Enabled != tc.wantEnabled {
+				t.Errorf("enabled: got %v, want %v", svc.saved.Enabled, tc.wantEnabled)
+			}
+			if svc.saved.DefaultOn != tc.wantDefaultOn {
+				t.Errorf("default_on: got %v, want %v", svc.saved.DefaultOn, tc.wantDefaultOn)
+			}
+		})
+	}
+}
+
+// Экран администратора обязан показать оба признака раздельно, иначе после
+// перезагрузки страницы галочка «по умолчанию» потеряется.
+func TestListReportsDefaultOn(t *testing.T) {
+	st := state()
+	st.DefaultOn = true
+	svc := &fakeSvc{states: []notificationchannelsvc.ChannelState{st}}
+	h := adminnotifications.New(svc)
+
+	rec := handlertest.Do(h.List, http.MethodGet,
+		"/api/v1/admin/settings/notifications", "", handlertest.Tenant(1))
+	handlertest.Status(t, rec, http.StatusOK)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, `"default_on":true`) {
+		t.Fatalf("признак «включён по умолчанию» не доехал до экрана: %s", body)
+	}
+}
+
+// Канал сам отвергает непригодные настройки — например, нулевое окно отправки.
+// Для администратора это ошибка формы (422), а не сбой сервера: ядро не знает,
+// что значит поле окна, и правильно, что не знает.
+func TestSaveRejectedByTheChannelIsUnprocessable(t *testing.T) {
+	svc := &fakeSvc{
+		states:  []notificationchannelsvc.ChannelState{state()},
+		saveErr: notificationchannelsvc.ErrInvalidConfig,
+	}
+	h := adminnotifications.New(svc)
+	body := `{"enabled":true,"values":{"base_url":"https://mm","window_minutes":0},"secret":"t"}`
+	rec := handlertest.Do(h.Save, http.MethodPut,
+		"/api/v1/admin/settings/notifications/mattermost", body,
+		handlertest.Tenant(1), handlertest.UserID(42, "udid-42"),
+		handlertest.URLParam("channel", "mattermost"))
+
+	handlertest.Status(t, rec, http.StatusUnprocessableEntity)
+	if rec.Code == http.StatusInternalServerError {
+		t.Fatal("непригодная настройка канала — не сбой сервера")
+	}
+}
+
+// Окно отправки — обычное поле канала и едет через values, а не отдельным полем
+// запроса: ядро не должно знать ни его имени, ни его смысла.
+func TestDeliveryWindowTravelsAsAChannelValue(t *testing.T) {
+	svc := &fakeSvc{states: []notificationchannelsvc.ChannelState{state()}}
+	h := adminnotifications.New(svc)
+	body := `{"enabled":true,"values":{"base_url":"https://mm","window_minutes":5},"secret":"t"}`
+	rec := handlertest.Do(h.Save, http.MethodPut,
+		"/api/v1/admin/settings/notifications/mattermost", body,
+		handlertest.Tenant(1), handlertest.UserID(42, "udid-42"),
+		handlertest.URLParam("channel", "mattermost"))
+	handlertest.Status(t, rec, http.StatusNoContent)
+
+	if got, ok := svc.saved.Values["window_minutes"]; !ok || got != float64(5) {
+		t.Fatalf("окно отправки не дошло до сервиса как значение канала: %+v", svc.saved.Values)
+	}
+}

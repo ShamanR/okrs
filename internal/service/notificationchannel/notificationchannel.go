@@ -26,7 +26,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+	"sync"
+	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/platform/entitlements"
@@ -111,6 +114,11 @@ type ChannelGrants interface {
 type ChannelState struct {
 	Descriptor notifychannel.Descriptor
 	Enabled    bool
+	// DefaultOn is whether staff who never chose get this channel. Distinct from
+	// Enabled, which is whether the channel works at all — the admin screen has
+	// to keep the two apart in wording, because they read alike and mean
+	// different things.
+	DefaultOn  bool
 	Configured bool
 	Values     map[string]any
 	SecretHint string
@@ -122,8 +130,12 @@ type ChannelState struct {
 type SaveInput struct {
 	Channel string
 	Enabled bool
-	Values  map[string]any
-	Secret  string
+	// DefaultOn turns the channel on for every user who has not made an explicit
+	// choice about it — including people who join later and channels connected
+	// after they last saved their settings.
+	DefaultOn bool
+	Values    map[string]any
+	Secret    string
 }
 
 type Service struct {
@@ -133,16 +145,38 @@ type Service struct {
 	order    []string // build order, so the UI lists channels deterministically
 	ent      entitlements.Entitlements
 	grants   ChannelGrants
+
+	// logger is handed to every channel this service builds, wrapped so it cannot
+	// write that tenant's secret. A channel that holds messages reports delivery
+	// failures here, because Send has no caller left to return them to.
+	logger *slog.Logger
+	// now is the clock every channel is built with. nil means the real clock; a
+	// test that has to close a channel's window sets it.
+	now func() time.Time
+
+	// mu guards instances: the live channel per (tenant, channel). Instances are
+	// kept rather than rebuilt because a channel that batches holds its pending
+	// messages inside itself — see live in registry.go.
+	mu        sync.Mutex
+	instances map[channelKey]*liveChannel
 }
 
 // New assembles the service. A duplicate Descriptor.Name is an assembly error
 // rather than a silent overwrite: two channels answering to one name would make
 // which one you configured depend on map iteration order.
-func New(repo Repo, box *secretbox.Box, channels []notifychannel.Channel, ent entitlements.Entitlements, grants ChannelGrants) (*Service, error) {
+func New(repo Repo, box *secretbox.Box, channels []notifychannel.Channel, ent entitlements.Entitlements, grants ChannelGrants, logger *slog.Logger) (*Service, error) {
 	if grants == nil {
 		return nil, errors.New("notificationchannel: nil ChannelGrants")
 	}
-	s := &Service{repo: repo, box: box, channels: map[string]notifychannel.Channel{}, ent: ent, grants: grants}
+	s := &Service{
+		repo:      repo,
+		box:       box,
+		channels:  map[string]notifychannel.Channel{},
+		ent:       ent,
+		grants:    grants,
+		logger:    logger,
+		instances: map[channelKey]*liveChannel{},
+	}
 	for _, ch := range channels {
 		name := ch.Descriptor.Name
 		if name == "" {
@@ -310,6 +344,7 @@ func (s *Service) List(ctx context.Context, scope domain.TenantScope) ([]Channel
 		if row, ok := stored[d.Name]; ok {
 			st.Configured = true
 			st.Enabled = row.Enabled
+			st.DefaultOn = row.DefaultOn
 			st.SecretHint = row.SecretHint
 			st.Values = sanitize(row.Values, d)
 		}
@@ -400,9 +435,10 @@ func (s *Service) Save(ctx context.Context, scope domain.TenantScope, in SaveInp
 	}
 
 	row := notificationchannels.Config{
-		Channel: in.Channel,
-		Enabled: in.Enabled,
-		Values:  sanitize(in.Values, ch.Descriptor),
+		Channel:   in.Channel,
+		Enabled:   in.Enabled,
+		DefaultOn: in.DefaultOn,
+		Values:    sanitize(in.Values, ch.Descriptor),
 	}
 
 	switch {
@@ -437,10 +473,82 @@ func (s *Service) Save(ctx context.Context, scope domain.TenantScope, in SaveInp
 		// legitimate, so nothing to do here.
 	}
 
+	if in.Enabled {
+		// Ask the channel itself whether it accepts these settings, before they
+		// are stored. Required fields and the secret are checked above, but only
+		// the channel knows what its own values mean — a delivery window of "0"
+		// passes every core check and then refuses to build. Without this the
+		// tenant would store an enabled channel that cannot run, and learn about
+		// it at delivery time, which is exactly what ErrSecretRequired and
+		// ErrFieldRequired exist to prevent.
+		//
+		// The instance is discarded immediately. That is safe because a channel
+		// constructor must not start work: the Mattermost channel arms its window
+		// lazily, on the first accepted message.
+		probe := notifychannel.Settings{Values: row.Values}
+		if ch.Descriptor.SecretField != "" {
+			secret, err := s.effectiveSecret(in, row)
+			if err != nil {
+				return err
+			}
+			probe.Secret = secret
+		}
+		if _, err := ch.New(notifychannel.Deps{Settings: probe, Logger: s.logger, Now: s.now}); err != nil {
+			return fmt.Errorf("notificationchannel: %s: %w: %w", in.Channel, ErrInvalidConfig, err)
+		}
+	}
+
 	return s.repo.Upsert(ctx, scope, row, byUserID)
 }
 
-// Sender builds a ready-to-use Sender from the tenant's stored configuration.
+// effectiveSecret returns the plaintext secret the stored row will run with: the
+// newly submitted one, or the one already stored when the form sent none.
+func (s *Service) effectiveSecret(in SaveInput, row notificationchannels.Config) (string, error) {
+	if in.Secret != "" {
+		return in.Secret, nil
+	}
+	if len(row.SecretEnc) == 0 {
+		return "", nil
+	}
+	if s.box == nil {
+		return "", ErrNoSecretKey
+	}
+	secret, err := s.box.Open(row.SecretEnc)
+	if err != nil {
+		return "", fmt.Errorf("notificationchannel: decrypt %s: %w", in.Channel, err)
+	}
+	return secret, nil
+}
+
+// DeliveryChannelDefaults reports, for every external channel this tenant may
+// actually deliver through, whether it is on by default for staff who never
+// chose.
+//
+// The return type is a plain map rather than a type of this package on purpose:
+// the notification-preferences service declares the port it needs consumer-side,
+// and a shared struct would make one service depend on another's types for
+// nothing. The bell is not in here — it is not a channel of this package and
+// never will be.
+func (s *Service) DeliveryChannelDefaults(ctx context.Context, scope domain.TenantScope) (map[string]bool, error) {
+	states, err := s.List(ctx, scope)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(states))
+	for _, st := range states {
+		if st.Enabled {
+			out[st.Descriptor.Name] = st.DefaultOn
+		}
+	}
+	return out, nil
+}
+
+// Sender returns the tenant's ready-to-use Sender for one channel.
+//
+// The instance is reused across calls and rebuilt only when the tenant's stored
+// configuration changes, so a channel that batches keeps the messages it is
+// holding. Callers on the delivery path must ask once per batch, not once per
+// message: this reads the channel row.
 func (s *Service) Sender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error) {
 	ch, ok := s.channels[name]
 	if !ok {
@@ -472,15 +580,5 @@ func (s *Service) Sender(ctx context.Context, scope domain.TenantScope, name str
 		}
 		settings.Secret = secret
 	}
-	sender, err := ch.New(settings)
-	if err != nil {
-		// Marked as a configuration problem, not passed through bare: the caller
-		// cannot otherwise tell "this tenant stored something the channel will not
-		// accept" from a genuine server fault, and the two deserve different answers.
-		// The original error stays reachable through errors.Is/As.
-		return nil, fmt.Errorf("notificationchannel: %s: %w: %w", name, ErrInvalidConfig, err)
-	}
-	// maskSecretErrors is a second barrier, not a substitute for a channel's own
-	// care: see notifychannel.Sender's doc comment and secretmask.go.
-	return maskSecretErrors(sender, settings.Secret), nil
+	return s.live(ctx, channelKey{tenantID: scope.TenantID, channel: name}, ch, settings, fingerprint(row))
 }

@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -60,7 +61,16 @@ type App struct {
 	// stop touching the pool during the same exit window the bus drain happens in —
 	// see the doc comment on Close below for why the order matters.
 	stopBackground context.CancelFunc
+	// flushChannels delivers what the notification channels still hold in memory.
+	// Called from Close after the bus drains; see Close.
+	flushChannels func(context.Context) error
 }
+
+// channelFlushTimeout bounds the final delivery of buffered notifications on
+// shutdown. A channel holds its pending messages in memory and an orderly exit is
+// their only chance to go out, but an unreachable external service must not turn
+// a rolling deploy into a stuck pod.
+const channelFlushTimeout = 10 * time.Second
 
 // Close releases every background resource New started, in the order the caller in
 // cmd/server relies on: stop the scheduler loops first (health check-in refresh,
@@ -71,9 +81,20 @@ type App struct {
 // open. The caller closes the pool only after Close returns. Waits up to timeout for
 // the bus to drain before giving up; the scheduler loops stop immediately (ctx
 // cancellation, no drain to wait for).
+// FINALLY, deliver what the notification channels are still holding: they batch in
+// memory, and the bus has to have drained first or the last events would never have
+// become messages.
 func (a *App) Close(timeout time.Duration) error {
 	a.stopBackground()
-	return a.bus.Close(timeout)
+	busErr := a.bus.Close(timeout)
+
+	var flushErr error
+	if a.flushChannels != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), channelFlushTimeout)
+		defer cancel()
+		flushErr = a.flushChannels(ctx)
+	}
+	return errors.Join(busErr, flushErr)
 }
 
 // withAuthDefaults fills unset auth fields with OSS defaults so a near-empty Config yields the
@@ -185,5 +206,10 @@ func New(cfg Config) (*App, error) {
 	// never be cancelled.
 	bgCtx, stopBackground := context.WithCancel(context.Background())
 	srv.StartBackground(bgCtx)
-	return &App{Handler: handler, bus: bus, stopBackground: stopBackground}, nil
+	return &App{
+		Handler:        handler,
+		bus:            bus,
+		stopBackground: stopBackground,
+		flushChannels:  srv.FlushNotificationChannels,
+	}, nil
 }

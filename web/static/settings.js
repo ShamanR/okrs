@@ -412,8 +412,12 @@ function NotificationsSettings() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Колонки каналов показываются только когда каналов больше одного: в фазе 1b
-  // канал ровно один (in-app), поэтому колонок нет и таблица остаётся простой.
+  // Колонки каналов показываются, только когда каналов больше одного.
+  //
+  // Когда канал ровно один — колокольчик, — выбирать не из чего: «Присылать»
+  // и есть переключатель колокольчика, и вторая колонка была бы тем же самым
+  // флажком под другим названием. Как только пространству выдан внешний канал,
+  // колонки появляются, и каждая ячейка становится осмысленной.
   const showChannels = channels.length > 1;
 
   const patch = (type, changes) =>
@@ -469,7 +473,11 @@ function NotificationsSettings() {
               <th scope="col">Тип</th>
               <th scope="col">Присылать</th>
               <th scope="col">Охват</th>
-              {showChannels && channels.map(c => <th key={c} scope="col">{c}</th>)}
+              {showChannels && channels.map(c => (
+                <th key={c.name} scope="col" className="notif-prefs__ch" title={c.default_on
+                  ? 'По умолчанию включён администратором пространства'
+                  : 'По умолчанию выключен — можно включить для себя'}>{c.title}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -507,18 +515,21 @@ function NotificationsSettings() {
                       </select>
                     )}
                   </td>
+                  {/* Ячейка показывает ДЕЙСТВУЮЩЕЕ состояние: канал, о котором
+                      пользователь не высказывался, отражает значение, заданное
+                      администратором пространства. Сервер сам решит, что из
+                      присланного является выбором пользователя, а что совпадает
+                      с умолчанием и никакого выбора не означает. */}
                   {showChannels && channels.map(c => (
-                    <td key={c}>
+                    <td key={c.name} className="notif-prefs__ch">
                       <input
                         type="checkbox"
-                        checked={(it.channels || []).includes(c)}
+                        checked={!!(it.channels || {})[c.name]}
                         disabled={!it.enabled}
                         onChange={e => patch(it.type, {
-                          channels: e.target.checked
-                            ? [...(it.channels || []), c]
-                            : (it.channels || []).filter(x => x !== c),
+                          channels: { ...(it.channels || {}), [c.name]: e.target.checked },
                         })}
-                        aria-label={`${c}: ${meta.label}`}
+                        aria-label={`${c.title}: ${meta.label}`}
                       />
                     </td>
                   ))}

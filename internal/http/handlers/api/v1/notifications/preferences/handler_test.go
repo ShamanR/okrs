@@ -11,6 +11,7 @@ import (
 	"okrs/internal/core/domain"
 	"okrs/internal/http/handlers/api/v1/notifications/preferences"
 	"okrs/internal/http/handlers/handlertest"
+	notificationchannelsvc "okrs/internal/service/notificationchannel"
 	notificationprefsvc "okrs/internal/service/notificationpref"
 	"okrs/internal/store/notificationprefs"
 )
@@ -30,6 +31,28 @@ type fakeSvc struct {
 	// до первой записи.
 	gotCalled []notificationprefs.Preference
 	gotSets   []notificationprefs.Preference
+	// defaults — значения каналов по умолчанию в пространстве. Экран показывает
+	// действующее состояние, поэтому без них ячейку нарисовать нельзя.
+	defaults    map[string]bool
+	defaultsErr error
+}
+
+func (f *fakeSvc) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
+	if f.defaultsErr != nil {
+		return nil, f.defaultsErr
+	}
+	if f.defaults == nil {
+		return map[string]bool{notificationprefs.ChannelInApp: true}, nil
+	}
+	return f.defaults, nil
+}
+
+// fakeChannels — колонки матрицы: внешние каналы пространства с их названиями и
+// значениями по умолчанию.
+type fakeChannels []notificationchannelsvc.ChannelState
+
+func (f fakeChannels) List(context.Context, domain.TenantScope) ([]notificationchannelsvc.ChannelState, error) {
+	return f, nil
 }
 
 func (f *fakeSvc) GetAll(_ context.Context, _ domain.TenantScope, userID int64) ([]notificationprefs.Preference, error) {
@@ -54,10 +77,10 @@ func (f *fakeSvc) SetAll(_ context.Context, _ domain.TenantScope, userID int64, 
 // all four types, defaults substituted, my_comment_resolved carrying no scope.
 func fullMatrix() []notificationprefs.Preference {
 	return []notificationprefs.Preference{
-		{Type: notificationprefs.TypeGoalComment, Enabled: true, Scope: notificationprefs.ScopeOwn, Channels: []string{"in_app"}},
-		{Type: notificationprefs.TypeMyCommentResolved, Enabled: true, Scope: "", Channels: []string{"in_app"}},
-		{Type: notificationprefs.TypeGoalChanged, Enabled: false, Scope: notificationprefs.ScopeSubtree, Channels: []string{"in_app"}},
-		{Type: notificationprefs.TypeKRProgress, Enabled: true, Scope: notificationprefs.ScopeOwnAndChildren, Channels: []string{"in_app"}},
+		{Type: notificationprefs.TypeGoalComment, Enabled: true, Scope: notificationprefs.ScopeOwn, ChannelOverrides: map[string]bool{"in_app": true}},
+		{Type: notificationprefs.TypeMyCommentResolved, Enabled: true, Scope: "", ChannelOverrides: map[string]bool{"in_app": true}},
+		{Type: notificationprefs.TypeGoalChanged, Enabled: false, Scope: notificationprefs.ScopeSubtree, ChannelOverrides: map[string]bool{"in_app": true}},
+		{Type: notificationprefs.TypeKRProgress, Enabled: true, Scope: notificationprefs.ScopeOwnAndChildren, ChannelOverrides: map[string]bool{"in_app": true}},
 	}
 }
 
@@ -67,7 +90,7 @@ func fullMatrix() []notificationprefs.Preference {
 // незамеченной.
 func TestGetReturnsAllFourTypes(t *testing.T) {
 	svc := &fakeSvc{getAll: fullMatrix()}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
 	w := handlertest.Do(h.Get, http.MethodGet, "/api/v1/notifications/preferences", "",
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
@@ -75,22 +98,30 @@ func TestGetReturnsAllFourTypes(t *testing.T) {
 
 	var got struct {
 		Items []struct {
-			Type      string   `json:"type"`
-			Enabled   bool     `json:"enabled"`
-			Scope     string   `json:"scope"`
-			Channels  []string `json:"channels"`
-			Addressed bool     `json:"addressed"`
+			Type      string          `json:"type"`
+			Enabled   bool            `json:"enabled"`
+			Scope     string          `json:"scope"`
+			Channels  map[string]bool `json:"channels"`
+			Addressed bool            `json:"addressed"`
 		} `json:"items"`
-		Channels []string `json:"channels"`
+		Channels []struct {
+			Name      string `json:"name"`
+			Title     string `json:"title"`
+			DefaultOn bool   `json:"default_on"`
+		} `json:"channels"`
 	}
 	handlertest.DecodeJSON(t, w, &got)
 
 	if len(got.Items) != 4 {
 		t.Fatalf("got %d types, want 4", len(got.Items))
 	}
-	// В фазе 1b канал ровно один — фронт по этому признаку скрывает колонки каналов.
-	if len(got.Channels) != 1 || got.Channels[0] != "in_app" {
-		t.Fatalf("channels: %v, want [in_app]", got.Channels)
+	// Сборка без внешних каналов: в матрице остаётся одна колонка — колокольчик,
+	// и он включён по умолчанию.
+	if len(got.Channels) != 1 || got.Channels[0].Name != "in_app" {
+		t.Fatalf("channels: %+v, want один in_app", got.Channels)
+	}
+	if !got.Channels[0].DefaultOn || got.Channels[0].Title == "" {
+		t.Fatalf("колонка колокольчика неполна: %+v", got.Channels[0])
 	}
 	if svc.gotUserID != 42 {
 		t.Errorf("userID passed to service = %d, want 42 (from the authenticated context)", svc.gotUserID)
@@ -126,11 +157,11 @@ func TestGetReturnsAllFourTypes(t *testing.T) {
 }
 
 func TestGetWithoutScopeIsForbidden(t *testing.T) {
-	handlertest.RequiresTenantScope(t, preferences.New(&fakeSvc{}).Get, http.MethodGet, "/api/v1/notifications/preferences")
+	handlertest.RequiresTenantScope(t, preferences.New(&fakeSvc{}, nil).Get, http.MethodGet, "/api/v1/notifications/preferences")
 }
 
 func TestGetServiceErrorIs500(t *testing.T) {
-	h := preferences.New(&fakeSvc{getErr: context.DeadlineExceeded})
+	h := preferences.New(&fakeSvc{getErr: context.DeadlineExceeded}, nil)
 	w := handlertest.Do(h.Get, http.MethodGet, "/api/v1/notifications/preferences", "", handlertest.Tenant(1))
 	handlertest.ErrorCode(t, w, http.StatusInternalServerError, "INTERNAL")
 }
@@ -138,9 +169,9 @@ func TestGetServiceErrorIs500(t *testing.T) {
 // Невалидный тип — 400 с полем в details, а не 500.
 func TestPutRejectsUnknownType(t *testing.T) {
 	svc := &fakeSvc{setErr: notificationprefsvc.ErrInvalidType}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
-	body := `{"items":[{"type":"made_up","enabled":true,"scope":"own","channels":["in_app"]}]}`
+	body := `{"items":[{"type":"made_up","enabled":true,"scope":"own","channels":{"in_app":true}}]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
 	handlertest.ErrorCode(t, w, http.StatusBadRequest, "VALIDATION_ERROR")
@@ -160,9 +191,9 @@ func TestPutRejectsUnknownType(t *testing.T) {
 // one message that always blames the same field.
 func TestPutRejectsUnknownScope(t *testing.T) {
 	svc := &fakeSvc{setErr: notificationprefsvc.ErrInvalidScope}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
-	body := `{"items":[{"type":"goal_comment","enabled":true,"scope":"bogus","channels":["in_app"]}]}`
+	body := `{"items":[{"type":"goal_comment","enabled":true,"scope":"bogus","channels":{"in_app":true}}]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
 	handlertest.ErrorCode(t, w, http.StatusBadRequest, "VALIDATION_ERROR")
@@ -175,9 +206,9 @@ func TestPutRejectsUnknownScope(t *testing.T) {
 // "channels".
 func TestPutRejectsUnknownChannel(t *testing.T) {
 	svc := &fakeSvc{setErr: notificationprefsvc.ErrInvalidChannel}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
-	body := `{"items":[{"type":"goal_comment","enabled":true,"scope":"own","channels":["telegram"]}]}`
+	body := `{"items":[{"type":"goal_comment","enabled":true,"scope":"own","channels":{"telegram":true}}]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
 	handlertest.ErrorCode(t, w, http.StatusBadRequest, "VALIDATION_ERROR")
@@ -205,22 +236,22 @@ func errorField(t *testing.T, w *httptest.ResponseRecorder) string {
 }
 
 func TestPutInvalidJSONIsBadRequest(t *testing.T) {
-	h := preferences.New(&fakeSvc{})
+	h := preferences.New(&fakeSvc{}, nil)
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", "not json",
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
 	handlertest.ErrorCode(t, w, http.StatusBadRequest, "VALIDATION_ERROR")
 }
 
 func TestPutServiceErrorIs500(t *testing.T) {
-	h := preferences.New(&fakeSvc{setErr: errors.New("boom")})
-	body := `{"items":[{"type":"goal_comment","enabled":true,"scope":"own","channels":["in_app"]}]}`
+	h := preferences.New(&fakeSvc{setErr: errors.New("boom")}, nil)
+	body := `{"items":[{"type":"goal_comment","enabled":true,"scope":"own","channels":{"in_app":true}}]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
 	handlertest.ErrorCode(t, w, http.StatusInternalServerError, "INTERNAL")
 }
 
 func TestPutWithoutScopeIsForbidden(t *testing.T) {
-	handlertest.RequiresTenantScope(t, preferences.New(&fakeSvc{}).Put, http.MethodPut, "/api/v1/notifications/preferences")
+	handlertest.RequiresTenantScope(t, preferences.New(&fakeSvc{}, nil).Put, http.MethodPut, "/api/v1/notifications/preferences")
 }
 
 // A payload longer than the closed type set is rejected outright, before Set is
@@ -228,11 +259,11 @@ func TestPutWithoutScopeIsForbidden(t *testing.T) {
 // known types, no matter what the client sends.
 func TestPutRejectsOversizedPayload(t *testing.T) {
 	svc := &fakeSvc{}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
 	var items []string
 	for i := 0; i <= len(notificationprefs.AllTypes); i++ {
-		items = append(items, `{"type":"goal_comment","enabled":true,"scope":"own","channels":["in_app"]}`)
+		items = append(items, `{"type":"goal_comment","enabled":true,"scope":"own","channels":{"in_app":true}}`)
 	}
 	body := `{"items":[` + strings.Join(items, ",") + `]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
@@ -248,11 +279,11 @@ func TestPutRejectsOversizedPayload(t *testing.T) {
 // lost the race, and a client cannot observe which one "won".
 func TestPutRejectsDuplicateType(t *testing.T) {
 	svc := &fakeSvc{}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
 	body := `{"items":[
-		{"type":"goal_comment","enabled":true,"scope":"own","channels":["in_app"]},
-		{"type":"goal_comment","enabled":false,"scope":"subtree","channels":["in_app"]}
+		{"type":"goal_comment","enabled":true,"scope":"own","channels":{"in_app":true}},
+		{"type":"goal_comment","enabled":false,"scope":"subtree","channels":{"in_app":true}}
 	]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
@@ -270,11 +301,11 @@ func TestPutRejectsDuplicateType(t *testing.T) {
 // user_id для этого эндпоинта вообще нет.
 func TestPutReplacesWholeMatrix(t *testing.T) {
 	svc := &fakeSvc{}
-	h := preferences.New(svc)
+	h := preferences.New(svc, nil)
 
 	body := `{"items":[
-		{"type":"goal_comment","enabled":false,"scope":"own_and_children","channels":["in_app"]},
-		{"type":"kr_progress","enabled":true,"scope":"subtree","channels":["in_app"]}
+		{"type":"goal_comment","enabled":false,"scope":"own_and_children","channels":{"in_app":true}},
+		{"type":"kr_progress","enabled":true,"scope":"subtree","channels":{"in_app":true}}
 	]}`
 	w := handlertest.Do(h.Put, http.MethodPut, "/api/v1/notifications/preferences", body,
 		handlertest.Tenant(1), handlertest.UserID(42, "u42"))
@@ -297,10 +328,96 @@ func TestPutReplacesWholeMatrix(t *testing.T) {
 // Ensures Get actually flushes cache-control headers the way the other GET
 // endpoints in this API do.
 func TestGetSetsAPICacheControl(t *testing.T) {
-	h := preferences.New(&fakeSvc{getAll: fullMatrix()})
+	h := preferences.New(&fakeSvc{getAll: fullMatrix()}, nil)
 	w := handlertest.Do(h.Get, http.MethodGet, "/api/v1/notifications/preferences", "", handlertest.Tenant(1))
 	handlertest.Status(t, w, http.StatusOK)
 	if w.Header().Get("Cache-Control") == "" {
 		t.Error("Get must set an API cache-control header")
+	}
+}
+
+// recordingWriter изображает обёртку ответа из цепочки middleware: она и есть
+// единственный адресат технической причины. Побеждает первая записанная причина —
+// ровно как в middleware.Recorder.
+type recordingWriter struct {
+	*httptest.ResponseRecorder
+	code  string
+	cause error
+}
+
+func (w *recordingWriter) RecordError(code string, cause error) {
+	if w.code == "" {
+		w.code = code
+	}
+	if w.cause == nil {
+		w.cause = cause
+	}
+}
+
+// Отказ чтения обязан оставлять в записи о запросе НАСТОЯЩУЮ причину и то, какой
+// шаг её породил. Иначе в логе остаётся тот же текст, который клиент уже увидел,
+// и отличить отвалившуюся базу от недоступного канала можно только подключением
+// к базе — что однажды и пришлось сделать.
+func TestGetFailureRecordsTheRealCauseNotTheUserFacingText(t *testing.T) {
+	boom := errors.New(`ERROR: column "channels" does not exist (SQLSTATE 42703)`)
+	w := &recordingWriter{ResponseRecorder: httptest.NewRecorder()}
+	h := preferences.New(&fakeSvc{getErr: boom}, nil)
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/preferences", nil)
+	r = handlertest.Tenant(1)(r)
+	r = handlertest.UserID(42, "u42")(r)
+	h.Get(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+	// Клиенту — обезличенный текст, без устройства системы.
+	if body := w.Body.String(); !strings.Contains(body, "failed to load preferences") {
+		t.Fatalf("клиент должен получить обобщённый текст: %s", body)
+	} else if strings.Contains(body, "SQLSTATE") {
+		t.Fatalf("техническая причина утекла клиенту: %s", body)
+	}
+	// В журнал — причина и шаг.
+	if w.cause == nil {
+		t.Fatal("причина не дошла до записи о запросе")
+	}
+	if !errors.Is(w.cause, boom) {
+		t.Fatalf("исходная ошибка потеряна: %v", w.cause)
+	}
+	if !strings.Contains(w.cause.Error(), "preferences:") {
+		t.Fatalf("причина не называет упавший шаг: %v", w.cause)
+	}
+}
+
+// У каждого из трёх шагов чтения — своя пометка: клиент их не различает, а
+// расследование обязано.
+func TestEachLoadStepRecordsItsOwnLabel(t *testing.T) {
+	boom := errors.New("upstream is down")
+	cases := map[string]struct {
+		svc  *fakeSvc
+		want string
+	}{
+		"настройки":        {svc: &fakeSvc{getErr: boom}, want: "preferences:"},
+		"умолчания канала": {svc: &fakeSvc{defaultsErr: boom}, want: "channel defaults:"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			w := &recordingWriter{ResponseRecorder: httptest.NewRecorder()}
+			h := preferences.New(tc.svc, nil)
+			r := httptest.NewRequest(http.MethodGet, "/api/v1/notifications/preferences", nil)
+			r = handlertest.Tenant(1)(r)
+			r = handlertest.UserID(42, "u42")(r)
+			h.Get(w, r)
+
+			if w.Code != http.StatusInternalServerError {
+				t.Fatalf("status = %d, want 500", w.Code)
+			}
+			if w.cause == nil || !strings.Contains(w.cause.Error(), tc.want) {
+				t.Fatalf("причина не называет шаг %q: %v", tc.want, w.cause)
+			}
+			if !errors.Is(w.cause, boom) {
+				t.Fatalf("исходная ошибка потеряна: %v", w.cause)
+			}
+		})
 	}
 }

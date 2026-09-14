@@ -581,3 +581,107 @@ func TestDeleteUnreadDecrementsCount(t *testing.T) {
 		t.Fatalf("счётчик = %d, ожидался 0", after)
 	}
 }
+
+// --- Колокольчик как канал доставки ---
+
+// Отключённый колокольчик убирает уведомление из ленты и из счётчика, но саму
+// строку не отменяет: она остаётся журнальной записью, из которой собирается
+// дайджест во внешний канал. Проверяется через прямой запрос к таблице —
+// иначе «скрыто из ленты» неотличимо от «не записано вовсе».
+func TestBellOffHidesFromFeedButKeepsTheRow(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := notifications.NewRepository(pool)
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+
+	if _, err := repo.Insert(ctx, scope, input("visible")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	if items, _, _ := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20}); len(items) != 1 {
+		t.Fatalf("до отключения в ленте должно быть одно уведомление, got %d", len(items))
+	}
+	if n, _ := repo.UnreadCount(ctx, scope, 1); n != 1 {
+		t.Fatalf("до отключения счётчик должен быть 1, got %d", n)
+	}
+
+	// Пользователь выключает колокольчик именно для этого типа.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channel_overrides)
+		VALUES (1, 1, 'goal_changed', TRUE, 'own', '{"in_app": false}'::jsonb)`); err != nil {
+		t.Fatalf("настройка: %v", err)
+	}
+
+	if items, _, _ := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20}); len(items) != 0 {
+		t.Fatalf("выключенный колокольчик обязан убрать уведомление из ленты, got %d", len(items))
+	}
+	if n, _ := repo.UnreadCount(ctx, scope, 1); n != 0 {
+		t.Fatalf("выключенный колокольчик обязан убрать уведомление из счётчика, got %d", n)
+	}
+
+	// Строка на месте: внешнему каналу есть что отправить.
+	var rows int
+	if err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM notifications WHERE tenant_id = 1 AND user_id = 1`).Scan(&rows); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("запись уведомления обязана сохраниться, got %d", rows)
+	}
+}
+
+// Выключение колокольчика для одного типа не трогает остальные.
+func TestBellOffAppliesPerType(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := notifications.NewRepository(pool)
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+
+	other := input("comment")
+	other.Type = "goal_comment"
+	other.Kind = "comment_added"
+	if _, err := repo.Insert(ctx, scope, input("changed")); err != nil {
+		t.Fatalf("insert changed: %v", err)
+	}
+	if _, err := repo.Insert(ctx, scope, other); err != nil {
+		t.Fatalf("insert comment: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channel_overrides)
+		VALUES (1, 1, 'goal_changed', TRUE, 'own', '{"in_app": false}'::jsonb)`); err != nil {
+		t.Fatalf("настройка: %v", err)
+	}
+
+	items, _, _ := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if len(items) != 1 || items[0].Type != "goal_comment" {
+		t.Fatalf("выключение одного типа задело остальные: %+v", items)
+	}
+}
+
+// Пользователь, не открывавший настройки, видит всё: ключа в карте отклонений
+// нет, и это читается как «включено», а не как «выключено».
+func TestNoStoredChoiceKeepsTheBellOn(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := notifications.NewRepository(pool)
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+
+	if _, err := repo.Insert(ctx, scope, input("a")); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	// Строка настроек есть, но про каналы в ней ничего не сказано.
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channel_overrides)
+		VALUES (1, 1, 'goal_changed', TRUE, 'own', '{}'::jsonb)`); err != nil {
+		t.Fatalf("настройка: %v", err)
+	}
+
+	if items, _, _ := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20}); len(items) != 1 {
+		t.Fatalf("отсутствие выбора обязано читаться как «включено», got %d", len(items))
+	}
+	if n, _ := repo.UnreadCount(ctx, scope, 1); n != 1 {
+		t.Fatalf("счётчик: got %d, want 1", n)
+	}
+}

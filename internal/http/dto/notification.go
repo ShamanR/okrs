@@ -50,18 +50,33 @@ type UnreadCount struct {
 // NotificationPreference is one row of the settings matrix.
 // Scope is empty for addressed types, where it does not apply.
 type NotificationPreference struct {
-	Type     string   `json:"type"`
-	Enabled  bool     `json:"enabled"`
-	Scope    string   `json:"scope,omitempty"`
-	Channels []string `json:"channels"`
+	Type    string `json:"type"`
+	Enabled bool   `json:"enabled"`
+	Scope   string `json:"scope,omitempty"`
+	// Channels is this row's state per channel: every channel the tenant delivers
+	// to, mapped to whether this user gets this type there. Effective state, not
+	// stored state — a channel the user never chose about reports the
+	// administrator's default, which is what the checkbox has to show.
+	Channels map[string]bool `json:"channels"`
 	// Addressed marks a type that has no scope selector, so the UI renders a dash
 	// instead of a dropdown without hardcoding the type name.
 	Addressed bool `json:"addressed"`
 }
 
+// NotificationChannelOption is one column of the settings matrix. Title comes
+// from the channel's own descriptor, so a channel added by another module labels
+// itself and the screen needs no knowledge of it.
+type NotificationChannelOption struct {
+	Name  string `json:"name"`
+	Title string `json:"title"`
+	// DefaultOn is what the administrator chose for staff who never decided. The
+	// UI needs it to offer "back to default" and to explain an unchecked column.
+	DefaultOn bool `json:"default_on"`
+}
+
 type NotificationPreferences struct {
 	Items []NotificationPreference `json:"items"`
-	// Channels available in this tenant. Phase 1b always returns ["in_app"]; the UI
-	// shows channel columns only when there is more than one.
-	Channels []string `json:"channels"`
+	// Channels are the columns of the matrix, the bell first and external
+	// channels in build order.
+	Channels []NotificationChannelOption `json:"channels"`
 }

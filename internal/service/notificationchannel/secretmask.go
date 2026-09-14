@@ -2,10 +2,16 @@ package notificationchannel
 
 import (
 	"context"
+	"fmt"
+	"log/slog"
 	"strings"
 
 	"okrs/notifychannel"
 )
+
+// secretMask is what a redacted secret looks like, in an error and in a log
+// record alike.
+const secretMask = "••••"
 
 // maskSecretErrors wraps sender so a delivery failure never repeats the tenant's
 // secret in its error text. A channel receives the secret already decrypted (in
@@ -24,26 +30,47 @@ func maskSecretErrors(sender notifychannel.Sender, secret string) notifychannel.
 	if secret == "" {
 		return sender
 	}
-	return secretMaskingSender{Sender: sender, secret: secret}
+	return secretMaskingSender{inner: sender, secret: secret}
 }
 
-// secretMaskingSender embeds Sender so every method besides Send — there is only
-// the one today — keeps passing straight through.
+// secretMaskingSender forwards each method of Sender explicitly instead of
+// embedding the interface.
 //
-// Known limitation, checked empirically: embedding Sender does NOT promote any
-// other interface of the notifychannel contract. A type assertion from a wrapped
-// value to notifychannel.Linker fails, because Go only forwards methods declared
-// on the embedded interface itself, not other interfaces the concrete value
-// underneath happens to also implement. Nothing in this module asserts to Linker
-// today, but Linker is part of the public contract, and the next channel that
-// needs account linking (Telegram) will hit this.
+// Embedding is shorter, and is what this type used to do, but it makes the
+// wrapper silently incomplete: a method added to Sender keeps compiling here and
+// starts passing through unredacted. That is not hypothetical — SendNow returns
+// its error straight into a tenant admin's HTTP response, which is the single
+// place where the secret most must not appear. Spelling the methods out means the
+// next addition to the contract breaks this file at compile time and has to be
+// decided about rather than inherited.
+//
+// The same mechanic is why SendNow and Flush live on Sender rather than in
+// optional interfaces beside it: embedding an interface promotes only the methods
+// declared on that interface, so a type assertion from a wrapped value to any
+// other interface of the contract fails — checked empirically. An optional
+// SendNow would therefore be invisible here, the test-send button would fall back
+// to the buffering Send, and it would answer "delivered" for a channel that never
+// delivered anything. notifychannel.Linker still carries that limitation; nothing
+// asserts to it today, and the channel that needs account linking will have to
+// solve it differently.
 type secretMaskingSender struct {
-	notifychannel.Sender
+	inner  notifychannel.Sender
 	secret string
 }
 
 func (s secretMaskingSender) Send(ctx context.Context, target notifychannel.Target, msg notifychannel.Message) error {
-	err := s.Sender.Send(ctx, target, msg)
+	return s.mask(s.inner.Send(ctx, target, msg))
+}
+
+func (s secretMaskingSender) SendNow(ctx context.Context, target notifychannel.Target, msg notifychannel.Message) error {
+	return s.mask(s.inner.SendNow(ctx, target, msg))
+}
+
+func (s secretMaskingSender) Flush(ctx context.Context) error {
+	return s.mask(s.inner.Flush(ctx))
+}
+
+func (s secretMaskingSender) mask(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -59,7 +86,96 @@ type maskedError struct {
 }
 
 func (e *maskedError) Error() string {
-	return strings.ReplaceAll(e.err.Error(), e.secret, "••••")
+	return strings.ReplaceAll(e.err.Error(), e.secret, secretMask)
 }
 
 func (e *maskedError) Unwrap() error { return e.err }
+
+// scrubbingLogger returns the logger to hand a channel: one that cannot write the
+// tenant's secret, whatever the channel passes it.
+//
+// A channel that holds messages has no caller left when delivery finally fails,
+// so it reports the failure to this logger instead of returning it. That moves
+// the failure text out of reach of maskSecretErrors, which only ever sees what
+// Send returns. Redacting at the handler restores the second barrier at the one
+// layer that knows the plaintext, and does it in a way the channel cannot forget
+// or opt out of.
+func scrubbingLogger(base *slog.Logger, secret string) *slog.Logger {
+	if base == nil || secret == "" {
+		return base
+	}
+	return slog.New(&scrubbingHandler{inner: base.Handler(), secret: secret})
+}
+
+type scrubbingHandler struct {
+	inner  slog.Handler
+	secret string
+}
+
+func (h *scrubbingHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	return h.inner.Enabled(ctx, level)
+}
+
+func (h *scrubbingHandler) Handle(ctx context.Context, r slog.Record) error {
+	out := slog.NewRecord(r.Time, r.Level, h.scrub(r.Message), r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		out.AddAttrs(h.scrubAttr(a))
+		return true
+	})
+	return h.inner.Handle(ctx, out)
+}
+
+func (h *scrubbingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	scrubbed := make([]slog.Attr, len(attrs))
+	for i, a := range attrs {
+		scrubbed[i] = h.scrubAttr(a)
+	}
+	return &scrubbingHandler{inner: h.inner.WithAttrs(scrubbed), secret: h.secret}
+}
+
+func (h *scrubbingHandler) WithGroup(name string) slog.Handler {
+	return &scrubbingHandler{inner: h.inner.WithGroup(name), secret: h.secret}
+}
+
+func (h *scrubbingHandler) scrub(s string) string {
+	return strings.ReplaceAll(s, h.secret, secretMask)
+}
+
+func (h *scrubbingHandler) scrubAttr(a slog.Attr) slog.Attr {
+	a.Value = h.scrubValue(a.Value)
+	return a
+}
+
+// scrubValue rewrites the value kinds that can carry text. An error is the case
+// that matters most: a channel logging "err", err is exactly how a token folded
+// into a request URL would reach the log.
+func (h *scrubbingHandler) scrubValue(v slog.Value) slog.Value {
+	switch v.Kind() {
+	case slog.KindString:
+		return slog.StringValue(h.scrub(v.String()))
+	case slog.KindGroup:
+		group := v.Group()
+		scrubbed := make([]slog.Attr, len(group))
+		for i, a := range group {
+			scrubbed[i] = h.scrubAttr(a)
+		}
+		return slog.GroupValue(scrubbed...)
+	case slog.KindLogValuer:
+		return h.scrubValue(v.Resolve())
+	case slog.KindAny:
+		switch t := v.Any().(type) {
+		case error:
+			if text := t.Error(); strings.Contains(text, h.secret) {
+				return slog.StringValue(h.scrub(text))
+			}
+		case fmt.Stringer:
+			if text := t.String(); strings.Contains(text, h.secret) {
+				return slog.StringValue(h.scrub(text))
+			}
+		}
+		return v
+	default:
+		// Numbers, booleans, times and durations cannot carry the secret.
+		return v
+	}
+}

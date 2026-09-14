@@ -7,6 +7,8 @@ package notify
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"okrs/internal/core/event"
 )
@@ -262,4 +264,63 @@ func stringAt(payload map[string]any, side, field string) (string, bool) {
 	}
 	s, ok := m[field].(string)
 	return s, ok
+}
+
+// LinkInput is what a notification's deep link is built from.
+//
+// Shared by the bell and by delivery to external channels: both link to the same
+// place, and two copies of this format would drift the first time the tracker's
+// query parameters change. The tracker reads exactly these names — an earlier
+// version of the bell used goal_id/team_id/period_id, which it reads nowhere, so
+// every click landed on the board with no navigation at all.
+type LinkInput struct {
+	GoalID    *int64
+	TeamID    *int64
+	PeriodID  *int64
+	KRID      *int64
+	CommentID *int64
+	// GoalMissing marks a notification whose goal no longer exists. The goal id
+	// outlives the goal itself — notifications keep their anchor after a hard
+	// DELETE FROM goals, and a goal_deleted notification is about a goal that is
+	// gone by definition — so linking there sends the tracker looking for
+	// something it cannot find. The reader decides: the feed knows because its
+	// LEFT JOIN returned no title, delivery knows because the event just happened.
+	GoalMissing bool
+}
+
+// TargetURL builds the link a notification navigates to. Empty when there is no
+// goal to open: the notification still renders, it just is not clickable.
+func TargetURL(in LinkInput) string {
+	if in.GoalID == nil || in.GoalMissing {
+		return ""
+	}
+	// Values are formatted int64s only (no user input reaches this string), so a
+	// hand-built query string is safe and keeps the param order — team, period,
+	// goal, kr, comment — which url.Values.Encode would alphabetize away.
+	var b strings.Builder
+	b.WriteString("/?")
+	first := true
+	write := func(key string, v int64) {
+		if !first {
+			b.WriteByte('&')
+		}
+		b.WriteString(key)
+		b.WriteByte('=')
+		b.WriteString(strconv.FormatInt(v, 10))
+		first = false
+	}
+	if in.TeamID != nil {
+		write("team", *in.TeamID)
+	}
+	if in.PeriodID != nil {
+		write("period", *in.PeriodID)
+	}
+	write("goal", *in.GoalID)
+	if in.KRID != nil {
+		write("kr", *in.KRID)
+	}
+	if in.CommentID != nil {
+		write("comment", *in.CommentID)
+	}
+	return b.String()
 }

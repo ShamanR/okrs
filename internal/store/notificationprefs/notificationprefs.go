@@ -8,6 +8,7 @@ package notificationprefs
 
 import (
 	"context"
+	"sort"
 
 	"okrs/internal/core/domain"
 
@@ -43,11 +44,26 @@ const (
 	ScopeSubtree        = "subtree"
 )
 
+// ChannelInApp is the reserved name of the bell feed among the delivery channels.
+// It is not a notifychannel.Channel and never will be: it has no Sender, makes no
+// network call, and its row has to be written whatever the user chose — the
+// digest an external channel sends is assembled from exactly those rows.
+const ChannelInApp = "in_app"
+
 type Preference struct {
-	Type     string
-	Enabled  bool
-	Scope    string
-	Channels []string
+	Type    string
+	Enabled bool
+	Scope   string
+	// ChannelOverrides is the user's explicit choice per channel: true for "send
+	// it here", false for "do not". A channel absent from the map is one the user
+	// never expressed an opinion about, and follows the administrator's default
+	// for that channel.
+	//
+	// Sparse on purpose. A list of enabled channels cannot tell "the user turned
+	// this off" from "this channel did not exist when the row was written", and a
+	// channel connected later has to reach everyone — including people who saved
+	// their settings long before it existed.
+	ChannelOverrides map[string]bool
 }
 
 // Target is one event's addressing input: the team it happened in and who did it.
@@ -59,16 +75,20 @@ type Target struct {
 // Recipient is one resolved addressee. Ord is the index of the originating Target,
 // so the caller maps results back onto its batch.
 type Recipient struct {
-	Ord      int
-	UserID   int64
-	Channels []string
+	Ord    int
+	UserID int64
+	// ChannelOverrides is this recipient's explicit per-channel choice; see
+	// Preference.ChannelOverrides. Turning it into the actual set of channels
+	// needs the tenant's channel defaults, which live a layer up — this type
+	// stays out of the availability gate.
+	ChannelOverrides map[string]bool
 }
 
 // defaultPreference is what applies when the user has never touched settings:
 // enabled, own team only, in-app. Missing rows are the norm, not an exception —
 // that is why nothing is backfilled on user creation.
 func defaultPreference(t string) Preference {
-	p := Preference{Type: t, Enabled: true, Channels: []string{"in_app"}}
+	p := Preference{Type: t, Enabled: true, ChannelOverrides: map[string]bool{}}
 	if !IsAddressed(t) {
 		p.Scope = ScopeOwn
 	}
@@ -78,7 +98,7 @@ func defaultPreference(t string) Preference {
 // GetAll returns all four types, substituting defaults for rows that do not exist.
 func (r *Repository) GetAll(ctx context.Context, scope domain.TenantScope, userID int64) ([]Preference, error) {
 	rows, err := r.db.Query(ctx,
-		`SELECT type, enabled, COALESCE(scope, ''), channels
+		`SELECT type, enabled, COALESCE(scope, ''), channel_overrides
 		   FROM notification_preferences WHERE tenant_id = $1 AND user_id = $2`,
 		scope.TenantID, userID)
 	if err != nil {
@@ -89,7 +109,7 @@ func (r *Repository) GetAll(ctx context.Context, scope domain.TenantScope, userI
 	stored := make(map[string]Preference)
 	for rows.Next() {
 		var p Preference
-		if err := rows.Scan(&p.Type, &p.Enabled, &p.Scope, &p.Channels); err != nil {
+		if err := rows.Scan(&p.Type, &p.Enabled, &p.Scope, &p.ChannelOverrides); err != nil {
 			return nil, err
 		}
 		stored[p.Type] = p
@@ -115,12 +135,20 @@ func (r *Repository) Set(ctx context.Context, scope domain.TenantScope, userID i
 	if !IsAddressed(p.Type) && p.Scope != "" {
 		scopeVal = p.Scope
 	}
+	overrides := p.ChannelOverrides
+	if overrides == nil {
+		// A nil map would encode as SQL NULL and violate the NOT NULL column; an
+		// empty map is the honest value anyway — "no explicit choice about any
+		// channel".
+		overrides = map[string]bool{}
+	}
 	_, err := r.db.Exec(ctx, `
-		INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channels)
+		INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channel_overrides)
 		VALUES ($1,$2,$3,$4,$5,$6)
 		ON CONFLICT (tenant_id, user_id, type) DO UPDATE
-		   SET enabled = EXCLUDED.enabled, scope = EXCLUDED.scope, channels = EXCLUDED.channels`,
-		scope.TenantID, userID, p.Type, p.Enabled, scopeVal, p.Channels)
+		   SET enabled = EXCLUDED.enabled, scope = EXCLUDED.scope,
+		       channel_overrides = EXCLUDED.channel_overrides`,
+		scope.TenantID, userID, p.Type, p.Enabled, scopeVal, overrides)
 	return err
 }
 
@@ -143,7 +171,7 @@ WITH RECURSIVE chain AS (
       FROM teams t JOIN chain c ON t.id = c.parent_id
      WHERE t.deleted_at IS NULL AND t.tenant_id = $2
 )
-SELECT DISTINCT c.ord - 1, u.id, COALESCE(p.channels, '{in_app}'::text[])
+SELECT DISTINCT c.ord - 1, u.id, COALESCE(p.channel_overrides, '{}'::jsonb)
   FROM chain c
   JOIN users u       ON u.udid = c.lead_udid
   JOIN memberships m ON m.user_id = u.id AND m.tenant_id = $2 AND m.status = 'active'
@@ -183,7 +211,7 @@ func (r *Repository) ResolveRecipients(ctx context.Context, scope domain.TenantS
 	var out []Recipient
 	for rows.Next() {
 		var rc Recipient
-		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.Channels); err != nil {
+		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.ChannelOverrides); err != nil {
 			return nil, err
 		}
 		out = append(out, rc)
@@ -200,7 +228,7 @@ func (r *Repository) ResolveAddressed(ctx context.Context, scope domain.TenantSc
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT src.ord - 1, u.id, COALESCE(p.channels, '{in_app}'::text[])
+		SELECT src.ord - 1, u.id, COALESCE(p.channel_overrides, '{}'::jsonb)
 		  FROM unnest($1::bigint[]) WITH ORDINALITY AS src(user_id, ord)
 		  JOIN users u       ON u.id = src.user_id
 		  JOIN memberships m ON m.user_id = u.id AND m.tenant_id = $2 AND m.status = 'active'
@@ -216,10 +244,45 @@ func (r *Repository) ResolveAddressed(ctx context.Context, scope domain.TenantSc
 	var out []Recipient
 	for rows.Next() {
 		var rc Recipient
-		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.Channels); err != nil {
+		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.ChannelOverrides); err != nil {
 			return nil, err
 		}
 		out = append(out, rc)
 	}
 	return out, rows.Err()
+}
+
+// EffectiveChannels resolves where one recipient's notification actually goes:
+// the tenant's defaults, overridden per channel by whatever the user chose.
+//
+// Lives here rather than in a service because both the settings service and the
+// fan-out answer this same question, and two copies would be two chances for the
+// three states — on, off, never chose — to be read differently.
+//
+// The result is sorted so callers, logs and tests see a stable order.
+func EffectiveChannels(defaults map[string]bool, overrides map[string]bool) []string {
+	out := make([]string, 0, len(defaults))
+	for name, on := range defaults {
+		if choice, chose := overrides[name]; chose {
+			on = choice
+		}
+		if on {
+			out = append(out, name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// ExternalChannels is EffectiveChannels without the bell: the channels a
+// notification has to be *sent* to, as opposed to the row that is written anyway.
+func ExternalChannels(defaults map[string]bool, overrides map[string]bool) []string {
+	all := EffectiveChannels(defaults, overrides)
+	out := all[:0]
+	for _, name := range all {
+		if name != ChannelInApp {
+			out = append(out, name)
+		}
+	}
+	return out
 }

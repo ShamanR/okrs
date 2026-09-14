@@ -88,7 +88,7 @@ func TestResolveOwnAndChildren(t *testing.T) {
 
 	for _, id := range []int64{leads[0], leads[1]} {
 		if err := repo.Set(ctx, scope, id, notificationprefs.Preference{
-			Type: "goal_changed", Enabled: true, Scope: "own_and_children", Channels: []string{"in_app"},
+			Type: "goal_changed", Enabled: true, Scope: "own_and_children", ChannelOverrides: map[string]bool{"in_app": true},
 		}); err != nil {
 			t.Fatalf("set: %v", err)
 		}
@@ -117,7 +117,7 @@ func TestResolveSubtree(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[0], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: true, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: true, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestDisabledTypeYieldsNoRecipients(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[2], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: false, Scope: "own", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: false, Scope: "own", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestSoftDeletedTeamBreaksChain(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[0], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: true, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: true, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestGetAllReturnsStoredRowOverridesDefault(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, 1, notificationprefs.Preference{
-		Type: "goal_changed", Enabled: false, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: false, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestDuplicateAncestorLeadReturnedOnce(t *testing.T) {
 		t.Fatalf("reassign middle lead: %v", err)
 	}
 	if err := repo.Set(ctx, scope, leads[0], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: true, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: true, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestResolveAddressedOrdMappingAndDisabledFilter(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[1], notificationprefs.Preference{
-		Type: "my_comment_resolved", Enabled: false, Channels: []string{"in_app"},
+		Type: "my_comment_resolved", Enabled: false, ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}

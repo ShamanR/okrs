@@ -19,12 +19,30 @@ import (
 )
 
 type fakeSender struct {
-	target notifychannel.Target
-	msg    notifychannel.Message
-	err    error
+	target   notifychannel.Target
+	msg      notifychannel.Message
+	err      error
+	buffered int
+	sentNow  int
+	flushed  int
 }
 
+func (f *fakeSender) SendNow(_ context.Context, tg notifychannel.Target, m notifychannel.Message) error {
+	f.sentNow++
+	f.target, f.msg = tg, m
+	return f.err
+}
+
+func (f *fakeSender) Flush(context.Context) error {
+	f.flushed++
+	return nil
+}
+
+// Send записывает приём в буфер отдельно от немедленной отправки: проверочная
+// отправка обязана идти через SendNow, иначе кнопка ответит «успех», ничего
+// не доставив.
 func (f *fakeSender) Send(_ context.Context, tg notifychannel.Target, m notifychannel.Message) error {
+	f.buffered++
 	f.target, f.msg = tg, m
 	return f.err
 }
@@ -210,5 +228,49 @@ func TestTransportFailureDoesNotLeakTheAddress(t *testing.T) {
 	}
 	if !strings.Contains(body, "подключиться") {
 		t.Fatalf("ответ не объясняет администратору, что случилось: %s", body)
+	}
+}
+
+// Проверочная отправка обязана идти немедленно, а не через окно накопления.
+// Send принимает сообщение и отвечает «принято» за миллисекунду — кнопка на
+// этом пути рапортовала бы об успехе для канала с отозванным токеном, то есть
+// ровно про то, ради чего её нажимают, и соврала бы.
+func TestProbeDeliversImmediatelyAndDoesNotBuffer(t *testing.T) {
+	s := &fakeSender{}
+	h := channeltest.New(&fakeSvc{sender: s})
+	rec := handlertest.Do(h.Test, http.MethodPost,
+		"/api/v1/admin/settings/notifications/mattermost/test", "",
+		handlertest.Tenant(1), handlertest.UserEmail(1, "udid-42", "admin@example.com"),
+		handlertest.URLParam("channel", "mattermost"))
+	handlertest.Status(t, rec, http.StatusOK)
+
+	if s.sentNow != 1 {
+		t.Fatalf("проверочная отправка обязана вызвать немедленную доставку ровно один раз: sentNow=%d", s.sentNow)
+	}
+	if s.buffered != 0 {
+		t.Fatalf("проверочное сообщение не должно попадать в накопленное: buffered=%d", s.buffered)
+	}
+	if s.flushed != 0 {
+		t.Fatalf("проверочная отправка не должна выгружать чужое накопленное: flushed=%d", s.flushed)
+	}
+}
+
+// Неработающий канал обязан отвечать ошибкой, а не успехом: до перехода на
+// немедленную отправку буферизующий Send вернул бы nil, и кнопка показала бы
+// «канал настроен верно» каналу с неверным секретом.
+func TestProbeOnABrokenChannelFailsRatherThanSucceeds(t *testing.T) {
+	s := &fakeSender{err: errors.New("mattermost: posts: status 401")}
+	h := channeltest.New(&fakeSvc{sender: s})
+	rec := handlertest.Do(h.Test, http.MethodPost,
+		"/api/v1/admin/settings/notifications/mattermost/test", "",
+		handlertest.Tenant(1), handlertest.UserEmail(1, "udid-42", "admin@example.com"),
+		handlertest.URLParam("channel", "mattermost"))
+
+	if rec.Code == http.StatusOK {
+		t.Fatal("канал с неверным секретом не должен отвечать успехом")
+	}
+	handlertest.Status(t, rec, http.StatusBadGateway)
+	if !strings.Contains(rec.Body.String(), "401") {
+		t.Fatalf("администратор не увидел причину отказа: %s", rec.Body.String())
 	}
 }

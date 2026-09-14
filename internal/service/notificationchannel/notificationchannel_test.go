@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -98,9 +99,26 @@ func grantedOnly(names ...string) fakeGrants {
 	return g
 }
 
-type recordingSender struct{ built notifychannel.Settings }
+type recordingSender struct {
+	built    notifychannel.Settings
+	deps     notifychannel.Deps
+	flushed  int
+	sentNow  int
+	accepted int
+}
 
 func (r *recordingSender) Send(context.Context, notifychannel.Target, notifychannel.Message) error {
+	r.accepted++
+	return nil
+}
+
+func (r *recordingSender) SendNow(context.Context, notifychannel.Target, notifychannel.Message) error {
+	r.sentNow++
+	return nil
+}
+
+func (r *recordingSender) Flush(context.Context) error {
+	r.flushed++
 	return nil
 }
 
@@ -113,11 +131,11 @@ func testChannel(built **recordingSender) notifychannel.Channel {
 				{Key: "token", Label: "Токен", Required: true, Kind: notifychannel.FieldSecret},
 			},
 		},
-		New: func(s notifychannel.Settings) (notifychannel.Sender, error) {
-			if s.Secret == "" {
+		New: func(d notifychannel.Deps) (notifychannel.Sender, error) {
+			if d.Settings.Secret == "" {
 				return nil, notifychannel.ErrMissingSecret
 			}
-			rs := &recordingSender{built: s}
+			rs := &recordingSender{built: d.Settings, deps: d}
 			*built = rs
 			return rs, nil
 		},
@@ -143,7 +161,7 @@ func newSvc(t *testing.T, allow map[string]bool, granted fakeGrants, built **rec
 	t.Helper()
 	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
 	svc, err := notificationchannelsvc.New(repo, newKey(t),
-		[]notifychannel.Channel{testChannel(built)}, gate{allow: allow}, granted)
+		[]notifychannel.Channel{testChannel(built)}, gate{allow: allow}, granted, nil)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -198,6 +216,7 @@ func TestChannelUnavailableWithoutExplicitGrantEvenWhenTariffAllowsEverything(t 
 		[]notifychannel.Channel{testChannel(&built)},
 		entitlements.UnlimitedEntitlements{}, // коробочный тариф: разрешает всё
 		grantedOnly(),                        // но системный администратор ничего не выдавал
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("new: %v", err)
@@ -236,6 +255,7 @@ func TestChannelAvailableWhenGrantedAndTariffAllows(t *testing.T) {
 		[]notifychannel.Channel{testChannel(&built)},
 		entitlements.UnlimitedEntitlements{},
 		grantedOnly("fake"),
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("new: %v", err)
@@ -439,7 +459,7 @@ func TestSenderRejectsWhenEntitlementRevoked(t *testing.T) {
 
 	grantedSvc, err := notificationchannelsvc.New(repo, key,
 		[]notifychannel.Channel{testChannel(&built)},
-		gate{allow: entitledAndGranted}, grantedOnly("fake"))
+		gate{allow: entitledAndGranted}, grantedOnly("fake"), nil)
 	if err != nil {
 		t.Fatalf("new (granted): %v", err)
 	}
@@ -453,7 +473,7 @@ func TestSenderRejectsWhenEntitlementRevoked(t *testing.T) {
 	// Тот же repo, тот же ключ, та же выдача, но entitlement больше не разрешён —
 	// как будто тариф пространства понизили после того, как тенант настроил канал.
 	revokedSvc, err := notificationchannelsvc.New(repo, key,
-		[]notifychannel.Channel{testChannel(&built)}, gate{allow: map[string]bool{}}, grantedOnly("fake"))
+		[]notifychannel.Channel{testChannel(&built)}, gate{allow: map[string]bool{}}, grantedOnly("fake"), nil)
 	if err != nil {
 		t.Fatalf("new (revoked): %v", err)
 	}
@@ -474,7 +494,7 @@ func TestSenderRejectsWhenGrantRevoked(t *testing.T) {
 
 	grantedSvc, err := notificationchannelsvc.New(repo, key,
 		[]notifychannel.Channel{testChannel(&built)},
-		gate{allow: entitledAndGranted}, grantedOnly("fake"))
+		gate{allow: entitledAndGranted}, grantedOnly("fake"), nil)
 	if err != nil {
 		t.Fatalf("new (granted): %v", err)
 	}
@@ -486,7 +506,7 @@ func TestSenderRejectsWhenGrantRevoked(t *testing.T) {
 	}
 
 	revokedSvc, err := notificationchannelsvc.New(repo, key,
-		[]notifychannel.Channel{testChannel(&built)}, gate{allow: entitledAndGranted}, grantedOnly())
+		[]notifychannel.Channel{testChannel(&built)}, gate{allow: entitledAndGranted}, grantedOnly(), nil)
 	if err != nil {
 		t.Fatalf("new (grant revoked): %v", err)
 	}
@@ -543,7 +563,7 @@ func TestWithoutSecretKeyChannelsWithSecretsAreUnavailable(t *testing.T) {
 	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
 	svc, err := notificationchannelsvc.New(repo, nil,
 		[]notifychannel.Channel{testChannel(&built)},
-		gate{allow: entitledAndGranted}, grantedOnly("fake"))
+		gate{allow: entitledAndGranted}, grantedOnly("fake"), nil)
 	if err != nil {
 		t.Fatalf("сервис обязан собираться без ключа: %v", err)
 	}
@@ -564,7 +584,7 @@ func TestDuplicateChannelNameIsRejected(t *testing.T) {
 	_, err := notificationchannelsvc.New(&fakeRepo{},
 		newKey(t),
 		[]notifychannel.Channel{testChannel(&built), testChannel(&built)},
-		gate{}, grantedOnly())
+		gate{}, grantedOnly(), nil)
 	if err == nil {
 		t.Fatal("два канала с одинаковым Descriptor.Name должны отвергаться")
 	}
@@ -577,7 +597,7 @@ func TestNewRejectsChannelWithoutConstructor(t *testing.T) {
 		New:        nil,
 	}
 	_, err := notificationchannelsvc.New(&fakeRepo{}, newKey(t),
-		[]notifychannel.Channel{broken}, gate{}, grantedOnly())
+		[]notifychannel.Channel{broken}, gate{}, grantedOnly(), nil)
 	if err == nil {
 		t.Fatal("канал с nil-конструктором должен отвергаться на сборке")
 	}
@@ -589,7 +609,7 @@ func TestNewRejectsChannelWithoutConstructor(t *testing.T) {
 func TestNewRejectsNilGrants(t *testing.T) {
 	var built *recordingSender
 	_, err := notificationchannelsvc.New(&fakeRepo{}, newKey(t),
-		[]notifychannel.Channel{testChannel(&built)}, gate{}, nil)
+		[]notifychannel.Channel{testChannel(&built)}, gate{}, nil, nil)
 	if err == nil {
 		t.Fatal("сборка без ChannelGrants должна отвергаться")
 	}
@@ -673,6 +693,12 @@ func (f failingSender) Send(context.Context, notifychannel.Target, notifychannel
 	return f.err
 }
 
+func (f failingSender) SendNow(context.Context, notifychannel.Target, notifychannel.Message) error {
+	return f.err
+}
+
+func (f failingSender) Flush(context.Context) error { return f.err }
+
 func failingChannel(name string, secretField string, err error) notifychannel.Channel {
 	d := notifychannel.Descriptor{Name: name, Title: "Фейковый (падающий)", SecretField: secretField}
 	if secretField != "" {
@@ -683,7 +709,7 @@ func failingChannel(name string, secretField string, err error) notifychannel.Ch
 	}
 	return notifychannel.Channel{
 		Descriptor: d,
-		New: func(s notifychannel.Settings) (notifychannel.Sender, error) {
+		New: func(notifychannel.Deps) (notifychannel.Sender, error) {
 			return failingSender{err: err}, nil
 		},
 	}
@@ -704,7 +730,7 @@ func TestSenderMasksSecretInDeliveryError(t *testing.T) {
 	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
 	svc, err := notificationchannelsvc.New(repo, newKey(t),
 		[]notifychannel.Channel{failingChannel("failing", "token", upstream)},
-		gate{allow: map[string]bool{"entitlement.notifications.failing": true}}, grantedOnly("failing"))
+		gate{allow: map[string]bool{"entitlement.notifications.failing": true}}, grantedOnly("failing"), nil)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -739,7 +765,7 @@ func TestSenderDoesNotWrapWhenChannelHasNoSecret(t *testing.T) {
 	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
 	svc, err := notificationchannelsvc.New(repo, newKey(t),
 		[]notifychannel.Channel{failingChannel("open", "", errNoSecret)},
-		gate{allow: map[string]bool{"entitlement.notifications.open": true}}, grantedOnly("open"))
+		gate{allow: map[string]bool{"entitlement.notifications.open": true}}, grantedOnly("open"), nil)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -843,7 +869,7 @@ func TestSecretFieldContractIsEnforcedAtAssembly(t *testing.T) {
 			Descriptor: notifychannel.Descriptor{
 				Name: "fake", Title: "Фейковый", SecretField: secretField, Fields: fields,
 			},
-			New: func(notifychannel.Settings) (notifychannel.Sender, error) {
+			New: func(notifychannel.Deps) (notifychannel.Sender, error) {
 				return &recordingSender{}, nil
 			},
 		}
@@ -861,7 +887,7 @@ func TestSecretFieldContractIsEnforcedAtAssembly(t *testing.T) {
 	for name, ch := range bad {
 		t.Run(name, func(t *testing.T) {
 			if _, err := notificationchannelsvc.New(&fakeRepo{}, newKey(t),
-				[]notifychannel.Channel{ch}, gate{}, grantedOnly()); err == nil {
+				[]notifychannel.Channel{ch}, gate{}, grantedOnly(), nil); err == nil {
 				t.Fatal("сборка обязана отвергать нарушение контракта секретного поля")
 			}
 		})
@@ -874,7 +900,7 @@ func TestSecretFieldContractIsEnforcedAtAssembly(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := notificationchannelsvc.New(&fakeRepo{}, newKey(t),
-				[]notifychannel.Channel{ch}, gate{}, grantedOnly()); err != nil {
+				[]notifychannel.Channel{ch}, gate{}, grantedOnly(), nil); err != nil {
 				t.Fatalf("корректный дескриптор отвергнут: %v", err)
 			}
 		})
@@ -888,13 +914,13 @@ func TestSenderMarksConstructorFailureAsInvalidConfig(t *testing.T) {
 	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
 	broken := notifychannel.Channel{
 		Descriptor: notifychannel.Descriptor{Name: "broken2", Title: "Сломанный"},
-		New: func(notifychannel.Settings) (notifychannel.Sender, error) {
+		New: func(notifychannel.Deps) (notifychannel.Sender, error) {
 			return nil, notifychannel.ErrMissingSecret
 		},
 	}
 	svc, err := notificationchannelsvc.New(repo, newKey(t),
 		[]notifychannel.Channel{broken},
-		gate{allow: map[string]bool{"entitlement.notifications.broken2": true}}, grantedOnly("broken2"))
+		gate{allow: map[string]bool{"entitlement.notifications.broken2": true}}, grantedOnly("broken2"), nil)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
@@ -908,5 +934,269 @@ func TestSenderMarksConstructorFailureAsInvalidConfig(t *testing.T) {
 	}
 	if !errors.Is(senderErr, notifychannel.ErrMissingSecret) {
 		t.Fatalf("исходная ошибка канала потеряна: %v", senderErr)
+	}
+}
+
+// --- Реестр живых каналов, редактирующий логгер и выгрузка накопленного ---
+
+// capturingHandler собирает записи лога: канал, который держит сообщения,
+// сообщает об отказе доставки только сюда.
+type capturingHandler struct {
+	records []slog.Record
+}
+
+func (h *capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *capturingHandler) all() string {
+	var b strings.Builder
+	for _, r := range h.records {
+		b.WriteString(r.Message)
+		r.Attrs(func(a slog.Attr) bool {
+			b.WriteString(" ")
+			b.WriteString(a.Key)
+			b.WriteString("=")
+			b.WriteString(a.Value.String())
+			return true
+		})
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func newSvcWithLogger(t *testing.T, built **recordingSender, h slog.Handler) (*notificationchannelsvc.Service, *fakeRepo) {
+	t.Helper()
+	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
+	svc, err := notificationchannelsvc.New(repo, newKey(t),
+		[]notifychannel.Channel{testChannel(built)},
+		gate{allow: entitledAndGranted}, grantedOnly("fake"), slog.New(h))
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	return svc, repo
+}
+
+func saveFake(t *testing.T, svc *notificationchannelsvc.Service, baseURL, secret string) {
+	t.Helper()
+	if err := svc.Save(context.Background(), scope, notificationchannelsvc.SaveInput{
+		Channel: "fake", Enabled: true,
+		Values: map[string]any{"base_url": baseURL}, Secret: secret,
+	}, 1); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+}
+
+// Экземпляр канала переживает вызовы Sender: канал, который копит сообщения,
+// держит их внутри себя, поэтому пересборка на каждое обращение создавала бы
+// буфер и тут же его выбрасывала. Кэш идентификатора бота в Mattermost — та же
+// история этажом ниже: он писался ради переиспользования, которого не было.
+func TestSenderReusesTheLiveChannelInstance(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	first, err := svc.Sender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender 1: %v", err)
+	}
+	instance := built
+
+	second, err := svc.Sender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender 2: %v", err)
+	}
+	if built != instance {
+		t.Fatal("конструктор канала вызван повторно при неизменившейся конфигурации")
+	}
+	if first != second {
+		t.Fatal("Sender обязан отдавать тот же экземпляр при неизменившейся конфигурации")
+	}
+}
+
+// Изменение настроек администратором обязано и заменить экземпляр, и выгрузить
+// накопленное прежним — иначе сообщения, принятые до правки, молча пропадают.
+func TestChangedSettingsRebuildTheChannelAndFlushWhatItHeld(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	sender, err := svc.Sender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if err := sender.Send(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "t"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	old := built
+
+	saveFake(t, svc, "https://mm-2", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender после смены настроек: %v", err)
+	}
+
+	if built == old {
+		t.Fatal("канал не пересобран после изменения настроек")
+	}
+	if old.flushed != 1 {
+		t.Fatalf("накопленное прежним экземпляром не выгружено перед заменой: flushed=%d", old.flushed)
+	}
+	if built.built.Values["base_url"] != "https://mm-2" {
+		t.Fatalf("новый экземпляр собран по старым настройкам: %+v", built.built.Values)
+	}
+}
+
+// Смена одного лишь секрета — тоже смена конфигурации: канал, продолжающий
+// работать на отозванном токене, это тот отказ, ради которого отпечаток берётся
+// со всей строки, а не с одного времени изменения.
+func TestChangedSecretAloneRebuildsTheChannel(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	old := built
+
+	saveFake(t, svc, "https://mm", "секрет-2")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if built == old {
+		t.Fatal("канал не пересобран после смены секрета")
+	}
+	if built.built.Secret != "секрет-2" {
+		t.Fatalf("новый экземпляр получил прежний секрет: %q", built.built.Secret)
+	}
+}
+
+// Выгрузка при остановке: канал копит в памяти, и штатный выход — единственный
+// шанс накопленного уйти.
+func TestFlushDeliversWhatEveryLiveChannelHolds(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if err := svc.Flush(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if built.flushed != 1 {
+		t.Fatalf("живой канал не выгружен при остановке: flushed=%d", built.flushed)
+	}
+}
+
+// Выгружать нечего, пока ни один канал не построен: остановка приложения без
+// настроенных каналов обязана проходить молча.
+func TestFlushWithoutLiveChannelsIsANoop(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	if err := svc.Flush(context.Background()); err != nil {
+		t.Fatalf("выгрузка без живых каналов: %v", err)
+	}
+}
+
+// Немедленная отправка возвращает ошибку прямо в ответ администратору, поэтому
+// маскирующая обёртка обязана переопределять и её. Встраивание интерфейса
+// пропустило бы её насквозь — молча, без ошибки компиляции, и секрет ушёл бы
+// наружу ровно там, где это опаснее всего.
+func TestSendNowErrorIsMaskedToo(t *testing.T) {
+	const secret = "секрет-в-url-4821"
+	upstream := fmt.Errorf("telegram: request to https://api.telegram.org/bot%s/sendMessage failed: %w", secret, errUpstream)
+
+	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
+	svc, err := notificationchannelsvc.New(repo, newKey(t),
+		[]notifychannel.Channel{failingChannel("failing", "token", upstream)},
+		gate{allow: map[string]bool{"entitlement.notifications.failing": true}}, grantedOnly("failing"), nil)
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	ctx := context.Background()
+	if err := svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+		Channel: "failing", Enabled: true, Values: map[string]any{"base_url": "https://x"}, Secret: secret,
+	}, 1); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	sender, err := svc.Sender(ctx, scope, "failing")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+
+	sendNowErr := sender.SendNow(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "t"})
+	if sendNowErr == nil {
+		t.Fatal("ожидалась ошибка немедленной отправки")
+	}
+	if strings.Contains(sendNowErr.Error(), secret) {
+		t.Fatalf("секрет утёк в ответе проверочной отправки: %s", sendNowErr.Error())
+	}
+	if !errors.Is(sendNowErr, errUpstream) {
+		t.Fatal("маскировка обязана сохранить цепочку errors.Is до исходной ошибки канала")
+	}
+
+	flushErr := sender.Flush(ctx)
+	if flushErr == nil {
+		t.Fatal("ожидалась ошибка выгрузки")
+	}
+	if strings.Contains(flushErr.Error(), secret) {
+		t.Fatalf("секрет утёк в ошибке выгрузки: %s", flushErr.Error())
+	}
+}
+
+// Канал получает логгер, который не может записать секрет: как только канал
+// начинает писать ошибки сам, обёртка вокруг Send перестаёт быть второй линией
+// защиты, и редактирование обязано жить в обработчике.
+func TestChannelGetsALoggerThatCannotWriteTheSecret(t *testing.T) {
+	const secret = "секрет-в-url-4821"
+	h := &capturingHandler{}
+	var built *recordingSender
+	svc, _ := newSvcWithLogger(t, &built, h)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", secret)
+
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	logger := built.deps.Log()
+	if logger == nil {
+		t.Fatal("канал обязан получить логгер")
+	}
+
+	logger.Error("доставка не удалась: https://api.example.com/bot" + secret + "/send")
+	logger.Error("ошибка канала", "err", fmt.Errorf("token %s rejected", secret))
+	logger.Error("во вложенной группе", slog.Group("req", slog.String("url", "https://x/"+secret)))
+
+	text := h.all()
+	if strings.Contains(text, secret) {
+		t.Fatalf("секрет попал в журнал: %s", text)
+	}
+	if !strings.Contains(text, "доставка не удалась") || !strings.Contains(text, "rejected") {
+		t.Fatalf("редактирование съело диагностику: %s", text)
+	}
+}
+
+// Часы канала берутся из сервиса: канал, владеющий окном отправки, обязан
+// получить их, а не читать время сам.
+func TestChannelGetsAClock(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if built.deps.Clock() == nil {
+		t.Fatal("канал обязан получить пригодные часы")
 	}
 }

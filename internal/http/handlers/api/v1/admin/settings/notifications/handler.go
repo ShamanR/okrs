@@ -66,7 +66,8 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, dto.NotificationChannelDTO{
 			Name: st.Descriptor.Name, Title: st.Descriptor.Title,
-			Enabled: st.Enabled, Configured: st.Configured, SecretHint: st.SecretHint,
+			Enabled: st.Enabled, DefaultOn: st.DefaultOn,
+			Configured: st.Configured, SecretHint: st.SecretHint,
 			Values: publicValues(st),
 			Fields: fields,
 		})
@@ -114,8 +115,13 @@ func fieldRequiredMessage(err error) string {
 }
 
 type saveRequest struct {
-	Enabled bool           `json:"enabled"`
-	Values  map[string]any `json:"values"`
+	Enabled bool `json:"enabled"`
+	// DefaultOn turns the channel on for staff who have not chosen about it,
+	// including people who join later. Stored regardless of Enabled and simply
+	// inert while the channel is off, so switching a channel off and on again
+	// does not silently reset who gets it.
+	DefaultOn bool           `json:"default_on"`
+	Values    map[string]any `json:"values"`
 	// Secret empty means "keep the stored one": the form shows a mask, and an admin
 	// editing only the server URL must not silently drop the token.
 	Secret string `json:"secret"`
@@ -135,10 +141,11 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	}
 
 	in := notificationchannelsvc.SaveInput{
-		Channel: chi.URLParam(r, "channel"),
-		Enabled: req.Enabled,
-		Values:  req.Values,
-		Secret:  req.Secret,
+		Channel:   chi.URLParam(r, "channel"),
+		Enabled:   req.Enabled,
+		DefaultOn: req.DefaultOn,
+		Values:    req.Values,
+		Secret:    req.Secret,
 	}
 	err := h.svc.Save(r.Context(), scope, in, auth.UserIDFromContext(r.Context()))
 	switch {
@@ -147,7 +154,8 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 		// Фиксируется факт изменения и то, что проверяемо безопасно.
 		logging.AccessChanged(r.Context(), "notification_channel_saved",
 			slog.String("channel", in.Channel),
-			slog.Bool("enabled", in.Enabled))
+			slog.Bool("enabled", in.Enabled),
+			slog.Bool("default_on", in.DefaultOn))
 		w.WriteHeader(http.StatusNoContent)
 	case errors.Is(err, notificationchannelsvc.ErrUnknownChannel),
 		errors.Is(err, notificationchannelsvc.ErrNotAvailable):
@@ -161,6 +169,12 @@ func (h *Handler) Save(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, notificationchannelsvc.ErrSecretRequired):
 		admincommon.WriteError(w, http.StatusUnprocessableEntity,
 			"чтобы включить канал, нужен секрет — заполните поле или сначала сохраните его отдельно")
+	case errors.Is(err, notificationchannelsvc.ErrInvalidConfig):
+		// The channel refused its own settings — a malformed delivery window, a
+		// base URL it cannot parse. That is a form the admin can fix, not a server
+		// fault, and the same answer the probe button gives for the same cause.
+		admincommon.WriteError(w, http.StatusUnprocessableEntity,
+			"канал не принял настройки — проверьте заполненные поля")
 	case errors.Is(err, notificationchannelsvc.ErrFieldRequired):
 		// The field is named, not just "something is missing": the form is generated
 		// from the descriptor, so only the server knows which input the admin left

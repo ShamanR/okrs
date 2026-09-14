@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,14 +18,16 @@ import (
 	"okrs/notifychannel/mattermost"
 )
 
-// fakeMM изображает Mattermost: запоминает путь каждого запроса и отданный пост.
+// fakeMM изображает Mattermost: запоминает путь каждого запроса и отданные посты.
 type fakeMM struct {
 	mu       sync.Mutex
 	paths    []string
 	auth     string
 	posted   map[string]any
-	emailErr int // если не 0, резолв email отвечает этим кодом
-	meErr    int // если не 0, /api/v4/users/me отвечает этим кодом
+	posts    []string // текст каждого поста, по порядку
+	emailErr int      // если не 0, резолв email отвечает этим кодом
+	meErr    int      // если не 0, /api/v4/users/me отвечает этим кодом
+	postErr  int      // если не 0, создание поста отвечает этим кодом
 }
 
 func (f *fakeMM) handler() http.Handler {
@@ -32,26 +35,34 @@ func (f *fakeMM) handler() http.Handler {
 		f.mu.Lock()
 		f.paths = append(f.paths, r.Method+" "+r.URL.Path)
 		f.auth = r.Header.Get("Authorization")
+		emailErr, meErr, postErr := f.emailErr, f.meErr, f.postErr
 		f.mu.Unlock()
 
 		switch {
 		case r.URL.Path == "/api/v4/users/me":
-			if f.meErr != 0 {
-				w.WriteHeader(f.meErr)
+			if meErr != 0 {
+				w.WriteHeader(meErr)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "bot-1"})
 		case strings.HasPrefix(r.URL.Path, "/api/v4/users/email/"):
-			if f.emailErr != 0 {
-				w.WriteHeader(f.emailErr)
+			if emailErr != 0 {
+				w.WriteHeader(emailErr)
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "user-2"})
 		case r.URL.Path == "/api/v4/channels/direct":
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": "dm-3"})
 		case r.URL.Path == "/api/v4/posts":
+			if postErr != 0 {
+				w.WriteHeader(postErr)
+				return
+			}
 			f.mu.Lock()
 			_ = json.NewDecoder(r.Body).Decode(&f.posted)
+			if msg, _ := f.posted["message"].(string); msg != "" {
+				f.posts = append(f.posts, msg)
+			}
 			f.mu.Unlock()
 			w.WriteHeader(http.StatusCreated)
 		default:
@@ -60,11 +71,92 @@ func (f *fakeMM) handler() http.Handler {
 	})
 }
 
+func (f *fakeMM) count(path string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, p := range f.paths {
+		if p == path {
+			n++
+		}
+	}
+	return n
+}
+
+func (f *fakeMM) sentPosts() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string{}, f.posts...)
+}
+
+// clock — управляемые часы: окно отправки измеряется ими, поэтому тест на
+// «накопил и отправил по истечении окна» двигает время, а не ждёт его.
+type clock struct {
+	mu sync.Mutex
+	t  time.Time
+}
+
+func newClock() *clock {
+	return &clock{t: time.Date(2026, 9, 14, 12, 0, 0, 0, time.UTC)}
+}
+
+func (c *clock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *clock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
+
+// capturingHandler собирает записи лога: ошибка доставки вызывающему не
+// возвращается, поэтому единственный способ её увидеть — логгер.
+type capturingHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *capturingHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *capturingHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *capturingHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *capturingHandler) texts() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, 0, len(h.records))
+	for _, r := range h.records {
+		var b strings.Builder
+		b.WriteString(r.Message)
+		r.Attrs(func(a slog.Attr) bool {
+			b.WriteString(" ")
+			b.WriteString(a.Key)
+			b.WriteString("=")
+			b.WriteString(a.Value.String())
+			return true
+		})
+		out = append(out, b.String())
+	}
+	return out
+}
+
 func newSender(t *testing.T, srv *httptest.Server) notifychannel.Sender {
 	t.Helper()
-	s, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": srv.URL},
-		Secret: "bot-token",
+	s, err := mattermost.Channel().New(notifychannel.Deps{
+		Settings: notifychannel.Settings{
+			Values: map[string]any{"base_url": srv.URL},
+			Secret: "bot-token",
+		},
 	})
 	if err != nil {
 		t.Fatalf("конструктор: %v", err)
@@ -72,12 +164,36 @@ func newSender(t *testing.T, srv *httptest.Server) notifychannel.Sender {
 	return s
 }
 
-func TestSendWalksTheFullDirectMessageFlow(t *testing.T) {
+// senderWith собирает канал с управляемыми часами и логгером — то, что нужно
+// тестам про накопление и про ошибки доставки.
+func senderWith(t *testing.T, baseURL string, values map[string]any, c *clock, h slog.Handler) notifychannel.Sender {
+	t.Helper()
+	vals := map[string]any{"base_url": baseURL}
+	for k, v := range values {
+		vals[k] = v
+	}
+	d := notifychannel.Deps{
+		Settings: notifychannel.Settings{Values: vals, Secret: "bot-token"},
+	}
+	if c != nil {
+		d.Now = c.now
+	}
+	if h != nil {
+		d.Logger = slog.New(h)
+	}
+	s, err := mattermost.Channel().New(d)
+	if err != nil {
+		t.Fatalf("конструктор: %v", err)
+	}
+	return s
+}
+
+func TestSendNowWalksTheFullDirectMessageFlow(t *testing.T) {
 	f := &fakeMM{}
 	srv := httptest.NewServer(f.handler())
 	defer srv.Close()
 
-	err := newSender(t, srv).Send(context.Background(),
+	err := newSender(t, srv).SendNow(context.Background(),
 		notifychannel.Target{Email: "ivan@example.com"},
 		notifychannel.Message{Title: "Пётр изменил цель", Body: "Снизить отток", URL: "/?goal_id=7"})
 	if err != nil {
@@ -110,8 +226,422 @@ func TestSendWalksTheFullDirectMessageFlow(t *testing.T) {
 	}
 }
 
-// Идентификатор бота запрашивается один раз и переиспользуется: воркер доставки
-// шлёт пачками, и лишний вызов на каждое сообщение — это N+1 по сети.
+// Send принимает сообщение к отправке и держит его: до закрытия окна наружу
+// не уходит ничего. Это и есть причина, по которой Send не возвращает исход
+// доставки — доставки ещё не было.
+func TestSendHoldsUntilTheWindowCloses(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c := newClock()
+	s := senderWith(t, srv.URL, map[string]any{"window_minutes": 10}, c, nil)
+
+	for i := 0; i < 3; i++ {
+		if err := s.Send(context.Background(),
+			notifychannel.Target{Email: "ivan@example.com"},
+			notifychannel.Message{Title: "обновление", Body: "тело"}); err != nil {
+			t.Fatalf("send %d: %v", i, err)
+		}
+	}
+	if n := f.count("POST /api/v4/posts"); n != 0 {
+		t.Fatalf("до закрытия окна наружу ушло %d постов, want 0", n)
+	}
+
+	c.advance(11 * time.Minute)
+	if err := s.Send(context.Background(),
+		notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "четвёртое", Body: "тело"}); err != nil {
+		t.Fatalf("send после закрытия окна: %v", err)
+	}
+
+	posts := f.sentPosts()
+	if len(posts) != 1 {
+		t.Fatalf("после закрытия окна ожидался один пост, got %d: %v", len(posts), posts)
+	}
+	if !strings.Contains(posts[0], "4 обновления") {
+		t.Fatalf("заголовок не назвал число обновлений: %q", posts[0])
+	}
+}
+
+// Одно накопленное обновление выглядит так же, как выглядело до появления
+// накопления: лишнего заголовка со счётчиком у него нет.
+func TestSingleUpdateKeepsItsPlainShape(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
+
+	if err := s.Send(context.Background(),
+		notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "Пётр изменил цель", Body: "Снизить отток"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	posts := f.sentPosts()
+	if len(posts) != 1 {
+		t.Fatalf("ожидался один пост, got %d", len(posts))
+	}
+	if strings.Contains(posts[0], "обновлени") && strings.HasPrefix(posts[0], "**1") {
+		t.Fatalf("одиночное обновление не должно получать счётчик: %q", posts[0])
+	}
+	if !strings.Contains(posts[0], "Пётр изменил цель") {
+		t.Fatalf("сообщение потеряло текст: %q", posts[0])
+	}
+}
+
+// Пустое окно не порождает сообщения: получателю нечего сказать.
+func TestEmptyWindowSendsNothing(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
+
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("flush пустого буфера: %v", err)
+	}
+	if n := len(f.paths); n != 0 {
+		t.Fatalf("пустое окно сделало %d запросов: %v", n, f.paths)
+	}
+}
+
+// Накопленное содержит все обновления окна, а не только последнее.
+func TestDigestCarriesEveryUpdate(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
+
+	titles := []string{"Иван добавил замечание", "Пётр изменил цель", "Мария обновила прогресс"}
+	for _, title := range titles {
+		if err := s.Send(context.Background(),
+			notifychannel.Target{Email: "ivan@example.com"},
+			notifychannel.Message{Title: title, Body: "тело " + title, URL: "/?goal_id=7"}); err != nil {
+			t.Fatalf("send %q: %v", title, err)
+		}
+	}
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	posts := f.sentPosts()
+	if len(posts) != 1 {
+		t.Fatalf("ожидался один пост на всё окно, got %d: %v", len(posts), posts)
+	}
+	for _, title := range titles {
+		if !strings.Contains(posts[0], title) {
+			t.Fatalf("накопленное потеряло %q: %q", title, posts[0])
+		}
+	}
+	if !strings.Contains(posts[0], "3 обновления") {
+		t.Fatalf("заголовок не назвал число обновлений: %q", posts[0])
+	}
+}
+
+// Накопление раздельное по получателям: каждый получает только своё.
+func TestDigestIsPerRecipient(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
+
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "для Ивана"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "maria@example.com"},
+		notifychannel.Message{Title: "для Марии"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	posts := f.sentPosts()
+	if len(posts) != 2 {
+		t.Fatalf("ожидалось по посту на получателя, got %d: %v", len(posts), posts)
+	}
+	for _, p := range posts {
+		if strings.Contains(p, "для Ивана") && strings.Contains(p, "для Марии") {
+			t.Fatalf("обновления получателей смешались в одном посте: %q", p)
+		}
+	}
+}
+
+// Немедленная отправка минует накопление в обе стороны: своё сообщение шлёт
+// сразу, чужое накопленное не трогает. На этом стоит кнопка «Проверить» —
+// её ответ обязан описывать именно проверочное сообщение.
+func TestSendNowBypassesTheBufferInBothDirections(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
+
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "накопленное"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.SendNow(context.Background(), notifychannel.Target{Email: "admin@example.com"},
+		notifychannel.Message{Title: "проверочное"}); err != nil {
+		t.Fatalf("sendNow: %v", err)
+	}
+
+	posts := f.sentPosts()
+	if len(posts) != 1 {
+		t.Fatalf("немедленная отправка обязана дать ровно один пост, got %d: %v", len(posts), posts)
+	}
+	if !strings.Contains(posts[0], "проверочное") || strings.Contains(posts[0], "накопленное") {
+		t.Fatalf("немедленная отправка захватила накопленное: %q", posts[0])
+	}
+
+	// Накопленное осталось на месте и уходит своим чередом.
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	posts = f.sentPosts()
+	if len(posts) != 2 || !strings.Contains(posts[1], "накопленное") {
+		t.Fatalf("накопленное не пережило немедленную отправку: %v", posts)
+	}
+}
+
+// Выгрузка опустошает буфер: повторный вызов ничего не шлёт.
+func TestFlushEmptiesTheBuffer(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
+
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "ivan@example.com"},
+		notifychannel.Message{Title: "t"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("первая выгрузка: %v", err)
+	}
+	before := len(f.sentPosts())
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("повторная выгрузка: %v", err)
+	}
+	if after := len(f.sentPosts()); after != before {
+		t.Fatalf("повторная выгрузка отправила лишнее: было %d, стало %d", before, after)
+	}
+}
+
+// Потолок накопленного — на получателя: шумный получатель не вытесняет чужое,
+// а у себя теряет самое старое, а не самое свежее.
+func TestBufferCapDropsOldestPerRecipient(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	h := &capturingHandler{}
+	s := senderWith(t, srv.URL, nil, newClock(), h)
+
+	const overflow = 260 // потолок 200
+	for i := 0; i < overflow; i++ {
+		if err := s.Send(context.Background(), notifychannel.Target{Email: "noisy@example.com"},
+			notifychannel.Message{Title: "шум", Body: strings.Repeat("x", 1)}); err != nil {
+			t.Fatalf("send %d: %v", i, err)
+		}
+	}
+	// Последнее обновление шумного и единственное обновление тихого.
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "noisy@example.com"},
+		notifychannel.Message{Title: "самое свежее"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "quiet@example.com"},
+		notifychannel.Message{Title: "тихое обновление"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Flush(context.Background()); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+
+	var noisy, quiet string
+	for _, p := range f.sentPosts() {
+		switch {
+		case strings.Contains(p, "тихое обновление"):
+			quiet = p
+		default:
+			noisy = p
+		}
+	}
+	if quiet == "" {
+		t.Fatal("накопленное тихого получателя вытеснено шумным")
+	}
+	if !strings.Contains(noisy, "самое свежее") {
+		t.Fatalf("отброшено самое свежее вместо самого старого: %q", noisy[:min(len(noisy), 200)])
+	}
+	if !strings.Contains(noisy, "200 обновлений") {
+		t.Fatalf("накопленное не ограничено потолком: %q", noisy[:min(len(noisy), 200)])
+	}
+	if !containsText(h.texts(), "отброшена по достижении предела") {
+		t.Fatalf("отбрасывание не попало в журнал: %v", h.texts())
+	}
+}
+
+// Ошибка доставки накопленного вызывающему не возвращается — возвращать её
+// некому — и обязана попасть в журнал.
+func TestDeliveryFailureGoesToTheLogNotTheCaller(t *testing.T) {
+	f := &fakeMM{emailErr: http.StatusNotFound}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c := newClock()
+	h := &capturingHandler{}
+	s := senderWith(t, srv.URL, map[string]any{"window_minutes": 10}, c, h)
+
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "nobody@example.com"},
+		notifychannel.Message{Title: "t"}); err != nil {
+		t.Fatalf("Send обязан принять сообщение, а не вернуть исход доставки: %v", err)
+	}
+	c.advance(11 * time.Minute)
+	if err := s.Send(context.Background(), notifychannel.Target{Email: "nobody@example.com"},
+		notifychannel.Message{Title: "t2"}); err != nil {
+		t.Fatalf("Send обязан принять сообщение даже при провале доставки: %v", err)
+	}
+
+	if !containsText(h.texts(), "доставка накопленного отклонена") {
+		t.Fatalf("провал доставки не попал в журнал: %v", h.texts())
+	}
+	for _, text := range h.texts() {
+		if strings.Contains(text, "nobody@example.com") {
+			t.Fatalf("адрес получателя попал в журнал: %s", text)
+		}
+	}
+}
+
+// Временный отказ не стоит получателю его обновлений: они остаются до
+// следующего окна. Постоянный отказ повторять бессмысленно — он отбрасывается.
+func TestTransientFailureKeepsUpdatesPermanentDiscardsThem(t *testing.T) {
+	t.Run("временный отказ сохраняет обновления", func(t *testing.T) {
+		f := &fakeMM{postErr: http.StatusInternalServerError}
+		srv := httptest.NewServer(f.handler())
+		defer srv.Close()
+		s := senderWith(t, srv.URL, nil, newClock(), &capturingHandler{})
+
+		if err := s.Send(context.Background(), notifychannel.Target{Email: "ivan@example.com"},
+			notifychannel.Message{Title: "важное"}); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+		if err := s.Flush(context.Background()); err == nil {
+			t.Fatal("выгрузка при 5xx обязана вернуть ошибку")
+		}
+
+		// Сервис поднялся — обновление всё ещё здесь.
+		f.mu.Lock()
+		f.postErr = 0
+		f.mu.Unlock()
+		if err := s.Flush(context.Background()); err != nil {
+			t.Fatalf("повторная выгрузка: %v", err)
+		}
+		if posts := f.sentPosts(); len(posts) != 1 || !strings.Contains(posts[0], "важное") {
+			t.Fatalf("обновление не пережило временный отказ: %v", posts)
+		}
+	})
+
+	t.Run("постоянный отказ отбрасывает обновления", func(t *testing.T) {
+		f := &fakeMM{emailErr: http.StatusNotFound}
+		srv := httptest.NewServer(f.handler())
+		defer srv.Close()
+		s := senderWith(t, srv.URL, nil, newClock(), &capturingHandler{})
+
+		if err := s.Send(context.Background(), notifychannel.Target{Email: "nobody@example.com"},
+			notifychannel.Message{Title: "t"}); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+		if err := s.Flush(context.Background()); err == nil {
+			t.Fatal("выгрузка при 404 обязана вернуть ошибку")
+		}
+
+		f.mu.Lock()
+		f.emailErr = 0
+		f.mu.Unlock()
+		if err := s.Flush(context.Background()); err != nil {
+			t.Fatalf("повторная выгрузка: %v", err)
+		}
+		if posts := f.sentPosts(); len(posts) != 0 {
+			t.Fatalf("постоянно отклонённое обновление не должно повторяться: %v", posts)
+		}
+	})
+}
+
+// Окно отправки — поле дескриптора со значением по умолчанию. Недопустимое
+// значение отвергается конструктором, чтобы ядро показало это администратору
+// как ошибку конфигурации, а не как сюрприз во время доставки.
+func TestWindowIsAConfigurableDescriptorField(t *testing.T) {
+	var found bool
+	for _, f := range mattermost.Channel().Descriptor.Fields {
+		if f.Key == "window_minutes" {
+			found = true
+			if f.Required {
+				t.Error("окно обязано быть необязательным: у него есть значение по умолчанию")
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("поле окна отсутствует в дескрипторе: %+v", mattermost.Channel().Descriptor.Fields)
+	}
+}
+
+func TestWindowRejectsNonPositiveAndNonNumeric(t *testing.T) {
+	bad := []any{0, -5, "0", "-1", "десять", 2.5, true}
+	for _, v := range bad {
+		if _, err := mattermost.Channel().New(notifychannel.Deps{
+			Settings: notifychannel.Settings{
+				Values: map[string]any{"base_url": "https://x", "window_minutes": v},
+				Secret: "t",
+			},
+		}); err == nil {
+			t.Errorf("окно %#v (%T) должно быть отвергнуто", v, v)
+		}
+	}
+
+	ok := []any{nil, "", 1, 10, float64(5), "7"}
+	for _, v := range ok {
+		if _, err := mattermost.Channel().New(notifychannel.Deps{
+			Settings: notifychannel.Settings{
+				Values: map[string]any{"base_url": "https://x", "window_minutes": v},
+				Secret: "t",
+			},
+		}); err != nil {
+			t.Errorf("окно %#v (%T) должно быть принято: %v", v, v, err)
+		}
+	}
+}
+
+// Окно, не заданное администратором, равно десяти минутам: до девятой минуты
+// накопленное держится, после одиннадцатой уходит.
+func TestWindowDefaultsToTenMinutes(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c := newClock()
+	s := senderWith(t, srv.URL, nil, c, nil)
+
+	send := func(title string) {
+		t.Helper()
+		if err := s.Send(context.Background(), notifychannel.Target{Email: "ivan@example.com"},
+			notifychannel.Message{Title: title}); err != nil {
+			t.Fatalf("send %q: %v", title, err)
+		}
+	}
+
+	send("первое")
+	c.advance(9 * time.Minute)
+	send("второе")
+	if n := f.count("POST /api/v4/posts"); n != 0 {
+		t.Fatalf("на девятой минуте накопленное уже ушло (%d постов)", n)
+	}
+	c.advance(2 * time.Minute)
+	send("третье")
+	if n := f.count("POST /api/v4/posts"); n != 1 {
+		t.Fatalf("после одиннадцатой минуты ожидался один пост, got %d", n)
+	}
+}
+
+// Идентификатор бота запрашивается один раз и переиспользуется: доставка идёт
+// пачками, и лишний вызов на каждое сообщение — это N+1 по сети.
 func TestBotIDIsFetchedOnce(t *testing.T) {
 	f := &fakeMM{}
 	srv := httptest.NewServer(f.handler())
@@ -119,19 +649,13 @@ func TestBotIDIsFetchedOnce(t *testing.T) {
 	s := newSender(t, srv)
 
 	for i := 0; i < 3; i++ {
-		if err := s.Send(context.Background(),
+		if err := s.SendNow(context.Background(),
 			notifychannel.Target{Email: "ivan@example.com"},
 			notifychannel.Message{Title: "t", Body: "b"}); err != nil {
 			t.Fatalf("send %d: %v", i, err)
 		}
 	}
-	var meCalls int
-	for _, p := range f.paths {
-		if p == "GET /api/v4/users/me" {
-			meCalls++
-		}
-	}
-	if meCalls != 1 {
+	if meCalls := f.count("GET /api/v4/users/me"); meCalls != 1 {
 		t.Fatalf("users/me вызван %d раз, want 1", meCalls)
 	}
 }
@@ -143,7 +667,7 @@ func TestUnknownEmailIsPermanent(t *testing.T) {
 	srv := httptest.NewServer(f.handler())
 	defer srv.Close()
 
-	err := newSender(t, srv).Send(context.Background(),
+	err := newSender(t, srv).SendNow(context.Background(),
 		notifychannel.Target{Email: "nobody@example.com"},
 		notifychannel.Message{Title: "t", Body: "b"})
 	if err == nil {
@@ -160,7 +684,7 @@ func TestServerErrorIsTransient(t *testing.T) {
 	srv := httptest.NewServer(f.handler())
 	defer srv.Close()
 
-	err := newSender(t, srv).Send(context.Background(),
+	err := newSender(t, srv).SendNow(context.Background(),
 		notifychannel.Target{Email: "ivan@example.com"},
 		notifychannel.Message{Title: "t", Body: "b"})
 	if err == nil {
@@ -177,7 +701,7 @@ func TestEmptyEmailIsPermanent(t *testing.T) {
 	srv := httptest.NewServer(f.handler())
 	defer srv.Close()
 
-	err := newSender(t, srv).Send(context.Background(),
+	err := newSender(t, srv).SendNow(context.Background(),
 		notifychannel.Target{}, notifychannel.Message{Title: "t"})
 	if err == nil || !mattermost.IsPermanent(err) {
 		t.Fatalf("пустой email должен давать постоянную ошибку, got %v", err)
@@ -185,11 +709,13 @@ func TestEmptyEmailIsPermanent(t *testing.T) {
 }
 
 func TestConstructorRequiresBaseURLAndSecret(t *testing.T) {
-	if _, err := mattermost.Channel().New(notifychannel.Settings{Secret: "t"}); err == nil {
+	if _, err := mattermost.Channel().New(notifychannel.Deps{
+		Settings: notifychannel.Settings{Secret: "t"},
+	}); err == nil {
 		t.Fatal("без base_url конструктор должен отказать")
 	}
-	if _, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": "https://x"},
+	if _, err := mattermost.Channel().New(notifychannel.Deps{
+		Settings: notifychannel.Settings{Values: map[string]any{"base_url": "https://x"}},
 	}); err == nil {
 		t.Fatal("без секрета конструктор должен отказать")
 	}
@@ -217,17 +743,16 @@ func TestDescriptorDrivesTheAdminForm(t *testing.T) {
 }
 
 // Кэш botID запоминает только УСПЕХ: если первый вызов /api/v4/users/me вернул
-// временную ошибку (5xx), следующий Send() должен переопубликовать попытку.
+// временную ошибку (5xx), следующая отправка должна повторить попытку.
 func TestBotIDRetryAfterTransientError(t *testing.T) {
-	f := &fakeMM{}
-	srv := httptest.NewServer(f.handler())
-	defer srv.Close()
-
-	// Первый обработчик ошибка, второй успех
 	callCount := 0
+	var mu sync.Mutex
 	userMeHandler := func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
 		callCount++
-		if callCount == 1 {
+		n := callCount
+		mu.Unlock()
+		if n == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -249,34 +774,27 @@ func TestBotIDRetryAfterTransientError(t *testing.T) {
 	srv2 := httptest.NewServer(mux)
 	defer srv2.Close()
 
-	s, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": srv2.URL},
-		Secret: "bot-token",
-	})
-	if err != nil {
-		t.Fatalf("конструктор: %v", err)
-	}
+	s := senderWith(t, srv2.URL, nil, newClock(), nil)
 
-	// Первый Send() должен упасть с временной ошибкой
-	err1 := s.Send(context.Background(),
+	err1 := s.SendNow(context.Background(),
 		notifychannel.Target{Email: "ivan@example.com"},
 		notifychannel.Message{Title: "первая", Body: "попытка"})
 	if err1 == nil {
-		t.Fatal("первый Send() должен был вернуть ошибку")
+		t.Fatal("первая отправка должна была вернуть ошибку")
 	}
 	if mattermost.IsPermanent(err1) {
 		t.Fatalf("первая ошибка должна быть временной (5xx): %v", err1)
 	}
 
-	// Второй Send() должен переопубликовать запрос к /api/v4/users/me и преуспеть
-	err2 := s.Send(context.Background(),
+	err2 := s.SendNow(context.Background(),
 		notifychannel.Target{Email: "ivan@example.com"},
 		notifychannel.Message{Title: "вторая", Body: "попытка"})
 	if err2 != nil {
-		t.Fatalf("второй Send() должен был преуспеть, но вернул: %v", err2)
+		t.Fatalf("вторая отправка должна была преуспеть, но вернула: %v", err2)
 	}
 
-	// /api/v4/users/me должен быть вызван дважды: один раз (500), второй раз (успех)
+	mu.Lock()
+	defer mu.Unlock()
 	if callCount != 2 {
 		t.Fatalf("/api/v4/users/me вызван %d раз, want 2", callCount)
 	}
@@ -297,9 +815,11 @@ func TestBaseURLMustHaveHTTPOrHTTPSScheme(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.url, func(t *testing.T) {
-			_, err := mattermost.Channel().New(notifychannel.Settings{
-				Values: map[string]any{"base_url": tt.url},
-				Secret: "token",
+			_, err := mattermost.Channel().New(notifychannel.Deps{
+				Settings: notifychannel.Settings{
+					Values: map[string]any{"base_url": tt.url},
+					Secret: "token",
+				},
 			})
 			if tt.wantOK && err != nil {
 				t.Fatalf("конструктор должен был принять %q, но отказал: %v", tt.url, err)
@@ -311,53 +831,38 @@ func TestBaseURLMustHaveHTTPOrHTTPSScheme(t *testing.T) {
 	}
 }
 
-// Множественные Send() на непрогретом sender с успешным резолвом должны коалесцировать:
-// первая горутина резолвит botID, остальные ждут и переиспользуют результат.
-// /api/v4/users/me должен быть вызван ровно один раз — это требование про N+1.
+// Множественные отправки на непрогретом sender с успешным резолвом должны
+// коалесцировать: первая горутина резолвит botID, остальные ждут и
+// переиспользуют результат. /api/v4/users/me должен быть вызван ровно один
+// раз — это требование про N+1.
 func TestBotIDCoalescesOnSuccess(t *testing.T) {
 	f := &fakeMM{}
 	srv := httptest.NewServer(f.handler())
 	defer srv.Close()
-
-	s, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": srv.URL},
-		Secret: "bot-token",
-	})
-	if err != nil {
-		t.Fatalf("конструктор: %v", err)
-	}
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
 
 	const numGoroutines = 20
 	start := make(chan struct{})
 	done := make(chan error, numGoroutines)
 
 	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
+		go func() {
 			<-start // Wait for signal to start simultaneously
-			err := s.Send(context.Background(),
+			done <- s.SendNow(context.Background(),
 				notifychannel.Target{Email: "ivan@example.com"},
 				notifychannel.Message{Title: "t", Body: "b"})
-			done <- err
-		}(i)
+		}()
 	}
 
 	close(start) // Signal all goroutines to start simultaneously
 
-	// Collect results
 	for i := 0; i < numGoroutines; i++ {
 		if err := <-done; err != nil {
-			t.Fatalf("Send %d: %v", i, err)
+			t.Fatalf("SendNow %d: %v", i, err)
 		}
 	}
 
-	// Count /api/v4/users/me calls
-	var meCalls int
-	for _, p := range f.paths {
-		if p == "GET /api/v4/users/me" {
-			meCalls++
-		}
-	}
-	if meCalls != 1 {
+	if meCalls := f.count("GET /api/v4/users/me"); meCalls != 1 {
 		t.Fatalf("/api/v4/users/me вызван %d раз, want 1", meCalls)
 	}
 }
@@ -371,27 +876,19 @@ func TestBotIDAllWaitOnSingleFailure(t *testing.T) {
 	f := &fakeMM{meErr: http.StatusInternalServerError}
 	srv := httptest.NewServer(f.handler())
 	defer srv.Close()
-
-	s, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": srv.URL},
-		Secret: "bot-token",
-	})
-	if err != nil {
-		t.Fatalf("конструктор: %v", err)
-	}
+	s := senderWith(t, srv.URL, nil, newClock(), nil)
 
 	const numGoroutines = 20
 	start := make(chan struct{})
 	done := make(chan error, numGoroutines)
 
 	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
+		go func() {
 			<-start // барьер: все горутины стартуют одновременно, без time.Sleep
-			err := s.Send(context.Background(),
+			done <- s.SendNow(context.Background(),
 				notifychannel.Target{Email: "ivan@example.com"},
 				notifychannel.Message{Title: "t", Body: "b"})
-			done <- err
-		}(i)
+		}()
 	}
 
 	startTime := time.Now()
@@ -418,15 +915,7 @@ func TestBotIDAllWaitOnSingleFailure(t *testing.T) {
 	}
 
 	// Ровно один сетевой запрос на всю волну — это и есть коалесинг отказа.
-	f.mu.Lock()
-	var meCalls int
-	for _, p := range f.paths {
-		if p == "GET /api/v4/users/me" {
-			meCalls++
-		}
-	}
-	f.mu.Unlock()
-	if meCalls != 1 {
+	if meCalls := f.count("GET /api/v4/users/me"); meCalls != 1 {
 		t.Fatalf("/api/v4/users/me вызван %d раз, want 1", meCalls)
 	}
 }
@@ -445,13 +934,7 @@ func TestBotIDCancellationIsRespected(t *testing.T) {
 	}))
 	defer slowServer.Close()
 
-	s, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": slowServer.URL},
-		Secret: "bot-token",
-	})
-	if err != nil {
-		t.Fatalf("конструктор: %v", err)
-	}
+	s := senderWith(t, slowServer.URL, nil, newClock(), nil)
 
 	// Start one goroutine that will hang waiting for the slow wave
 	start := make(chan struct{})
@@ -460,10 +943,9 @@ func TestBotIDCancellationIsRespected(t *testing.T) {
 	go func() {
 		<-start
 		// This will initiate the wave
-		err := s.Send(context.Background(),
+		slowDone <- s.SendNow(context.Background(),
 			notifychannel.Target{Email: "ivan@example.com"},
 			notifychannel.Message{Title: "t", Body: "b"})
-		slowDone <- err
 	}()
 
 	// Start one goroutine with a short timeout that joins the wave
@@ -473,10 +955,9 @@ func TestBotIDCancellationIsRespected(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		defer cancel()
 		<-start
-		err := s.Send(ctx,
+		timeoutDone <- s.SendNow(ctx,
 			notifychannel.Target{Email: "ivan@example.com"},
 			notifychannel.Message{Title: "t", Body: "b"})
-		timeoutDone <- err
 	}()
 
 	// Start both simultaneously
@@ -510,14 +991,8 @@ func TestTransportFailureStaysRecognisableAsNetError(t *testing.T) {
 	url := srv.URL
 	srv.Close() // порт закрыт: следующий запрос упрётся в connection refused
 
-	s, err := mattermost.Channel().New(notifychannel.Settings{
-		Values: map[string]any{"base_url": url},
-		Secret: "bot-token",
-	})
-	if err != nil {
-		t.Fatalf("конструктор: %v", err)
-	}
-	sendErr := s.Send(context.Background(), notifychannel.Target{Email: "a@example.com"},
+	s := senderWith(t, url, nil, newClock(), nil)
+	sendErr := s.SendNow(context.Background(), notifychannel.Target{Email: "a@example.com"},
 		notifychannel.Message{Title: "t"})
 	if sendErr == nil {
 		t.Fatal("отправка на закрытый порт обязана падать")
@@ -549,7 +1024,7 @@ func TestErrorTextNeverCarriesTheAddress(t *testing.T) {
 			srv := httptest.NewServer(f.handler())
 			defer srv.Close()
 
-			err := newSender(t, srv).Send(context.Background(),
+			err := newSender(t, srv).SendNow(context.Background(),
 				notifychannel.Target{Email: addr},
 				notifychannel.Message{Title: "t", Body: "b"})
 			if err == nil {
@@ -566,4 +1041,13 @@ func TestErrorTextNeverCarriesTheAddress(t *testing.T) {
 			}
 		})
 	}
+}
+
+func containsText(texts []string, want string) bool {
+	for _, t := range texts {
+		if strings.Contains(t, want) {
+			return true
+		}
+	}
+	return false
 }

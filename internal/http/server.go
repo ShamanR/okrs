@@ -213,6 +213,21 @@ type Options struct {
 	TenantRoutes func(chi.Router) // membership-gated, tenant-scoped (billing UI)
 }
 
+// FlushNotificationChannels delivers whatever the live notification channels are
+// still holding.
+//
+// A channel accumulates in memory, so a replica that exits without this loses the
+// updates its window had not yet sent. Called on shutdown, after the event bus has
+// drained — the last events have to become messages before there is anything to
+// flush. The context carries the budget: an unreachable external service must not
+// spend the whole shutdown window.
+func (s *Server) FlushNotificationChannels(ctx context.Context) error {
+	if s.notifChannels == nil {
+		return nil
+	}
+	return s.notifChannels.Flush(ctx)
+}
+
 // channelsWithSecret counts the channels whose configuration includes a secret at
 // rest. Only those are affected by a missing NOTIFICATIONS_SECRET_KEY; a channel
 // without a SecretField configures and runs fine without any key.
@@ -302,14 +317,14 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 			slog.String(logging.KeyEvent, logging.EventAppStart),
 			"channels", n)
 	}
-	notifChannels, err := notificationchannel.New(st.NotificationChannels, secrets, opts.NotificationChannels, ent, settingsSvc)
+	notifChannels, err := notificationchannel.New(st.NotificationChannels, secrets, opts.NotificationChannels, ent, settingsSvc, logger)
 	if err != nil {
 		return nil, fmt.Errorf("http: notification channels: %w", err)
 	}
 
 	return &Server{
 		store:            st,
-		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger),
+		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger, notifChannels),
 		logger:           logger,
 		tmpl:             tmpl,
 		zone:             zone,
@@ -597,7 +612,7 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	notificationsread.RegisterRoutes(r, notificationsread.New(d.Notifications))
 	// PUT is state-changing and browser-invoked, so it must live in this same
 	// CSRF-protected, membership-gated group.
-	notificationsprefs.RegisterRoutes(r, notificationsprefs.New(d.NotificationPrefs))
+	notificationsprefs.RegisterRoutes(r, notificationsprefs.New(d.NotificationPrefs, s.notifChannels))
 	// Журнал активности (лента + счётчики) — только для tenant-admin, как и очистка
 	// журнала (RequireTenantAdmin). При AUTH_MODE=disabled anonymous-local — admin, доступ есть.
 	r.Group(func(r chi.Router) {

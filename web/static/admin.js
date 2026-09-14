@@ -1694,7 +1694,7 @@ function NotificationsSection() {
     setChannels(list);
     setDraft(prev => {
       const d = {};
-      list.forEach(c => { d[c.name] = prev[c.name] || {enabled: c.enabled, values: {...(c.values||{})}, secret: ''}; });
+      list.forEach(c => { d[c.name] = prev[c.name] || {enabled: c.enabled, default_on: c.default_on, values: {...(c.values||{})}, secret: ''}; });
       return d;
     });
   }, []);
@@ -1707,7 +1707,7 @@ function NotificationsSection() {
     setBusy(c.name); setMsg(m => ({...m, [c.name]: null}));
     const d = draft[c.name];
     const res = await apiPut(`/api/v1/admin/settings/notifications/${encodeURIComponent(c.name)}`,
-      {enabled: d.enabled, values: d.values, secret: d.secret});
+      {enabled: d.enabled, default_on: !!d.default_on, values: d.values, secret: d.secret});
     setBusy('');
     if (res && res.status === 204) {
       setMsg(m => ({...m, [c.name]: {text: 'Сохранено', ok: true}}));
@@ -1758,12 +1758,34 @@ function NotificationsSection() {
       const d = draft[c.name] || {values:{}};
       const m = msg[c.name];
       return <div key={c.name} style={cardStyle}>
-        <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:14}}>
+        <div style={{marginBottom:14}}>
           <strong style={{fontSize:14, color:T.headingFg}}>{c.title}</strong>
-          <label style={{display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:T.mutedFg, cursor:'pointer'}}>
-            <input type="checkbox" checked={!!d.enabled} onChange={e => setFlag(c.name, 'enabled', e.target.checked)}/>
-            включён
-          </label>
+          {/* Два признака рядом, и они НЕ синонимы: первый — работает ли канал
+              вообще, второй — получают ли его сотрудники, которые сами ничего
+              не выбирали. Формулировки разведены намеренно: «включён» и
+              «включён по умолчанию» читаются одинаково и путают.
+              Второй недоступен, пока канал не активен, — он в этом случае
+              ни на что не влияет, но сохраняется, чтобы выключение и обратное
+              включение канала не сбрасывало, кому он приходит. */}
+          <div style={{display:'flex', flexDirection:'column', gap:6, marginTop:8}}>
+            <label style={{display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:T.mutedFg, cursor:'pointer'}}>
+              <input type="checkbox" checked={!!d.enabled} onChange={e => setFlag(c.name, 'enabled', e.target.checked)}/>
+              Канал активен
+            </label>
+            <label style={{display:'flex', alignItems:'flex-start', gap:6, fontSize:12.5,
+                           color: d.enabled ? T.mutedFg : T.disabledFg || '#9ca3af',
+                           cursor: d.enabled ? 'pointer' : 'default'}}>
+              <input type="checkbox" checked={!!d.default_on} disabled={!d.enabled}
+                     style={{marginTop:2}}
+                     onChange={e => setFlag(c.name, 'default_on', e.target.checked)}/>
+              <span>
+                По умолчанию включён у сотрудников
+                <span style={{display:'block', fontSize:11.5, color:T.mutedFg, opacity:0.85}}>
+                  Каждый сотрудник может отключить канал для себя в своих настройках уведомлений
+                </span>
+              </span>
+            </label>
+          </div>
         </div>
         {c.fields.map(f => (
           <Field key={f.key} label={f.label} hint={f.hint} required={f.required}>
