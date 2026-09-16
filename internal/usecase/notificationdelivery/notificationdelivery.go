@@ -143,11 +143,19 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 
 	senders := make(map[string]notifychannel.Sender)
 	var errs []error
-	unaddressable := 0
+	unaddressable, departed := 0, 0
 
 	for _, it := range items {
 		recipient, known := contacts[it.UserID]
-		if !known || recipient.Email == "" {
+		switch {
+		case recipient.Removed:
+			// Membership was revoked between resolving the recipients and reading
+			// their contacts. The bell row stays — it is inside the product, and
+			// this person can no longer open it — but the message must not leave
+			// for a personal account that is no longer part of the tenant.
+			departed++
+			continue
+		case !known || recipient.Email == "":
 			// Every channel in this build addresses by email. Counted and reported
 			// once for the batch rather than per message: a tenant whose staff have
 			// no addresses would otherwise fill the log with one line each.
@@ -187,6 +195,12 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 			slog.String(logging.KeyEvent, logging.EventDomainEvent),
 			slog.Int64(logging.KeyTenantID, scope.TenantID),
 			slog.Int("recipients", unaddressable))
+	}
+	if departed > 0 && u.logger != nil {
+		u.logger.InfoContext(ctx, "notificationdelivery: получатель больше не состоит в тенанте, внешняя отправка пропущена",
+			slog.String(logging.KeyEvent, logging.EventDomainEvent),
+			slog.Int64(logging.KeyTenantID, scope.TenantID),
+			slog.Int("recipients", departed))
 	}
 	return errors.Join(errs...)
 }

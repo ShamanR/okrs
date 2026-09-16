@@ -75,6 +75,13 @@ var (
 	// surface only at delivery time. Errors carrying it are *FieldRequiredError,
 	// which names the field so the admin is told what to fill in.
 	ErrFieldRequired = errors.New("notificationchannel: required field is empty")
+	// ErrRetired: the caller is holding an instance the registry has already
+	// detached — the configuration was saved, or the channel switched off, after
+	// the sender was handed out. Returned instead of accepting the message,
+	// because accepting it would mean posting under settings that are gone. The
+	// caller gets it as a delivery error; the bell row is written regardless, and
+	// the next batch asks for a sender again and gets the current one.
+	ErrRetired = errors.New("notificationchannel: sender retired by a configuration change")
 	// ErrInvalidConfig: the channel's own constructor refused what the tenant
 	// stored. That is a configuration problem the admin can fix, not a server
 	// fault, and the API layer answers it as such rather than as a 500.

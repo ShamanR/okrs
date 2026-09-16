@@ -425,3 +425,34 @@ func TestContactsAreResolvedWithinTheTenant(t *testing.T) {
 		t.Fatalf("резолв контактов ушёл без пространства: %+v", contacts.gotScope)
 	}
 }
+
+// Человеку, чьё членство отозвали, наружу больше ничего не уходит.
+//
+// Получателей отбирают по активным членствам, но между тем отбором и чтением
+// контактов членство успевает быть отозванным — и чтение контактов об этом прямо
+// сообщает. Игнорировать это нельзя: колокольчик остаётся внутри продукта, куда
+// бывший участник уже не войдёт, а сообщение ушло бы на личный адрес человека,
+// который в тенанте больше не состоит.
+func TestRecipientWhoseMembershipWasRevokedGetsNothingExternally(t *testing.T) {
+	ch := newChannels("mattermost")
+	contacts := people()
+	contacts.people[4] = users.Contact{
+		ID: 4, DisplayName: "Ольга", Email: "olga@example.com", Removed: true,
+	}
+	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: contacts})
+
+	err := uc.Deliver(context.Background(), scope, []notificationuc.Delivery{
+		item(4, 2, "mattermost"), // членство отозвано
+		item(1, 2, "mattermost"),
+	})
+	if err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	s := ch.senders["mattermost"]
+	if len(s.accepted) != 1 {
+		t.Fatalf("принято %d сообщений, ожидалось одно (первый получатель больше не в тенанте)", len(s.accepted))
+	}
+	if s.accepted[0].target.Email != "petr@example.com" {
+		t.Fatalf("сообщение ушло бывшему участнику: %+v", s.accepted[0].target)
+	}
+}

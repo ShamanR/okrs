@@ -146,6 +146,24 @@ func (h *scrubbingHandler) scrubAttr(a slog.Attr) slog.Attr {
 	return a
 }
 
+// renderForInspection turns a value into the text this wrapper searches for the
+// secret.
+//
+// %+v rather than the handler's own serialization: it is deliberately a superset.
+// A JSON handler prints exported fields, %+v prints unexported ones too, so a
+// rendering that does not contain the secret guarantees the handler's will not
+// either. The reverse would not hold.
+func renderForInspection(v any) string {
+	switch t := v.(type) {
+	case error:
+		return t.Error()
+	case fmt.Stringer:
+		return t.String()
+	default:
+		return fmt.Sprintf("%+v", v)
+	}
+}
+
 // scrubValue rewrites the value kinds that can carry text. An error is the case
 // that matters most: a channel logging "err", err is exactly how a token folded
 // into a request URL would reach the log.
@@ -163,15 +181,19 @@ func (h *scrubbingHandler) scrubValue(v slog.Value) slog.Value {
 	case slog.KindLogValuer:
 		return h.scrubValue(v.Resolve())
 	case slog.KindAny:
-		switch t := v.Any().(type) {
-		case error:
-			if text := t.Error(); strings.Contains(text, h.secret) {
-				return slog.StringValue(h.scrub(text))
-			}
-		case fmt.Stringer:
-			if text := t.String(); strings.Contains(text, h.secret) {
-				return slog.StringValue(h.scrub(text))
-			}
+		// Anything can arrive here, and the downstream handler will render it its
+		// own way. A struct or a map handed to slog.Any is serialized field by
+		// field, so a token sitting in an exported field — slog.Any("settings",
+		// d.Settings) is the obvious way to reach this — would go out verbatim
+		// while this wrapper reported success.
+		//
+		// So the value is rendered HERE and inspected. Only a rendering that
+		// actually contains the secret is replaced; everything else is forwarded
+		// untouched, keeping the handler's own formatting for the overwhelming
+		// majority of records.
+		rendered := renderForInspection(v.Any())
+		if strings.Contains(rendered, h.secret) {
+			return slog.StringValue(h.scrub(rendered))
 		}
 		return v
 	default:

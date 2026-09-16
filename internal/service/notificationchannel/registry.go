@@ -27,6 +27,63 @@ type channelKey struct {
 	channel  string
 }
 
+// revocableSender is the form every instance is handed out in, and the reason
+// the registry can take one back.
+//
+// Detaching an instance from its slot does not reach the caller already holding
+// it. Delivery asks for a sender once per batch and then sends message after
+// message through that reference; an administrator saving the channel in the
+// middle of the batch would otherwise have the rest of it accepted by an
+// instance nobody can reach any more — flushed already, and holding settings
+// that were just replaced or switched off. Its window timer would then post
+// them.
+//
+// So the registry revokes before it flushes. Send and SendNow refuse once
+// revoked; Flush keeps working, because draining what was already accepted is
+// exactly what retirement is for.
+type revocableSender struct {
+	inner notifychannel.Sender
+
+	// revoked is guarded by mu. A read lock on the send path lets concurrent
+	// sends proceed; revoke takes the write lock, which is what makes it wait
+	// for the sends already inside inner.Send — those messages are held by the
+	// instance, and the flush that follows revocation is what delivers them.
+	mu      sync.RWMutex
+	revoked bool
+}
+
+func (r *revocableSender) Send(ctx context.Context, target notifychannel.Target, msg notifychannel.Message) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.revoked {
+		return ErrRetired
+	}
+	return r.inner.Send(ctx, target, msg)
+}
+
+func (r *revocableSender) SendNow(ctx context.Context, target notifychannel.Target, msg notifychannel.Message) error {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.revoked {
+		return ErrRetired
+	}
+	return r.inner.SendNow(ctx, target, msg)
+}
+
+// Flush is deliberately not gated on revoked: it is called after revocation, to
+// deliver what the instance accepted before it.
+func (r *revocableSender) Flush(ctx context.Context) error {
+	return r.inner.Flush(ctx)
+}
+
+// revoke closes the instance to new messages. Returns once no send is still
+// inside it, so everything accepted is in the buffer the following flush drains.
+func (r *revocableSender) revoke() {
+	r.mu.Lock()
+	r.revoked = true
+	r.mu.Unlock()
+}
+
 // channelSlot is everything the registry keeps for one channel of one tenant.
 //
 // The slot, not the sender inside it, is the channel's identity here. It outlives
@@ -48,7 +105,7 @@ type channelSlot struct {
 
 	// Guarded by Service.mu. A nil sender means the slot is empty: never built,
 	// or retired after a save.
-	sender      notifychannel.Sender
+	sender      *revocableSender
 	fingerprint string
 }
 
@@ -74,7 +131,7 @@ func (s *Service) slotFor(key channelKey) *channelSlot {
 
 // lookup returns the channel's slot and, when it already holds an instance built
 // from this very configuration, that instance.
-func (s *Service) lookup(key channelKey, fp string) (*channelSlot, notifychannel.Sender) {
+func (s *Service) lookup(key channelKey, fp string) (*channelSlot, *revocableSender) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	slot := s.slotLocked(key)
@@ -114,7 +171,7 @@ func (s *Service) live(
 	// this channel — retire waits on the same lock — for as long as an
 	// unreachable server takes to time out.
 	if replaced != nil {
-		s.flushReplaced(ctx, key, replaced)
+		s.retireSender(ctx, key, replaced)
 	}
 	return sender, nil
 }
@@ -136,7 +193,7 @@ func (s *Service) construct(
 	ch notifychannel.Channel,
 	slot *channelSlot,
 	requireEnabled bool,
-) (sender, replaced notifychannel.Sender, err error) {
+) (sender notifychannel.Sender, replaced *revocableSender, err error) {
 	slot.build.Lock()
 	defer slot.build.Unlock()
 
@@ -192,7 +249,7 @@ func (s *Service) construct(
 	}
 	// maskSecretErrors is a second barrier, not a substitute for a channel's own
 	// care: see notifychannel.Sender's doc comment and secretmask.go.
-	wrapped := maskSecretErrors(built, settings.Secret)
+	wrapped := &revocableSender{inner: maskSecretErrors(built, settings.Secret)}
 
 	s.mu.Lock()
 	replaced = slot.sender
@@ -202,14 +259,23 @@ func (s *Service) construct(
 	return wrapped, replaced, nil
 }
 
-// flushReplaced delivers whatever the outgoing instance still holds, using the
-// settings it was built with. Anything that slips into it between the swap and
-// this call is not lost either: the instance's own window timer still holds a
-// reference to it and fires on schedule.
-func (s *Service) flushReplaced(ctx context.Context, key channelKey, replaced notifychannel.Sender) {
+// retireSender closes an outgoing instance and delivers whatever it still holds,
+// using the settings it was built with.
+//
+// Revoking first is the whole point of the order. Removing the instance from its
+// slot stops anyone NEW from finding it, but a caller that took the reference a
+// moment earlier still has it — see revocableSender. Without revocation that
+// caller could keep handing messages to a detached instance after this flush
+// finished, and its window timer would post them under the configuration that
+// was just replaced. Revoking blocks until the sends already in flight return,
+// so the flush below drains everything that was accepted and nothing is left to
+// arrive after it.
+func (s *Service) retireSender(ctx context.Context, key channelKey, outgoing *revocableSender) {
+	outgoing.revoke()
+
 	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), replaceFlushTimeout)
 	defer cancel()
-	if err := replaced.Flush(flushCtx); err != nil && s.logger != nil {
+	if err := outgoing.Flush(flushCtx); err != nil && s.logger != nil {
 		s.logger.Warn("notificationchannel: не удалось выгрузить накопленное перед сменой настроек канала",
 			"channel", key.channel, "tenant_id", key.tenantID, "err", err)
 	}
@@ -244,7 +310,7 @@ func (s *Service) retire(ctx context.Context, key channelKey) {
 	// Flushed outside both locks: an unreachable external service must not hold
 	// up the next construction for this channel.
 	if outgoing != nil {
-		s.flushReplaced(ctx, key, outgoing)
+		s.retireSender(ctx, key, outgoing)
 	}
 }
 
@@ -257,7 +323,7 @@ func (s *Service) retire(ctx context.Context, key channelKey) {
 func (s *Service) Flush(ctx context.Context) error {
 	type pending struct {
 		key    channelKey
-		sender notifychannel.Sender
+		sender *revocableSender
 	}
 
 	s.mu.Lock()

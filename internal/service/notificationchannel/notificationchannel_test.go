@@ -1567,3 +1567,174 @@ func TestDisableBetweenSelectionAndLookupIsCaughtByTheAuthoritativeReread(t *tes
 		t.Fatalf("got %v, want ErrNotEnabled", err)
 	}
 }
+
+// Экземпляр, уже отданный наружу, после снятия отказывается принимать сообщения.
+//
+// Доставка спрашивает отправителя один раз на пачку и дальше шлёт по этой ссылке
+// сообщение за сообщением. Если администратор сохранит канал посреди пачки,
+// снятие само по себе до этой ссылки не дотягивается: оно убирает экземпляр из
+// реестра, но в руках у доставки он остаётся. Принятое им уже никто не выгрузит —
+// выгрузка прошла, — а таймер окна всё равно выстрелит и отправит по настройкам,
+// которых больше нет.
+func TestRetiredSenderRefusesMessagesTheCallerStillTriesToSend(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	sender, err := svc.DeliverySender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if err := sender.Send(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "первое"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	old := built
+
+	// Администратор выключает канал, пока пачка ещё не дошла до конца.
+	if err := svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+		Channel: "fake", Enabled: false, Values: map[string]any{"base_url": "https://mm"},
+	}, 1); err != nil {
+		t.Fatalf("save (disable): %v", err)
+	}
+
+	// Та же ссылка, следующее сообщение пачки.
+	err = sender.Send(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "второе"})
+	if !errors.Is(err, notificationchannelsvc.ErrRetired) {
+		t.Fatalf("снятый экземпляр принял сообщение: err=%v", err)
+	}
+	if old.accepted != 1 {
+		t.Fatalf("сообщение всё-таки дошло до канала: accepted=%d", old.accepted)
+	}
+	// SendNow — тот же запрет: проверочная отправка тоже не должна уходить по
+	// снятым настройкам.
+	if err := sender.SendNow(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "проверка"}); !errors.Is(err, notificationchannelsvc.ErrRetired) {
+		t.Fatalf("снятый экземпляр выполнил немедленную отправку: err=%v", err)
+	}
+	if old.sentNow != 0 {
+		t.Fatalf("немедленная отправка дошла до канала: sentNow=%d", old.sentNow)
+	}
+}
+
+// Отзыв обязан произойти ДО выгрузки, а не после неё.
+//
+// Порядок здесь — это и есть гарантия. Если сначала выгрузить, а отозвать потом,
+// остаётся окно, в котором сообщение попадает в буфер уже выгруженного
+// экземпляра: выгрузка его не застала, и достать его оттуда сможет только таймер
+// окна — по тем самым настройкам, которые только что сменили.
+func TestRetirementRevokesBeforeItFlushes(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	sender, err := svc.DeliverySender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	old := built
+
+	// Снимаемый экземпляр застрянет в выгрузке и сообщит, что она началась.
+	gate := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	old.flushGate, old.flushEntered = gate, entered
+
+	saving := make(chan error, 1)
+	go func() {
+		saving <- svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+			Channel: "fake", Enabled: false, Values: map[string]any{"base_url": "https://mm"},
+		}, 1)
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		close(gate)
+		t.Fatal("выгрузка снимаемого экземпляра так и не началась")
+	}
+
+	// Выгрузка идёт. Сообщение по старой ссылке обязано быть отвергнуто уже
+	// сейчас — иначе оно ляжет в буфер, который эта выгрузка уже не заберёт.
+	err = sender.Send(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "во время выгрузки"})
+	close(gate)
+	if !errors.Is(err, notificationchannelsvc.ErrRetired) {
+		t.Fatalf("экземпляр принял сообщение во время собственной выгрузки: err=%v", err)
+	}
+	if err := <-saving; err != nil {
+		t.Fatalf("сохранение: %v", err)
+	}
+	if old.accepted != 0 {
+		t.Fatalf("сообщение осело в буфере после выгрузки: accepted=%d", old.accepted)
+	}
+}
+
+// chattyChannel собирается успешно и пишет в логгер составное значение: структуру
+// настроек целиком. Так канал из чужого репозитория выписывает наружу секрет, ни
+// разу не передав его строкой, — slog.Any("settings", d.Settings) выглядит
+// безобидно, а обработчик разложит структуру по полям.
+func chattyChannel(name string, built **recordingSender) notifychannel.Channel {
+	return notifychannel.Channel{
+		Descriptor: notifychannel.Descriptor{
+			Name: name, Title: "Составной", SecretField: "token",
+			Fields: []notifychannel.Field{
+				{Key: "base_url", Label: "URL", Required: true, Kind: notifychannel.FieldURL},
+				{Key: "token", Label: "Токен", Required: true, Kind: notifychannel.FieldSecret},
+			},
+		},
+		New: func(d notifychannel.Deps) (notifychannel.Sender, error) {
+			s := &recordingSender{built: d.Settings, deps: d}
+			*built = s
+			return s, nil
+		},
+	}
+}
+
+// Секрет, спрятанный внутри составного значения, тоже редактируется.
+//
+// Проверка по slog.Kind недостаточна: структура, карта или срез приезжают одним
+// KindAny, обёртка их не разбирает, а нижележащий обработчик разложит по полям и
+// выпишет токен. Строковых веток для этого не существует — значение обязано быть
+// отрисовано и проверено здесь.
+func TestSecretNestedInACompositeValueIsScrubbedToo(t *testing.T) {
+	const secret = "секрет-внутри-структуры-77"
+	h := &capturingHandler{}
+	var built *recordingSender
+	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
+	svc, err := notificationchannelsvc.New(repo, newKey(t),
+		[]notifychannel.Channel{chattyChannel("fake", &built)},
+		gate{allow: entitledAndGranted}, grantedOnly("fake"), slog.New(h))
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", secret)
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	logger := built.deps.Log()
+
+	// Настройки целиком: секрет лежит в экспортированном поле структуры.
+	logger.Error("не приняты настройки", slog.Any("settings", built.deps.Settings))
+	// Карта — ровно то же самое, другой формой.
+	logger.Error("тело запроса", slog.Any("body", map[string]string{"token": secret}))
+	// Срез значений.
+	logger.Error("заголовки", slog.Any("headers", []string{"Authorization: Bearer " + secret}))
+	// А это — составное значение БЕЗ секрета. Отрисовка здесь нужна только чтобы
+	// найти секрет, и не должна подменять собой форматирование обработчика для
+	// подавляющего большинства записей.
+	logger.Error("повтор", slog.Any("state", struct{ Attempt int }{Attempt: 3}))
+
+	text := h.all()
+	if strings.Contains(text, secret) {
+		t.Fatalf("секрет попал в журнал внутри составного значения: %s", text)
+	}
+	if !strings.Contains(text, "не приняты настройки") || !strings.Contains(text, "Authorization") {
+		t.Fatalf("редактирование съело диагностику: %s", text)
+	}
+	// Именно "{3}", а не "{Attempt:3}": обработчик отрисовал структуру сам, своим
+	// %v. Подменённое значение приехало бы строкой в форме %+v — так что это
+	// отличает «пропустили как было» от «на всякий случай отрисовали и вставили».
+	if !strings.Contains(text, "state={3}") {
+		t.Fatalf("значение без секрета не доехало до обработчика как было: %s", text)
+	}
+}
