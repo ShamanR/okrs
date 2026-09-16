@@ -597,6 +597,22 @@ func (s *Service) Sender(ctx context.Context, scope domain.TenantScope, name str
 // The probe deliberately does NOT refuse: verifying settings before turning a
 // channel on for everyone is a legitimate thing to do, and the probe delivers
 // only to the administrator who asked.
+//
+// The two halves of the gate do NOT have the same freshness, and that is worth
+// knowing before reading a stale-grant report as a defect. The channel row —
+// "the administrator switched this off" — is read from the database on every
+// call, so it takes effect on every replica at once. The grant — "this tenant
+// was assigned this channel at all" — comes through the tenant-settings cache,
+// which is process-local with a TTL and invalidated only on the replica that
+// handled the write (see tenantsettings.TenantSettingsCache, whose own comment
+// calls cross-instance invalidation a SaaS-scale concern). So a revoked grant
+// reaches the other replicas within that TTL rather than instantly.
+//
+// Accepted deliberately, not overlooked: this is the same eventual consistency
+// the product already runs on for tenant suspension, and singling out this one
+// path would make it inconsistent with every other entitlement for no stated
+// reason. An administrator who needs an immediate stop switches the channel off,
+// which is the authoritative half.
 func (s *Service) DeliverySender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error) {
 	return s.sender(ctx, scope, name, true)
 }

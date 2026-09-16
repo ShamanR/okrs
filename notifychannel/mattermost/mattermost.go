@@ -132,6 +132,20 @@ type sender struct {
 	dropped  map[notifychannel.Target]int
 	deadline time.Time
 	timer    *time.Timer
+	// drainMu serializes drains, and Close depends on it for more than tidiness.
+	//
+	// take swaps the buffer out under mu, but the delivery that follows runs
+	// unlocked. Without this, Close could start while a window timer was already
+	// past take and still in the network call: Close would find an empty buffer,
+	// return immediately, and shutdown would cut that request off mid-flight.
+	// Worse, if the in-flight drain then failed transiently it would requeue into
+	// a sender that is already closed — armLocked refuses, so the batch would sit
+	// in the buffer with no timer left to retry it and nothing to report it.
+	//
+	// Holding this across the whole drain makes Close wait for the running one,
+	// then pick up whatever it put back and drop it with a log.
+	drainMu sync.Mutex
+
 	// closed is set by Close and never cleared. It is what stops a retired
 	// sender from resurrecting itself: armLocked refuses to open another window,
 	// so a delivery that fails during Close cannot leave a timer behind to post
@@ -282,6 +296,9 @@ func (s *sender) SendNow(ctx context.Context, target notifychannel.Target, msg n
 // updates, and the cap keeps the retained volume bounded. A batch that failed
 // permanently is discarded — repeating it cannot change the outcome.
 func (s *sender) Close(ctx context.Context) error {
+	// closed is set BEFORE waiting on drainMu, so a drain already in flight
+	// cannot arm a new timer when it requeues — armLocked checks this flag. The
+	// drain below then waits for that one to finish and takes what it put back.
 	s.mu.Lock()
 	s.closed = true
 	s.mu.Unlock()
@@ -295,6 +312,9 @@ func (s *sender) Close(ctx context.Context) error {
 // transiently: put it back and reopen the window (the ordinary window close), or
 // drop it (Close, where there is no later window to put it back for).
 func (s *sender) drain(ctx context.Context, retain bool) error {
+	s.drainMu.Lock()
+	defer s.drainMu.Unlock()
+
 	batches, dropped := s.take()
 	for target, n := range dropped {
 		// The addressee is never logged: the email is exactly what the rest of

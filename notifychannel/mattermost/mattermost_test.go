@@ -1162,3 +1162,74 @@ func TestClosedSenderAcceptsNothingFurther(t *testing.T) {
 		t.Fatalf("после закрытия что-то ушло: %v", posts)
 	}
 }
+
+// Закрытие дожидается выгрузки, которая уже ушла в сеть, и забирает то, что она
+// вернула в буфер.
+//
+// take забирает буфер под замком, но сама доставка идёт без него. Значит
+// закрытие может застать таймерную выгрузку уже после take и посреди запроса:
+// буфер пуст, закрытие возвращается сразу, и остановка обрывает запрос на
+// полуслове. А если эта выгрузка потом упадёт по временной причине, она вернёт
+// батч в буфер закрытого канала — таймер ему поставить уже нельзя, и обновления
+// останутся висеть, о чём никто не узнает.
+func TestCloseWaitsForADrainAlreadyInFlight(t *testing.T) {
+	f := &fakeMM{postErr: http.StatusInternalServerError}
+	entered := make(chan struct{}, 1)
+	release := make(chan struct{})
+	inner := f.handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v4/posts" {
+			select {
+			case entered <- struct{}{}:
+			default:
+			}
+			<-release
+		}
+		inner.ServeHTTP(w, r)
+	}))
+	defer srv.Close()
+
+	c := newClock()
+	h := &capturingHandler{}
+	s := senderWith(t, srv.URL, nil, c, h)
+	ivan := notifychannel.Target{Email: "ivan@example.com"}
+	ctx := context.Background()
+
+	if err := s.Send(ctx, ivan, notifychannel.Message{Title: "важное"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	// Окно закрылось — этот Send уносит выгрузку в сеть, где она застревает.
+	c.advance(11 * time.Minute)
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		_ = s.Send(ctx, ivan, notifychannel.Message{Title: "второе"})
+	}()
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		close(release)
+		t.Fatal("выгрузка так и не дошла до отправки поста")
+	}
+
+	closed := make(chan error, 1)
+	go func() { closed <- s.Close(ctx) }()
+	select {
+	case <-closed:
+		close(release)
+		t.Fatal("закрытие вернулось, не дождавшись уже идущей отправки")
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	close(release)
+	<-drained
+	if err := <-closed; err == nil {
+		t.Fatal("закрытие обязано сообщить об ошибке доставки")
+	}
+
+	// Идущая выгрузка упала с 5xx и вернула батч в буфер. Таймера у закрытого
+	// канала нет — значит забрать и отбросить это обязано закрытие.
+	if !containsText(h.texts(), "при закрытии канала не удалась") {
+		t.Fatalf("возвращённое в буфер повисло без следа в журнале: %v", h.texts())
+	}
+}
