@@ -61,7 +61,7 @@ func newChannels(names ...string) *fakeChannels {
 	return c
 }
 
-func (c *fakeChannels) Sender(_ context.Context, _ domain.TenantScope, name string) (notifychannel.Sender, error) {
+func (c *fakeChannels) DeliverySender(_ context.Context, _ domain.TenantScope, name string) (notifychannel.Sender, error) {
 	c.calls[name]++
 	if err, ok := c.errs[name]; ok {
 		return nil, err
@@ -74,13 +74,15 @@ func (c *fakeChannels) Sender(_ context.Context, _ domain.TenantScope, name stri
 }
 
 type fakeContacts struct {
-	people map[int64]users.Contact
-	calls  int
-	gotIDs []int64
+	people   map[int64]users.Contact
+	calls    int
+	gotIDs   []int64
+	gotScope domain.TenantScope
 }
 
-func (f *fakeContacts) ContactsByIDs(_ context.Context, ids []int64) (map[int64]users.Contact, error) {
+func (f *fakeContacts) ContactsByIDs(_ context.Context, scope domain.TenantScope, ids []int64) (map[int64]users.Contact, error) {
 	f.calls++
+	f.gotScope = scope
 	f.gotIDs = append(f.gotIDs, ids...)
 	out := map[int64]users.Contact{}
 	for _, id := range ids {
@@ -368,5 +370,58 @@ func TestLivingGoalStillGetsItsLink(t *testing.T) {
 	}
 	if got := ch.senders["mattermost"].accepted[0].msg.URL; got == "" {
 		t.Fatal("живая цель осталась без ссылки")
+	}
+}
+
+// Ушедший из пространства автор не должен быть назван по имени во внешнем
+// сообщении. Колокольчик применяет это правило своим join'ом по членству;
+// сообщение, покидающее продукт, — не то место, где ему можно изменить.
+func TestFormerMemberIsNotNamedInTheExternalMessage(t *testing.T) {
+	ch := newChannels("mattermost")
+	contacts := people()
+	// Автор всё ещё существует как пользователь, но членства в пространстве нет.
+	contacts.people[2] = users.Contact{ID: 2, DisplayName: "Мария", Email: "maria@example.com", Removed: true}
+	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: contacts})
+
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	msg := ch.senders["mattermost"].accepted[0].msg
+	if strings.Contains(msg.Title, "Мария") || strings.Contains(msg.Body, "Мария") {
+		t.Fatalf("имя ушедшего участника ушло наружу: %q / %q", msg.Title, msg.Body)
+	}
+	if !strings.Contains(msg.Title, "Бывший участник") {
+		t.Fatalf("ожидалась нейтральная подпись: %q", msg.Title)
+	}
+}
+
+// Действующий участник по-прежнему называется по имени.
+func TestActiveMemberIsStillNamed(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: people()})
+
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if got := ch.senders["mattermost"].accepted[0].msg.Title; !strings.Contains(got, "Мария") {
+		t.Fatalf("действующий участник потерял имя: %q", got)
+	}
+}
+
+// Контакты резолвятся в границах пространства: членство — факт per-tenant, и
+// вопрос «как его назвать» без пространства не имеет ответа.
+func TestContactsAreResolvedWithinTheTenant(t *testing.T) {
+	ch := newChannels("mattermost")
+	contacts := people()
+	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: contacts})
+
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if contacts.gotScope != scope {
+		t.Fatalf("резолв контактов ушёл без пространства: %+v", contacts.gotScope)
 	}
 }

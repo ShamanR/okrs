@@ -32,16 +32,24 @@ const removedActorName = "Бывший участник"
 // Channels is the port to the tenant's configured channels, declared
 // consumer-side per specs/010.
 //
-// Sender is asked once per channel per batch, never per message: it reads the
-// channel's configuration row, and the instance it returns is the live one that
-// holds pending messages.
+// DeliverySender is asked once per channel per batch, never per message: it reads
+// the channel's configuration row, and the instance it returns is the live one
+// that holds pending messages.
+//
+// The delivery variant, not the plain one: it refuses a channel the administrator
+// has switched off. The channel list this usecase was handed can be a moment old,
+// and buffering new work into a channel that is already off is exactly what that
+// staleness would otherwise cost.
 type Channels interface {
-	Sender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error)
+	DeliverySender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error)
 }
 
 // Contacts resolves who to name and where to address, for a whole batch at once.
+//
+// Tenant-scoped: naming someone depends on whether they are still a member, and
+// that is a per-tenant fact.
 type Contacts interface {
-	ContactsByIDs(ctx context.Context, ids []int64) (map[int64]users.Contact, error)
+	ContactsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) (map[int64]users.Contact, error)
 }
 
 type Deps struct {
@@ -128,7 +136,7 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 			}
 		}
 	}
-	contacts, err := u.contacts.ContactsByIDs(ctx, ids)
+	contacts, err := u.contacts.ContactsByIDs(ctx, scope, ids)
 	if err != nil {
 		return err
 	}
@@ -152,7 +160,7 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 		for _, name := range it.Channels {
 			sender, ok := senders[name]
 			if !ok {
-				s, err := u.channels.Sender(ctx, scope, name)
+				s, err := u.channels.DeliverySender(ctx, scope, name)
 				if err != nil {
 					// The channel is gone, unconfigured or refused its own stored
 					// settings. Record it once per batch, not once per message.
@@ -187,8 +195,11 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 // render/notify, the same package the bell renders with, so one event does not
 // read one way in the product and another way in a messenger.
 func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Contact) notifychannel.Message {
+	// A former member is named by the neutral placeholder, never by their name.
+	// The bell applies the same rule through its own membership join; a message
+	// leaving the product must not be the one place it lapses.
 	actor := removedActorName
-	if c, ok := contacts[it.ActorUserID]; ok && c.DisplayName != "" {
+	if c, ok := contacts[it.ActorUserID]; ok && !c.Removed && c.DisplayName != "" {
 		actor = c.DisplayName
 	}
 	text := notify.Render(notify.Input{

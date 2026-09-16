@@ -359,6 +359,13 @@ type Contact struct {
 	ID          int64
 	DisplayName string
 	Email       string
+	// Removed marks someone with no active membership in this tenant. Their name
+	// must not be shown: the bell and the activity journal both replace it with a
+	// neutral placeholder, and a message in a messenger is no less exposed.
+	//
+	// System users are the exception, exactly as in the bell's own query: they
+	// never hold a membership and are meant to be named.
+	Removed bool
 }
 
 // ContactsByIDs returns the name and address of every given user id, in one query.
@@ -369,13 +376,20 @@ type Contact struct {
 //
 // Ids with no row are simply absent from the result: a notification about someone
 // who has since been deleted still has to render for everyone else in the batch.
-func (r *UserRepository) ContactsByIDs(ctx context.Context, ids []int64) (map[int64]Contact, error) {
+func (r *UserRepository) ContactsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) (map[int64]Contact, error) {
 	if len(ids) == 0 {
 		return map[int64]Contact{}, nil
 	}
+	// Membership is joined here rather than looked up per person: the same PII
+	// rule the bell applies (store/notifications List) has to hold for a message
+	// leaving the product, and asking per id would be an N+1 on the delivery path.
 	rows, err := r.db.Query(ctx, `
-		SELECT id, display_name, COALESCE(email,'')
-		  FROM users WHERE id = ANY($1)`, ids)
+		SELECT u.id, u.display_name, COALESCE(u.email,''),
+		       (m.user_id IS NULL AND u.provider <> 'system') AS removed
+		  FROM users u
+		  LEFT JOIN memberships m
+		         ON m.user_id = u.id AND m.tenant_id = $2 AND m.status = 'active'
+		 WHERE u.id = ANY($1)`, ids, scope.TenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +398,7 @@ func (r *UserRepository) ContactsByIDs(ctx context.Context, ids []int64) (map[in
 	out := make(map[int64]Contact, len(ids))
 	for rows.Next() {
 		var c Contact
-		if err := rows.Scan(&c.ID, &c.DisplayName, &c.Email); err != nil {
+		if err := rows.Scan(&c.ID, &c.DisplayName, &c.Email, &c.Removed); err != nil {
 			return nil, err
 		}
 		out[c.ID] = c

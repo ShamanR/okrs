@@ -52,7 +52,7 @@ func newSearchTestService(st *searchCapturingStore, grants GrantsProvider) *UseC
 	return New(Deps{Users: usersvc.New(st), Teams: teamsvc.New(st), Grants: grants})
 }
 
-func (s *searchCapturingStore) ContactsByIDs(context.Context, []int64) (map[int64]users.Contact, error) {
+func (s *searchCapturingStore) ContactsByIDs(context.Context, domain.TenantScope, []int64) (map[int64]users.Contact, error) {
 	return map[int64]users.Contact{}, nil
 }
 

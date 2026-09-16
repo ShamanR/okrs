@@ -58,6 +58,7 @@ type channelPrefs struct {
 	defaults      map[string]bool
 	overrides     map[string]bool
 	defaultsCalls int
+	defaultsErr   error
 }
 
 func (p *channelPrefs) Resolve(_ context.Context, _ domain.TenantScope, _ string, targets []notificationprefs.Target) ([]notificationprefs.Recipient, error) {
@@ -78,6 +79,9 @@ func (p *channelPrefs) ResolveAddressed(_ context.Context, _ domain.TenantScope,
 
 func (p *channelPrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
 	p.defaultsCalls++
+	if p.defaultsErr != nil {
+		return nil, p.defaultsErr
+	}
 	if p.defaults == nil {
 		return map[string]bool{notificationprefs.ChannelInApp: true}, nil
 	}
@@ -310,5 +314,32 @@ func TestDeliveryDoesNotMarkTheGoalGoneForOtherEvents(t *testing.T) {
 	}
 	if del.items[0].GoalGone {
 		t.Fatalf("обычное событие помечено как удаление: %+v", del.items[0])
+	}
+}
+
+// Неудача чтения умолчаний по каналам не должна стоить получателям ленты.
+//
+// Строка в журнале — это и есть уведомление; внешние каналы к нему добавочны.
+// Обработчик асинхронный: шина только логирует возвращённую ошибку и ничего не
+// повторяет, поэтому пропуск группы означал бы, что уведомления потеряны
+// НАВСЕГДА из-за сбоя необязательного справочника.
+func TestUnavailableChannelDefaultsDoNotCostTheBellRows(t *testing.T) {
+	boom := errors.New("tenant settings temporarily unavailable")
+	prefs := &channelPrefs{overrides: map[string]bool{}, defaultsErr: boom}
+	del := &fakeDeliverer{}
+	uc, w := newDeliveringUC(prefs, del)
+
+	err := uc.Handle(context.Background(), []event.Event{commentEvent()})
+	if err == nil {
+		t.Fatal("ошибка обязана дойти до вызывающего, чтобы попасть в лог шины")
+	}
+	if !errors.Is(err, boom) {
+		t.Fatalf("исходная ошибка потеряна: %v", err)
+	}
+	if len(w.rows) != 1 {
+		t.Fatalf("строка уведомления потеряна из-за сбоя справочника каналов: %d", len(w.rows))
+	}
+	if del.calls != 0 {
+		t.Fatalf("доставка вызвана, хотя каналы неизвестны: %+v", del.items)
 	}
 }

@@ -56,6 +56,12 @@ var (
 	ErrNoSecretKey = errors.New("notificationchannel: no encryption key configured")
 	// ErrNotConfigured: the tenant has never saved this channel's settings.
 	ErrNotConfigured = errors.New("notificationchannel: channel not configured")
+	// ErrNotEnabled: the channel is configured but the administrator switched it
+	// off. Separate from ErrNotConfigured because the two are different states to
+	// an administrator, and only delivery treats this one as a refusal — the probe
+	// deliberately still runs, so a channel can be verified before it is turned on
+	// for everyone.
+	ErrNotEnabled = errors.New("notificationchannel: channel is not enabled")
 	// ErrSecretRequired: the channel needs a secret to run, and Save was asked to
 	// turn it on with neither a new secret nor one already stored. Storing it
 	// disabled with no secret is legitimate; storing it enabled is not — that
@@ -569,6 +575,26 @@ func (s *Service) DeliveryChannelDefaults(ctx context.Context, scope domain.Tena
 // holding. Callers on the delivery path must ask once per batch, not once per
 // message: this reads the channel row.
 func (s *Service) Sender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error) {
+	return s.sender(ctx, scope, name, false)
+}
+
+// DeliverySender is Sender for the delivery path, which additionally refuses a
+// channel the administrator has switched off.
+//
+// Delivery picks its channels from DeliveryChannelDefaults, which already skips
+// disabled ones — but that answer can be a moment old. Between it and this call
+// an administrator can switch the channel off, and without the check here the
+// lookup would happily build a fresh instance and buffer genuinely new work into
+// a channel that is already off. The window timer would then post it.
+//
+// The probe deliberately does NOT refuse: verifying settings before turning a
+// channel on for everyone is a legitimate thing to do, and the probe delivers
+// only to the administrator who asked.
+func (s *Service) DeliverySender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error) {
+	return s.sender(ctx, scope, name, true)
+}
+
+func (s *Service) sender(ctx context.Context, scope domain.TenantScope, name string, requireEnabled bool) (notifychannel.Sender, error) {
 	ch, ok := s.channels[name]
 	if !ok {
 		return nil, ErrUnknownChannel
@@ -587,7 +613,10 @@ func (s *Service) Sender(ctx context.Context, scope domain.TenantScope, name str
 	if !ok {
 		return nil, ErrNotConfigured
 	}
-	return s.live(ctx, scope, channelKey{tenantID: scope.TenantID, channel: name}, ch, fingerprint(row))
+	if requireEnabled && !row.Enabled {
+		return nil, ErrNotEnabled
+	}
+	return s.live(ctx, scope, channelKey{tenantID: scope.TenantID, channel: name}, ch, fingerprint(row), requireEnabled)
 }
 
 // settingsFor turns a stored row into what the channel is constructed from,

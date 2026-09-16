@@ -23,7 +23,7 @@ type Repo interface {
 	GetUsersByUDIDs(ctx context.Context, udids []string) ([]*domain.User, error)
 	ListUserLeadTeams(ctx context.Context) (map[string]string, error)
 	ValidateUDIDsExist(ctx context.Context, udids []string) ([]string, error)
-	ContactsByIDs(ctx context.Context, ids []int64) (map[int64]users.Contact, error)
+	ContactsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) (map[int64]users.Contact, error)
 }
 
 func (s *Service) GetByDisplayNames(ctx context.Context, names []string) ([]*domain.User, error) {
@@ -37,8 +37,8 @@ func (s *Service) GetByUDIDs(ctx context.Context, udids []string) ([]*domain.Use
 // delivery path names actors and addresses recipients from the same call.
 //
 // Батчевая операция: не превращать в цикл — это N+1.
-func (s *Service) ContactsByIDs(ctx context.Context, ids []int64) (map[int64]users.Contact, error) {
-	return s.repo.ContactsByIDs(ctx, ids)
+func (s *Service) ContactsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) (map[int64]users.Contact, error) {
+	return s.repo.ContactsByIDs(ctx, scope, ids)
 }
 
 func (s *Service) ListLeadTeams(ctx context.Context) (map[string]string, error) {

@@ -1506,3 +1506,64 @@ func TestFlushOfTheReplacedInstanceDoesNotBlockSaving(t *testing.T) {
 		t.Fatalf("пересборка: %v", err)
 	}
 }
+
+// Канал, выключенный администратором, доставке не отдаётся — даже если список
+// каналов, с которым она пришла, был составлен мгновением раньше. Иначе лукап
+// собрал бы свежий экземпляр и накопил в него по-настоящему новую работу, а
+// таймер окна её отправил.
+func TestDeliverySenderRefusesADisabledChannel(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	// Администратор выключает канал.
+	if err := svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+		Channel: "fake", Enabled: false, Values: map[string]any{"base_url": "https://mm"},
+	}, 1); err != nil {
+		t.Fatalf("save (disable): %v", err)
+	}
+
+	if _, err := svc.DeliverySender(ctx, scope, "fake"); !errors.Is(err, notificationchannelsvc.ErrNotEnabled) {
+		t.Fatalf("got %v, want ErrNotEnabled", err)
+	}
+}
+
+// Проверочная отправка выключенный канал принимает: убедиться в настройках до
+// того, как включить его всем, — законное действие, и сообщение уходит только
+// тому администратору, который его запросил.
+func TestProbeSenderStillWorksForADisabledChannel(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+	if err := svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+		Channel: "fake", Enabled: false, Values: map[string]any{"base_url": "https://mm"},
+	}, 1); err != nil {
+		t.Fatalf("save (disable): %v", err)
+	}
+
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("проверочная отправка обязана работать на выключенном канале: %v", err)
+	}
+}
+
+// Гонка «выключили между выбором канала и лукапом» закрывается именно
+// перечитыванием под замком сборки: строка, прочитанная вызывающим, могла
+// устареть, и авторитетная перечитка обязана проверять признак заново.
+func TestDisableBetweenSelectionAndLookupIsCaughtByTheAuthoritativeReread(t *testing.T) {
+	var built *recordingSender
+	svc, repo := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	// Строка выключается в обход сервиса — как это сделала бы другая реплика
+	// между тем, как доставка выбрала канал, и тем, как она просит отправителя.
+	row := repo.rows["fake"]
+	row.Enabled = false
+	repo.rows["fake"] = row
+
+	if _, err := svc.DeliverySender(ctx, scope, "fake"); !errors.Is(err, notificationchannelsvc.ErrNotEnabled) {
+		t.Fatalf("got %v, want ErrNotEnabled", err)
+	}
+}

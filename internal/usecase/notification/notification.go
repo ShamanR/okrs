@@ -162,10 +162,18 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 		// that cannot change inside one batch.
 		var defaults map[string]bool
 		if u.delivery != nil {
-			defaults, err = u.prefs.DeliveryDefaults(ctx, scope)
-			if err != nil {
-				errs = append(errs, err)
-				continue
+			d, derr := u.prefs.DeliveryDefaults(ctx, scope)
+			if derr != nil {
+				// Reported, but NOT a reason to abandon the group. The row in the
+				// journal is the notification itself; external channels are
+				// additive. Failing to learn which messengers this tenant uses
+				// would otherwise cost every recipient their bell entry — and this
+				// handler is asynchronous, so the bus logs the error and nothing
+				// retries it. A nil defaults map simply resolves to no external
+				// channels, which is the right answer when we cannot tell.
+				errs = append(errs, derr)
+			} else {
+				defaults = d
 			}
 		}
 

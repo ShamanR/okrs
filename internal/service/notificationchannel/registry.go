@@ -98,13 +98,14 @@ func (s *Service) live(
 	key channelKey,
 	ch notifychannel.Channel,
 	fp string,
+	requireEnabled bool,
 ) (notifychannel.Sender, error) {
 	slot, cached := s.lookup(key, fp)
 	if cached != nil {
 		return cached, nil
 	}
 
-	sender, replaced, err := s.construct(ctx, scope, key, ch, slot)
+	sender, replaced, err := s.construct(ctx, scope, key, ch, slot, requireEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +135,7 @@ func (s *Service) construct(
 	key channelKey,
 	ch notifychannel.Channel,
 	slot *channelSlot,
+	requireEnabled bool,
 ) (sender, replaced notifychannel.Sender, err error) {
 	slot.build.Lock()
 	defer slot.build.Unlock()
@@ -144,6 +146,13 @@ func (s *Service) construct(
 	}
 	if !ok {
 		return nil, nil, ErrNotConfigured
+	}
+	// The authoritative read has to re-check this too, not only the caller's
+	// earlier one: the whole point of reading again under the construction lock is
+	// that the row may have moved since. A channel switched off in that window
+	// must not get a freshly built instance to buffer new work into.
+	if requireEnabled && !row.Enabled {
+		return nil, nil, ErrNotEnabled
 	}
 	// live's fingerprint was only a hint for the lock-free fast path; this read is
 	// the authoritative one.
