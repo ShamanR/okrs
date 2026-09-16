@@ -331,3 +331,42 @@ func TestNotificationWithoutGoalHasNoLink(t *testing.T) {
 		t.Fatalf("ссылка появилась без цели: %q", got)
 	}
 }
+
+// Удалённая цель ссылки не получает: её удаляют ДО публикации события, и
+// идентификатор переживает саму строку. Лента это видит по своему LEFT JOIN;
+// у доставки такого соединения нет, поэтому признак ей приносит usecase.
+func TestDeletedGoalGetsNoLink(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{
+		Channels: ch, Contacts: people(), BaseURL: "https://okr.example.com",
+	})
+
+	it := item(1, 2, "mattermost")
+	it.Kind = string(event.KindGoalDeleted)
+	it.GoalGone = true
+	if err := uc.Deliver(context.Background(), scope, []notificationuc.Delivery{it}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	msg := ch.senders["mattermost"].accepted[0].msg
+	if msg.URL != "" {
+		t.Fatalf("ссылка на удалённую цель: %q", msg.URL)
+	}
+	if msg.Title == "" {
+		t.Fatal("сообщение об удалении обязано уйти — без ссылки, но с текстом")
+	}
+}
+
+// Живая цель ссылку получает: признак не должен глушить её всем подряд.
+func TestLivingGoalStillGetsItsLink(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{
+		Channels: ch, Contacts: people(), BaseURL: "https://okr.example.com",
+	})
+	if err := uc.Deliver(context.Background(), scope,
+		[]notificationuc.Delivery{item(1, 2, "mattermost")}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	if got := ch.senders["mattermost"].accepted[0].msg.URL; got == "" {
+		t.Fatal("живая цель осталась без ссылки")
+	}
+}

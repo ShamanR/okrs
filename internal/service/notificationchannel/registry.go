@@ -110,6 +110,30 @@ func (s *Service) flushReplaced(ctx context.Context, key channelKey, replaced *l
 	}
 }
 
+// retire drops this tenant's live instance of a channel and delivers whatever it
+// still holds.
+//
+// Called when the configuration is saved. Replacement in live() is lazy — it
+// happens the next time someone asks for a sender — and that is enough only while
+// the channel keeps being asked for. A channel the administrator just switched
+// off never is: nothing replaces the instance, and its window timer still fires
+// and posts the buffer under settings that were already revoked. Retiring here
+// also bounds how long a stale instance can sit in the registry holding messages
+// nobody will look at again.
+//
+// The buffer is delivered rather than dropped, per the channel spec: updates
+// already accepted must not vanish because a setting changed a moment later.
+func (s *Service) retire(ctx context.Context, key channelKey) {
+	s.mu.Lock()
+	outgoing := s.instances[key]
+	delete(s.instances, key)
+	s.mu.Unlock()
+
+	if outgoing != nil {
+		s.flushReplaced(ctx, key, outgoing)
+	}
+}
+
 // Flush delivers everything every live channel still holds.
 //
 // The shutdown path calls it: a channel buffers in memory, so a replica that

@@ -62,6 +62,12 @@ type Delivery struct {
 	PeriodID  *int64
 	KRID      *int64
 	CommentID *int64
+	// GoalGone marks a notification whose goal no longer exists — the deletion
+	// itself. The id outlives the row: the goal is deleted before the event is
+	// published, so a link built from it would send the reader looking for
+	// something that is not there. The feed works this out from its own LEFT JOIN;
+	// delivery has no such join and has to be told.
+	GoalGone bool
 }
 
 // Deliverer takes created notifications to external channels.
@@ -271,6 +277,7 @@ func (u *UseCase) deliveryFor(p pending, userID int64, channels []string) Delive
 		PeriodID:    m.PeriodID,
 		KRID:        p.anchor.krID,
 		CommentID:   p.anchor.commentID,
+		GoalGone:    p.ev.Kind() == event.KindGoalDeleted,
 	}
 }
 

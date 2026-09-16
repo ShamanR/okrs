@@ -213,9 +213,10 @@ func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Cont
 			PeriodID:  it.PeriodID,
 			KRID:      it.KRID,
 			CommentID: it.CommentID,
-			// The event has just happened, so its goal exists. Only the feed, which
-			// reads rows written long ago, has to consider that it may not.
-			GoalMissing: false,
+			// Usually the event has just happened and its goal exists — but not for
+			// the deletion itself, which is published after the row is gone. The
+			// usecase knows which event this was; this side only carries the answer.
+			GoalMissing: it.GoalGone,
 		})),
 	}
 }

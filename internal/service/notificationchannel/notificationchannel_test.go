@@ -1200,3 +1200,120 @@ func TestChannelGetsAClock(t *testing.T) {
 		t.Fatal("канал обязан получить пригодные часы")
 	}
 }
+
+// --- Находки код-ревью ---
+
+// Сохранение настроек обязано снимать живой экземпляр и выгружать накопленное
+// СРАЗУ, а не оставлять это следующей доставке.
+//
+// Замена в live() ленивая, и этого хватает, только пока канал продолжают
+// спрашивать. Выключенный администратором канал больше не спрашивают никогда:
+// экземпляр остаётся в реестре, а его таймер окна всё равно срабатывает и шлёт
+// накопленное по уже отозванным настройкам.
+func TestSaveRetiresTheLiveInstanceAndFlushesIt(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+
+	sender, err := svc.Sender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if err := sender.Send(ctx, notifychannel.Target{Email: "a@b.c"}, notifychannel.Message{Title: "t"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	old := built
+
+	// Администратор выключает канал. Больше его никто не спросит.
+	if err := svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+		Channel: "fake", Enabled: false, Values: map[string]any{"base_url": "https://mm"},
+	}, 1); err != nil {
+		t.Fatalf("save (disable): %v", err)
+	}
+
+	if old.flushed != 1 {
+		t.Fatalf("накопленное не выгружено при сохранении: flushed=%d", old.flushed)
+	}
+	// Экземпляр снят: выгрузка при остановке приложения больше его не увидит,
+	// и повторной отправки того же буфера не будет.
+	if err := svc.Flush(ctx); err != nil {
+		t.Fatalf("flush: %v", err)
+	}
+	if old.flushed != 1 {
+		t.Fatalf("снятый экземпляр всё ещё в реестре: flushed=%d", old.flushed)
+	}
+}
+
+// После сохранения следующий запрос собирает НОВЫЙ экземпляр — по новым
+// настройкам, а не по тем, что были до правки.
+func TestSaveMakesTheNextSenderANewInstance(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	old := built
+
+	saveFake(t, svc, "https://mm-2", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender после сохранения: %v", err)
+	}
+	if built == old {
+		t.Fatal("после сохранения переиспользован прежний экземпляр")
+	}
+	if built.built.Values["base_url"] != "https://mm-2" {
+		t.Fatalf("новый экземпляр собран по старым настройкам: %+v", built.built.Values)
+	}
+}
+
+// loggingChannel пишет в выданный ему логгер и отказывается собираться. Так
+// ведёт себя канал из чужого репозитория, объясняющий, почему настройки не
+// приняты, — и ровно тут он может выписать наружу секрет.
+func loggingChannel(name string) notifychannel.Channel {
+	return notifychannel.Channel{
+		Descriptor: notifychannel.Descriptor{
+			Name: name, Title: "Болтливый", SecretField: "token",
+			Fields: []notifychannel.Field{
+				{Key: "base_url", Label: "URL", Required: true, Kind: notifychannel.FieldURL},
+				{Key: "token", Label: "Токен", Required: true, Kind: notifychannel.FieldSecret},
+			},
+		},
+		New: func(d notifychannel.Deps) (notifychannel.Sender, error) {
+			d.Log().Error("не могу собраться", "token", d.Settings.Secret)
+			return nil, errors.New("отказ конструктора")
+		},
+	}
+}
+
+// Проверочная сборка на пути сохранения получает секрет в открытом виде.
+// Логгер ей обязан достаться такой же отредактированный, как и живому каналу:
+// иначе канал, объясняющий отказ, выпишет токен в журнал при обычном сохранении.
+func TestSaveProbeGetsAScrubbedLoggerToo(t *testing.T) {
+	const secret = "секрет-в-логе-4821"
+	h := &capturingHandler{}
+	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
+	svc, err := notificationchannelsvc.New(repo, newKey(t),
+		[]notifychannel.Channel{loggingChannel("noisy")},
+		gate{allow: map[string]bool{"entitlement.notifications.noisy": true}},
+		grantedOnly("noisy"), slog.New(h))
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+
+	saveErr := svc.Save(context.Background(), scope, notificationchannelsvc.SaveInput{
+		Channel: "noisy", Enabled: true,
+		Values: map[string]any{"base_url": "https://x"}, Secret: secret,
+	}, 1)
+	if !errors.Is(saveErr, notificationchannelsvc.ErrInvalidConfig) {
+		t.Fatalf("got %v, want ErrInvalidConfig", saveErr)
+	}
+	if text := h.all(); strings.Contains(text, secret) {
+		t.Fatalf("секрет утёк в журнал при сохранении: %s", text)
+	}
+	if !strings.Contains(h.all(), "не могу собраться") {
+		t.Fatalf("редактирование съело диагностику: %s", h.all())
+	}
+}

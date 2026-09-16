@@ -268,3 +268,47 @@ func TestBuildWithoutDeliveryIsUnchanged(t *testing.T) {
 		t.Fatalf("без доставки умолчания каналов читать незачем: %d", prefs.defaultsCalls)
 	}
 }
+
+// Признак «цели уже нет» ставит usecase, потому что только он знает событие.
+// Удаление публикуется после того, как строка удалена, — значит ссылка,
+// построенная по её идентификатору, ведёт в никуда.
+func TestDeliveryMarksTheGoalGoneOnDeletion(t *testing.T) {
+	prefs := &channelPrefs{
+		defaults:  map[string]bool{"in_app": true, "mattermost": true},
+		overrides: map[string]bool{},
+	}
+	del := &fakeDeliverer{}
+	uc, _ := newDeliveringUC(prefs, del)
+
+	if err := uc.Handle(context.Background(), []event.Event{
+		event.GoalDeleted{Meta: meta(), GoalID: 7, Title: "Снизить отток"},
+	}); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if len(del.items) != 1 {
+		t.Fatalf("доставок: %d", len(del.items))
+	}
+	if !del.items[0].GoalGone {
+		t.Fatal("удаление цели обязано помечаться как «цели уже нет»")
+	}
+}
+
+// Остальные события цель не хоронят.
+func TestDeliveryDoesNotMarkTheGoalGoneForOtherEvents(t *testing.T) {
+	prefs := &channelPrefs{
+		defaults:  map[string]bool{"in_app": true, "mattermost": true},
+		overrides: map[string]bool{},
+	}
+	del := &fakeDeliverer{}
+	uc, _ := newDeliveringUC(prefs, del)
+
+	if err := uc.Handle(context.Background(), []event.Event{commentEvent()}); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if len(del.items) != 1 {
+		t.Fatalf("доставок: %d", len(del.items))
+	}
+	if del.items[0].GoalGone {
+		t.Fatalf("обычное событие помечено как удаление: %+v", del.items[0])
+	}
+}

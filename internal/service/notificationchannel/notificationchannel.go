@@ -493,12 +493,30 @@ func (s *Service) Save(ctx context.Context, scope domain.TenantScope, in SaveInp
 			}
 			probe.Secret = secret
 		}
-		if _, err := ch.New(notifychannel.Deps{Settings: probe, Logger: s.logger, Now: s.now}); err != nil {
+		if _, err := ch.New(notifychannel.Deps{
+			Settings: probe,
+			// Scrubbed exactly like the live path. probe carries the plaintext
+			// secret, and a channel explaining why it refused its settings is
+			// precisely the moment it might write that value out. The live
+			// construction is careful about this; a validation construction has no
+			// reason to be less so.
+			Logger: scrubbingLogger(s.logger, probe.Secret),
+			Now:    s.now,
+		}); err != nil {
 			return fmt.Errorf("notificationchannel: %s: %w: %w", in.Channel, ErrInvalidConfig, err)
 		}
 	}
 
-	return s.repo.Upsert(ctx, scope, row, byUserID)
+	if err := s.repo.Upsert(ctx, scope, row, byUserID); err != nil {
+		return err
+	}
+	// The stored configuration just changed, so this tenant's live instance is
+	// stale. Retire it here rather than leaving it for the next delivery to
+	// notice: a channel the administrator switched OFF is never asked for again,
+	// nothing replaces it, and its window timer would still fire and post under
+	// the settings that were just revoked.
+	s.retire(ctx, channelKey{tenantID: scope.TenantID, channel: in.Channel})
+	return nil
 }
 
 // effectiveSecret returns the plaintext secret the stored row will run with: the
