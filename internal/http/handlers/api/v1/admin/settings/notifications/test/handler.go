@@ -25,6 +25,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// Channels is the port to the configured channels, declared consumer-side. The
+// probe uses the same live instance delivery uses — SendNow bypasses its window
+// by construction, so nothing has to be built separately for the test button.
 type Channels interface {
 	Sender(ctx context.Context, scope domain.TenantScope, name string) (notifychannel.Sender, error)
 }
@@ -87,8 +90,13 @@ func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
 	}
 	// Адресат в запись не попадает: это почта администратора. В лог идёт имя
 	// канала, длительность и исход — то, чего достаточно для расследования.
+	//
+	// SendNow, not Send: Send accepts a message into the channel's window and
+	// answers "accepted" in a millisecond, which for a probe would mean the button
+	// reporting success for a channel with a revoked token. The whole point here is
+	// that a human sees the real outcome, so delivery has to happen inline.
 	start := time.Now()
-	sendErr := sender.Send(r.Context(), notifychannel.Target{Email: user.Email}, msg)
+	sendErr := sender.SendNow(r.Context(), notifychannel.Target{Email: user.Email}, msg)
 	logging.ExternalCall(r.Context(), "notification_channel", time.Since(start), sendErr,
 		slog.String("channel", channel))
 	if err := sendErr; err != nil {

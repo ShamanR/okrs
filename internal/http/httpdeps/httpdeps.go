@@ -14,6 +14,7 @@ import (
 	hcsvc "okrs/internal/service/healthcheckin"
 	keyresultsvc "okrs/internal/service/keyresult"
 	notificationsvc "okrs/internal/service/notification"
+	notificationchannelsvc "okrs/internal/service/notificationchannel"
 	notificationprefsvc "okrs/internal/service/notificationpref"
 	periodsvc "okrs/internal/service/period"
 	progresssnapsvc "okrs/internal/service/progresssnap"
@@ -26,6 +27,7 @@ import (
 	goaltreeuc "okrs/internal/usecase/goaltree"
 	kruc "okrs/internal/usecase/keyresult"
 	notificationuc "okrs/internal/usecase/notification"
+	notificationdeliveryuc "okrs/internal/usecase/notificationdelivery"
 	okrboarduc "okrs/internal/usecase/okrboard"
 	perioduc "okrs/internal/usecase/period"
 	useruc "okrs/internal/usecase/user"
@@ -72,7 +74,16 @@ type Deps struct {
 // call rather than producing a Deps that silently drops every mutation event. Callers
 // must construct the bus (eventbus.New) before calling Build, and must not call
 // bus.Start until after Build returns — Subscribe/SubscribeAll after Start panics.
-func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, bus *eventbus.Bus, logger *slog.Logger) Deps {
+// channels is the tenant's external delivery channels: the preferences service
+// asks it which channels a user may choose about, and delivery asks it for the
+// sender of each. nil is legitimate and is what the plain OSS box passes — with
+// no channels there is nothing to deliver to but the bell, and the notification
+// path behaves exactly as it did before delivery existed.
+// baseURL is the product's own address. Delivery needs it to make a
+// notification's link openable from a messenger; it runs on a background
+// goroutine, so it cannot reconstruct the address from a request the way invite
+// links do.
+func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, bus *eventbus.Bus, logger *slog.Logger, channels *notificationchannelsvc.Service, baseURL string) Deps {
 	hc := hcsvc.New(hcCache)
 	teams := teamsvc.New(st.Teams)
 	goals := goalsvc.New(st.Goals)
@@ -85,7 +96,21 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 	activity := activitysvc.New(st.Activity, logger)
 	snaps := progresssnapsvc.New(st.ProgressSnap)
 	notifications := notificationsvc.New(st.Notifications)
-	notificationPrefs := notificationprefsvc.New(st.NotificationPrefs)
+	// A typed nil pointer in an interface is not a nil interface, so the seam is
+	// widened explicitly rather than by assignment: otherwise a build with no
+	// channels would carry a non-nil port that panics on first use.
+	var prefChannels notificationprefsvc.Channels
+	var delivery notificationuc.Deliverer
+	if channels != nil {
+		prefChannels = channels
+		delivery = notificationdeliveryuc.New(notificationdeliveryuc.Deps{
+			Channels: channels,
+			Contacts: users,
+			BaseURL:  baseURL,
+			Logger:   logger,
+		})
+	}
+	notificationPrefs := notificationprefsvc.New(st.NotificationPrefs, prefChannels)
 
 	// The journal is a synchronous subscriber: a mutation's event must be durable
 	// before the HTTP response, exactly as it was when usecases wrote it inline.
@@ -94,6 +119,7 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 	notificationUC := notificationuc.New(notificationuc.Deps{
 		Notifications: notifications,
 		Prefs:         notificationPrefs,
+		Delivery:      delivery,
 		Logger:        logger,
 	})
 	// Асинхронно: резолв получателей (рекурсивный запрос по дереву команд) и вставка

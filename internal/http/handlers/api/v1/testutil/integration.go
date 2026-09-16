@@ -82,7 +82,7 @@ func NewAPIV1RouterWithScope(t testing.TB, st *store.Store, grantsCache *grants.
 	// nil, unlike the activity service below) because it logs straight through on a
 	// dropped/failed delivery, with no nil-safe guard.
 	bus := eventbus.New(slog.Default())
-	d := httpdeps.Build(st, grantsCache, nil, bus, nil)
+	d := httpdeps.Build(st, grantsCache, nil, bus, nil, nil, "")
 	bus.Start(context.Background())
 	t.Cleanup(func() {
 		if err := bus.Close(5 * time.Second); err != nil {

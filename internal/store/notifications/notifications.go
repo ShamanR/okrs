@@ -74,6 +74,25 @@ type InsertInput struct {
 	CoalesceKey string
 }
 
+// inAppJoin and inAppVisible restrict the bell to the notification types the
+// recipient still wants to see there.
+//
+// The row is written whatever the recipient chose: it is the journal entry every
+// reader works from, and the digest an external channel sends is assembled from
+// exactly these rows. So "the bell is off for this type" is a read-side filter,
+// not a reason to skip the write.
+//
+// Absence is visible: channel_overrides only records deviations from the tenant
+// default, and the bell's default is on and not configurable. So a missing key —
+// a user who never chose, or never opened settings at all — reads as TRUE, which
+// is why COALESCE is the whole rule and no join to channel defaults is needed.
+const (
+	inAppJoin = `
+	  LEFT JOIN notification_preferences np
+	         ON np.tenant_id = n.tenant_id AND np.user_id = n.user_id AND np.type = n.type`
+	inAppVisible = ` AND COALESCE((np.channel_overrides->>'in_app')::boolean, TRUE)`
+)
+
 // Cursor is the keyset pagination position, mirroring store/activity.
 type Cursor struct {
 	CreatedAt time.Time
@@ -191,8 +210,9 @@ func (r *Repository) List(ctx context.Context, scope domain.TenantScope, userID 
 	          FROM notifications n
 	          JOIN users u ON u.id = n.actor_user_id
 	          LEFT JOIN memberships m
-	                 ON m.user_id = u.id AND m.tenant_id = n.tenant_id AND m.status = 'active'
-	         WHERE n.tenant_id = ` + tenantArg + ` AND n.user_id = ` + userArg
+	                 ON m.user_id = u.id AND m.tenant_id = n.tenant_id AND m.status = 'active'` +
+		inAppJoin + `
+	         WHERE n.tenant_id = ` + tenantArg + ` AND n.user_id = ` + userArg + inAppVisible
 	if f.UnreadOnly {
 		q += ` AND n.read_at IS NULL`
 	}
@@ -273,7 +293,8 @@ func (r *Repository) List(ctx context.Context, scope domain.TenantScope, userID 
 func (r *Repository) UnreadCount(ctx context.Context, scope domain.TenantScope, userID int64) (int, error) {
 	var n int
 	err := r.db.QueryRow(ctx,
-		`SELECT COUNT(*) FROM notifications WHERE tenant_id = $1 AND user_id = $2 AND read_at IS NULL`,
+		`SELECT COUNT(*) FROM notifications n`+inAppJoin+`
+		  WHERE n.tenant_id = $1 AND n.user_id = $2 AND n.read_at IS NULL`+inAppVisible,
 		scope.TenantID, userID).Scan(&n)
 	return n, err
 }

@@ -10,6 +10,8 @@ package notifychannel
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"time"
 )
 
 // ErrMissingSecret is what a channel constructor returns when its Descriptor
@@ -30,18 +32,58 @@ type Target struct {
 type Message struct {
 	Title string
 	Body  string
-	// URL is an absolute or site-relative link back to the goal, may be empty.
+	// URL links back to the goal. Absolute, or empty when the deployment has no
+	// configured address to build one from: a channel's reader is outside the
+	// product, where a site-relative link resolves against the wrong host.
 	URL string
 }
 
-// Sender delivers one message. Implementations must be safe for concurrent use:
-// the delivery worker runs several at once. Send's returned error should not
-// repeat the tenant's configured secret verbatim (a channel that folds a token
-// into a request URL is the known trap) — the core additionally scrubs any known
-// secret value out of the error text before it can reach an admin, but that is a
-// second barrier, not a license to be careless with the first.
+// Sender delivers messages. Implementations must be safe for concurrent use: the
+// core sends from several goroutines at once, and a channel that batches is
+// additionally read by its own timer.
+//
+// The three methods differ in WHEN delivery happens and WHO learns the outcome:
+//
+//   - Send accepts a message for delivery and may hold it. It returns nil once
+//     the message is accepted, so its result says nothing about whether the
+//     external service took it. A channel that holds messages therefore must log
+//     failures through Deps.Log — no caller is left to return them to.
+//   - SendNow delivers immediately and returns the real outcome. The admin's
+//     "test this channel" button is built on it: its answer reaches a human, so
+//     a channel MUST NOT swallow the error or defer the work.
+//   - Flush delivers whatever is still held. The core calls it on shutdown and
+//     before replacing a channel whose configuration changed.
+//
+// A channel that does not batch implements all three the same way: Send and
+// SendNow both deliver, and Flush does nothing and returns nil.
+//
+// None of these methods should repeat the tenant's configured secret in an
+// error or a log record (a channel that folds a token into a request URL is the
+// known trap). The core wraps both the returned errors and the supplied logger
+// to scrub any known secret value, but that is a second barrier, not a license
+// to be careless with the first.
 type Sender interface {
+	// Send accepts one message for delivery. Returning nil means accepted, not
+	// delivered.
 	Send(ctx context.Context, target Target, msg Message) error
+	// SendNow delivers one message immediately and reports the real outcome.
+	SendNow(ctx context.Context, target Target, msg Message) error
+	// Close delivers everything currently held, once, and permanently retires
+	// the sender. A channel holding nothing returns nil.
+	//
+	// Terminal, and that is the whole point of it rather than a plain flush. The
+	// core closes a sender when the tenant changed the settings it was built
+	// from or switched the channel off, so by this call the configuration this
+	// instance runs on is already gone. A delivery that fails here MUST NOT be
+	// retained for a later attempt and MUST NOT reopen a window: doing so means
+	// posting through revoked credentials minutes after an administrator
+	// switched the channel off, which is exactly what closing is for. Report the
+	// failure — return it, log it, or both — and drop what could not be sent.
+	//
+	// After Close the sender accepts nothing further; Send and SendNow return an
+	// error. A channel that holds nothing and arms nothing may implement this as
+	// a no-op returning nil.
+	Close(ctx context.Context) error
 }
 
 // Settings is a channel's configuration inside one tenant. Secret arrives already
@@ -49,6 +91,55 @@ type Sender interface {
 type Settings struct {
 	Values map[string]any
 	Secret string
+}
+
+// discard swallows every record, so a channel constructed without a logger stays
+// silent rather than writing to the process default.
+var discard = slog.New(slog.DiscardHandler)
+
+// Deps is everything the core hands a channel at construction time.
+//
+// It is a struct rather than a parameter list so that the next dependency added
+// here does not break the constructor of every channel ever written against this
+// contract. Settings is not the place for the others: it means "what this tenant
+// configured", and neither a logger nor a clock is tenant configuration.
+type Deps struct {
+	// Settings is this channel's configuration inside one tenant.
+	Settings Settings
+
+	// Logger receives delivery failures. Send cannot report an outcome — by the
+	// time delivery is attempted its caller is gone — so a channel that holds
+	// messages logs the failure itself.
+	//
+	// The core supplies a logger whose handler already redacts this tenant's
+	// secret, because the core is the only layer that knows the plaintext. A
+	// channel neither needs nor should attempt its own redaction.
+	//
+	// May be nil. Read it through Log, never directly.
+	Logger *slog.Logger
+
+	// Now is the channel's clock. A channel that batches owns a deadline, and a
+	// test for "collected three updates, sent one message when the window
+	// closed" has to move time rather than wait for it.
+	//
+	// May be nil. Read it through Clock, never directly.
+	Now func() time.Time
+}
+
+// Log returns the logger to use: the supplied one, or a silent logger.
+func (d Deps) Log() *slog.Logger {
+	if d.Logger != nil {
+		return d.Logger
+	}
+	return discard
+}
+
+// Clock returns the clock to use: the supplied one, or time.Now.
+func (d Deps) Clock() func() time.Time {
+	if d.Now != nil {
+		return d.Now
+	}
+	return time.Now
 }
 
 // FieldKind tells the admin UI how to render a configuration field.
@@ -84,15 +175,20 @@ type Descriptor struct {
 }
 
 // Channel is one unit of wiring: how to describe it, and how to build a Sender
-// from a tenant's settings.
+// from a tenant's settings and the runtime dependencies the core supplies.
 type Channel struct {
 	Descriptor Descriptor
-	New        func(Settings) (Sender, error)
+	New        func(Deps) (Sender, error)
 }
 
 // Linker is implemented by a channel that needs an explicit account link — a
 // one-time token and a deep link — rather than resolving the addressee by email.
 // Optional: a channel without it is addressed through Target.Email.
+//
+// Note that an optional interface is only reachable on an unwrapped Sender: see
+// the known limitation documented on secretMaskingSender in
+// internal/service/notificationchannel/secretmask.go. That is why batching,
+// immediate delivery and flushing live on Sender itself rather than here.
 type Linker interface {
 	LinkURL(s Settings, token string) string
 }

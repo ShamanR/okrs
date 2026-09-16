@@ -265,3 +265,58 @@ func TestSearchUsersInSet(t *testing.T) {
 		t.Errorf("expected nil for empty inputs")
 	}
 }
+
+// Правило «ушедший участник не называется по имени» держится запросом, а не
+// аккуратностью вызывающего. Проверяется на живой схеме: системный пользователь
+// членства не имеет никогда и обязан остаться исключением — ровно так же, как в
+// запросе ленты.
+func TestContactsByIDsMarksFormerMembersButNotSystemUsers(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := users.NewUserRepository(pool)
+	ctx := context.Background()
+	scope := domain.TenantScope{TenantID: 1}
+
+	// Действующий участник.
+	var activeID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (provider_subject_key, provider, subject, display_name, email)
+		VALUES ('active-contact', 'google', 'active-contact', 'Мария', 'maria@example.com')
+		RETURNING id`).Scan(&activeID); err != nil {
+		t.Fatalf("active: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO memberships (user_id, tenant_id, role, status) VALUES ($1, 1, 'user', 'active')`,
+		activeID); err != nil {
+		t.Fatalf("membership: %v", err)
+	}
+
+	// Заведён после бэкфилла членств — членства в пространстве нет.
+	var goneID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO users (provider_subject_key, provider, subject, display_name, email)
+		VALUES ('gone-contact', 'google', 'gone-contact', 'Пётр', 'petr@example.com')
+		RETURNING id`).Scan(&goneID); err != nil {
+		t.Fatalf("gone: %v", err)
+	}
+
+	// Системный пользователь (id 2, system:migration) — исключение.
+	if _, err := pool.Exec(ctx,
+		`DELETE FROM memberships WHERE user_id = 2 AND tenant_id = 1`); err != nil {
+		t.Fatalf("снять членство системного: %v", err)
+	}
+
+	got, err := repo.ContactsByIDs(ctx, scope, []int64{activeID, goneID, 2})
+	if err != nil {
+		t.Fatalf("contacts: %v", err)
+	}
+	if c := got[activeID]; c.Removed || c.DisplayName != "Мария" || c.Email != "maria@example.com" {
+		t.Fatalf("действующий участник: %+v", c)
+	}
+	if c := got[goneID]; !c.Removed {
+		t.Fatalf("ушедший участник не помечен: %+v", c)
+	}
+	if c := got[2]; c.Removed {
+		t.Fatalf("системный пользователь помечен ушедшим, хотя членства не имеет никогда: %+v", c)
+	}
+}

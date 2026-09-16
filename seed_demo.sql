@@ -513,9 +513,22 @@ INSERT INTO activity_events (tenant_id, actor_user_id, category, action, team_id
 
 -- Демо-настройки уведомлений: один пользователь смотрит всё поддерево,
 -- остальные остаются на дефолте (строк нет — дефолт подставляется на чтении).
-INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channels)
-SELECT 1, u.id, 'goal_changed', TRUE, 'subtree', '{in_app}'
+--
+-- channel_overrides пуст намеренно: это карта ОТКЛОНЕНИЙ от значений, заданных
+-- администратором, а не список включённых каналов. Пустая карта означает
+-- «пользователь про каналы ничего не говорил»: колокольчик включён, а внешние
+-- каналы следуют настройке пространства.
+INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channel_overrides)
+SELECT 1, u.id, 'goal_changed', TRUE, 'subtree', '{}'::jsonb
   FROM users u WHERE u.provider_subject_key = 'system:anonymous-local'
+ON CONFLICT DO NOTHING;
+
+-- Второй пользователь демонстрирует явное отклонение: чек-ины он в колокольчике
+-- видеть не хочет. Строка уведомления при этом всё равно создаётся — из неё
+-- собирается дайджест во внешний канал, если тот подключён.
+INSERT INTO notification_preferences (tenant_id, user_id, type, enabled, scope, channel_overrides)
+SELECT 1, u.id, 'kr_progress', TRUE, 'own', '{"in_app": false}'::jsonb
+  FROM users u WHERE u.provider_subject_key = 'system:migration'
 ON CONFLICT DO NOTHING;
 
 -- Пара уведомлений, чтобы колокольчик в демо не был пустым. actor_user_id = 2 —

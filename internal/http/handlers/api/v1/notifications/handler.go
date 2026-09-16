@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"okrs/internal/auth"
@@ -143,46 +142,16 @@ func toDTO(n storenotif.Notification) dto.Notification {
 // function used goal_id/team_id/period_id, which the tracker never reads at all —
 // every bell click landed on the tracker with no navigation whatsoever.
 func targetURL(n storenotif.Notification) string {
-	if n.GoalID == nil {
-		return ""
-	}
-	// The goal id survives the goal itself: notifications keep their anchor after a
-	// hard DELETE FROM goals, and goal_deleted notifications are about a goal that
-	// is gone by definition. Linking there sends the tracker looking for a goal it
-	// cannot find — it opens the board and silently fails to scroll. GoalTitle is
-	// the signal: List LEFT JOINs goals, so an empty title means the row is gone
-	// (goals are hard-deleted, there is no soft-delete state to confuse this with).
-	if n.GoalTitle == "" {
-		return ""
-	}
-	// Values are formatted int64s only (no user input reaches this string), so a
-	// hand-built query string is safe and keeps the param order — team, period,
-	// goal, kr, comment — matching buildTargetURL exactly, unlike url.Values.Encode
-	// which would alphabetize them.
-	var b strings.Builder
-	b.WriteString("/?")
-	first := true
-	write := func(key string, v int64) {
-		if !first {
-			b.WriteByte('&')
-		}
-		b.WriteString(key)
-		b.WriteByte('=')
-		b.WriteString(strconv.FormatInt(v, 10))
-		first = false
-	}
-	if n.TeamID != nil {
-		write("team", *n.TeamID)
-	}
-	if n.PeriodID != nil {
-		write("period", *n.PeriodID)
-	}
-	write("goal", *n.GoalID)
-	if n.KRID != nil {
-		write("kr", *n.KRID)
-	}
-	if n.CommentID != nil {
-		write("comment", *n.CommentID)
-	}
-	return b.String()
+	// GoalTitle is the signal that the goal is gone: List LEFT JOINs goals, so an
+	// empty title means the row no longer exists (goals are hard-deleted, there is
+	// no soft-delete state to confuse this with). The format itself lives in
+	// render/notify, shared with delivery to external channels.
+	return notify.TargetURL(notify.LinkInput{
+		GoalID:      n.GoalID,
+		TeamID:      n.TeamID,
+		PeriodID:    n.PeriodID,
+		KRID:        n.KRID,
+		CommentID:   n.CommentID,
+		GoalMissing: n.GoalTitle == "",
+	})
 }

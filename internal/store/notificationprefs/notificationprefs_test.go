@@ -88,7 +88,7 @@ func TestResolveOwnAndChildren(t *testing.T) {
 
 	for _, id := range []int64{leads[0], leads[1]} {
 		if err := repo.Set(ctx, scope, id, notificationprefs.Preference{
-			Type: "goal_changed", Enabled: true, Scope: "own_and_children", Channels: []string{"in_app"},
+			Type: "goal_changed", Enabled: true, Scope: "own_and_children", ChannelOverrides: map[string]bool{"in_app": true},
 		}); err != nil {
 			t.Fatalf("set: %v", err)
 		}
@@ -117,7 +117,7 @@ func TestResolveSubtree(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[0], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: true, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: true, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -175,7 +175,7 @@ func TestDisabledTypeYieldsNoRecipients(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[2], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: false, Scope: "own", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: false, Scope: "own", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestSoftDeletedTeamBreaksChain(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[0], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: true, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: true, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -282,7 +282,7 @@ func TestGetAllReturnsStoredRowOverridesDefault(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, 1, notificationprefs.Preference{
-		Type: "goal_changed", Enabled: false, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: false, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -380,7 +380,7 @@ func TestDuplicateAncestorLeadReturnedOnce(t *testing.T) {
 		t.Fatalf("reassign middle lead: %v", err)
 	}
 	if err := repo.Set(ctx, scope, leads[0], notificationprefs.Preference{
-		Type: "goal_changed", Enabled: true, Scope: "subtree", Channels: []string{"in_app"},
+		Type: "goal_changed", Enabled: true, Scope: "subtree", ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -412,7 +412,7 @@ func TestResolveAddressedOrdMappingAndDisabledFilter(t *testing.T) {
 	ctx := context.Background()
 
 	if err := repo.Set(ctx, scope, leads[1], notificationprefs.Preference{
-		Type: "my_comment_resolved", Enabled: false, Channels: []string{"in_app"},
+		Type: "my_comment_resolved", Enabled: false, ChannelOverrides: map[string]bool{"in_app": true},
 	}); err != nil {
 		t.Fatalf("set: %v", err)
 	}
@@ -440,5 +440,91 @@ func TestResolveAddressedOrdMappingAndDisabledFilter(t *testing.T) {
 	}
 	if len(rs) != 2 {
 		t.Errorf("expected 2 recipients (leads[1] filtered), got %d", len(rs))
+	}
+}
+
+// Выбор по каналу, которого не было на экране, обязан пережить сохранение.
+//
+// Администратор временно выключает канал — его колонка исчезает из матрицы, и
+// PUT про этот канал ничего не несёт. Полная замена карты стёрла бы ответ
+// пользователя, и повторное включение канала вернуло бы ему умолчание
+// администратора — то есть доставку, от которой он явно отказался.
+func TestSetMergesAndKeepsChoicesTheFormCouldNotShow(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := notificationprefs.NewRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	ctx := context.Background()
+
+	// Пользователь однажды отказался от mattermost и включил telegram.
+	if err := repo.Set(ctx, scope, 1, notificationprefs.Preference{
+		Type: "goal_changed", Enabled: true, Scope: "own",
+		ChannelOverrides: map[string]bool{"in_app": true, "mattermost": false, "telegram": true},
+	}); err != nil {
+		t.Fatalf("первое сохранение: %v", err)
+	}
+
+	// Администратор выключил mattermost — его колонки в матрице больше нет,
+	// и следующее сохранение про него молчит.
+	if err := repo.Set(ctx, scope, 1, notificationprefs.Preference{
+		Type: "goal_changed", Enabled: true, Scope: "subtree",
+		ChannelOverrides: map[string]bool{"in_app": false, "telegram": true},
+	}); err != nil {
+		t.Fatalf("второе сохранение: %v", err)
+	}
+
+	all, err := repo.GetAll(ctx, scope, 1)
+	if err != nil {
+		t.Fatalf("getAll: %v", err)
+	}
+	var got map[string]bool
+	var gotScope string
+	for _, p := range all {
+		if p.Type == "goal_changed" {
+			got, gotScope = p.ChannelOverrides, p.Scope
+		}
+	}
+	if on, ok := got["mattermost"]; !ok || on {
+		t.Fatalf("выбор по скрытому каналу потерян: %v", got)
+	}
+	// Видимые каналы перезаписаны присланным: слияние не удерживает устаревший ответ.
+	if got["in_app"] {
+		t.Fatalf("присланное значение видимого канала не победило: %v", got)
+	}
+	if !got["telegram"] {
+		t.Fatalf("telegram потерян: %v", got)
+	}
+	// Остальные поля строки перезаписываются как прежде.
+	if gotScope != "subtree" {
+		t.Fatalf("scope не обновился: %q", gotScope)
+	}
+}
+
+// Повторное сохранение той же матрицы не меняет итогового состояния.
+func TestSetIsIdempotent(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	repo := notificationprefs.NewRepository(pool)
+	scope := domain.TenantScope{TenantID: 1}
+	ctx := context.Background()
+
+	p := notificationprefs.Preference{
+		Type: "kr_progress", Enabled: true, Scope: "own",
+		ChannelOverrides: map[string]bool{"in_app": true, "mattermost": false},
+	}
+	for i := 0; i < 2; i++ {
+		if err := repo.Set(ctx, scope, 1, p); err != nil {
+			t.Fatalf("сохранение %d: %v", i, err)
+		}
+	}
+	all, _ := repo.GetAll(ctx, scope, 1)
+	for _, got := range all {
+		if got.Type != "kr_progress" {
+			continue
+		}
+		if len(got.ChannelOverrides) != 2 || got.ChannelOverrides["in_app"] != true ||
+			got.ChannelOverrides["mattermost"] != false {
+			t.Fatalf("повторное сохранение изменило состояние: %v", got.ChannelOverrides)
+		}
 	}
 }

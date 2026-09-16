@@ -22,8 +22,13 @@ func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
 // Config is one channel's configuration inside a tenant.
 type Config struct {
-	Channel         string
-	Enabled         bool
+	Channel string
+	Enabled bool
+	// DefaultOn is the administrator's answer to "is this channel on for staff
+	// who never said otherwise". It is a tenant-level default for user
+	// preferences, not a property of the channel's own configuration — which is
+	// why it is a column here and not a field inside config_json.
+	DefaultOn       bool
 	Values          map[string]any
 	SecretEnc       []byte
 	SecretHint      string
@@ -40,12 +45,12 @@ type Identity struct {
 	LinkedAt         time.Time
 }
 
-const configCols = `channel, enabled, config_json, secret_enc, secret_hint, updated_at, updated_by_user_id`
+const configCols = `channel, enabled, default_on, config_json, secret_enc, secret_hint, updated_at, updated_by_user_id`
 
 func scanConfig(row pgx.Row) (Config, error) {
 	var c Config
 	var raw []byte
-	err := row.Scan(&c.Channel, &c.Enabled, &raw, &c.SecretEnc, &c.SecretHint, &c.UpdatedAt, &c.UpdatedByUserID)
+	err := row.Scan(&c.Channel, &c.Enabled, &c.DefaultOn, &raw, &c.SecretEnc, &c.SecretHint, &c.UpdatedAt, &c.UpdatedByUserID)
 	if err != nil {
 		return Config{}, err
 	}
@@ -106,16 +111,17 @@ func (r *Repository) Upsert(ctx context.Context, scope domain.TenantScope, c Con
 	}
 	_, err = r.db.Exec(ctx, `
 		INSERT INTO notification_channels
-			(tenant_id, channel, enabled, config_json, secret_enc, secret_hint, updated_at, updated_by_user_id)
-		VALUES ($1,$2,$3,$4,$5,$6, now(), $7)
+			(tenant_id, channel, enabled, default_on, config_json, secret_enc, secret_hint, updated_at, updated_by_user_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7, now(), $8)
 		ON CONFLICT (tenant_id, channel) DO UPDATE
 		   SET enabled            = EXCLUDED.enabled,
+		       default_on         = EXCLUDED.default_on,
 		       config_json        = EXCLUDED.config_json,
 		       secret_enc         = EXCLUDED.secret_enc,
 		       secret_hint        = EXCLUDED.secret_hint,
 		       updated_at         = now(),
 		       updated_by_user_id = EXCLUDED.updated_by_user_id`,
-		scope.TenantID, c.Channel, c.Enabled, raw, c.SecretEnc, c.SecretHint, byUserID)
+		scope.TenantID, c.Channel, c.Enabled, c.DefaultOn, raw, c.SecretEnc, c.SecretHint, byUserID)
 	return err
 }
 

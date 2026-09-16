@@ -18,9 +18,13 @@ type NotificationChannelField struct {
 // to be one. Sending the plaintext back — even to an admin, even over TLS — would put
 // it in browser memory, in devtools, and in anything that proxies the response.
 type NotificationChannelDTO struct {
-	Name       string                     `json:"name"`
-	Title      string                     `json:"title"`
-	Enabled    bool                       `json:"enabled"`
+	Name    string `json:"name"`
+	Title   string `json:"title"`
+	Enabled bool   `json:"enabled"`
+	// DefaultOn is whether staff who never chose get this channel. Separate from
+	// Enabled, which is whether the channel works at all: the screen has to keep
+	// the two apart in wording, because they read alike and mean different things.
+	DefaultOn  bool                       `json:"default_on"`
 	Configured bool                       `json:"configured"`
 	SecretHint string                     `json:"secret_hint,omitempty"`
 	Values     map[string]any             `json:"values"`

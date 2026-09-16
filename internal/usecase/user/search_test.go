@@ -4,6 +4,7 @@ package user
 
 import (
 	"context"
+	"okrs/internal/store/users"
 	"testing"
 	"time"
 
@@ -49,6 +50,10 @@ func newSearchStore() *searchCapturingStore {
 
 func newSearchTestService(st *searchCapturingStore, grants GrantsProvider) *UseCase {
 	return New(Deps{Users: usersvc.New(st), Teams: teamsvc.New(st), Grants: grants})
+}
+
+func (s *searchCapturingStore) ContactsByIDs(context.Context, domain.TenantScope, []int64) (map[int64]users.Contact, error) {
+	return map[int64]users.Contact{}, nil
 }
 
 func TestSearchUsersInScopeUnrestricted(t *testing.T) {

@@ -102,7 +102,7 @@ func TestExportOKRTree(t *testing.T) {
 	}
 
 	// Собираем тот же граф зависимостей, что и сервер, и берём из него usecase экспорта.
-	svc := httpdeps.Build(repo, grants.NewGrantsCache(repo.Grants), nil, eventbus.New(slog.Default()), nil).ExportUC
+	svc := httpdeps.Build(repo, grants.NewGrantsCache(repo.Grants), nil, eventbus.New(slog.Default()), nil, nil, "").ExportUC
 
 	// full subtree access: owner block full, child block shows shared reference
 	res, err := svc.ExportOKR(ctx, scope, exportuc.ExportParams{
