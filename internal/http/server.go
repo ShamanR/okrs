@@ -221,11 +221,16 @@ type Options struct {
 // drained — the last events have to become messages before there is anything to
 // flush. The context carries the budget: an unreachable external service must not
 // spend the whole shutdown window.
+//
+// The attempt is single and terminal — the channels are retired, not merely
+// drained. Keeping a failed batch for a later window would mean arming a timer in
+// a process that is about to exit: the messages are lost either way, and the only
+// thing the retry buys is a live timer racing the shutdown.
 func (s *Server) FlushNotificationChannels(ctx context.Context) error {
 	if s.notifChannels == nil {
 		return nil
 	}
-	return s.notifChannels.Flush(ctx)
+	return s.notifChannels.Close(ctx)
 }
 
 // channelsWithSecret counts the channels whose configuration includes a secret at

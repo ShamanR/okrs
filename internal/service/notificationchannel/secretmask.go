@@ -2,6 +2,8 @@ package notificationchannel
 
 import (
 	"context"
+	"encoding"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -66,8 +68,8 @@ func (s secretMaskingSender) SendNow(ctx context.Context, target notifychannel.T
 	return s.mask(s.inner.SendNow(ctx, target, msg))
 }
 
-func (s secretMaskingSender) Flush(ctx context.Context) error {
-	return s.mask(s.inner.Flush(ctx))
+func (s secretMaskingSender) Close(ctx context.Context) error {
+	return s.mask(s.inner.Close(ctx))
 }
 
 func (s secretMaskingSender) mask(err error) error {
@@ -146,22 +148,43 @@ func (h *scrubbingHandler) scrubAttr(a slog.Attr) slog.Attr {
 	return a
 }
 
-// renderForInspection turns a value into the text this wrapper searches for the
-// secret.
+// dirtyRendering returns a rendering of v that contains the secret, or "" when
+// none of the forms v can reach a handler through does.
 //
-// %+v rather than the handler's own serialization: it is deliberately a superset.
-// A JSON handler prints exported fields, %+v prints unexported ones too, so a
-// rendering that does not contain the secret guarantees the handler's will not
-// either. The reverse would not hold.
-func renderForInspection(v any) string {
-	switch t := v.(type) {
-	case error:
-		return t.Error()
-	case fmt.Stringer:
-		return t.String()
-	default:
-		return fmt.Sprintf("%+v", v)
+// One rendering is not enough, because handlers do not agree on how to print a
+// KindAny value and a value can hide the secret from one form while showing it
+// in another. The concrete trap: %v and %+v hand a fmt.Stringer straight to its
+// String method, so a type with a tidy String and a token in an exported field
+// looks clean — while slog.JSONHandler never calls String and json.Marshals the
+// fields instead. Checking one form and forwarding the value on that basis is
+// how the secret gets out.
+//
+// So every form is checked, cheapest first, and the value is forwarded only when
+// all of them are clean:
+//
+//   - %+v — what slog.TextHandler falls back to, and what an error or Stringer
+//     renders as. Also shows unexported fields of a plain struct.
+//   - %#v — the field-level view, which is what defeats the Stringer trap above.
+//   - json.Marshal — what slog.JSONHandler actually emits, and the only form
+//     that honours a MarshalJSON able to synthesize text no reflection-based
+//     rendering would show.
+//   - MarshalText — the first thing a text handler tries, same reasoning.
+func dirtyRendering(v any, secret string) string {
+	if text := fmt.Sprintf("%+v", v); strings.Contains(text, secret) {
+		return text
 	}
+	if text := fmt.Sprintf("%#v", v); strings.Contains(text, secret) {
+		return text
+	}
+	if b, err := json.Marshal(v); err == nil && strings.Contains(string(b), secret) {
+		return string(b)
+	}
+	if tm, ok := v.(encoding.TextMarshaler); ok {
+		if b, err := tm.MarshalText(); err == nil && strings.Contains(string(b), secret) {
+			return string(b)
+		}
+	}
+	return ""
 }
 
 // scrubValue rewrites the value kinds that can carry text. An error is the case
@@ -187,13 +210,13 @@ func (h *scrubbingHandler) scrubValue(v slog.Value) slog.Value {
 		// d.Settings) is the obvious way to reach this — would go out verbatim
 		// while this wrapper reported success.
 		//
-		// So the value is rendered HERE and inspected. Only a rendering that
-		// actually contains the secret is replaced; everything else is forwarded
+		// So the value is inspected HERE, in every form a handler could print it
+		// as (see dirtyRendering). A value that carries the secret is replaced by
+		// the rendering that exposed it, redacted; everything else is forwarded
 		// untouched, keeping the handler's own formatting for the overwhelming
 		// majority of records.
-		rendered := renderForInspection(v.Any())
-		if strings.Contains(rendered, h.secret) {
-			return slog.StringValue(h.scrub(rendered))
+		if dirty := dirtyRendering(v.Any(), h.secret); dirty != "" {
+			return slog.StringValue(h.scrub(dirty))
 		}
 		return v
 	default:

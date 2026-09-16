@@ -276,7 +276,7 @@ func TestSingleUpdateKeepsItsPlainShape(t *testing.T) {
 		notifychannel.Message{Title: "Пётр изменил цель", Body: "Снизить отток"}); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -299,7 +299,7 @@ func TestEmptyWindowSendsNothing(t *testing.T) {
 	defer srv.Close()
 	s := senderWith(t, srv.URL, nil, newClock(), nil)
 
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("flush пустого буфера: %v", err)
 	}
 	if n := len(f.paths); n != 0 {
@@ -322,7 +322,7 @@ func TestDigestCarriesEveryUpdate(t *testing.T) {
 			t.Fatalf("send %q: %v", title, err)
 		}
 	}
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -355,7 +355,7 @@ func TestDigestIsPerRecipient(t *testing.T) {
 		notifychannel.Message{Title: "для Марии"}); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -397,7 +397,7 @@ func TestSendNowBypassesTheBufferInBothDirections(t *testing.T) {
 	}
 
 	// Накопленное осталось на месте и уходит своим чередом.
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 	posts = f.sentPosts()
@@ -417,11 +417,11 @@ func TestFlushEmptiesTheBuffer(t *testing.T) {
 		notifychannel.Message{Title: "t"}); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("первая выгрузка: %v", err)
 	}
 	before := len(f.sentPosts())
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("повторная выгрузка: %v", err)
 	}
 	if after := len(f.sentPosts()); after != before {
@@ -454,7 +454,7 @@ func TestBufferCapDropsOldestPerRecipient(t *testing.T) {
 		notifychannel.Message{Title: "тихое обновление"}); err != nil {
 		t.Fatalf("send: %v", err)
 	}
-	if err := s.Flush(context.Background()); err != nil {
+	if err := s.Close(context.Background()); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -518,22 +518,30 @@ func TestTransientFailureKeepsUpdatesPermanentDiscardsThem(t *testing.T) {
 		f := &fakeMM{postErr: http.StatusInternalServerError}
 		srv := httptest.NewServer(f.handler())
 		defer srv.Close()
-		s := senderWith(t, srv.URL, nil, newClock(), &capturingHandler{})
+		c := newClock()
+		s := senderWith(t, srv.URL, nil, c, &capturingHandler{})
+		ivan := notifychannel.Target{Email: "ivan@example.com"}
 
-		if err := s.Send(context.Background(), notifychannel.Target{Email: "ivan@example.com"},
-			notifychannel.Message{Title: "важное"}); err != nil {
+		if err := s.Send(context.Background(), ivan, notifychannel.Message{Title: "важное"}); err != nil {
 			t.Fatalf("send: %v", err)
 		}
-		if err := s.Flush(context.Background()); err == nil {
-			t.Fatal("выгрузка при 5xx обязана вернуть ошибку")
+		// Окно закрывается штатно — это и есть путь, на котором удержание живёт.
+		// Доставка падает с 5xx, обновление обязано остаться.
+		c.advance(11 * time.Minute)
+		if err := s.Send(context.Background(), ivan, notifychannel.Message{Title: "второе"}); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+		if posts := f.sentPosts(); len(posts) != 0 {
+			t.Fatalf("при 5xx ничего не должно было уйти: %v", posts)
 		}
 
-		// Сервис поднялся — обновление всё ещё здесь.
+		// Сервис поднялся — следующее окно отдаёт удержанное.
 		f.mu.Lock()
 		f.postErr = 0
 		f.mu.Unlock()
-		if err := s.Flush(context.Background()); err != nil {
-			t.Fatalf("повторная выгрузка: %v", err)
+		c.advance(11 * time.Minute)
+		if err := s.Send(context.Background(), ivan, notifychannel.Message{Title: "третье"}); err != nil {
+			t.Fatalf("send: %v", err)
 		}
 		if posts := f.sentPosts(); len(posts) != 1 || !strings.Contains(posts[0], "важное") {
 			t.Fatalf("обновление не пережило временный отказ: %v", posts)
@@ -550,14 +558,14 @@ func TestTransientFailureKeepsUpdatesPermanentDiscardsThem(t *testing.T) {
 			notifychannel.Message{Title: "t"}); err != nil {
 			t.Fatalf("send: %v", err)
 		}
-		if err := s.Flush(context.Background()); err == nil {
+		if err := s.Close(context.Background()); err == nil {
 			t.Fatal("выгрузка при 404 обязана вернуть ошибку")
 		}
 
 		f.mu.Lock()
 		f.emailErr = 0
 		f.mu.Unlock()
-		if err := s.Flush(context.Background()); err != nil {
+		if err := s.Close(context.Background()); err != nil {
 			t.Fatalf("повторная выгрузка: %v", err)
 		}
 		if posts := f.sentPosts(); len(posts) != 0 {
@@ -1092,5 +1100,65 @@ func TestMessageWithoutURLHasNoLinkMarkup(t *testing.T) {
 	}
 	if posts := f.sentPosts(); strings.Contains(posts[0], "](") {
 		t.Fatalf("появилась разметка ссылки при отсутствии ссылки: %q", posts[0])
+	}
+}
+
+// Закрытие при временном отказе обновления НЕ удерживает и окно заново НЕ
+// открывает.
+//
+// Это то, чем закрытие отличается от закрытия окна. Ядро закрывает экземпляр,
+// когда настройки, на которых он собран, уже отменены: администратор сменил
+// токен или выключил канал. Удержание в этот момент означало бы, что снятый
+// экземпляр ставит себе новый таймер и спустя окно постит по отозванным
+// настройкам — ровно то, ради устранения чего его и снимали.
+func TestCloseDoesNotRetainOrRearmOnTransientFailure(t *testing.T) {
+	f := &fakeMM{postErr: http.StatusInternalServerError}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	c := newClock()
+	s := senderWith(t, srv.URL, nil, c, &capturingHandler{})
+	ivan := notifychannel.Target{Email: "ivan@example.com"}
+
+	if err := s.Send(context.Background(), ivan, notifychannel.Message{Title: "важное"}); err != nil {
+		t.Fatalf("send: %v", err)
+	}
+	if err := s.Close(context.Background()); err == nil {
+		t.Fatal("закрытие при 5xx обязано вернуть ошибку")
+	}
+
+	// Сервис поднялся, и времени прошло больше окна. Если бы закрытие удержало
+	// обновление и открыло окно, оно ушло бы сейчас — по настройкам, которых
+	// уже нет.
+	f.mu.Lock()
+	f.postErr = 0
+	f.mu.Unlock()
+	c.advance(11 * time.Minute)
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatalf("повторное закрытие: %v", err)
+	}
+	if posts := f.sentPosts(); len(posts) != 0 {
+		t.Fatalf("закрытый экземпляр отправил удержанное: %v", posts)
+	}
+}
+
+// Закрытый экземпляр больше ничего не принимает — ни в окно, ни немедленно.
+func TestClosedSenderAcceptsNothingFurther(t *testing.T) {
+	f := &fakeMM{}
+	srv := httptest.NewServer(f.handler())
+	defer srv.Close()
+	s := senderWith(t, srv.URL, nil, newClock(), &capturingHandler{})
+	ivan := notifychannel.Target{Email: "ivan@example.com"}
+
+	if err := s.Close(context.Background()); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if err := s.Send(context.Background(), ivan, notifychannel.Message{Title: "после"}); !errors.Is(err, mattermost.ErrClosed) {
+		t.Fatalf("закрытый экземпляр принял сообщение: %v", err)
+	}
+	if err := s.SendNow(context.Background(), ivan, notifychannel.Message{Title: "после"}); !errors.Is(err, mattermost.ErrClosed) {
+		t.Fatalf("закрытый экземпляр выполнил немедленную отправку: %v", err)
+	}
+	if posts := f.sentPosts(); len(posts) != 0 {
+		t.Fatalf("после закрытия что-то ушло: %v", posts)
 	}
 }

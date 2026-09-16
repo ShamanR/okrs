@@ -57,7 +57,7 @@ func (s *bufferingSender) SendNow(_ context.Context, t notifychannel.Target, m n
 	return nil
 }
 
-func (s *bufferingSender) Flush(context.Context) error {
+func (s *bufferingSender) Close(context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for email, msgs := range s.buf {
@@ -253,7 +253,7 @@ func TestAdminEnablesChannelAndRecipientGetsOneMessageWithEverything(t *testing.
 		t.Fatalf("handle: %v", err)
 	}
 	// Окно закрылось.
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -283,7 +283,7 @@ func TestChannelWithoutDefaultDoesNotReachTheUndecided(t *testing.T) {
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.comment("текст")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 	if got := h.sender.delivered(h.leadEmail); len(got) != 0 {
@@ -309,7 +309,7 @@ func TestDisablingOneTypeInOneChannelLeavesTheRestWorking(t *testing.T) {
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.goalChanged(), h.comment("замечание")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -359,7 +359,7 @@ func TestChannelConnectedLaterStillReachesAnExistingUser(t *testing.T) {
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.comment("после подключения")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -388,7 +388,7 @@ func TestExplicitUserChoiceSurvivesTheAdminChangingTheirMind(t *testing.T) {
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.comment("текст")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 	if got := h.sender.delivered(h.leadEmail); len(got) != 0 {
@@ -421,7 +421,7 @@ func TestChannelDisabledByAdminDeliversNothingEvenWhenTheUserWantsIt(t *testing.
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.comment("текст")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 	if got := h.sender.delivered(h.leadEmail); len(got) != 0 {
@@ -456,7 +456,7 @@ func TestBellOffExternalOnDeliversOutsideButNotInTheFeed(t *testing.T) {
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.comment("важное")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 
@@ -504,7 +504,7 @@ func TestTypeDisabledEntirelyProducesNeitherRowNorDelivery(t *testing.T) {
 	if err := h.notifyUC.Handle(h.ctx, []event.Event{h.comment("текст")}); err != nil {
 		t.Fatalf("handle: %v", err)
 	}
-	if err := h.channels.Flush(h.ctx); err != nil {
+	if err := h.channels.Close(h.ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 

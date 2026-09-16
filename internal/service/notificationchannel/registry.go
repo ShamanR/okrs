@@ -70,10 +70,10 @@ func (r *revocableSender) SendNow(ctx context.Context, target notifychannel.Targ
 	return r.inner.SendNow(ctx, target, msg)
 }
 
-// Flush is deliberately not gated on revoked: it is called after revocation, to
-// deliver what the instance accepted before it.
-func (r *revocableSender) Flush(ctx context.Context) error {
-	return r.inner.Flush(ctx)
+// Close is deliberately not gated on revoked: it is called after revocation, to
+// deliver what the instance accepted before it and to retire it for good.
+func (r *revocableSender) Close(ctx context.Context) error {
+	return r.inner.Close(ctx)
 }
 
 // revoke closes the instance to new messages. Returns once no send is still
@@ -259,8 +259,8 @@ func (s *Service) construct(
 	return wrapped, replaced, nil
 }
 
-// retireSender closes an outgoing instance and delivers whatever it still holds,
-// using the settings it was built with.
+// retireSender closes an outgoing instance: it delivers whatever the instance
+// still holds, using the settings it was built with, and retires it for good.
 //
 // Revoking first is the whole point of the order. Removing the instance from its
 // slot stops anyone NEW from finding it, but a caller that took the reference a
@@ -273,9 +273,14 @@ func (s *Service) construct(
 func (s *Service) retireSender(ctx context.Context, key channelKey, outgoing *revocableSender) {
 	outgoing.revoke()
 
-	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), replaceFlushTimeout)
+	// Close, not a plain flush, and the difference matters here. A transient
+	// failure at this moment — the external service is briefly unreachable —
+	// would otherwise be retained by the channel and reopen a window, putting
+	// back the very timer this retirement exists to remove. Closing makes the
+	// attempt terminal: what cannot be delivered now is dropped and logged.
+	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), replaceFlushTimeout)
 	defer cancel()
-	if err := outgoing.Flush(flushCtx); err != nil && s.logger != nil {
+	if err := outgoing.Close(closeCtx); err != nil && s.logger != nil {
 		s.logger.Warn("notificationchannel: не удалось выгрузить накопленное перед сменой настроек канала",
 			"channel", key.channel, "tenant_id", key.tenantID, "err", err)
 	}
@@ -314,13 +319,18 @@ func (s *Service) retire(ctx context.Context, key channelKey) {
 	}
 }
 
-// Flush delivers everything every live channel still holds.
+// Close delivers everything every live channel still holds and retires them.
 //
 // The shutdown path calls it: a channel buffers in memory, so a replica that
 // exits without this loses whatever its window had not yet sent. The caller
 // supplies the deadline — an orderly shutdown has a budget, and an unreachable
 // external service must not spend all of it.
-func (s *Service) Flush(ctx context.Context) error {
+//
+// Terminal, like every other retirement here. Retaining a failed batch would
+// mean reopening a window in a process that is about to exit: the timer never
+// fires, so the messages are lost either way, and the only thing the retry buys
+// is a live timer racing the shutdown.
+func (s *Service) Close(ctx context.Context) error {
 	type pending struct {
 		key    channelKey
 		sender *revocableSender
@@ -331,13 +341,18 @@ func (s *Service) Flush(ctx context.Context) error {
 	for key, slot := range s.slots {
 		if slot.sender != nil {
 			live = append(live, pending{key: key, sender: slot.sender})
+			slot.sender, slot.fingerprint = nil, ""
 		}
 	}
 	s.mu.Unlock()
 
 	var errs []error
 	for _, p := range live {
-		if err := p.sender.Flush(ctx); err != nil {
+		// Revoked before closing, for the same reason retireSender does it: a
+		// delivery still holding this sender must not hand it a message between
+		// the drain and the end of it.
+		p.sender.revoke()
+		if err := p.sender.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", p.key.channel, err))
 		}
 	}

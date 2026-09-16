@@ -41,7 +41,7 @@ func (s *recordingSender) SendNow(ctx context.Context, t notifychannel.Target, m
 	return s.Send(ctx, t, m)
 }
 
-func (s *recordingSender) Flush(context.Context) error { return nil }
+func (s *recordingSender) Close(context.Context) error { return nil }
 
 type fakeChannels struct {
 	senders map[string]*recordingSender

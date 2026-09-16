@@ -33,7 +33,7 @@ func (f *fakeSender) SendNow(_ context.Context, tg notifychannel.Target, m notif
 	return f.err
 }
 
-func (f *fakeSender) Flush(context.Context) error {
+func (f *fakeSender) Close(context.Context) error {
 	f.flushed++
 	return nil
 }

@@ -68,9 +68,22 @@ type Sender interface {
 	Send(ctx context.Context, target Target, msg Message) error
 	// SendNow delivers one message immediately and reports the real outcome.
 	SendNow(ctx context.Context, target Target, msg Message) error
-	// Flush delivers everything currently held. A channel holding nothing
-	// returns nil.
-	Flush(ctx context.Context) error
+	// Close delivers everything currently held, once, and permanently retires
+	// the sender. A channel holding nothing returns nil.
+	//
+	// Terminal, and that is the whole point of it rather than a plain flush. The
+	// core closes a sender when the tenant changed the settings it was built
+	// from or switched the channel off, so by this call the configuration this
+	// instance runs on is already gone. A delivery that fails here MUST NOT be
+	// retained for a later attempt and MUST NOT reopen a window: doing so means
+	// posting through revoked credentials minutes after an administrator
+	// switched the channel off, which is exactly what closing is for. Report the
+	// failure — return it, log it, or both — and drop what could not be sent.
+	//
+	// After Close the sender accepts nothing further; Send and SendNow return an
+	// error. A channel that holds nothing and arms nothing may implement this as
+	// a no-op returning nil.
+	Close(ctx context.Context) error
 }
 
 // Settings is a channel's configuration inside one tenant. Secret arrives already

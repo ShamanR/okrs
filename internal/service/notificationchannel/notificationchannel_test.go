@@ -1,6 +1,7 @@
 package notificationchannel_test
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -147,7 +148,7 @@ func (r *recordingSender) SendNow(context.Context, notifychannel.Target, notifyc
 	return nil
 }
 
-func (r *recordingSender) Flush(context.Context) error {
+func (r *recordingSender) Close(context.Context) error {
 	r.flushed++
 	if r.flushEntered != nil {
 		select {
@@ -736,7 +737,7 @@ func (f failingSender) SendNow(context.Context, notifychannel.Target, notifychan
 	return f.err
 }
 
-func (f failingSender) Flush(context.Context) error { return f.err }
+func (f failingSender) Close(context.Context) error { return f.err }
 
 func failingChannel(name string, secretField string, err error) notifychannel.Channel {
 	d := notifychannel.Descriptor{Name: name, Title: "Фейковый (падающий)", SecretField: secretField}
@@ -1129,7 +1130,7 @@ func TestFlushDeliversWhatEveryLiveChannelHolds(t *testing.T) {
 	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	if err := svc.Flush(ctx); err != nil {
+	if err := svc.Close(ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 	if built.flushed != 1 {
@@ -1142,7 +1143,7 @@ func TestFlushDeliversWhatEveryLiveChannelHolds(t *testing.T) {
 func TestFlushWithoutLiveChannelsIsANoop(t *testing.T) {
 	var built *recordingSender
 	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
-	if err := svc.Flush(context.Background()); err != nil {
+	if err := svc.Close(context.Background()); err != nil {
 		t.Fatalf("выгрузка без живых каналов: %v", err)
 	}
 }
@@ -1184,12 +1185,12 @@ func TestSendNowErrorIsMaskedToo(t *testing.T) {
 		t.Fatal("маскировка обязана сохранить цепочку errors.Is до исходной ошибки канала")
 	}
 
-	flushErr := sender.Flush(ctx)
-	if flushErr == nil {
-		t.Fatal("ожидалась ошибка выгрузки")
+	closeErr := sender.Close(ctx)
+	if closeErr == nil {
+		t.Fatal("ожидалась ошибка закрытия")
 	}
-	if strings.Contains(flushErr.Error(), secret) {
-		t.Fatalf("секрет утёк в ошибке выгрузки: %s", flushErr.Error())
+	if strings.Contains(closeErr.Error(), secret) {
+		t.Fatalf("секрет утёк в ошибке закрытия: %s", closeErr.Error())
 	}
 }
 
@@ -1276,7 +1277,7 @@ func TestSaveRetiresTheLiveInstanceAndFlushesIt(t *testing.T) {
 	}
 	// Экземпляр снят: выгрузка при остановке приложения больше его не увидит,
 	// и повторной отправки того же буфера не будет.
-	if err := svc.Flush(ctx); err != nil {
+	if err := svc.Close(ctx); err != nil {
 		t.Fatalf("flush: %v", err)
 	}
 	if old.flushed != 1 {
@@ -1780,5 +1781,66 @@ func TestLiveInstanceOnAnotherReplicaStopsTakingWorkOnceTheRowIsDisabled(t *test
 	}
 	if built.accepted != 0 {
 		t.Fatalf("в застоявшийся экземпляр попала новая работа: accepted=%d", built.accepted)
+	}
+}
+
+// tidyStringer прячет секрет от %v и %+v: у него опрятный String, а токен лежит
+// в экспортированном поле. Обработчики String не зовут — slog.JSONHandler
+// маршалит поля, — так что проверка по одной форме отрисовки его пропустит.
+type tidyStringer struct {
+	Name  string
+	Token string
+}
+
+func (t tidyStringer) String() string { return "канал " + t.Name }
+
+// marshalSynthesizer чист во всех отражающих отрисовках: секрета в полях нет,
+// его дописывает MarshalJSON. Это ровно то, чего не увидит ни %+v, ни %#v.
+type marshalSynthesizer struct{ secret string }
+
+func (m marshalSynthesizer) MarshalJSON() ([]byte, error) {
+	return []byte(`{"auth":"Bearer ` + m.secret + `"}`), nil
+}
+
+// Секрет обязан быть найден в любой форме, в которой значение может дойти до
+// обработчика, — а не в той одной, которую выбрала обёртка.
+//
+// Нижележащий обработчик здесь настоящий slog.JSONHandler, и это существенно:
+// проверка через тестовый обработчик, печатающий значения как %v, прошла бы и с
+// дефектом, потому что %v зовёт String и секрет из поля не показывает. Утечка
+// живёт ровно в разнице между тем, что обёртка осмотрела, и тем, что обработчик
+// напечатает.
+func TestSecretIsFoundInEveryRenderingAHandlerCouldEmit(t *testing.T) {
+	const secret = "секрет-мимо-String-5150"
+	var out bytes.Buffer
+	var built *recordingSender
+	repo := &fakeRepo{rows: map[string]notificationchannels.Config{}}
+	svc, err := notificationchannelsvc.New(repo, newKey(t),
+		[]notifychannel.Channel{chattyChannel("fake", &built)},
+		gate{allow: entitledAndGranted}, grantedOnly("fake"),
+		slog.New(slog.NewJSONHandler(&out, nil)))
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	ctx := context.Background()
+	saveFake(t, svc, "https://mm", secret)
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	logger := built.deps.Log()
+
+	// String чист, поле — нет. JSON-обработчик String не зовёт и печатает поля.
+	logger.Error("опрятный Stringer", slog.Any("ch", tidyStringer{Name: "рабочий", Token: secret}))
+	// Полей с секретом нет вовсе: его синтезирует MarshalJSON.
+	logger.Error("синтез в MarshalJSON", slog.Any("req", marshalSynthesizer{secret: secret}))
+	// Обычная структура — она ловилась и раньше, здесь как контроль.
+	logger.Error("настройки", slog.Any("settings", built.deps.Settings))
+
+	text := out.String()
+	if strings.Contains(text, secret) {
+		t.Fatalf("секрет попал в журнал мимо выбранной формы отрисовки: %s", text)
+	}
+	if !strings.Contains(text, "опрятный Stringer") || !strings.Contains(text, "синтез в MarshalJSON") {
+		t.Fatalf("редактирование съело диагностику: %s", text)
 	}
 }

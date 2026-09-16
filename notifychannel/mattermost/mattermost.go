@@ -47,8 +47,14 @@ const (
 	timerFlushTimeout = 30 * time.Second
 )
 
+// ErrClosed is returned by Send and SendNow after Close. It is permanent by
+// construction: the instance was retired because the settings it runs on are
+// gone, so nothing the caller does makes a later attempt on THIS sender work.
+// The caller's remedy is to ask the core for the current sender, not to retry.
+var ErrClosed = permanentError{err: errors.New("mattermost: канал закрыт")}
+
 // permanentError marks a failure that retrying cannot fix — an addressee with no
-// Mattermost account, a malformed request. Flush uses this to decide whether the
+// Mattermost account, a malformed request. drain uses this to decide whether the
 // batch is worth keeping for the next window or should be discarded.
 type permanentError struct{ err error }
 
@@ -126,6 +132,11 @@ type sender struct {
 	dropped  map[notifychannel.Target]int
 	deadline time.Time
 	timer    *time.Timer
+	// closed is set by Close and never cleared. It is what stops a retired
+	// sender from resurrecting itself: armLocked refuses to open another window,
+	// so a delivery that fails during Close cannot leave a timer behind to post
+	// through settings the tenant has already revoked.
+	closed bool
 }
 
 func newSender(d notifychannel.Deps) (notifychannel.Sender, error) {
@@ -221,6 +232,10 @@ func wholeMinutes(v any) (n int64, ok bool, err error) {
 // that point goes to the log instead of up the stack.
 func (s *sender) Send(ctx context.Context, target notifychannel.Target, msg notifychannel.Message) error {
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return ErrClosed
+	}
 	if s.buf == nil {
 		s.buf = map[notifychannel.Target][]notifychannel.Message{}
 	}
@@ -251,6 +266,12 @@ func (s *sender) Send(ctx context.Context, target notifychannel.Target, msg noti
 // buffer in either direction: the answer has to describe this message and this
 // message only.
 func (s *sender) SendNow(ctx context.Context, target notifychannel.Target, msg notifychannel.Message) error {
+	s.mu.Lock()
+	closed := s.closed
+	s.mu.Unlock()
+	if closed {
+		return ErrClosed
+	}
 	return s.deliver(ctx, target, []notifychannel.Message{msg})
 }
 
@@ -260,7 +281,20 @@ func (s *sender) SendNow(ctx context.Context, target notifychannel.Target, msg n
 // service being briefly unreachable should not cost the recipient their
 // updates, and the cap keeps the retained volume bounded. A batch that failed
 // permanently is discarded — repeating it cannot change the outcome.
-func (s *sender) Flush(ctx context.Context) error {
+func (s *sender) Close(ctx context.Context) error {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
+	// retain=false: whatever fails here is dropped rather than held. See the
+	// Close contract in notifychannel — this instance's settings are already
+	// gone, so a retry would post through revoked credentials.
+	return s.drain(ctx, false)
+}
+
+// drain delivers what is held. retain says what to do with a batch that failed
+// transiently: put it back and reopen the window (the ordinary window close), or
+// drop it (Close, where there is no later window to put it back for).
+func (s *sender) drain(ctx context.Context, retain bool) error {
 	batches, dropped := s.take()
 	for target, n := range dropped {
 		// The addressee is never logged: the email is exactly what the rest of
@@ -280,6 +314,11 @@ func (s *sender) Flush(ctx context.Context) error {
 				"count", len(msgs), "err", err)
 			continue
 		}
+		if !retain {
+			s.log.Error("mattermost: доставка накопленного при закрытии канала не удалась, обновления отброшены",
+				"count", len(msgs), "err", err)
+			continue
+		}
 		s.requeue(target, msgs)
 		s.log.Warn("mattermost: доставка накопленного не удалась, обновления сохранены до следующего окна",
 			"count", len(msgs), "err", err)
@@ -289,7 +328,7 @@ func (s *sender) Flush(ctx context.Context) error {
 
 // flushAndLog runs a flush whose error has nowhere to go but the log.
 func (s *sender) flushAndLog(ctx context.Context) {
-	if err := s.Flush(ctx); err != nil {
+	if err := s.drain(ctx, true); err != nil {
 		// Flush already logged each batch with its cause; this only records that
 		// the cycle as a whole did not complete cleanly.
 		s.log.Debug("mattermost: окно отправки закрыто с ошибками", "err", err)
@@ -305,7 +344,7 @@ func (s *sender) onTimer() {
 
 // armLocked opens a window if none is open. Called with s.mu held.
 func (s *sender) armLocked() {
-	if !s.deadline.IsZero() {
+	if s.closed || !s.deadline.IsZero() {
 		return
 	}
 	s.deadline = s.now().Add(s.window)

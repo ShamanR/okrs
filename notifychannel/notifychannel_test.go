@@ -33,7 +33,7 @@ func (f *fakeSender) SendNow(_ context.Context, _ notifychannel.Target, m notify
 	return nil
 }
 
-func (f *fakeSender) Flush(context.Context) error {
+func (f *fakeSender) Close(context.Context) error {
 	f.flushed++
 	return nil
 }
@@ -123,7 +123,7 @@ func TestSenderCarriesAllThreeMethods(t *testing.T) {
 	if err := s.SendNow(ctx, notifychannel.Target{Email: "a@b.c"}, msg); err != nil {
 		t.Fatalf("SendNow: %v", err)
 	}
-	if err := s.Flush(ctx); err != nil {
+	if err := s.Close(ctx); err != nil {
 		t.Fatalf("Flush: %v", err)
 	}
 	if len(f.accepted) != 1 || len(f.sentNow) != 1 || f.flushed != 1 {
