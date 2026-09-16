@@ -154,11 +154,12 @@ type Service struct {
 	// test that has to close a channel's window sets it.
 	now func() time.Time
 
-	// mu guards instances: the live channel per (tenant, channel). Instances are
-	// kept rather than rebuilt because a channel that batches holds its pending
-	// messages inside itself — see live in registry.go.
-	mu        sync.Mutex
-	instances map[channelKey]*liveChannel
+	// mu guards the slot table and the sender each slot holds. Held only for the
+	// moment it takes to read or swap them — never across a row read or a channel
+	// constructor. Serializing THOSE is each slot's own business, which is why a
+	// slot carries its own lock; see channelSlot in registry.go.
+	mu    sync.Mutex
+	slots map[channelKey]*channelSlot
 }
 
 // New assembles the service. A duplicate Descriptor.Name is an assembly error
@@ -169,13 +170,13 @@ func New(repo Repo, box *secretbox.Box, channels []notifychannel.Channel, ent en
 		return nil, errors.New("notificationchannel: nil ChannelGrants")
 	}
 	s := &Service{
-		repo:      repo,
-		box:       box,
-		channels:  map[string]notifychannel.Channel{},
-		ent:       ent,
-		grants:    grants,
-		logger:    logger,
-		instances: map[channelKey]*liveChannel{},
+		repo:     repo,
+		box:      box,
+		channels: map[string]notifychannel.Channel{},
+		ent:      ent,
+		grants:   grants,
+		logger:   logger,
+		slots:    map[channelKey]*channelSlot{},
 	}
 	for _, ch := range channels {
 		name := ch.Descriptor.Name
@@ -586,17 +587,22 @@ func (s *Service) Sender(ctx context.Context, scope domain.TenantScope, name str
 	if !ok {
 		return nil, ErrNotConfigured
 	}
+	return s.live(ctx, scope, channelKey{tenantID: scope.TenantID, channel: name}, ch, fingerprint(row))
+}
 
+// settingsFor turns a stored row into what the channel is constructed from,
+// decrypting the secret. The only place plaintext appears.
+func (s *Service) settingsFor(ch notifychannel.Channel, row notificationchannels.Config, name string) (notifychannel.Settings, error) {
 	settings := notifychannel.Settings{Values: row.Values}
 	if ch.Descriptor.SecretField != "" && len(row.SecretEnc) > 0 {
 		if s.box == nil {
-			return nil, ErrNoSecretKey
+			return notifychannel.Settings{}, ErrNoSecretKey
 		}
 		secret, err := s.box.Open(row.SecretEnc)
 		if err != nil {
-			return nil, fmt.Errorf("notificationchannel: decrypt %s: %w", name, err)
+			return notifychannel.Settings{}, fmt.Errorf("notificationchannel: decrypt %s: %w", name, err)
 		}
 		settings.Secret = secret
 	}
-	return s.live(ctx, channelKey{tenantID: scope.TenantID, channel: name}, ch, settings, fingerprint(row))
+	return settings, nil
 }

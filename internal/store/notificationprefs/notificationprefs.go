@@ -129,7 +129,18 @@ func (r *Repository) GetAll(ctx context.Context, scope domain.TenantScope, userI
 	return out, nil
 }
 
-// Set upserts one preference row.
+// Set upserts one preference row, MERGING the submitted channel choices into
+// whatever is already stored rather than replacing them wholesale.
+//
+// The merge is what protects a choice the screen could not show. A channel the
+// administrator temporarily switched off has no column in the matrix, so the
+// payload carries nothing about it — and a plain replace would erase the user's
+// stored answer for it. Switching the channel back on would then hand them the
+// administrator's default and resume delivery they had explicitly refused.
+//
+// Every channel the screen DID show is present in the payload with an explicit
+// value, so merging never keeps a stale answer for a visible channel: the
+// submitted side always wins.
 func (r *Repository) Set(ctx context.Context, scope domain.TenantScope, userID int64, p Preference) error {
 	var scopeVal any
 	if !IsAddressed(p.Type) && p.Scope != "" {
@@ -147,7 +158,8 @@ func (r *Repository) Set(ctx context.Context, scope domain.TenantScope, userID i
 		VALUES ($1,$2,$3,$4,$5,$6)
 		ON CONFLICT (tenant_id, user_id, type) DO UPDATE
 		   SET enabled = EXCLUDED.enabled, scope = EXCLUDED.scope,
-		       channel_overrides = EXCLUDED.channel_overrides`,
+		       channel_overrides =
+		           notification_preferences.channel_overrides || EXCLUDED.channel_overrides`,
 		scope.TenantID, userID, p.Type, p.Enabled, scopeVal, overrides)
 	return err
 }

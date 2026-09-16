@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/platform/entitlements"
@@ -20,11 +22,18 @@ import (
 )
 
 // fakeRepo — стор в памяти: сервис не должен требовать БД для своей логики.
+// Под мьютексом, потому что сервис законно ходит сюда из нескольких горутин:
+// доставка резолвит отправителей параллельно, а конструирование канала
+// сериализовано по ключу, но не глобально. Фейк, не выдерживающий того, что
+// выдерживает настоящий стор, ловил бы не дефекты, а сам себя.
 type fakeRepo struct {
+	mu   sync.Mutex
 	rows map[string]notificationchannels.Config
 }
 
 func (f *fakeRepo) List(context.Context, domain.TenantScope) ([]notificationchannels.Config, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	out := make([]notificationchannels.Config, 0, len(f.rows))
 	for _, c := range f.rows {
 		out = append(out, c)
@@ -33,16 +42,31 @@ func (f *fakeRepo) List(context.Context, domain.TenantScope) ([]notificationchan
 }
 
 func (f *fakeRepo) Get(_ context.Context, _ domain.TenantScope, ch string) (notificationchannels.Config, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	c, ok := f.rows[ch]
 	return c, ok, nil
 }
 
 func (f *fakeRepo) Upsert(_ context.Context, _ domain.TenantScope, c notificationchannels.Config, _ int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.rows == nil {
 		f.rows = map[string]notificationchannels.Config{}
 	}
 	f.rows[c.Channel] = c
 	return nil
+}
+
+// bump подменяет хранимую строку так, как это сделал бы Save с другой реплики:
+// содержимое и время изменения новые, через реестр никто не проходил.
+func (f *fakeRepo) bump(channel string, values map[string]any) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	row := f.rows[channel]
+	row.Values = values
+	row.UpdatedAt = time.Now().Add(time.Second)
+	f.rows[channel] = row
 }
 
 // gate — управляемая реализация entitlements: разрешает только перечисленные ключи.
@@ -105,6 +129,12 @@ type recordingSender struct {
 	flushed  int
 	sentNow  int
 	accepted int
+	// flushGate задерживает выгрузку, flushEntered сообщает, что она началась.
+	// Вопрос «какие замки удерживаются во время сетевой операции» наблюдается
+	// только так: надо дождаться, что выгрузка реально идёт, и лишь потом
+	// проверять, проходят ли другие вызовы.
+	flushGate    chan struct{}
+	flushEntered chan struct{}
 }
 
 func (r *recordingSender) Send(context.Context, notifychannel.Target, notifychannel.Message) error {
@@ -119,6 +149,15 @@ func (r *recordingSender) SendNow(context.Context, notifychannel.Target, notifyc
 
 func (r *recordingSender) Flush(context.Context) error {
 	r.flushed++
+	if r.flushEntered != nil {
+		select {
+		case r.flushEntered <- struct{}{}:
+		default:
+		}
+	}
+	if r.flushGate != nil {
+		<-r.flushGate
+	}
 	return nil
 }
 
@@ -1315,5 +1354,155 @@ func TestSaveProbeGetsAScrubbedLoggerToo(t *testing.T) {
 	}
 	if !strings.Contains(h.all(), "не могу собраться") {
 		t.Fatalf("редактирование съело диагностику: %s", h.all())
+	}
+}
+
+// Конструирование сериализовано по каналу, и строка перечитывается внутри этой
+// сериализации. Без этого два одновременных вызова собирают из РАЗНЫХ версий
+// настроек, и побеждает тот, кто закончил последним, — а это не тот, кто читал
+// более свежую строку. Отставший установил бы свой экземпляр поверх собранного
+// по новым настройкам, и реестр продолжил бы работать на отозванных данных.
+func TestConcurrentSendersNeverEndUpOnStaleSettings(t *testing.T) {
+	var built *recordingSender
+	svc, repo := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://old", "секрет-1")
+
+	// Половина горутин стартует на старой строке, половина — после правки.
+	// Кто бы ни закончил последним, реестр обязан остаться на новой.
+	const n = 12
+	start := make(chan struct{})
+	done := make(chan error, n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			<-start
+			if i == n/2 {
+				// Правка настроек в середине волны.
+				repo.bump("fake", map[string]any{"base_url": "https://new"})
+			}
+			_, err := svc.Sender(ctx, scope, "fake")
+			done <- err
+		}(i)
+	}
+	close(start)
+	for i := 0; i < n; i++ {
+		if err := <-done; err != nil {
+			t.Fatalf("sender %d: %v", i, err)
+		}
+	}
+
+	// Последний собранный экземпляр обязан нести новые настройки: перечитывание
+	// внутри сериализации не оставляет отставшему шанса победить.
+	final, err := svc.Sender(ctx, scope, "fake")
+	if err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+	if final == nil {
+		t.Fatal("sender пуст")
+	}
+	if built.built.Values["base_url"] != "https://new" {
+		t.Fatalf("реестр остался на старых настройках: %+v", built.built.Values)
+	}
+}
+
+// Снятие экземпляра не должно давать отставшему конструктору установить свой
+// результат в освободившийся слот: retire ждёт конструирование, а всё, что
+// стартует после него, читает уже записанную строку.
+func TestRetireDoesNotRaceAnInFlightConstruction(t *testing.T) {
+	var built *recordingSender
+	svc, _ := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://old", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+
+	const n = 8
+	start := make(chan struct{})
+	done := make(chan struct{}, n+1)
+	for i := 0; i < n; i++ {
+		go func() {
+			<-start
+			_, _ = svc.Sender(ctx, scope, "fake")
+			done <- struct{}{}
+		}()
+	}
+	go func() {
+		<-start
+		saveFake(t, svc, "https://new", "секрет-1") // внутри — retire
+		done <- struct{}{}
+	}()
+	close(start)
+	for i := 0; i < n+1; i++ {
+		<-done
+	}
+
+	// Никакой экземпляр не мог остаться от строки, которой уже нет.
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender после гонки: %v", err)
+	}
+	if built.built.Values["base_url"] != "https://new" {
+		t.Fatalf("после снятия реестр держит старые настройки: %+v", built.built.Values)
+	}
+}
+
+// Выгрузка вытесненного экземпляра — сетевая операция с 30-секундным бюджетом.
+// Держать на ней замок конструирования нельзя: сохранение настроек берёт тот же
+// замок безусловно, и недоступный сервер останавливал бы админку на полминуты.
+//
+// Проверяется именно сохранением, а не обычной доставкой: у доставки есть
+// быстрый путь по отпечатку, и она проходит мимо замка, даже когда он занят.
+func TestFlushOfTheReplacedInstanceDoesNotBlockSaving(t *testing.T) {
+	var built *recordingSender
+	svc, repo := newSvc(t, entitledAndGranted, grantedOnly("fake"), &built)
+	ctx := context.Background()
+	saveFake(t, svc, "https://old", "секрет-1")
+	if _, err := svc.Sender(ctx, scope, "fake"); err != nil {
+		t.Fatalf("sender: %v", err)
+	}
+
+	// Вытесняемый экземпляр застрянет в выгрузке и сообщит, что она началась.
+	gate := make(chan struct{})
+	entered := make(chan struct{}, 1)
+	built.flushGate, built.flushEntered = gate, entered
+
+	repo.bump("fake", map[string]any{"base_url": "https://new"})
+
+	replacing := make(chan error, 1)
+	go func() {
+		_, err := svc.Sender(ctx, scope, "fake")
+		replacing <- err
+	}()
+
+	select {
+	case <-entered:
+	case <-time.After(3 * time.Second):
+		close(gate)
+		t.Fatal("выгрузка вытесненного экземпляра так и не началась")
+	}
+
+	// Выгрузка идёт. Администратор сохраняет настройки — это обязано пройти.
+	saving := make(chan error, 1)
+	go func() {
+		saving <- svc.Save(ctx, scope, notificationchannelsvc.SaveInput{
+			Channel: "fake", Enabled: true,
+			Values: map[string]any{"base_url": "https://newer"}, Secret: "секрет-2",
+		}, 1)
+	}()
+
+	select {
+	case err := <-saving:
+		if err != nil {
+			close(gate)
+			t.Fatalf("сохранение: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		close(gate)
+		t.Fatal("сохранение заблокировано выгрузкой — замок конструирования удерживается во время сетевой операции")
+	}
+
+	close(gate)
+	if err := <-replacing; err != nil {
+		t.Fatalf("пересборка: %v", err)
 	}
 }

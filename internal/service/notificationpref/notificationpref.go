@@ -127,10 +127,6 @@ func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int6
 	if err != nil {
 		return err
 	}
-	// Same reduction as SetAll: a choice that matches the tenant default is stored
-	// as no choice at all, so a later change of that default still reaches this
-	// user. The two entry points must not disagree about what "on" means.
-	p.ChannelOverrides = deviations(p.ChannelOverrides, allowed)
 	return s.repo.Set(ctx, scope, userID, p)
 }
 
@@ -144,10 +140,14 @@ func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int6
 // recorded as debt. What this closes is the reachable-from-the-client half: a bad
 // type, scope or channel anywhere in the payload now changes nothing at all.
 //
-// Rows are stored as deviations from the tenant's current defaults: a cell that
-// agrees with the default is not recorded at all. That is what keeps a channel
-// connected later reaching people who saved their settings before it existed —
-// they never expressed a choice about it, so there is nothing to override.
+// Every submitted cell is stored as the user's explicit choice, including one
+// that happens to equal the tenant default today. Saving the matrix IS the
+// choice — the screen showed those switches and the user pressed Save — and a
+// later change of the default must not move a cell they already decided.
+//
+// A channel connected LATER is unaffected and still reaches everyone: it had no
+// column on the screen, so it is absent from the payload, and absence is what
+// "no opinion" means.
 func (s *Service) SetAll(ctx context.Context, scope domain.TenantScope, userID int64, ps []notificationprefs.Preference) error {
 	allowed, err := s.DeliveryDefaults(ctx, scope)
 	if err != nil {
@@ -159,7 +159,6 @@ func (s *Service) SetAll(ctx context.Context, scope domain.TenantScope, userID i
 		if err != nil {
 			return err
 		}
-		n.ChannelOverrides = deviations(n.ChannelOverrides, allowed)
 		checked = append(checked, n)
 	}
 	for _, p := range checked {
@@ -168,22 +167,6 @@ func (s *Service) SetAll(ctx context.Context, scope domain.TenantScope, userID i
 		}
 	}
 	return nil
-}
-
-// deviations keeps only the choices that differ from the tenant's defaults.
-//
-// A cell the user left at its default stays "no opinion", so a later change of
-// that default still reaches them. It also gives "reset to default" for free:
-// putting a switch back where it started removes the override.
-func deviations(chosen map[string]bool, defaults map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(chosen))
-	for name, on := range chosen {
-		if def, known := defaults[name]; known && def == on {
-			continue
-		}
-		out[name] = on
-	}
-	return out
 }
 
 // Батчевая операция: не превращать в цикл по событиям — это N+1.

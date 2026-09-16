@@ -200,44 +200,41 @@ func TestDeliveryDefaultsWithoutChannels(t *testing.T) {
 	}
 }
 
-// Сохраняются только отклонения от значения администратора. Это и есть механизм,
-// которым подключённый позже канал доезжает до тех, кто настройки уже сохранял:
-// они про него ничего не говорили, поэтому переопределять нечего.
-func TestOnlyDeviationsFromTheAdminDefaultAreStored(t *testing.T) {
+// Каждая присланная ячейка сохраняется как явный выбор — в том числе та, что
+// сегодня совпадает со значением администратора. Сохранение матрицы И ЕСТЬ
+// выбор: эти переключатели были на экране, и пользователь нажал «Сохранить».
+// Иначе смена умолчания позже сдвинула бы ячейку, о которой он уже решил.
+func TestEverySubmittedCellIsStoredAsAnExplicitChoice(t *testing.T) {
 	repo := &fakeRepo{}
-	// Администратор включил mattermost по умолчанию и не включил telegram.
 	svc := notificationprefsvc.New(repo, fakeChannels{"mattermost": true, "telegram": false})
 
 	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42,
 		[]notificationprefs.Preference{{
 			Type: notificationprefs.TypeGoalChanged, Enabled: true, Scope: "own",
 			ChannelOverrides: map[string]bool{
-				"in_app":     true,  // совпадает с умолчанием — не отклонение
-				"mattermost": false, // выключил вопреки умолчанию — отклонение
-				"telegram":   true,  // включил вопреки умолчанию — отклонение
+				"in_app":     true,  // совпадает с умолчанием — всё равно выбор
+				"mattermost": false, // выключил вопреки умолчанию
+				"telegram":   true,  // включил вопреки умолчанию
 			},
 		}})
 	if err != nil {
 		t.Fatalf("setAll: %v", err)
 	}
 	got := repo.saved[0].ChannelOverrides
-	if len(got) != 2 {
-		t.Fatalf("сохранены не только отклонения: %v", got)
+	want := map[string]bool{"in_app": true, "mattermost": false, "telegram": true}
+	if len(got) != len(want) {
+		t.Fatalf("сохранено %v, ожидалось %v", got, want)
 	}
-	if on, ok := got["mattermost"]; !ok || on {
-		t.Fatalf("выключение вопреки умолчанию потеряно: %v", got)
-	}
-	if on, ok := got["telegram"]; !ok || !on {
-		t.Fatalf("включение вопреки умолчанию потеряно: %v", got)
-	}
-	if _, ok := got["in_app"]; ok {
-		t.Fatalf("совпадение с умолчанием сохранено как явный выбор: %v", got)
+	for k, v := range want {
+		if on, ok := got[k]; !ok || on != v {
+			t.Fatalf("ячейка %q: got (%v,%v), want %v", k, on, ok, v)
+		}
 	}
 }
 
-// Возврат переключателя в положение по умолчанию снимает отклонение — «сбросить
-// к настройкам пространства» получается без отдельной кнопки.
-func TestReturningToTheDefaultClearsTheOverride(t *testing.T) {
+// Ячейка, оставленная в значении по умолчанию, тоже становится явной — и именно
+// поэтому переживает последующую смену умолчания администратором.
+func TestSavingADefaultValuedCellStillPinsIt(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := notificationprefsvc.New(repo, fakeChannels{"mattermost": true})
 	ctx := context.Background()
@@ -245,22 +242,19 @@ func TestReturningToTheDefaultClearsTheOverride(t *testing.T) {
 
 	if err := svc.Set(ctx, scope, 42, notificationprefs.Preference{
 		Type: notificationprefs.TypeGoalChanged, Enabled: true, Scope: "own",
-		ChannelOverrides: map[string]bool{"mattermost": false},
+		ChannelOverrides: map[string]bool{"mattermost": true}, // = умолчанию
 	}); err != nil {
-		t.Fatalf("set 1: %v", err)
+		t.Fatalf("set: %v", err)
 	}
-	if len(repo.saved[0].ChannelOverrides) != 1 {
-		t.Fatalf("отклонение не сохранено: %v", repo.saved[0].ChannelOverrides)
+	stored := repo.saved[0].ChannelOverrides
+	if on, ok := stored["mattermost"]; !ok || !on {
+		t.Fatalf("совпадение с умолчанием не сохранено как выбор: %v", stored)
 	}
 
-	if err := svc.Set(ctx, scope, 42, notificationprefs.Preference{
-		Type: notificationprefs.TypeGoalChanged, Enabled: true, Scope: "own",
-		ChannelOverrides: map[string]bool{"mattermost": true},
-	}); err != nil {
-		t.Fatalf("set 2: %v", err)
-	}
-	if len(repo.saved[1].ChannelOverrides) != 0 {
-		t.Fatalf("возврат к умолчанию не снял отклонение: %v", repo.saved[1].ChannelOverrides)
+	// Администратор выключает канал по умолчанию — закреплённая ячейка не двигается.
+	if got := notificationprefsvc.EffectiveChannels(
+		map[string]bool{"in_app": true, "mattermost": false}, stored); len(got) != 2 {
+		t.Fatalf("явный выбор не пережил смену умолчания: %v", got)
 	}
 }
 
