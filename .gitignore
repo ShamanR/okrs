@@ -1,4 +1,7 @@
 cmd/server/__debug_*
 .vscode/*
 .superpowers/*
+.DS_Store 
 CLAUDE.md
+GEMINI.mg
+.opencode.json

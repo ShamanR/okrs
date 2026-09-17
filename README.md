@@ -1,413 +1,485 @@
 # OKR Tracker
 
-Инструмент для ведения OKR нескольких команд внутри общей организационной структуры. Позволяет видеть цели по всей иерархии, отслеживать прогресс и координировать общие цели между командами.
+OKR Tracker is a self-hosted web application for running OKRs in an organisation that plans as a
+tree — department, cluster, unit, group, team, squad. You pick a team and a period in the sidebar,
+and the right side shows that team's objectives, their key results, the discussion around them, and
+how the whole subtree underneath is doing. Climb one level up and the same screen becomes a roll-up
+of everything below it.
 
----
+It is a finished application rather than a kit to assemble: planning, check-ins, discussion,
+decomposition, notifications, export and administration are all part of it. What you deploy is one
+Go binary plus PostgreSQL — migrations run on startup, the front end is served from the binary, and
+there is no build step, no Node runtime and no separate API service to operate.
 
-## Что умеет
+![Team board](docs/screenshots/tracker-board.png)
 
-- Просматривать OKR любой команды в разрезе периода
-- Отслеживать прогресс по целям и KR в реальном времени
-- Видеть сводный прогресс кластера и его дочерних команд
-- Создавать цели с приоритетами, весами и типами работ
-- Расшаривать цель сразу на несколько команд
-- Управлять четырьмя типами Key Results: Процент, Linear, Boolean, Project
-- Комментировать цели и KR с фиксацией автора
-- Управлять жизненным циклом периода: от черновика до закрытия
-- **Авторизация** через OAuth2/OIDC провайдеры (Google, GitHub, Keycloak) или без авторизации
-- **Управление доступом** к иерархии команд на уровне пользователя
-- **Уведомления** — колокольчик на всех страницах по изменениям целей и комментариям, с настраиваемым охватом по каждому типу событий
+> The product interface is Russian; this README is English. Screenshots show the interface as it is.
 
----
+## Features
 
-## Сценарии использования
+- **[Team board](#team-board)** — a team in a period: status stepper, weighted objectives, forecast, and a roll-up card per child team.
+- **[Key results](#key-results)** — three kinds (numerical, boolean, project), each with its own check-in form, note and zeroing criteria.
+- **[Progress and forecast](#progress-and-forecast)** — goal progress is the weighted average of its KRs, team progress the weighted average of its goals, and a pace line says whether you are ahead or behind.
+- **[Shared goals](#shared-goals)** — one goal visible in several teams, each with its own weight and ordering. No copies to keep in sync.
+- **[Goal tree](#goal-tree)** — the decomposition graph: annual goals above, quarterly goals below, edges between them. Pan, zoom, collapse.
+- **[Discussion](#discussion)** — two-level comments: a remark that can be resolved and reopened, plus replies. Markdown throughout.
+- **[Period overview](#period-overview)** — one period across many teams: status counts, weight errors, Discovery/Delivery and priority balances, progress over time, and bulk status changes.
+- **[Activity log](#activity-log)** — append-only history of who changed what and when, filterable by category, author and time.
+- **[Notifications](#notifications)** — in-app bell plus per-type delivery scope; Mattermost is included as an external channel.
+- **[Markdown export](#markdown-export)** — one goal, a team, or a whole subtree; short or detailed; with or without comments.
+- **[Administration](#administration)** — hierarchy, periods, users, invitations, access grants, and health check-in thresholds.
+- **[OAuth2 / OIDC sign-in](#authentication-and-access)** — Google, GitHub and Keycloak in the box. Providers come from a registry, so teaching it another one is a small package rather than a fork.
+- **[Access control](#authentication-and-access)** — run it wide open, or require sign-in and grant visibility per hierarchy node.
+- **[Spaces](#spaces-and-the-system-panel)** — several isolated spaces in one instance, administered from a system-level panel.
 
-### Обзор OKR команд — `/teamOkrs`
+## Quick install
 
-Главный экран: иерархический sidebar слева и цели выбранной команды справа. Период выбирается из выпадающего списка — данные обновляются без перезагрузки страницы.
-
-![OKR команд](docs/screenshots/team_okrs.png)
-
-В правой части экрана отображается:
-
-- **Статус периода** — текущий этап жизненного цикла (Черновик целей / В работе / Подтверждён / Закрыт)
-- **Таблица целей** — название, приоритет (P0–P3), вес, тип работы, владелец, прогресс и дата последнего обновления
-- **Прогресс-бар** с отметкой forecast и индикатором отставания (`below` / `on track` / `ahead`)
-- **Блок дочерних команд** с агрегированным прогрессом, диаграммами приоритетов и баланса Discovery/Delivery
-
-Иконка `<` рядом с целью означает, что цель расшарена с другими командами.
-
----
-
-### Цели команды — `/teams/{id}/okr`
-
-Детальная страница команды с breadcrumb-навигацией по иерархии. Каждая цель отображается карточкой.
-
-![Цели команды](docs/screenshots/team_okr_detail.png)
-
-Карточка цели содержит:
-
-- Приоритет, суммарный вес KR, тип (Общая / своя)
-- Тип работы (Delivery / Discovery) и фокус (EFFICIENCY, QUALITY, RELIABILITY, GROWTH, PROFITABILITY и др.)
-- Badge «Обновлено» — зелёный если обновляли недавно, жёлтый если давно
-- Прогресс-бар с forecast-отметкой
-
-Кнопка **Добавить цель** видна, пока статус периода не `validated` или `closed`.
-
----
-
-### Key Results внутри цели
-
-По клику на «Показать KR» раскрывается блок с ключевыми результатами команды.
-
-![Key Results](docs/screenshots/team_okr_krs.png)
-
-Для каждого KR отображается:
-
-- Название, вес и дата последнего обновления
-- Текущий прогресс (Факт %)
-- Кнопка **Обновить прогресс** — открывает форму в зависимости от типа KR
-
-**Типы Key Results:**
-
-| Тип       | Как считается прогресс                                         |
-| --------- | -------------------------------------------------------------- |
-| `PERCENT` | Линейно от start до target, либо по checkpoint-точкам          |
-| `LINEAR`  | Линейный clamp 0–100 от начального к целевому значению         |
-| `BOOLEAN` | 100% если выполнено, иначе 0%                                  |
-| `PROJECT` | Сумма весов выполненных этапов (stages)                        |
-
----
-
-### Обзор кластера с дочерними командами
-
-При выборе кластера или юнита в sidebar отображается агрегированный обзор всех дочерних команд.
-
-![Обзор кластера](docs/screenshots/cluster_overview.png)
-
-Блок **Дочерние команды** включает:
-
-- Совокупный прогресс (средний по командам с целями)
-- Индикатор статуса forecast
-- Диаграмму распределения приоритетов целей (P0–P3)
-- Диаграмму баланса Discovery / Delivery
-
----
-
-### Управление командами — `/admin/teams`
-
-Страница для настройки организационной структуры. Доступна только администраторам (в режиме с авторизацией).
-
-![Управление командами](docs/screenshots/teams.png)
-
-Функциональность:
-
-- Просмотр полной иерархии: Кластер → Юнит → Команда
-- Создание новой команды с типом, лидом и родительской командой
-- Редактирование и удаление команды
-- **Умное удаление**: если у команды есть цели в любом периоде — выполняется soft delete (история сохраняется); если целей нет — hard delete
-- Восстановление soft-deleted команды
-- При удалении дочерние команды автоматически поднимаются на уровень выше
-
----
-
-### Управление периодами — `/admin/periods`
-
-Настройка временных периодов (кварталы, годы и другие горизонты планирования). Доступна только администраторам.
-
-![Периоды](docs/screenshots/periods.png)
-
-Доступно:
-
-- Список периодов с датами начала и окончания
-- Создание нового периода (название, даты)
-- Редактирование периода
-- Управление порядком отображения через кнопки «↑» / «↓»
-
----
-
-### Управление доступом — `/admin/access`
-
-Новый раздел для управления пользователями и их правами на иерархию. Доступен только администраторам.
-
-На странице отображаются все пользователи, которые когда-либо входили в систему. Для каждого пользователя можно:
-
-- Выдать или снять права администратора
-- Выдать или отозвать доступ к узлам иерархии команд
-
-Пользователь видит только те команды, к узлу которых ему выдан доступ, и все вложенные команды ниже.
-
----
-
-### Уведомления
-
-Колокольчик в сайдбаре, доступен на всех страницах (не только на трекере). Бейдж показывает число непрочитанных, клик открывает панель с лентой последних событий: комментарии к цели, изменения в цели и KR, обновления прогресса и решения своих комментариев. Текст каждой записи собирает сервер — единый источник формулировок для колокольчика и будущих внешних каналов.
-
-В разделе «Настройки» → «Уведомления» каждый пользователь выбирает по каждому из четырёх типов событий включить/выключить и охват (только мои команды, мои команды и уровень ниже, или всё поддерево). Серверный API — `GET /api/v1/notifications`, `GET /api/v1/notifications/unread-count`, `POST /api/v1/notifications/read`, `GET`/`PUT /api/v1/notifications/preferences` (см. `specs/040-api-contract.md`); каждый маршрут ограничен `user_id` из сессии: чужие уведомления и настройки недоступны.
-
----
-
-## Авторизация
-
-### Режим без авторизации (по умолчанию)
+You need Docker and about two minutes.
 
 ```bash
-AUTH_MODE=disabled
+git clone https://github.com/ShamanR/okrs.git
+cd okrs
+docker compose up --build
 ```
 
-Все страницы и API доступны без входа. Управляющий интерфейс `/admin/*` также доступен всем. Комментарии записываются от имени системного пользователя `anonymous-local`.
+The app comes up on <http://localhost:8080>. Migrations apply themselves on the first start, so the
+database is ready by the time the log prints `app_ready`.
 
-### Режим с авторизацией
+An empty tracker is not very interesting, so load the demo data:
+
+```bash
+docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql
+```
+
+That script starts with `TRUNCATE`, so it is safe to re-run — it replaces the contents rather than
+adding to them. Never point it at a database you care about. It gives you 32 teams across two
+parallel hierarchies, nine periods (annual and quarterly), 31 goals with 60 key results of all three
+kinds, shared goals, a discussion thread with a resolved remark, a decomposition tree and an
+activity feed.
+
+If you would rather have a small English-labelled dataset instead, start the server with `-seed` —
+see [Run it locally](#run-it-locally) below.
+
+## Run it locally
+
+For development you do not need the app in Docker, only Postgres. Go 1.25 or newer.
+
+```bash
+docker compose up -d db                 # Postgres on :5432, nothing else
+
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable
+export PORT=8080
+export LOG_FORMAT=text                  # readable lines instead of JSON
+export WEB_ASSETS_DEV=1                 # development React build, usable stack traces
+
+go run ./cmd/server -seed
+```
+
+Migrations apply themselves, and `-seed` creates three teams — Platform, Payments, Growth — with
+two goals each in the current quarter, plus one annual goal above them so the goal tree has
+something to draw. Open <http://localhost:8080> and pick the quarter in the period selector: it
+opens on the enclosing year, which holds only that single parent goal.
+
+Front-end changes need no build step — JSX in `web/static/` is compiled in the browser, so reload
+the page and you have them. Go changes need a restart.
+
+The rest of the loop:
+
+```bash
+go test ./...                                                        # DB tests skip without Docker
+docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql   # swap in the large dataset
+docker compose down -v                                               # drop the database, start clean
+```
+
+Beware that `-seed` is idempotent for team rows but not for goals, so a second run against the same
+database gives you the goals twice. `seed_demo.sql` truncates first and is safe to repeat.
+
+## Quick start
+
+Open <http://localhost:8080> and work through the quarter in the order it actually happens.
+
+1. **Find your team.** The sidebar is the org tree. Click a team to open its board; click a unit or
+   cluster to see the same board plus a roll-up of everything below it. The team and period you are
+   looking at are always in the URL (`/?team=102&period=2`), so you can paste a link into a chat and
+   your colleague lands on exactly the same screen.
+2. **Pick the period.** Top of the sidebar. Periods nest: a quarter sits inside its year, and the
+   goal tree uses that nesting to place annual goals above quarterly ones.
+3. **Write the objectives.** While the team is in *Черновик* (draft), the board is fully editable.
+   Give every goal a weight; the weights of a team's goals should add up to 100. That is the point
+   of the number — it is how the team says where its attention goes.
+4. **Add key results.** Each goal decomposes into KRs whose weights also add up to 100. Pick the
+   kind that matches how you will actually measure: a number moving from a start to a target, a
+   yes/no fact, or a set of weighted project stages.
+5. **Hand them over.** Move the team to *К валидации* when the goals are ready for a manager to
+   look at, then to *В работе* once they are agreed. From that point the composition is frozen
+   server-side and the board switches to check-ins and comments.
+6. **Keep it current.** *Обновить прогресс* on a KR opens the right form for its kind and records
+   the new value, a health status and an optional note in one operation. Everything else — the
+   goal's percentage, the team's, the subtree's, the forecast marker — follows from that.
+7. **Close the quarter.** *Закрыты* leaves comments available and nothing else.
+
+Two places are worth a visit once you have data: **Обзор периода** shows a whole period across many
+teams at once, and **Лог активностей** shows what changed and who changed it.
+
+## Screenshots
+
+**A unit's board** — its own goals, plus one card per child team with progress, status and the
+count of P0–P1 objectives.
+
+![Team board](docs/screenshots/tracker-board.png)
+
+**Key results inside a goal.** Weight, kind, current value against the target, the zeroing criteria
+that can invalidate a result, and the check-in button.
+
+![Key results](docs/screenshots/key-results.png)
+
+**The goal tree.** Annual goals in the upper band, the quarterly goals they decompose into below,
+grouped by parent and team.
+
+![Goal tree](docs/screenshots/goal-tree.png)
+
+**Period overview.** How a period is going across the organisation: status counts, formation
+errors, balances, and the progress curve against an even-pace diagonal.
+
+![Period overview](docs/screenshots/period-overview.png)
+
+**Activity log.** Append-only, grouped by day, filterable by category, author, favourites and time
+window.
+
+![Activity log](docs/screenshots/activity-log.png)
+
+## Reference
+
+### Running the server
+
+The binary takes its configuration from the environment and has exactly one flag.
+
+```bash
+go run ./cmd/server          # normal start
+go run ./cmd/server -seed    # also create a small demo dataset on startup
+```
+
+`-seed` creates three teams (Platform, Payments, Growth) with two goals each in the current
+quarter, a project KR with stages, a numerical KR, progress snapshots for the chart, and a
+two-band goal tree. It is idempotent for team rows but not for goals, so repeated runs against the
+same database duplicate the goals. [Run it locally](#run-it-locally) shows the full development
+command line.
+
+Migrations are applied from `migrations/` at startup — there is no separate migrate step. The
+process handles `SIGINT`/`SIGTERM` gracefully: it stops accepting requests, drains the event bus so
+queued notifications still reach the database, flushes the notification channels, and only then
+closes the pool.
+
+### Configuration
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable` | PostgreSQL connection string |
+| `PORT` | `8080` | HTTP port |
+| `TZ` | `Asia/Bangkok` | Time zone used for dates and period boundaries |
+| `WEB_ASSETS_DEV` | `0` | Serve the development React build from `/static/vendor` (`1`/`true`/`on`) |
+| `LOG_FORMAT` | `json` | `json` for a collector, `text` for reading with your eyes |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `error` |
+| `SERVICE_NAME` | `okrs` | Value of the `service` field in every log record |
+| `ENV` | `dev` | Value of the `env` field in every log record |
+| `AUTH_MODE` | `disabled` | `disabled` or `enabled` |
+| `AUTH_ENABLED_PROVIDERS` | — | Comma-separated: `google,github,keycloak` |
+| `AUTH_SESSION_COOKIE_NAME` | `okrs_session` | Session cookie name |
+| `AUTH_SESSION_TTL` | `720h` | Session lifetime |
+| `AUTH_BASE_URL` | — | Public URL of the instance, used to build callback URLs |
+| `AUTH_DEFAULT_NEW_USER_POLICY` | `empty` | `empty` or `default_node` — what a brand-new user can see |
+| `AUTH_DEFAULT_NODE_ID` | — | Hierarchy node granted under the `default_node` policy |
+| `AUTH_GOOGLE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | — | Google OAuth2 |
+| `AUTH_GITHUB_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | — | GitHub OAuth2 |
+| `AUTH_KEYCLOAK_ISSUER_URL` / `_CLIENT_ID` / `_SECRET` / `_REDIRECT_URL` | — | Keycloak (OIDC realm endpoint) |
+| `NOTIFICATIONS_SECRET_KEY` | — | Encrypts external-channel credentials at rest. Without it, channels that store a secret cannot be configured |
+| `BOOTSTRAP_SYSTEM_ADMIN` | — | `provider:subject` or an email, promoted to system admin on first matching login while no system admin exists |
+| `PROVISIONING_TOKEN` | — | Bearer token authorising machine callers of `/api/v1/system/*` |
+
+### Team board
+
+The board is the main screen. Its header carries the team name, its type badge, the description its
+lead wrote, and the aggregate progress for the period. Below that is the status stepper, then —
+for a node with children — a roll-up card per child team, then the node's own goals.
+
+Each goal card shows priority (P0–P3), weight, work type (Delivery or Discovery), strategic focus,
+the driver, a progress bar with a forecast marker, and how recently it was touched. A goal shared
+with other teams carries a banner naming them. The `🔗` icon copies a deep link to that goal.
+
+The status a team is in decides what the board lets you do, and the server enforces the same rule
+rather than trusting the UI:
+
+| Status | What is possible |
+| --- | --- |
+| Нет целей | No goals yet; the lifecycle steps are not selectable |
+| Черновик | Full editing: create, edit, delete goals and KRs |
+| К валидации | Still fully editable; the goals have been handed to a manager to review |
+| В работе | Progress check-ins and comments. Composition is frozen |
+| Закрыты | Comments only |
+
+### Key results
+
+A key result belongs to exactly one goal and comes in three kinds.
+
+| Kind | Progress is |
+| --- | --- |
+| Числовой | Linear from a start value to a target, in the unit you name — or by explicit checkpoints if you define them |
+| Бинарный | 100% when done, 0% otherwise |
+| Проектный | The summed weight of the completed stages |
+
+Beyond the number, a KR can carry a **description** (what exactly is being measured — it is shown
+in the check-in dialog, where it matters), a **zeroing criterion** — the condition under which the
+result does not count even if the number is reached — and a **note** for context and blockers.
+
+![Update progress](docs/screenshots/kr-progress.png)
+
+A check-in is a single operation: value, health status and note are saved together, and the
+previous values are kept. The health status (Not Started / On Track / At Risk / Closed) is a
+judgement call by a human and deliberately does not feed into any calculation.
+
+### Progress and forecast
+
+Everything rolls up by weight, with one rule used everywhere:
+
+- goal progress = weighted average of its key results;
+- team progress in a period = weighted average of its goals;
+- a parent node's progress = the average across child teams that actually have goals.
+
+Alongside the bar sits the **expected pace** — where you would be today if the period filled evenly
+— and progress is labelled against it: *ahead*, *on track* (within the tolerance), *below*, or
+*stale* when nobody has updated it for a while. The thresholds, including a "count as on track
+above N%" override, live in the admin panel under Health Check-in.
+
+![Health check-in settings](docs/screenshots/admin-health-checkin.png)
+
+These same thresholds decide which problems — goals without updates, teams with no goals, teams
+waiting to be moved into work, weight sums that do not reach 100, goals behind pace — get counted
+as things needing attention.
+
+### Shared goals
+
+A goal is owned by one team but can be shared with others. Each participating team stores its own
+weight and its own ordering for it, so a goal that is central to one team and a side contribution
+for another is weighted accordingly, without duplicating anything. Sharing does not change who can
+edit the goal, and the Markdown export of a subtree deduplicates shared goals rather than printing
+them once per team.
+
+### Goal tree
+
+The goal tree is a read-only view of the decomposition graph: which annual or manager-level goal a
+quarterly team goal came from. A goal may have several parents and several children; cycles are
+rejected, and a link to a goal in a team you cannot see simply does not exist for you.
+
+![Goal tree](docs/screenshots/goal-tree.png)
+
+Goals are banded by the depth of their period, so an annual band sits above the quarterly one and
+edges cross between them. Sidebar toggles control whether links across periods are followed,
+whether unlinked goals are hidden, and whether the view narrows to teams you lead; a root picker
+focuses the tree on a single branch. Click a card for a read-only detail panel with a link straight
+into the tracker.
+
+### Discussion
+
+Comments on a goal are two levels deep and have a state. A top-level comment is a *remark* — it can
+be marked resolved and reopened later, and unresolved ones are counted on the goal card. Replies
+hang under a remark and have no state of their own.
+
+![Discussion](docs/screenshots/goal-discussion.png)
+
+Comment bodies, goal and KR descriptions, team descriptions and KR notes all accept a safe subset
+of Markdown — bold, italic, headings, lists, quotes, inline code and links — with a preview tab in
+the editor.
+
+### Period overview
+
+The overview answers "how is this period going" for a set of teams rather than one. Scope switches
+between the teams you lead and the whole organisation.
+
+![Period overview](docs/screenshots/period-overview.png)
+
+It counts teams by status, flags formation errors (goal weights that do not sum to 100), shows the
+Discovery/Delivery split, the strategic focus mix, the P0–P3 distribution and the KR health
+breakdown — each bar clickable to see what is inside it. The chart plots recorded progress against
+an even-pace diagonal. At the bottom are the bulk operations: move every team that has goals into
+*В работе*, or close the period for all of them at once. Teams without goals are skipped and the
+operation is idempotent.
+
+### Activity log
+
+![Activity log](docs/screenshots/activity-log.png)
+
+The log is append-only and covers progress updates, goal and KR composition changes, status
+transitions and discussion events. Filter by category, author, favourite teams, or a time window,
+and search the text. Each entry links back to the goal it is about. A space administrator can purge
+the log; nothing else modifies it.
+
+### Notifications
+
+The bell in the sidebar is available on every page and shows what happened to things you are
+involved in: comments on your goals, your remarks being resolved, goal and KR changes, and progress
+updates.
+
+![Notifications](docs/screenshots/notifications.png)
+
+Under **Настройки → Уведомления** each person decides, per event type, whether to receive it and how
+far down the hierarchy to look — only my teams, one level below, or the whole subtree. "Someone
+resolved my remark" ignores scope and always arrives.
+
+![Notification preferences](docs/screenshots/settings-notifications.png)
+
+External delivery is pluggable and Mattermost ships in the box. Updates accumulate for a while and
+go out as one message rather than one per event, and anything still buffered is flushed on
+shutdown. A channel that stores a credential needs `NOTIFICATIONS_SECRET_KEY` set on the instance
+and the channel granted to the space from the system panel; until both are true the admin page says
+the space has no external channels.
+
+### Markdown export
+
+The `···` menu on a goal card opens the export dialog. Three scopes: this goal, the team's goals,
+or the team and everything below it. Two levels of detail, comments optional.
+
+![Markdown export](docs/screenshots/export-markdown.png)
+
+You get a preview, a copy button and a `.md` download. Export never changes anything, is available
+in every period status, and is cut to your visibility on the server rather than in the browser.
+
+### Administration
+
+Space administration lives under `/admin`.
+
+**Команды** — the hierarchy. Seven node types from department down to employee, each team with a
+parent and a lead. Deleting is context-aware: a team that has goals in any period is soft-deleted so
+history survives and can be restored; a team with no goals is removed outright. Children are lifted
+one level up rather than disappearing with the parent.
+
+![Teams administration](docs/screenshots/admin-teams.png)
+
+**Периоды** — the planning horizons. Nesting (year → quarter) and status (planned / active /
+closed) are both computed from the dates; only archiving is manual, and it is reversible.
+
+![Periods administration](docs/screenshots/admin-periods.png)
+
+**Пользователи** — everyone who has ever signed in, their role, and which hierarchy nodes they can
+reach. Invitation links are generated here, single-use or reusable, with an optional expiry.
+
+![Users administration](docs/screenshots/admin-users.png)
+
+**Настройки** — the space name, a documentation URL that adds a *Документация* item to the user
+menu, and the message shown to someone with no team access. **Health Check-in** holds the
+thresholds described above, and **Уведомления** lists the external channels the space has been
+granted.
+
+### Authentication and access
+
+**Without auth** (`AUTH_MODE=disabled`, the default) every page and API is open and actions are
+attributed to the system user `anonymous-local`, which holds the admin role inside space #1. Good
+for a local demo; not something to expose.
+
+**With auth** (`AUTH_MODE=enabled`) unauthenticated page requests are redirected to `/login` and
+API requests get `401`. Sessions are stored in the database. Providers are registered by adding
+their name to `AUTH_ENABLED_PROVIDERS` and filling in the matching variables:
 
 ```bash
 AUTH_MODE=enabled
 AUTH_ENABLED_PROVIDERS=google,github
-```
+AUTH_BASE_URL=https://okr.example.com
 
-Неавторизованные запросы к страницам редиректируются на `/login`. API-запросы получают `401`. После входа создаётся сессия, хранящаяся в БД.
-
-### Провайдеры
-
-Каждый провайдер подключается через переменные окружения. Для активации провайдера добавьте его имя в `AUTH_ENABLED_PROVIDERS`.
-
-**Google:**
-
-```bash
 AUTH_GOOGLE_CLIENT_ID=...
 AUTH_GOOGLE_CLIENT_SECRET=...
-AUTH_GOOGLE_REDIRECT_URL=https://your-host/auth/google/callback
-```
+AUTH_GOOGLE_REDIRECT_URL=https://okr.example.com/auth/google/callback
 
-**GitHub:**
-
-```bash
 AUTH_GITHUB_CLIENT_ID=...
 AUTH_GITHUB_CLIENT_SECRET=...
-AUTH_GITHUB_REDIRECT_URL=https://your-host/auth/github/callback
+AUTH_GITHUB_REDIRECT_URL=https://okr.example.com/auth/github/callback
 ```
 
-**Keycloak:**
+Keycloak works the same way with `AUTH_KEYCLOAK_ISSUER_URL` pointing at the realm.
 
-```bash
-AUTH_KEYCLOAK_ISSUER_URL=https://keycloak.example.com/realms/my-realm
-AUTH_KEYCLOAK_CLIENT_ID=...
-AUTH_KEYCLOAK_CLIENT_SECRET=...
-AUTH_KEYCLOAK_REDIRECT_URL=https://your-host/auth/keycloak/callback
-```
+Providers live in a registry rather than a switch statement. Each one is a package under
+`internal/auth/providers/` that calls `auth.Register("name", factory)` from its `init`, and
+`cmd/server/main.go` pulls it in with a blank import; Google, GitHub and Keycloak are wired exactly
+that way. Supporting a fourth — your company's OIDC, GitLab, anything speaking OAuth2 — is one
+small package and one import line, and the name you register is the name that then goes into
+`AUTH_ENABLED_PROVIDERS`. A name that nothing registered fails the start with
+`auth: unknown provider "x" (not registered)` rather than quietly doing nothing.
 
-### Политика доступа для новых пользователей
+Visibility is granted per hierarchy node: a user sees the nodes granted to them and everything
+below. A brand-new user sees nothing by default; set `AUTH_DEFAULT_NEW_USER_POLICY=default_node`
+with `AUTH_DEFAULT_NODE_ID` if you would rather they land somewhere. Administration is split into
+three planes with separate gates — space administration under `/admin`, instance administration
+under `/system`, and machine provisioning via `PROVISIONING_TOKEN` — so being a space admin does not
+make you a system admin.
 
-```bash
-# Новый пользователь видит пустую иерархию (по умолчанию)
-AUTH_DEFAULT_NEW_USER_POLICY=empty
+### Spaces and the system panel
 
-# Новый пользователь сразу получает доступ к узлу по умолчанию
-AUTH_DEFAULT_NEW_USER_POLICY=default_node
-AUTH_DEFAULT_NODE_ID=42
-```
+One instance can host several spaces (tenants). Data does not cross between them: every query is
+scoped, and a user can belong to more than one space and switch between them from
+**Настройки → Мои пространства**.
 
----
+`/system` is the instance-level panel, reachable only by a system administrator or, for machine
+callers, with `PROVISIONING_TOKEN`. It creates and suspends spaces, manages their members and
+roles, grants entitlements such as the Mattermost channel, and sets instance-wide settings like the
+default registration space. The first system administrator is bootstrapped with
+`BOOTSTRAP_SYSTEM_ADMIN`: the first login matching that `provider:subject` or email is promoted,
+and only while no system administrator exists yet.
 
-## Жизненный цикл периода команды
+### Logging
 
-Каждая команда имеет статус в рамках периода, который отражает этап работы с OKR:
+The application writes structured logs to stdout, one JSON object per line, and opens no connection
+to any log system — shipping is the collector's job (Filebeat, Fluent Bit, Vector). The one thing
+to agree on before rollout is that the pipeline parses JSON rather than grepping a text pattern.
+`LOG_FORMAT=text` gives human-readable output without a code change.
 
-```text
-no_goals → forming → in_progress → validated → closed
-```
+Every record carries `time`, `level`, `msg`, `event`, `service`, `env`; request-scoped records also
+carry `request_id` and, when known, `tenant_id`, `actor_id`, `team_id`, `period_id`.
 
-| Статус         | Смысл                                                    |
-| -------------- | -------------------------------------------------------- |
-| `no_goals`     | Период открыт, цели ещё не оформлены                     |
-| `forming`      | Черновик целей — идёт формирование                       |
-| `in_progress`  | Период активен, прогресс обновляется                     |
-| `validated`    | Цели подтверждены, структурные правки недоступны         |
-| `closed`       | Период закрыт                                            |
+`event` is the stable machine-readable record type that filters and alerts are built on:
 
-Статус устанавливается через dropdown на странице команды и влияет на доступность кнопки «Добавить цель».
+| `event` | Written when |
+| --- | --- |
+| `http_request` | Any HTTP request completes. Level follows the status: 5xx → `error`, 4xx → `warn` |
+| `http_panic` | Unhandled panic, with stack |
+| `domain_event` | A domain event occurred (type only, no user text) |
+| `event_dropped` | An event did not reach a subscriber |
+| `auth_login` / `auth_logout` / `auth_failed` | Sign-in, sign-out, failed authentication |
+| `authz_denied` | Access refused, with the reason and the requested resource |
+| `access_changed` | Role, grant or administrative setting changed |
+| `app_start` / `app_ready` / `app_shutdown` | Startup, readiness, graceful stop |
+| `migration` | Result of applying migrations |
+| `background_task` / `background_panic` | Background job lifecycle and failures |
+| `external_call` | Outcome of a call to an external system |
+| `config_invalid` | Bad logging configuration |
 
----
+Renaming one of these breaks dashboards the same way renaming an API field does. Treat them as an
+external contract.
 
-## Общие цели (Goal Shares)
+Each request gets a `request_id`; an incoming `X-Request-Id` is reused if it passes validation, and
+the id is returned to the client in the same header, so a user can quote it.
 
-Цель принадлежит одной owner-команде, но может быть расшарена на несколько команд. Для каждой команды хранится собственный вес цели — это позволяет учитывать вклад по-разному без дублирования данных.
+Secrets, email addresses, display names, the contents of domain events (goal titles, comment text,
+check-in notes) and URL query strings are deliberately kept out of the logs. Users appear as
+numeric ids.
 
-Расшаренная цель отображается в OKR всех команд-участниц с иконкой `<` и подписью «Общая».
+### Development
 
----
+[Run it locally](#run-it-locally) has the working loop. Beyond that:
 
-## Принципы OKR
+- The front end is plain React with JSX compiled in the browser — no bundler, no `node_modules`.
+  Sources live in `web/static/`, templates in `web/templates/`, and both are embedded into the
+  binary. `WEB_ASSETS_DEV=1` swaps in the development React build for readable stack traces.
+- `go test ./...` runs everything. Tests that need a database use testcontainers and skip
+  themselves when Docker is unavailable.
+- If you change a table, keep `seed_demo.sql` working — it is the dataset the screenshots and the
+  demo rely on.
 
-**OKR (Objectives and Key Results)** — метод постановки целей, при котором каждая цель (Objective) сопровождается измеримыми ключевыми результатами (Key Results), фиксирующими, как именно будет определяться достижение.
+### Documentation and specifications
 
-Несколько базовых принципов, заложенных в инструмент:
+`openspec/specs/` is the normative description of how the product behaves, one directory per
+capability (goal management, progress tracking, notifications, tenancy, authorization and so on).
+It is the source of truth: when code and spec disagree, the spec is the thing to reconcile against.
+`openspec/changes/` holds proposed changes together with their design and task list.
 
-- **Веса целей суммируются в 100.** Каждая цель команды имеет вес. Сумма весов всех целей команды в периоде должна составлять 100 — это отражает распределение фокуса команды.
-- **Key Results определяют прогресс цели.** Каждая цель декомпозируется на KR, которые имеют собственные веса. Прогресс цели считается как взвешенное среднее прогресса её KR.
-- **Веса KR суммируются в 100.** Сумма весов всех KR внутри одной цели должна равняться 100.
-- **Типы KR отражают способ измерения.** Разные результаты измеряются по-разному: рост метрики, процентное выполнение, булевый факт завершения или прогресс по этапам проекта.
-- **Общие цели — без дублирования.** Если цель затрагивает несколько команд, она расшаривается, а не копируется. Каждая команда видит её в своём списке с собственным весом.
-- **Период задаёт горизонт.** Обычно квартал. Статус периода команды отражает этап работы: от формирования черновика до закрытия.
+`docs/` is the end-user guide — how to phrase objectives, how to pick key results, what happens
+through the quarter, how to close it — starting at [docs/index.md](docs/index.md).
 
----
-
-## Запуск
-
-### Docker Compose (рекомендуется)
-
-```bash
-docker compose up --build
-```
-
-Приложение доступно по адресу [http://localhost:8080/teamOkrs](http://localhost:8080/teamOkrs).
-
-### Локальный запуск
-
-```bash
-docker compose up -d db
-
-export DATABASE_URL=postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable
-export TZ=Asia/Bangkok
-export PORT=8080
-
-# Для авторизации через OAuth (опционально):
-# export AUTH_MODE=enabled
-# export AUTH_ENABLED_PROVIDERS=google,github
-# export AUTH_GOOGLE_CLIENT_ID=...
-# export AUTH_GOOGLE_CLIENT_SECRET=...
-# export AUTH_GOOGLE_REDIRECT_URL=http://localhost:8080/auth/google/callback
-# export AUTH_GITHUB_CLIENT_ID=...
-# export AUTH_GITHUB_CLIENT_SECRET=...
-# export AUTH_GITHUB_REDIRECT_URL=http://localhost:8080/auth/github/callback
-
-go run ./cmd/server
-```
-
----
-
-## Demo-данные
-
-Файл [`seed_demo.sql`](seed_demo.sql) содержит готовый набор данных для демонстрации возможностей системы: две корневые кластерные структуры, 19 команд в иерархии трёх уровней, 14 целей с KR разных типов (PERCENT, LINEAR, BOOLEAN, PROJECT), частичным прогрессом и расшаренными целями между командами.
-
-### Накатить на пустую базу
-
-После того как база создана и все миграции применены:
-
-```bash
-# через Docker Compose
-docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql
-
-# или напрямую
-psql -U postgres -d okrs -f seed_demo.sql
-```
-
-### Сбросить данные и накатить заново
-
-```bash
-docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql
-```
-
-Скрипт начинается с `TRUNCATE` всех таблиц, поэтому его безопасно применять повторно — он полностью заменяет текущее содержимое базы.
-
----
-
-## Переменные окружения
-
-| Переменная                      | По умолчанию                                                       | Описание                                               |
-| ------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------ |
-| `DATABASE_URL`                  | `postgres://postgres:postgres@localhost:5432/okrs?sslmode=disable` | Строка подключения к PostgreSQL                        |
-| `PORT`                          | `8080`                                                             | Порт HTTP-сервера                                      |
-| `TZ`                            | `Asia/Bangkok`                                                     | Временная зона для отображения дат                     |
-| `WEB_ASSETS_DEV`                | `0`                                                                | Отдавать dev-сборку React из `/static/vendor` (`1`/`true`/`on`); по умолчанию — production |
-| `LOG_FORMAT`                    | `json`                                                             | Формат логов: `json` для сбора, `text` для локальной разработки |
-| `LOG_LEVEL`                     | `info`                                                             | Уровень логирования: `debug`, `info`, `warn`, `error`   |
-| `SERVICE_NAME`                  | `okrs`                                                             | Значение поля `service` в каждой лог-записи              |
-| `ENV`                           | `dev`                                                              | Значение поля `env` в каждой лог-записи (окружение развёртывания) |
-| `AUTH_MODE`                     | `disabled`                                                         | Режим авторизации: `disabled` или `enabled`            |
-| `AUTH_ENABLED_PROVIDERS`        | —                                                                  | Список провайдеров через запятую: `google,github,...`  |
-| `AUTH_SESSION_COOKIE_NAME`      | `okrs_session`                                                     | Имя cookie сессии                                      |
-| `AUTH_SESSION_TTL`              | `720h`                                                             | Время жизни сессии                                     |
-| `AUTH_BASE_URL`                 | —                                                                  | Публичный URL приложения (для callback URLs)           |
-| `AUTH_DEFAULT_NEW_USER_POLICY`  | `empty`                                                            | Доступ для новых пользователей: `empty` или `default_node` |
-| `AUTH_DEFAULT_NODE_ID`          | —                                                                  | ID узла иерархии для политики `default_node`           |
-| `AUTH_GOOGLE_CLIENT_ID`         | —                                                                  | Google OAuth2 Client ID                                |
-| `AUTH_GOOGLE_CLIENT_SECRET`     | —                                                                  | Google OAuth2 Client Secret                            |
-| `AUTH_GOOGLE_REDIRECT_URL`      | —                                                                  | Google OAuth2 Redirect URL                             |
-| `AUTH_GITHUB_CLIENT_ID`         | —                                                                  | GitHub OAuth2 Client ID                                |
-| `AUTH_GITHUB_CLIENT_SECRET`     | —                                                                  | GitHub OAuth2 Client Secret                            |
-| `AUTH_GITHUB_REDIRECT_URL`      | —                                                                  | GitHub OAuth2 Redirect URL                             |
-| `AUTH_KEYCLOAK_ISSUER_URL`      | —                                                                  | Keycloak Issuer URL (realm endpoint)                   |
-| `AUTH_KEYCLOAK_CLIENT_ID`       | —                                                                  | Keycloak Client ID                                     |
-| `AUTH_KEYCLOAK_CLIENT_SECRET`   | —                                                                  | Keycloak Client Secret                                 |
-| `AUTH_KEYCLOAK_REDIRECT_URL`    | —                                                                  | Keycloak Redirect URL                                  |
-
-Миграции накатываются автоматически при старте из папки `migrations/`.
-
----
-
-## Логирование и сбор логов
-
-Приложение пишет структурированные логи в **stdout**, по одной JSON-записи на строку,
-и не открывает соединений с системой сбора логов. Доставка в Logstash — задача
-сборщика инфраструктуры (Filebeat / Fluent Bit / Vector).
-
-### Что нужно настроить на стороне сбора
-
-Строка в stdout — это JSON, а не текст. Конвейер сбора должен **разбирать JSON**
-(`json` codec/filter), а не `grok` по текстовому шаблону. Это единственное внешнее
-ожидание, которое нужно согласовать до выката.
-
-Откат не требует релиза кода: `LOG_FORMAT=text` возвращает человекочитаемый вывод.
-
-### Обязательные поля записи
-
-В каждой записи: `time`, `level`, `msg`, `event`, `service`, `env`.
-В записях, порождённых обработкой запроса, также `request_id`, а при наличии —
-`tenant_id`, `actor_id`, `team_id`, `period_id`.
-
-`event` — это стабильный машиночитаемый тип записи; на нём строятся фильтры и алерты:
-
-| `event`            | Когда пишется                                                    |
-| ------------------ | ------------------------------------------------------------------ |
-| `http_request`     | Завершение любого HTTP-запроса. Уровень по статусу: 5xx — `error`, 4xx — `warn` |
-| `http_panic`       | Необработанная паника со стеком                                 |
-| `domain_event`     | Факт доменного события (без пользовательского текста)             |
-| `event_dropped`    | Событие не доставлено подписчику                                 |
-| `auth_login`       | Успешный вход                                                       |
-| `auth_logout`      | Выход                                                                |
-| `auth_failed`      | Неуспешная аутентификация                                        |
-| `authz_denied`     | Отказ в доступе с причиной и запрошенным ресурсом              |
-| `access_changed`   | Изменение прав: роль, гранты, административные настройки      |
-| `app_start`        | Старт и отказы на этапе запуска                                  |
-| `app_ready`        | Готовность принимать запросы                                       |
-| `app_shutdown`     | Этапы грациозной остановки                                        |
-| `migration`        | Результат применения миграций                                    |
-| `background_task`  | Запуск, завершение и ошибки фоновых задач                        |
-| `background_panic` | Паника в обработчике, выполняющемся вне запроса                  |
-| `external_call`    | Исход обращения во внешнюю систему                                |
-| `config_invalid`   | Некорректная настройка логирования                                |
-
-Эти значения — внешний контракт: переименование ломает дашборды так же,
-как переименование поля API.
-
-### Корреляция
-
-Каждый запрос получает `request_id`. Входящий заголовок `X-Request-Id`
-подхватывается, если проходит валидацию; иначе генерируется новый. Тот же
-идентификатор возвращается клиенту в `X-Request-Id`, поэтому пользователь может
-назвать его в обращении.
-
-### Что в логи не попадает
-
-Секреты (пароли, токены, ключи, cookie, заголовки авторизации), адреса почты
-и отображаемые имена пользователей, содержимое доменных событий (названия целей,
-тексты комментариев, заметки чек-инов) и строка запроса URL.
-Пользователь опознаётся в логах числовым идентификатором.
-
----
-
-## Тесты
-
-```bash
-go test ./...
-```
+Both are written in Russian.
