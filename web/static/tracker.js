@@ -1100,7 +1100,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7, periodSt
           <div className="kr-info">
             <div className="kr-health-badge-row"><KRHealthBadge status={displayHealth} /></div>
             <div className="kr-name">{kr.name}</div>
-            {kr.desc && <Markdown text={kr.desc} className="kr-desc" />}
+            {kr.desc && <CollapsibleMarkdown text={kr.desc} className="kr-desc" />}
             <div className="kr-detail-row">
               <div className="kr-bar-wrap"><ProgressBar value={progress} h={4} color={accent} /></div>
               <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
@@ -1706,7 +1706,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
           </div>
           {canEdit && <button onClick={() => setConfirmDeleteGoal(true)} title="Удалить цель" className="goal-card__delete-btn">×</button>}
         </div>
-        {goal.desc && <Markdown text={goal.desc} className="goal-card__desc" />}
+        {goal.desc && <CollapsibleMarkdown text={goal.desc} className="goal-card__desc" />}
         {otherTeams.length > 0 && (
           <div className="shared-banner">
             <span className="shared-banner__label">⇄ Общая с:</span>

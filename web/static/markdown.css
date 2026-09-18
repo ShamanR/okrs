@@ -21,6 +21,33 @@
 .md-content a:hover { text-decoration: underline; }
 .md-content strong { font-weight: 700; }
 
+/* Collapsed markdown (long goal / KR descriptions on the board).
+   IMPORTANT: same rule as .md-content — do NOT set font-size / color /
+   line-height here. The host class sits on .md-collapsible__body, keeps owning
+   typography, and supplies the height cap as --md-collapse-max in em, so the cap
+   reads as a number of text lines. Without that variable nothing is clipped. */
+.md-collapsible__body { position: relative; max-height: var(--md-collapse-max, none); overflow: hidden; }
+.md-collapsible--expanded .md-collapsible__body { max-height: none; }
+/* The toggle sits directly under the text, so the outer spacing moves from the
+   host class to the wrapper (see tracker.css). */
+.md-collapsible > .md-collapsible__body { margin-bottom: 0; }
+.md-collapsible--clipped .md-collapsible__body::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1.9em;
+  pointer-events: none; background: linear-gradient(to bottom, transparent, var(--md-fade-bg, #fff));
+}
+.md-collapsible__toggle { display: flex; width: fit-content; align-items: center; gap: 5px; margin: 3px 0 2px; padding: 0; border: none; background: none; font-family: inherit; font-size: 11px; font-weight: 500; line-height: 1.4; color: #6b7280; cursor: pointer; }
+.md-collapsible__toggle:hover { color: #374151; }
+/* Underline the words only — an underline under the caret reads as a stray tick. */
+.md-collapsible__toggle:hover .md-collapsible__label { text-decoration: underline; }
+.md-collapsible__caret { font-size: 9px; line-height: 1; }
+
+/* On paper the point of collapsing disappears: print the whole description. */
+@media print {
+  .md-collapsible__body { max-height: none; }
+  .md-collapsible--clipped .md-collapsible__body::after { display: none; }
+  .md-collapsible__toggle { display: none; }
+}
+
 /* Markdown editor */
 /* The editor is one framed box: a toolbar header with a divider below, a borderless
    textarea/preview body, and the Markdown hint as an in-frame footer. Hosts should not

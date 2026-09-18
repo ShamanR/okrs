@@ -290,6 +290,10 @@ Comment bodies, goal and KR descriptions, team descriptions and KR notes all acc
 of Markdown — bold, italic, headings, lists, quotes, inline code and links — with a preview tab in
 the editor.
 
+On the board a long goal or KR description is shown clipped to the first few lines, faded at the
+cut, with a **Показать полностью** toggle that expands it in place — so a detailed description does
+not turn the card into a wall of text.
+
 ### Period overview
 
 The overview answers "how is this period going" for a set of teams rather than one. Scope switches
