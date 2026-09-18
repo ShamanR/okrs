@@ -38,6 +38,72 @@ function Markdown({ text, className }) {
   });
 }
 
+// Read component with collapse: same sanitized HTML as <Markdown>, but the
+// rendered height is capped and the rest is revealed on demand. The height cap
+// itself lives in CSS (--md-collapse-max on the host class), so the markup is
+// never truncated: long descriptions stay whole in the DOM and keep their list,
+// heading and paragraph structure in the collapsed view.
+//
+// The collapsed state is deliberately ephemeral - it is not persisted anywhere,
+// so a reload, a team switch or a period switch brings every description back
+// collapsed.
+function CollapsibleMarkdown({ text, className }) {
+  const html = renderMarkdown(text);
+  const bodyRef = React.useRef(null);
+  const [expanded, setExpanded] = React.useState(false);
+  const [overflows, setOverflows] = React.useState(false);
+
+  // A rewritten description comes back collapsed, like every other one.
+  React.useEffect(() => { setExpanded(false); }, [text]);
+
+  // Whether there is anything hidden can only be measured, not guessed: the same
+  // text renders to a different height depending on its markup, the card width
+  // and where lines wrap. Measuring is skipped while expanded - the cap is lifted
+  // then, so scrollHeight would always equal clientHeight - and the toggle stays
+  // visible anyway to collapse back.
+  React.useLayoutEffect(() => {
+    const el = bodyRef.current;
+    if (!el || expanded) return undefined;
+    // 1px of slack absorbs sub-pixel rounding of the em-based height cap.
+    const measure = () => setOverflows(el.scrollHeight - el.clientHeight > 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    // Re-measure on width changes (window resize, sidebar collapse) and once
+    // webfonts settle, both of which change the rendered height.
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [html, expanded]);
+
+  if (!html) return null;
+  const clipped = overflows && !expanded;
+  const showToggle = overflows || expanded;
+  return React.createElement('div', {
+    className: 'md-collapsible'
+      + (clipped ? ' md-collapsible--clipped' : '')
+      + (expanded ? ' md-collapsible--expanded' : ''),
+  },
+    React.createElement('div', {
+      ref: bodyRef,
+      className: 'md-collapsible__body md-content' + (className ? ' ' + className : ''),
+      dangerouslySetInnerHTML: { __html: html },
+    }),
+    showToggle && React.createElement('button', {
+      type: 'button',
+      className: 'md-collapsible__toggle',
+      'aria-expanded': expanded,
+      // The host card reacts to clicks (open the editor) and to drags (reorder);
+      // neither must fire from this control.
+      draggable: false,
+      onDragStart: e => { e.preventDefault(); e.stopPropagation(); },
+      onMouseDown: e => e.stopPropagation(),
+      onClick: e => { e.stopPropagation(); setExpanded(v => !v); },
+    },
+      React.createElement('span', { className: 'md-collapsible__caret' }, expanded ? '\u25b2' : '\u25bc'),
+      React.createElement('span', { className: 'md-collapsible__label' }, expanded ? 'Свернуть' : 'Показать полностью'))
+  );
+}
+
 // Apply a markdown transform to the current textarea selection.
 function applyMarkdownFormat(el, kind, onChange) {
   const start = el.selectionStart;
