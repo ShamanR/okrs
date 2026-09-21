@@ -7,10 +7,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	hcsvc "okrs/internal/service/healthcheckin"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
+	settingssvc "okrs/internal/service/settings"
 )
 
 const (
@@ -37,11 +37,11 @@ func New(settings settingsReader) *Handler {
 
 type configResponse struct {
 	DocumentationURL string `json:"documentation_url"`
-	// StaleDays drives the "N дней без обновлений" warning on goal pages; it
-	// mirrors the Health Check-in threshold so both stay in sync.
+	// StaleDays drives the "N дней без обновлений" warning on goal cards
+	// (progress threshold, tenant setting progress_stale_days).
 	StaleDays int `json:"stale_days"`
-	// BehindMargin is the lag tolerance (п.п.) from the Health Check-in "Отстающие"
-	// category; the sidebar colors team progress red when progress < forecast - behind_margin.
+	// BehindMargin is the lag tolerance (п.п.) behind the expected pace; the sidebar
+	// colors team progress red when progress < forecast - behind_margin.
 	BehindMargin int `json:"behind_margin"`
 	// GreenThreshold is the progress percent (1..100) at or above which a goal/team is
 	// colored green ("в плане") regardless of the forecast-based pace check.
@@ -68,7 +68,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	// Config is served inside the membership-gated group, so a tenant is present.
 	// A zero scope (no tenant) simply reads no rows and yields defaults.
 	scope, _ := auth.TenantScopeFromContext(r.Context())
-	cfg, _ := hcsvc.LoadConfig(r.Context(), scope, h.settings)
+	cfg := settingssvc.LoadProgressThresholds(r.Context(), scope, h.settings)
 	resp := configResponse{
 		DocumentationURL: h.documentationURL(r.Context(), scope),
 		StaleDays:        cfg.StaleDays,

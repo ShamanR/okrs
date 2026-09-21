@@ -1,10 +1,4 @@
-// Package healthcheckin holds the health check-in loader: it assembles the period
-// snapshot (teams, their goals with comments, and per-team status) that the cache
-// serves to every health check-in request.
-//
-// It lives here rather than in internal/http because assembling this snapshot is
-// business logic over four entity services — spec 010 rule 1 forbids that in handlers.
-package healthcheckin
+package period
 
 import (
 	"context"
@@ -12,28 +6,27 @@ import (
 
 	"okrs/internal/core/domain"
 	goalsvc "okrs/internal/service/goal"
-	hcsvc "okrs/internal/service/healthcheckin"
 	periodsvc "okrs/internal/service/period"
 	teamsvc "okrs/internal/service/team"
 	teamstatussvc "okrs/internal/service/teamstatus"
 )
 
-// Deps are the entity services the loader reads through.
-type Deps struct {
+// LoaderDeps are the entity services the period loader reads through.
+type LoaderDeps struct {
 	Periods  *periodsvc.Service
 	Teams    *teamsvc.Service
 	Goals    *goalsvc.Service
 	Statuses *teamstatussvc.Service
 }
 
-// NewPeriodLoader returns the loader the health check-in cache calls on a miss.
-// The signature matches what hcsvc.NewCache expects.
+// NewPeriodLoader returns the loader PeriodCache calls on a miss: it assembles the period
+// snapshot (teams, their goals with comments, and per-team status).
 //
 // Every read is batched across the whole tenant — one query for all teams' goals, one
 // for all statuses, one for all comments. Turning any of these into a per-team or
 // per-goal loop reintroduces N+1 on a hot, cached-but-cold-on-miss path.
-func NewPeriodLoader(deps Deps) func(ctx context.Context, scope domain.TenantScope, periodID int64) (*hcsvc.PeriodData, error) {
-	return func(ctx context.Context, scope domain.TenantScope, periodID int64) (*hcsvc.PeriodData, error) {
+func NewPeriodLoader(deps LoaderDeps) func(ctx context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
+	return func(ctx context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
 		period, err := deps.Periods.Get(ctx, scope, periodID)
 		if err != nil {
 			return nil, err
@@ -74,7 +67,7 @@ func NewPeriodLoader(deps Deps) func(ctx context.Context, scope domain.TenantSco
 			}
 			goalsByTeam[teamID] = goals
 		}
-		return &hcsvc.PeriodData{
+		return &PeriodData{
 			PeriodID:    periodID,
 			Period:      period,
 			Teams:       allTeams,

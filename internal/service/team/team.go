@@ -1,7 +1,7 @@
 // BuildHierarchy, BuildNode, FindDirectChildren, CollectDescendantIDs и
 // HierarchyFromTeams экспортированы не «для фасада»: после его удаления у каждой
 // остался внешний потребитель — usecase/okrboard строит по ним дерево команд для
-// доски. То же у healthcheckin.BuildTeamPath и Abs (usecase/period). Сузить
+// доски. Сузить
 // видимость нельзя, не затащив построение иерархии обратно в один пакет.
 package team
 

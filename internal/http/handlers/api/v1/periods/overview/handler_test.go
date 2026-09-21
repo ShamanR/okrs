@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
-	hcsvc "okrs/internal/service/healthcheckin"
 	"okrs/internal/store/grants"
 	perioduc "okrs/internal/usecase/period"
 	"testing"
@@ -115,15 +114,15 @@ func TestHandlePeriodOverview_KRRowsCarryLinkTargets(t *testing.T) {
 		ID: 100, Title: "KR1", Kind: domain.KRKindNumerical, Weight: 100,
 		Numerical: &domain.KRNumerical{StartValue: 0, TargetValue: 100, CurrentValue: 40},
 	}}}
-	data := &hcsvc.PeriodData{
+	data := &perioduc.PeriodData{
 		PeriodID:    1,
 		Teams:       []domain.Team{{ID: 1, Name: "T1"}},
 		GoalsByTeam: map[int64][]domain.Goal{1: {goal}},
 		Statuses:    map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress},
 		CachedAt:    time.Now(),
 	}
-	loader := func(context.Context, domain.TenantScope, int64) (*hcsvc.PeriodData, error) { return data, nil }
-	h := New(perioduc.New(perioduc.Deps{HCCache: hcsvc.NewCache(loader, time.Minute, nil)}), nil, nil, &fakeGrants{})
+	loader := func(context.Context, domain.TenantScope, int64) (*perioduc.PeriodData, error) { return data, nil }
+	h := New(perioduc.New(perioduc.Deps{Cache: perioduc.NewPeriodCache(loader, time.Minute, nil)}), nil, nil, &fakeGrants{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/periods/1/overview?scope=org", nil)
 	req = withURLParam(withTenant(withUserRole(req, "admin-1", true)), "periodID", "1")

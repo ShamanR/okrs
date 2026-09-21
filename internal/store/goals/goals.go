@@ -580,7 +580,7 @@ func (r *GoalRepository) loadKRNotes(ctx context.Context, scope domain.TenantSco
 }
 
 // ListGoalCommentsByGoals returns all comments (open and resolved) for the given goal IDs,
-// keyed by goal ID. Used by the health check-in cache to compute comment categories.
+// keyed by goal ID. Used by the period cache loader to attach comments to goals.
 func (r *GoalRepository) ListGoalCommentsByGoals(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]domain.GoalComment, error) {
 	return r.listGoalCommentsBatch(ctx, scope, goalIDs)
 }

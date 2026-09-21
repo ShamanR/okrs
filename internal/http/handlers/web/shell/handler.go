@@ -53,7 +53,6 @@ var TenantAdmin = []Route{
 	{"/admin/access", "admin-shell"},
 	{"/admin/teams", "admin-shell"},
 	{"/admin/periods", "admin-shell"},
-	{"/admin/health-checkin", "admin-shell"},
 	{"/activity-log", "activity-shell"},
 }
 

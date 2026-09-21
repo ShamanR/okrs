@@ -270,7 +270,6 @@ const ADMIN_SECTIONS = [
   {id:'teams',    label:'Команды',     hint:'Иерархия и руководители', icon:'👥'},
   {id:'users',    label:'Пользователи',hint:'Админы и доступ',         icon:'🔑'},
   {id:'settings', label:'Настройки',   hint:'Доступ и политики',       icon:'⚙'},
-  {id:'health-checkin', label:'Health Check-in', hint:'Настройки проверок', icon:'⚡'},
   {id:'notifications', label:'Уведомления', hint:'Каналы доставки', icon:'🔔'},
 ];
 
@@ -944,162 +943,74 @@ function TeamEditor({value, teams, onSave, onClose, onDelete, saving, closeRef})
   </div>;
 }
 
-// ── HEALTH CHECK-IN SETTINGS PANEL ───────────────────────────────────────────
-function HealthCheckInSettingsPanel() {
-  const [cfg, setCfg] = useState(null);
+// ── PROGRESS THRESHOLDS SETTINGS PANEL ───────────────────────────────────────
+// Пороги оценки прогресса: предупреждение «нет обновлений», допустимое отставание,
+// порог «в плане» и допуск по весам. Используются доской, деревом и обзором периода.
+const PROGRESS_THRESHOLD_FIELDS = [
+  {key:'stale_days', title:'Нет обновлений', unit:'дней', min:1,
+    hint:'Если команда «в работе», а цель не обновлялась дольше этого срока, на карточке цели появляется предупреждение «N д без обновлений».'},
+  {key:'behind_margin', title:'Допустимое отставание от темпа', unit:'п.п.', min:0,
+    hint:'Прогресс команды в дереве навигации выделяется красным, когда ожидаемый темп периода опережает его больше чем на это значение.'},
+  {key:'green_threshold', title:'Порог «в плане»', unit:'%', min:1, max:100,
+    hint:'Цель или команда с прогрессом не ниже порога считается «в плане» и подсвечивается зелёным независимо от ожидаемого темпа периода.'},
+  {key:'weight_tolerance', title:'Допуск по весам', unit:'%', min:0,
+    hint:'Насколько сумма весов целей команды может отличаться от 100, прежде чем обзор периода отметит ошибку весов.'},
+];
+
+function ProgressThresholdsSettingsPanel() {
+  const [vals, setVals] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState('');
+  const [saved, setSaved] = useState(false);
 
-  useEffect(() => {
-    apiGet('/api/v1/admin/settings/health-checkin')
-      .then(r => r && r.json())
-      .then(d => d && setCfg(d));
-  }, []);
+  useEffect(()=>{
+    apiGet('/api/v1/admin/settings/progress-thresholds').then(r=>r&&r.json()).then(data=>{
+      if (data) setVals(data);
+    });
+  },[]);
 
-  if (!cfg) return <div style={{padding:24, color: T.mutedFg}}>Загрузка…</div>;
-
-  const update = (key, val) => setCfg(prev => ({...prev, [key]: val}));
-  const updateCounter = (k, val) => setCfg(prev => ({...prev, in_counter: {...prev.in_counter, [k]: val}}));
-
-  const save = async () => {
-    setSaving(true); setMsg('');
-    const res = await apiPost('/api/v1/admin/settings/health-checkin', cfg);
+  async function save() {
+    const body = {};
+    for (const f of PROGRESS_THRESHOLD_FIELDS) {
+      const n = Number(vals[f.key]);
+      if (!Number.isInteger(n) || n < f.min || (f.max != null && n > f.max)) {
+        alert(`${f.title}: допустимо целое число ${f.max != null ? `от ${f.min} до ${f.max}` : `не меньше ${f.min}`}.`);
+        return;
+      }
+      body[f.key] = n;
+    }
+    setSaving(true); setSaved(false);
+    const res = await apiPost('/api/v1/admin/settings/progress-thresholds', body);
     setSaving(false);
-    setMsg(res && res.ok ? 'Сохранено' : 'Ошибка сохранения');
-  };
+    if (res && res.ok) { setSaved(true); setTimeout(()=>setSaved(false), 2500); }
+    else if (res && res.status===400) alert('Проверьте значения порогов.');
+    else alert('Ошибка сохранения настроек');
+  }
 
-  const catConfig = [
-    {
-      key: 'stale', icon: '🕐', label: 'Нет обновлений',
-      hint: 'Цели и KR без обновления прогресса более N дней. Руководителю нужно напомнить команде обновить прогресс.',
-      param: { field: 'stale_days', label: 'Порог (дней без обновления)', min: 1 },
-    },
-    {
-      key: 'no_goals', icon: '○', label: 'Не заведены цели',
-      hint: 'Команды без ни одной цели в периоде. Руководителю нужно инициировать заведение OKR.',
-    },
-    {
-      key: 'awaiting_validation', icon: '○', label: 'Ожидают перевода в работу',
-      hint: 'Команды со статусом «К валидации». Нужно перевести в «В работе».',
-    },
-    {
-      key: 'formation_errors', icon: '⚠', label: 'Ошибки формирования',
-      hint: 'Суммы весов ≠ 100%, отсутствие KR, нулевые диапазоны. Мешают корректному расчёту прогресса.',
-      param: { field: 'weight_tolerance', label: 'Допуск по весам (%)', min: 0 },
-    },
-    {
-      key: 'lagging', icon: '▼', label: 'Отстающие',
-      hint: 'Цели ниже ожидаемого темпа периода. Информационная категория — показывает риски.',
-      param: { field: 'behind_margin', label: 'Отставание (п.п.)', min: 1 },
-    },
-    {
-      key: 'comments', icon: '💬', label: 'Комментарии',
-      hint: 'Нерешённые комментарии к целям ваших команд и команд под ними. Тумблер «В счётчик» включает их в бейдж (по умолчанию выключено). «Мои решённые» показываются всегда, их непросмотренный счётчик считается локально.',
-      param: { field: 'comment_depth', label: 'Глубина команд (уровней вниз)', min: 0 },
-    },
-  ];
-
-  const fieldStyle = {background:'#f8fafc', border:'1px solid #e5e7eb', borderRadius:6, padding:'6px 10px', fontSize:13, width:70, fontFamily:'inherit'};
-  const labelStyle = {fontSize:13, color: T.bodyFg, fontWeight:500};
-  const hintStyle  = {fontSize:12, color: T.mutedFg, marginTop:4, lineHeight:1.5};
-
-  return (
-    <div style={{padding:'20px 24px 32px'}}>
-      <div style={{background:'white', borderRadius:12, border:'1px solid '+T.cardBorder, padding:'20px 24px'}}>
-        <div style={{fontSize:15, fontWeight:700, color: T.headingFg, marginBottom:4}}>⚡ Health Check-in — настройки</div>
-        <div style={{fontSize:13, color: T.mutedFg, marginBottom:24}}>
-          Определяют, какие проблемы попадают в счётчик кнопки ⚡ Health Check-in в трекере.
-        </div>
-
-        {catConfig.map(cat => (
-          <div key={cat.key} style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
-            <div style={{display:'flex', alignItems:'flex-start', gap:12}}>
-              <div style={{flex:1}}>
-                <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:4}}>
-                  <span style={{fontSize:16}}>{cat.icon}</span>
-                  <span style={{fontSize:14, fontWeight:600, color: T.headingFg}}>{cat.label}</span>
-                </div>
-                <div style={hintStyle}>{cat.hint}</div>
-                {cat.param && (
-                  <div style={{display:'flex', alignItems:'center', gap:8, marginTop:10}}>
-                    <span style={labelStyle}>{cat.param.label}:</span>
-                    <input
-                      type="number" min={cat.param.min}
-                      value={cfg[cat.param.field] ?? ''}
-                      onChange={e => update(cat.param.field, Number(e.target.value))}
-                      style={fieldStyle}
-                    />
-                  </div>
-                )}
-              </div>
-              <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4, flexShrink:0}}>
-                <label style={{display:'flex', alignItems:'center', gap:6, cursor:'pointer'}}>
-                  <input
-                    type="checkbox"
-                    checked={cfg.in_counter?.[cat.key] ?? false}
-                    onChange={e => updateCounter(cat.key, e.target.checked)}
-                  />
-                  <span style={{fontSize:12, color: T.mutedFg}}>В счётчик</span>
-                </label>
-              </div>
-            </div>
+  return <div>
+    <DetailHeader breadcrumb="Настройки" title="Пороги прогресса"
+      subtitle="Как доска, дерево навигации и обзор периода оценивают прогресс"/>
+    {!vals ? <div style={{padding:24,color:T.mutedFg}}>Загрузка…</div> : <>
+      {PROGRESS_THRESHOLD_FIELDS.map(f=>(
+        <DetailSection key={f.key} title={f.title}>
+          <div style={{fontSize:12.5,color:T.mutedFg,marginBottom:10,lineHeight:1.6}}>{f.hint}</div>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <input type="number" min={f.min} max={f.max} value={vals[f.key] ?? ''}
+              onChange={e=>setVals(prev=>({...prev,[f.key]:e.target.value}))}
+              style={{...inpStyle,fontSize:13,width:140}}/>
+            <span style={{fontSize:12.5,color:T.mutedFg}}>{f.unit}</span>
           </div>
-        ))}
-
-        <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
-          <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>Цвет прогресса</div>
-          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
-            <span style={labelStyle}>Порог «в плане» (%):</span>
-            <input
-              type="number" min={1} max={100}
-              value={cfg.green_threshold ?? 80}
-              onChange={e => update('green_threshold', Number(e.target.value))}
-              style={fieldStyle}
-            />
-          </div>
-          <div style={hintStyle}>Цель или команда с прогрессом не ниже порога считается «в плане» и подсвечивается зелёным (в сайдбаре и на странице целей), независимо от ожидаемого темпа периода.</div>
+        </DetailSection>
+      ))}
+      <DetailSection>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <Btn variant="primary" onClick={save} disabled={saving}>
+            {saving?'Сохранение…':'Сохранить'}
+          </Btn>
+          {saved&&<span style={{fontSize:12,color:'#059669',fontWeight:600}}>✓ Сохранено</span>}
         </div>
-
-        <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
-          <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>💬 Мои решённые комментарии</div>
-          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
-            <span style={labelStyle}>Сколько показывать (K):</span>
-            <input
-              type="number" min={1}
-              value={cfg.resolved_comments_limit ?? 5}
-              onChange={e => update('resolved_comments_limit', Number(e.target.value))}
-              style={fieldStyle}
-            />
-          </div>
-          <div style={hintStyle}>Сколько ваших последних решённых (не вами) комментариев показывать в колокольчике.</div>
-        </div>
-
-        <div style={{borderTop:'1px solid #f1f5f9', paddingTop:16, marginTop:16}}>
-          <div style={{fontSize:14, fontWeight:600, color: T.headingFg, marginBottom:8}}>Кеш</div>
-          <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
-            <span style={labelStyle}>Время жизни (мин):</span>
-            <input
-              type="number" min={1}
-              value={cfg.cache_ttl_minutes ?? 5}
-              onChange={e => update('cache_ttl_minutes', Number(e.target.value))}
-              style={fieldStyle}
-            />
-          </div>
-          <div style={hintStyle}>Интервал фонового пересчёта. Меньше — актуальнее данные, больше — меньше нагрузка на БД.</div>
-        </div>
-
-        <div style={{marginTop:24, display:'flex', alignItems:'center', gap:12}}>
-          <button
-            onClick={save}
-            disabled={saving}
-            style={{padding:'8px 20px', background: T.accent, color:'white', border:'none', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer'}}>
-            {saving ? 'Сохранение…' : 'Сохранить'}
-          </button>
-          {msg && <span style={{fontSize:13, color: msg.startsWith('Ош') ? T.danger : T.success}}>{msg}</span>}
-        </div>
-      </div>
-    </div>
-  );
+      </DetailSection>
+    </>}
+  </div>;
 }
 
 // ── ACCESS SETTINGS PANEL ────────────────────────────────────────────────────
@@ -1893,9 +1804,9 @@ function App() {
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><GeneralSettingsPanel/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><AccessSettingsPanel teams={teams}/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><FeedbackSettingsPanel/></div>
+      <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><ProgressThresholdsSettingsPanel/></div>
       <div style={{background:'white',borderRadius:12,border:'1px solid '+T.cardBorder,boxShadow:'0 1px 3px rgba(15,23,42,0.04)',overflow:'hidden'}}><ActivityLogPanel/></div>
     </div>}
-    {section==='health-checkin'&&<HealthCheckInSettingsPanel/>}
     {section==='notifications'&&<NotificationsSection/>}
   </Shell>;
 }

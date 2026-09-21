@@ -8,7 +8,7 @@ const TEAM_TYPE_ORDER = { department: 0, cluster: 1, unit: 2, group: 3, team: 4,
 const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
 
 // buildTargetURL — единый механизм перехода к команде/цели/KR/комментарию в трекере
-// (из журнала событий и из колокольчика Health Check-in). Собирает deep-link на трекер
+// (из журнала событий, колокольчика уведомлений и обзора периода). Собирает deep-link на трекер
 // (`/?team=&period=&goal=&kr=&comment=`), который трекер разбирает на загрузке:
 // выбирает команду/период, раскрывает цель и секцию комментариев, скроллит и подсвечивает.
 // target: { team_id?, period_id?, goal_id?, kr_id?, comment_id? }.

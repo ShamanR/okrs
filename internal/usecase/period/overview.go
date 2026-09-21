@@ -16,7 +16,6 @@ import (
 	"okrs/internal/core/event"
 	"okrs/internal/core/progress"
 	goalsvc "okrs/internal/service/goal"
-	hcsvc "okrs/internal/service/healthcheckin"
 	periodsvc "okrs/internal/service/period"
 	progresssnapsvc "okrs/internal/service/progresssnap"
 	teamsvc "okrs/internal/service/team"
@@ -39,7 +38,7 @@ type Deps struct {
 	Statuses *teamstatussvc.Service
 	Snaps    *progresssnapsvc.Service
 	Events   Publisher
-	HCCache  *hcsvc.Cache
+	Cache    *PeriodCache
 	Logger   *slog.Logger
 }
 
@@ -50,13 +49,13 @@ type UseCase struct {
 	statuses *teamstatussvc.Service
 	snaps    *progresssnapsvc.Service
 	events   Publisher
-	hcCache  *hcsvc.Cache
+	cache    *PeriodCache
 	logger   *slog.Logger
 }
 
 func New(deps Deps) *UseCase {
 	return &UseCase{periods: deps.Periods, teams: deps.Teams, goals: deps.Goals,
-		statuses: deps.Statuses, snaps: deps.Snaps, events: deps.Events, hcCache: deps.HCCache, logger: deps.Logger}
+		statuses: deps.Statuses, snaps: deps.Snaps, events: deps.Events, cache: deps.Cache, logger: deps.Logger}
 }
 
 // PeriodTeamSummary is one team's row in the period overview (drill-down source).
@@ -205,7 +204,7 @@ func bucketStatusWithGoals(s domain.TeamPeriodStatus) string {
 // counts and average progress, plus a per-team composition list. Pure — no I/O.
 // When teamFilter is non-nil, only teams whose ID is in the set are counted
 // (my-teams scope); nil counts every team (whole-organization scope).
-func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilter map[int64]bool) PeriodOverview {
+func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map[int64]bool) PeriodOverview {
 	teamsByID := make(map[int64]domain.Team, len(data.Teams))
 	for _, t := range data.Teams {
 		if t.DeletedAt != nil {
@@ -277,7 +276,7 @@ func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilt
 		row := PeriodTeamSummary{
 			TeamID:     id,
 			TeamName:   team.Name,
-			TeamPath:   hcsvc.BuildTeamPath(id, teamsByID),
+			TeamPath:   buildTeamPath(id, teamsByID),
 			Status:     bucket,
 			GoalsCount: len(goals),
 		}
@@ -291,7 +290,7 @@ func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilt
 				weightSum += goals[i].Weight
 			}
 			row.WeightSum = weightSum
-			row.WeightError = hcsvc.Abs(weightSum-100) > weightTolerance
+			row.WeightError = abs(weightSum-100) > weightTolerance
 			if row.WeightError {
 				weightErrors++
 			}
@@ -374,10 +373,10 @@ func computePeriodOverview(data *hcsvc.PeriodData, weightTolerance int, teamFilt
 
 // PeriodOverview returns the full overview (summary + team composition) for one period.
 func (s *UseCase) PeriodOverview(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int) (PeriodOverview, error) {
-	if s.hcCache == nil {
+	if s.cache == nil {
 		return PeriodOverview{PeriodID: periodID}, nil
 	}
-	data, err := s.hcCache.Get(ctx, scope, periodID)
+	data, err := s.cache.Get(ctx, scope, periodID)
 	if err != nil {
 		return PeriodOverview{}, err
 	}
@@ -387,10 +386,10 @@ func (s *UseCase) PeriodOverview(ctx context.Context, scope domain.TenantScope, 
 // PeriodOverviewScoped is PeriodOverview restricted to teamFilter (nil = whole org),
 // enriched with the per-scope progress-over-time series.
 func (s *UseCase) PeriodOverviewScoped(ctx context.Context, scope domain.TenantScope, periodID int64, weightTolerance int, teamFilter map[int64]bool) (PeriodOverview, error) {
-	if s.hcCache == nil {
+	if s.cache == nil {
 		return PeriodOverview{PeriodID: periodID}, nil
 	}
-	data, err := s.hcCache.Get(ctx, scope, periodID)
+	data, err := s.cache.Get(ctx, scope, periodID)
 	if err != nil {
 		return PeriodOverview{}, err
 	}
@@ -420,7 +419,7 @@ func keysOf(m map[int64]bool) []int64 {
 
 // PeriodStats returns lightweight per-period metrics for every period (no team lists).
 func (s *UseCase) PeriodStats(ctx context.Context, scope domain.TenantScope, weightTolerance int) ([]PeriodStatsItem, error) {
-	if s.hcCache == nil {
+	if s.cache == nil {
 		return []PeriodStatsItem{}, nil
 	}
 	periods, err := s.periods.List(ctx, scope)
@@ -429,7 +428,7 @@ func (s *UseCase) PeriodStats(ctx context.Context, scope domain.TenantScope, wei
 	}
 	items := make([]PeriodStatsItem, 0, len(periods))
 	for _, p := range periods {
-		data, err := s.hcCache.Get(ctx, scope, p.ID)
+		data, err := s.cache.Get(ctx, scope, p.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -443,4 +442,31 @@ func (s *UseCase) PeriodStats(ctx context.Context, scope domain.TenantScope, wei
 		})
 	}
 	return items, nil
+}
+
+// buildTeamPath returns the team names from the root down to teamID. A cycle in the
+// parent chain stops the walk instead of looping forever.
+func buildTeamPath(teamID int64, teamsByID map[int64]domain.Team) []string {
+	var path []string
+	visited := make(map[int64]struct{})
+	cur, ok := teamsByID[teamID]
+	for ok {
+		if _, seen := visited[cur.ID]; seen {
+			break
+		}
+		visited[cur.ID] = struct{}{}
+		path = append([]string{cur.Name}, path...)
+		if cur.ParentID == nil {
+			break
+		}
+		cur, ok = teamsByID[*cur.ParentID]
+	}
+	return path
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }

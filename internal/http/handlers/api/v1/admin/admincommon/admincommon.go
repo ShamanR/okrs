@@ -20,28 +20,24 @@ import (
 	"okrs/internal/http/handlers/web/common"
 	"okrs/internal/http/httperr"
 	"okrs/internal/platform/logging"
-	hcsvc "okrs/internal/service/healthcheckin"
+	settingssvc "okrs/internal/service/settings"
 	"okrs/internal/store/grants"
 	"okrs/internal/store/users"
 
 	"github.com/go-chi/chi/v5"
 )
 
-// SettingsReader is the settings port the health-checkin config loader needs;
+// SettingsReader is the settings port the admin settings readers need;
 // *settings.Service satisfies it.
-type SettingsReader = hcsvc.SettingsReader
+type SettingsReader = settingssvc.Reader
 
-// WeightTolerance loads the tenant's health-checkin weight tolerance (defaults to 0).
+// WeightTolerance loads the tenant's goal weight-sum tolerance (defaults to 0).
 // Shared by every admin endpoint that renders period aggregates.
 func WeightTolerance(r *http.Request, settings SettingsReader, scope domain.TenantScope) int {
 	if settings == nil {
 		return 0
 	}
-	cfg, err := hcsvc.LoadConfig(r.Context(), scope, settings)
-	if err != nil {
-		return 0
-	}
-	return cfg.WeightTolerance
+	return settingssvc.LoadProgressThresholds(r.Context(), scope, settings).WeightTolerance
 }
 
 // TeamRow is the admin-panel shape of a team.

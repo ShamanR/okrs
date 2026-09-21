@@ -27,7 +27,7 @@ there is no build step, no Node runtime and no separate API service to operate.
 - **[Activity log](#activity-log)** — append-only history of who changed what and when, filterable by category, author and time.
 - **[Notifications](#notifications)** — in-app bell plus per-type delivery scope; Mattermost is included as an external channel.
 - **[Markdown export](#markdown-export)** — one goal, a team, or a whole subtree; short or detailed; with or without comments.
-- **[Administration](#administration)** — hierarchy, periods, users, invitations, access grants, and health check-in thresholds.
+- **[Administration](#administration)** — hierarchy, periods, users, invitations, access grants, and progress thresholds.
 - **[OAuth2 / OIDC sign-in](#authentication-and-access)** — Google, GitHub and Keycloak in the box. Providers come from a registry, so teaching it another one is a small package rather than a fork.
 - **[Access control](#authentication-and-access)** — run it wide open, or require sign-in and grant visibility per hierarchy node.
 - **[Spaces](#spaces-and-the-system-panel)** — several isolated spaces in one instance, administered from a system-level panel.
@@ -247,14 +247,15 @@ Everything rolls up by weight, with one rule used everywhere:
 
 Alongside the bar sits the **expected pace** — where you would be today if the period filled evenly
 — and progress is labelled against it: *ahead*, *on track* (within the tolerance), *below*, or
-*stale* when nobody has updated it for a while. The thresholds, including a "count as on track
-above N%" override, live in the admin panel under Health Check-in.
+*stale* when nobody has updated it for a while. The thresholds are set per space in the admin
+panel under **Настройки → Пороги прогресса**:
 
-![Health check-in settings](docs/screenshots/admin-health-checkin.png)
-
-These same thresholds decide which problems — goals without updates, teams with no goals, teams
-waiting to be moved into work, weight sums that do not reach 100, goals behind pace — get counted
-as things needing attention.
+| Threshold | Default | What it drives |
+|---|---|---|
+| Days without updates | 7 | the "N days without updates" warning on a goal card while its team is *in progress* |
+| Allowed lag behind pace | 10 p.p. | the team's progress turns red in the navigation tree once it trails the expected pace by more |
+| "On track" threshold | 80% | a goal or team at or above it counts as on track regardless of pace |
+| Weight tolerance | 0 | how far a team's goal weights may stray from 100 before the period overview flags a weight error |
 
 ### Shared goals
 
@@ -369,8 +370,8 @@ reach. Invitation links are generated here, single-use or reusable, with an opti
 ![Users administration](docs/screenshots/admin-users.png)
 
 **Настройки** — the space name, a documentation URL that adds a *Документация* item to the user
-menu, and the message shown to someone with no team access. **Health Check-in** holds the
-thresholds described above, and **Уведомления** lists the external channels the space has been
+menu, the message shown to someone with no team access, and the progress thresholds described
+above. **Уведомления** lists the external channels the space has been
 granted.
 
 ### Authentication and access
