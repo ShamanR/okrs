@@ -18,8 +18,9 @@ import (
 
 	"okrs/internal/core/domain"
 	"okrs/internal/platform/logging"
-	hcsvc "okrs/internal/service/healthcheckin"
 	progresssnapsvc "okrs/internal/service/progresssnap"
+	settingssvc "okrs/internal/service/settings"
+	perioduc "okrs/internal/usecase/period"
 )
 
 // progressSnapshotLockKey is a fixed advisory-lock key so that, across K8s replicas,
@@ -37,10 +38,10 @@ const notificationRetentionLockKey = 918273646
 // progress_snapshot_interval_days setting; this is just the polling granularity.
 const snapshotCheckInterval = time.Hour
 
-// hcRefreshInterval is how often the health check-in cache is proactively refreshed for
+// periodCacheRefreshInterval is how often the period cache is proactively refreshed for
 // every tenant's currently-active period, so the first request after a TTL expiry does
 // not pay the cold-load cost.
-const hcRefreshInterval = 5 * time.Minute
+const periodCacheRefreshInterval = 5 * time.Minute
 
 // notificationRetentionInterval is how often the notification purge pass runs. Daily
 // is plenty for a retention window measured in months.
@@ -72,7 +73,7 @@ type PeriodFinder interface {
 // SnapshotRunner records one pass of per-team progress points. Narrow port for the
 // same reason. *period.UseCase satisfies it.
 type SnapshotRunner interface {
-	SnapshotActivePeriods(ctx context.Context, day time.Time, actives []hcsvc.Active) error
+	SnapshotActivePeriods(ctx context.Context, day time.Time, actives []perioduc.ActivePeriod) error
 }
 
 // NotificationPurger removes notifications past retention. Narrow port so the
@@ -84,13 +85,13 @@ type NotificationPurger interface {
 
 type Deps struct {
 	DB            *pgxpool.Pool
-	HCCache       *hcsvc.Cache
+	PeriodCache   *perioduc.PeriodCache
 	Snapshot      SnapshotRunner
 	Periods       PeriodFinder
 	Active        ActivePeriodLister
 	Snaps         *progresssnapsvc.Service
 	Tenants       TenantLister
-	Settings      hcsvc.SettingsReader
+	Settings      settingssvc.Reader
 	Notifications NotificationPurger
 	Zone          *time.Location
 	Logger        *slog.Logger
@@ -111,7 +112,7 @@ func New(deps Deps) *Scheduler {
 
 // Start launches the background loops. They stop when ctx is cancelled.
 func (s *Scheduler) Start(ctx context.Context) {
-	s.deps.HCCache.StartRefreshLoop(ctx, hcRefreshInterval, s.activePeriods)
+	s.deps.PeriodCache.StartRefreshLoop(ctx, periodCacheRefreshInterval, s.activePeriods)
 	s.startProgressSnapshotLoop(ctx, snapshotCheckInterval)
 	s.startNotificationRetentionLoop(ctx, notificationRetentionInterval)
 }
@@ -202,20 +203,20 @@ func taskAttrs(name string, extra ...any) []any {
 
 // activePeriods enumerates each tenant's currently-active (date-based) period,
 // so closed/archived periods are naturally excluded.
-func (s *Scheduler) activePeriods(ctx context.Context) []hcsvc.Active {
+func (s *Scheduler) activePeriods(ctx context.Context) []perioduc.ActivePeriod {
 	now := time.Now().In(s.deps.Zone)
 	tenants, err := s.deps.Tenants.List(ctx)
 	if err != nil {
 		return nil
 	}
-	var active []hcsvc.Active
+	var active []perioduc.ActivePeriod
 	for _, tn := range tenants {
 		scope := domain.TenantScope{TenantID: tn.ID}
 		p, err := s.deps.Periods.FindForDate(ctx, scope, now)
 		if err != nil {
 			continue
 		}
-		active = append(active, hcsvc.Active{Scope: scope, PeriodID: p.ID})
+		active = append(active, perioduc.ActivePeriod{Scope: scope, PeriodID: p.ID})
 	}
 	return active
 }
@@ -230,19 +231,19 @@ func (s *Scheduler) activePeriods(ctx context.Context) []hcsvc.Active {
 // Частичный результат возвращается вместе с ошибкой: снять снимки с тех
 // организаций, где обнаружение удалось, полезнее, чем отказаться от всего
 // прохода целиком — но исход задачи всё равно отразит отказ.
-func (s *Scheduler) snapshotDuePeriods(ctx context.Context) ([]hcsvc.Active, error) {
+func (s *Scheduler) snapshotDuePeriods(ctx context.Context) ([]perioduc.ActivePeriod, error) {
 	now := time.Now().In(s.deps.Zone)
 	tenants, err := s.deps.Tenants.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("список организаций: %w", err)
 	}
 	var (
-		due  []hcsvc.Active
+		due  []perioduc.ActivePeriod
 		errs []error
 	)
 	for _, tn := range tenants {
 		scope := domain.TenantScope{TenantID: tn.ID}
-		intervalDays := hcsvc.LoadProgressSnapshotIntervalDays(ctx, scope, s.deps.Settings)
+		intervalDays := settingssvc.LoadProgressSnapshotIntervalDays(ctx, scope, s.deps.Settings)
 		periods, err := s.deps.Active.ListActivePeriodsForDate(ctx, scope, now)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("активные периоды организации %d: %w", tn.ID, err))
@@ -261,7 +262,7 @@ func (s *Scheduler) snapshotDuePeriods(ctx context.Context) ([]hcsvc.Active, err
 				latest, has = a, true
 			}
 			if !has || daysBetween(latest, now) >= intervalDays {
-				due = append(due, hcsvc.Active{Scope: scope, PeriodID: p.ID})
+				due = append(due, perioduc.ActivePeriod{Scope: scope, PeriodID: p.ID})
 				s.lastAttempt[key] = now
 			}
 		}

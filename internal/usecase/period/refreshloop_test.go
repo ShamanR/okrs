@@ -1,4 +1,4 @@
-package healthcheckin
+package period
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ func TestRefreshLoopSurvivesAPanickingTick(t *testing.T) {
 	var mu sync.Mutex
 	ticks := 0
 
-	c := NewCache(
+	c := NewPeriodCache(
 		func(context.Context, domain.TenantScope, int64) (*PeriodData, error) {
 			return &PeriodData{}, nil
 		},
@@ -35,7 +35,7 @@ func TestRefreshLoopSurvivesAPanickingTick(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	c.StartRefreshLoop(ctx, time.Millisecond, func(context.Context) []Active {
+	c.StartRefreshLoop(ctx, time.Millisecond, func(context.Context) []ActivePeriod {
 		mu.Lock()
 		defer mu.Unlock()
 		ticks++
@@ -67,7 +67,7 @@ func TestRefreshLoopSurvivesAPanickingTick(t *testing.T) {
 	if rec["level"] != "ERROR" {
 		t.Errorf("уровень = %v, ожидался ERROR", rec["level"])
 	}
-	if rec["task"] != "healthcheckin_cache_refresh" {
+	if rec["task"] != "period_cache_refresh" {
 		t.Errorf("task = %v", rec["task"])
 	}
 	if cause, _ := rec["panic"].(string); !strings.Contains(cause, "обход периодов сорвался") {

@@ -17,7 +17,6 @@ GET /
 GET /activity-log
 GET /admin
 GET /admin/access
-GET /admin/health-checkin
 GET /admin/periods
 GET /admin/periods/{periodID}/edit
 GET /admin/teams
@@ -35,8 +34,8 @@ GET /api/v1/admin/periods/{periodID}/overview
 GET /api/v1/admin/settings/access
 GET /api/v1/admin/settings/feedback
 GET /api/v1/admin/settings/general
-GET /api/v1/admin/settings/health-checkin
 GET /api/v1/admin/settings/notifications
+GET /api/v1/admin/settings/progress-thresholds
 GET /api/v1/admin/teams
 GET /api/v1/admin/users
 GET /api/v1/admin/users/{userID}
@@ -45,7 +44,6 @@ GET /api/v1/config
 GET /api/v1/goal-tree
 GET /api/v1/goals/linkable
 GET /api/v1/goals/{goalID}
-GET /api/v1/health-checkin
 GET /api/v1/hierarchy
 GET /api/v1/me
 GET /api/v1/notifications
@@ -99,8 +97,8 @@ POST /api/v1/admin/periods/{periodID}/unarchive
 POST /api/v1/admin/settings/access
 POST /api/v1/admin/settings/feedback
 POST /api/v1/admin/settings/general
-POST /api/v1/admin/settings/health-checkin
 POST /api/v1/admin/settings/notifications/{channel}/test
+POST /api/v1/admin/settings/progress-thresholds
 POST /api/v1/admin/teams
 POST /api/v1/admin/teams/{teamID}/restore
 POST /api/v1/admin/users/{userID}/admin

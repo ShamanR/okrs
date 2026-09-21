@@ -6,7 +6,6 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
-	hcsvc "okrs/internal/service/healthcheckin"
 	"okrs/internal/service/notificationchannel"
 	onboardingsvc "okrs/internal/service/onboarding"
 	provisioningsvc "okrs/internal/service/provisioning"
@@ -36,9 +35,9 @@ import (
 	adminaccess "okrs/internal/http/handlers/api/v1/admin/settings/access"
 	adminfeedback "okrs/internal/http/handlers/api/v1/admin/settings/feedback"
 	admingeneral "okrs/internal/http/handlers/api/v1/admin/settings/general"
-	adminhc "okrs/internal/http/handlers/api/v1/admin/settings/healthcheckin"
 	adminnotif "okrs/internal/http/handlers/api/v1/admin/settings/notifications"
 	adminnotiftest "okrs/internal/http/handlers/api/v1/admin/settings/notifications/test"
+	adminthresholds "okrs/internal/http/handlers/api/v1/admin/settings/progressthresholds"
 	adminteams "okrs/internal/http/handlers/api/v1/admin/teams"
 	adminhard "okrs/internal/http/handlers/api/v1/admin/teams/hard"
 	adminrestore "okrs/internal/http/handlers/api/v1/admin/teams/restore"
@@ -61,7 +60,6 @@ import (
 	goalstransfer "okrs/internal/http/handlers/api/v1/goals/transfer"
 	goalsweight "okrs/internal/http/handlers/api/v1/goals/weight"
 	apigoaltree "okrs/internal/http/handlers/api/v1/goaltree"
-	apihealthcheckin "okrs/internal/http/handlers/api/v1/healthcheckin"
 	apihierarchy "okrs/internal/http/handlers/api/v1/hierarchy"
 	apikrs "okrs/internal/http/handlers/api/v1/krs"
 	krsdescription "okrs/internal/http/handlers/api/v1/krs/description"
@@ -134,7 +132,7 @@ import (
 	"okrs/internal/store/settings"
 	"okrs/internal/store/tenants"
 	"okrs/internal/store/tenantsettings"
-	hcuc "okrs/internal/usecase/healthcheckin"
+	perioduc "okrs/internal/usecase/period"
 	"okrs/notifychannel"
 	"okrs/web"
 
@@ -154,7 +152,7 @@ type Server struct {
 	auth             *auth.Manager
 	policy           *auth.PolicyEvaluator
 	grantsCache      *grants.GrantsCache
-	hcCache          *hcsvc.Cache
+	periodCache      *perioduc.PeriodCache
 	tenantResolver   *auth.TenantResolver
 	tenantCache      *tenants.TenantCache
 	membershipCache  *memberships.MembershipCache
@@ -253,7 +251,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	}
 	// Загрузчик снимка периода — бизнес-логика над четырьмя сервисами сущностей,
 	// поэтому живёт в слое usecase, а не здесь (спека 010, правило 1).
-	hcLoader := hcuc.NewPeriodLoader(hcuc.Deps{
+	periodLoader := perioduc.NewPeriodLoader(perioduc.LoaderDeps{
 		Periods:  periodsvc.New(st.Periods),
 		Teams:    teamsvc.New(st.Teams),
 		Goals:    goalsvc.New(st.Goals),
@@ -261,7 +259,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 	})
 
 	cacheTTL := 5 * time.Minute
-	hcCache := hcsvc.NewCache(hcLoader, cacheTTL, logger)
+	periodCache := perioduc.NewPeriodCache(periodLoader, cacheTTL, logger)
 
 	// Cache tenant + membership lookups on the per-request resolve hot path. These MUST be the
 	// same instances the resolver reads, or membership/tenant writes (provisioning, onboarding)
@@ -329,14 +327,14 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 
 	return &Server{
 		store:            st,
-		deps:             httpdeps.Build(st, grantsCache, hcCache, bus, logger, notifChannels, authMgr.Config().BaseURL),
+		deps:             httpdeps.Build(st, grantsCache, periodCache, bus, logger, notifChannels, authMgr.Config().BaseURL),
 		logger:           logger,
 		tmpl:             tmpl,
 		zone:             zone,
 		auth:             authMgr,
 		policy:           auth.NewPolicyEvaluator(grantsCache, logger),
 		grantsCache:      grantsCache,
-		hcCache:          hcCache,
+		periodCache:      periodCache,
 		tenantResolver:   resolver,
 		tenantCache:      tenantCache,
 		membershipCache:  membershipCache,
@@ -537,6 +535,7 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		adminaccess.RegisterRoutes(r, adminaccess.New(s.settingsSvc))
 		admingeneral.RegisterRoutes(r, admingeneral.New(s.provisioning, s.settingsSvc))
 		adminfeedback.RegisterRoutes(r, adminfeedback.New(s.settingsSvc))
+		adminthresholds.RegisterRoutes(r, adminthresholds.New(s.settingsSvc))
 		adminpurge.RegisterRoutes(r, adminpurge.New(d.Activity))
 		adminperiods.RegisterRoutes(r, adminperiods.New(d.Periods))
 		adminpstats.RegisterRoutes(r, adminpstats.New(d.PeriodUC, s.settingsSvc))
@@ -548,9 +547,6 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		adminteams.RegisterRoutes(r, adminteams.New(d.Teams, d.Users))
 		adminrestore.RegisterRoutes(r, adminrestore.New(d.Teams))
 		adminhard.RegisterRoutes(r, adminhard.New(d.Teams))
-
-		// Admin health check-in settings API.
-		adminhc.RegisterRoutes(r, adminhc.New(s.settingsSvc, s.hcCache))
 
 		// Admin notification-channel settings + connectivity probe.
 		adminnotif.RegisterRoutes(r, adminnotif.New(s.notifChannels))
@@ -661,7 +657,6 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 
 	apiconfig.RegisterRoutes(r, apiconfig.New(s.settingsSvc))
 	apiusers.RegisterRoutes(r, apiusers.New(d.UserUC, d.Users))
-	apihealthcheckin.RegisterRoutes(r, apihealthcheckin.New(d.HC, s.settingsSvc))
 
 	// Scope-aware period overview + bulk period control available to any authenticated
 	// member (my_teams — teams they lead); org scope is admin-gated inside the handler.
@@ -674,14 +669,14 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	})
 }
 
-// StartBackground launches the periodic passes (health check-in cache refresh,
+// StartBackground launches the periodic passes (period cache refresh,
 // progress snapshots). Deliberately separate from Routes(): building the router must
 // stay a pure assembly step, so a test can construct it without spawning goroutines.
 // Called by app.New once the server is assembled.
 func (s *Server) StartBackground(ctx context.Context) {
 	scheduler.New(scheduler.Deps{
 		DB:            s.store.DB,
-		HCCache:       s.hcCache,
+		PeriodCache:   s.periodCache,
 		Snapshot:      s.deps.PeriodUC,
 		Periods:       s.deps.Periods,
 		Active:        s.store.Periods,

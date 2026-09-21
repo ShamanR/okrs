@@ -365,7 +365,7 @@ function healthOf(p, stale, forecast, greenThreshold = 80) {
 
 // sidebarProgressColor colors the team progress percent in the sidebar: green when the team
 // has reached the green threshold or is keeping pace, red when it lags behind the period pace.
-// The lag tolerance mirrors the Health Check-in "Отстающие" category (behind_margin): red when
+// The lag tolerance is the tenant's behind_margin progress threshold: red when
 // progress < forecast - behindMargin.
 function sidebarProgressColor(prog, forecast, status, behindMargin = 10, greenThreshold = 80) {
   if (prog == null) return HEALTH_COLOR.no_goals;
@@ -1638,7 +1638,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   // "N дней без обновления" is an execution-phase signal: it applies only while
   // the team is in_progress ("в работе"). Drafts, goals awaiting validation and
   // closed periods are not being actively executed, so it is not meaningful for
-  // them. Kept in sync with the Health Check-in "stale" category.
+  // them. The threshold is the tenant's stale_days progress threshold.
   const staleTracked = periodStatus === 'in_progress';
   const isStale = staleTracked && goal.updatedDaysAgo > staleDays;
   const forecast = goal.progressMeta?.forecast ?? null;

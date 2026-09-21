@@ -1,4 +1,4 @@
-package healthcheckin
+package period
 
 import (
 	"context"
@@ -8,15 +8,15 @@ import (
 	"okrs/internal/core/domain"
 )
 
-type hcKeyProbe struct{ tenantID, periodID int64 }
+type cacheKeyProbe struct{ tenantID, periodID int64 }
 
-func TestHealthCheckInCacheKeysByTenant(t *testing.T) {
-	var calls []hcKeyProbe
+func TestPeriodCacheKeysByTenant(t *testing.T) {
+	var calls []cacheKeyProbe
 	loader := func(_ context.Context, scope domain.TenantScope, periodID int64) (*PeriodData, error) {
-		calls = append(calls, hcKeyProbe{scope.TenantID, periodID})
+		calls = append(calls, cacheKeyProbe{scope.TenantID, periodID})
 		return &PeriodData{PeriodID: periodID, CachedAt: time.Now()}, nil
 	}
-	c := NewCache(loader, time.Minute, nil)
+	c := NewPeriodCache(loader, time.Minute, nil)
 	ctx := context.Background()
 
 	// Same periodID, different tenants → two distinct loads (no cross-tenant cache hit).

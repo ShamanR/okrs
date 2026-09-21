@@ -11,7 +11,6 @@ import (
 	goalsvc "okrs/internal/service/goal"
 	goallinksvc "okrs/internal/service/goallink"
 	goalsharesvc "okrs/internal/service/goalshare"
-	hcsvc "okrs/internal/service/healthcheckin"
 	keyresultsvc "okrs/internal/service/keyresult"
 	notificationsvc "okrs/internal/service/notification"
 	notificationchannelsvc "okrs/internal/service/notificationchannel"
@@ -50,7 +49,6 @@ type Deps struct {
 	Users    *usersvc.Service
 	Activity *activitysvc.Service
 	Snaps    *progresssnapsvc.Service
-	HC       *hcsvc.Service
 	// Notifications is the read/write port for the bell feed (list, unread count, mark
 	// read). Build also registers the fan-out subscriber (notificationuc.UseCase) on
 	// the bus, which writes through this same service.
@@ -83,8 +81,7 @@ type Deps struct {
 // notification's link openable from a messenger; it runs on a background
 // goroutine, so it cannot reconstruct the address from a request the way invite
 // links do.
-func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cache, bus *eventbus.Bus, logger *slog.Logger, channels *notificationchannelsvc.Service, baseURL string) Deps {
-	hc := hcsvc.New(hcCache)
+func Build(st *store.Store, grantsCache *grants.GrantsCache, periodCache *perioduc.PeriodCache, bus *eventbus.Bus, logger *slog.Logger, channels *notificationchannelsvc.Service, baseURL string) Deps {
 	teams := teamsvc.New(st.Teams)
 	goals := goalsvc.New(st.Goals)
 	shares := goalsharesvc.New(st.Shares)
@@ -131,7 +128,7 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 
 	return Deps{
 		Teams: teams, Goals: goals, Shares: shares, Links: links, Statuses: statuses,
-		Periods: periods, Krs: krs, Users: users, Activity: activity, Snaps: snaps, HC: hc,
+		Periods: periods, Krs: krs, Users: users, Activity: activity, Snaps: snaps,
 		Notifications: notifications, NotificationPrefs: notificationPrefs,
 
 		Board: board,
@@ -139,7 +136,7 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, hcCache *hcsvc.Cach
 			Periods: periods, Teams: teams, Events: bus}),
 		KrUC: kruc.New(kruc.Deps{KRs: krs, Goals: goals, Events: bus}),
 		PeriodUC: perioduc.New(perioduc.Deps{Periods: periods, Teams: teams, Goals: goals, Statuses: statuses,
-			Snaps: snaps, Events: bus, HCCache: hcCache, Logger: logger}),
+			Snaps: snaps, Events: bus, Cache: periodCache, Logger: logger}),
 		TreeUC:   goaltreeuc.New(goaltreeuc.Deps{Teams: teams, Goals: goals, Links: links, Periods: periods}),
 		ExportUC: exportuc.New(exportuc.Deps{Board: board, Teams: teams, Goals: goals, KRs: krs, Periods: periods}),
 		UserUC:   useruc.New(useruc.Deps{Users: users, Teams: teams, Grants: grantsCache}),

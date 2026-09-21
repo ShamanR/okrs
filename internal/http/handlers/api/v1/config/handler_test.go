@@ -87,8 +87,7 @@ func TestHandleConfigStaleDaysDefault(t *testing.T) {
 }
 
 func TestHandleConfigStaleDaysFromSettings(t *testing.T) {
-	cfg, _ := json.Marshal(map[string]int{"stale_days": 14})
-	h := New(&fakeSettings{data: map[string]json.RawMessage{"health_checkin_config": cfg}})
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"progress_stale_days": json.RawMessage(`14`)}})
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
@@ -120,8 +119,7 @@ func TestHandleConfigBehindMarginDefault(t *testing.T) {
 }
 
 func TestHandleConfigBehindMarginFromSettings(t *testing.T) {
-	cfg, _ := json.Marshal(map[string]int{"behind_margin": 5})
-	h := New(&fakeSettings{data: map[string]json.RawMessage{"health_checkin_config": cfg}})
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"progress_behind_margin": json.RawMessage(`5`)}})
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
 	w := httptest.NewRecorder()
@@ -217,5 +215,41 @@ func TestHandleConfigFeedbackFromSettings(t *testing.T) {
 	}
 	if got.FeedbackFrequencyDays != 7 {
 		t.Errorf("feedback_frequency_days: want 7, got %d", got.FeedbackFrequencyDays)
+	}
+}
+
+func TestHandleConfigGreenThresholdFromSettings(t *testing.T) {
+	h := New(&fakeSettings{data: map[string]json.RawMessage{"progress_green_threshold": json.RawMessage(`70`)}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.Get(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.GreenThreshold != 70 {
+		t.Errorf("green_threshold: want 70, got %d", got.GreenThreshold)
+	}
+}
+
+// The legacy health_checkin_config key is no longer read: thresholds come only from
+// the progress_* keys (migration 047 moved the values over).
+func TestHandleConfigIgnoresLegacyHealthCheckinConfig(t *testing.T) {
+	h := New(&fakeSettings{data: map[string]json.RawMessage{
+		"health_checkin_config": json.RawMessage(`{"stale_days":14,"behind_margin":5,"green_threshold":60}`),
+	}})
+
+	r := httptest.NewRequest(http.MethodGet, "/api/v1/config", nil)
+	w := httptest.NewRecorder()
+	h.Get(w, r)
+
+	var got configResponse
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error: %v", err)
+	}
+	if got.StaleDays != 7 || got.BehindMargin != 10 || got.GreenThreshold != 80 {
+		t.Errorf("want defaults 7/10/80, got %d/%d/%d", got.StaleDays, got.BehindMargin, got.GreenThreshold)
 	}
 }

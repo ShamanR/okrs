@@ -56,7 +56,7 @@ type App struct {
 
 	bus *eventbus.Bus
 	// stopBackground cancels the context srv.StartBackground was launched with (the
-	// health check-in refresh, progress-snapshot and notification-retention loops in
+	// period cache refresh, progress-snapshot and notification-retention loops in
 	// internal/scheduler). Called from Close, before draining the bus, so those loops
 	// stop touching the pool during the same exit window the bus drain happens in —
 	// see the doc comment on Close below for why the order matters.
@@ -73,7 +73,7 @@ type App struct {
 const channelFlushTimeout = 10 * time.Second
 
 // Close releases every background resource New started, in the order the caller in
-// cmd/server relies on: stop the scheduler loops first (health check-in refresh,
+// cmd/server relies on: stop the scheduler loops first (period cache refresh,
 // progress snapshots, notification retention — internal/scheduler), so none of them
 // can start a new query against the pool during shutdown, THEN drain the event bus's
 // async subscriber goroutines (none in the OSS box today, but a SaaS build's notifier

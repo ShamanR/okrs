@@ -101,8 +101,8 @@ func (s *UseCase) BulkSetTeamPeriodStatus(ctx context.Context, scope domain.Tena
 	}
 	s.events.PublishBatch(ctx, evs)
 
-	if s.hcCache != nil {
-		s.hcCache.InvalidateAll()
+	if s.cache != nil {
+		s.cache.InvalidateAll()
 	}
 	return BulkStatusResult{Affected: len(affected), Skipped: skipped}, nil
 }

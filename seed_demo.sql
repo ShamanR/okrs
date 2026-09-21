@@ -18,7 +18,7 @@ VALUES (1, 'default', 'Default')
 ON CONFLICT (id) DO NOTHING;
 
 -- Per-tenant product settings (new_user_policy, documentation_url, feedback_*,
--- health_checkin_config, etc.) now live in tenant_settings (tenant_id, key, value_json)
+-- progress_* thresholds, etc.) now live in tenant_settings (tenant_id, key, value_json)
 -- since migration 033 — NOT in the global system_settings. The demo seed does not write
 -- product settings; any future seeded product key must target tenant_settings under
 -- tenant #1. system_settings is reserved for global keys (e.g. default_registration_tenant_id).
