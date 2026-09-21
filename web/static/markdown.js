@@ -63,9 +63,27 @@ function CollapsibleMarkdown({ text, className }) {
   // visible anyway to collapse back.
   React.useLayoutEffect(() => {
     const el = bodyRef.current;
-    if (!el || expanded) return undefined;
-    // 1px of slack absorbs sub-pixel rounding of the em-based height cap.
-    const measure = () => setOverflows(el.scrollHeight - el.clientHeight > 1);
+    if (!el) return undefined;
+    // Everything the sanitized markup can make focusable: links, and <pre> blocks,
+    // which the browser treats as focusable scrollers when their lines overflow.
+    const focusables = el.querySelectorAll('a[href], pre');
+    if (expanded) {
+      focusables.forEach(n => n.removeAttribute('tabindex'));
+      return undefined;
+    }
+    const measure = () => {
+      // 1px of slack absorbs sub-pixel rounding of the em-based height cap.
+      setOverflows(el.scrollHeight - el.clientHeight > 1);
+      // overflow:hidden clips only visually: a link below the cut is still a Tab
+      // stop, and focusing it scrolls this box, showing a shifted slice while the
+      // description still reads as collapsed. Keep the cut-off part out of the tab
+      // order; the toggle is the keyboard way in.
+      const cut = el.getBoundingClientRect().bottom + 1;
+      focusables.forEach(n => {
+        if (n.getBoundingClientRect().bottom > cut) n.setAttribute('tabindex', '-1');
+        else n.removeAttribute('tabindex');
+      });
+    };
     measure();
     if (typeof ResizeObserver === 'undefined') return undefined;
     // Re-measure on width changes (window resize, sidebar collapse) and once
