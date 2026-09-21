@@ -1100,7 +1100,7 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7, periodSt
           <div className="kr-info">
             <div className="kr-health-badge-row"><KRHealthBadge status={displayHealth} /></div>
             <div className="kr-name">{kr.name}</div>
-            {kr.desc && <Markdown text={kr.desc} className="kr-desc" />}
+            {kr.desc && <CollapsibleMarkdown text={kr.desc} className="kr-desc" />}
             <div className="kr-detail-row">
               <div className="kr-bar-wrap"><ProgressBar value={progress} h={4} color={accent} /></div>
               <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
@@ -1628,6 +1628,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   const [showCom, setShowCom] = useState(!!(isDeepTarget && deepLink.comment));
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
+  // A KR row is draggable as a whole, so a press on a nested control (the description's
+  // "Показать полностью") would otherwise start a reorder. A ref, not state: it is read
+  // synchronously in onDragStart, with no re-render in between to make it stale.
+  const krPressNoDrag = React.useRef(false);
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
@@ -1706,7 +1710,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
           </div>
           {canEdit && <button onClick={() => setConfirmDeleteGoal(true)} title="Удалить цель" className="goal-card__delete-btn">×</button>}
         </div>
-        {goal.desc && <Markdown text={goal.desc} className="goal-card__desc" />}
+        {goal.desc && <CollapsibleMarkdown text={goal.desc} className="goal-card__desc" />}
         {otherTeams.length > 0 && (
           <div className="shared-banner">
             <span className="shared-banner__label">⇄ Общая с:</span>
@@ -1777,7 +1781,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
             return (
               <div key={kr.id} id={`kr-${kr.id}`}
                 draggable={!!canReorderKR}
-                onDragStart={canReorderKR ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
+                onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag]')); } : undefined}
+                onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
                 onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
                 onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
                 onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
