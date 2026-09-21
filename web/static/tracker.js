@@ -1628,6 +1628,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   const [showCom, setShowCom] = useState(!!(isDeepTarget && deepLink.comment));
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
+  // A KR row is draggable as a whole, so a press on a nested control (the description's
+  // "Показать полностью") would otherwise start a reorder. A ref, not state: it is read
+  // synchronously in onDragStart, with no re-render in between to make it stale.
+  const krPressNoDrag = React.useRef(false);
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const prog = goal.progress || 0;
@@ -1777,7 +1781,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
             return (
               <div key={kr.id} id={`kr-${kr.id}`}
                 draggable={!!canReorderKR}
-                onDragStart={canReorderKR ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
+                onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag]')); } : undefined}
+                onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
                 onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
                 onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
                 onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}

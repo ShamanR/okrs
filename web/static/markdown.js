@@ -93,8 +93,11 @@ function CollapsibleMarkdown({ text, className }) {
       className: 'md-collapsible__toggle',
       'aria-expanded': expanded,
       // The host card reacts to clicks (open the editor) and to drags (reorder);
-      // neither must fire from this control.
+      // neither must fire from this control. A draggable ancestor cannot be stopped
+      // from here — dragstart is dispatched at the ancestor and never reaches this
+      // button — so the ancestor checks for [data-no-drag] on mousedown instead.
       draggable: false,
+      'data-no-drag': '',
       onDragStart: e => { e.preventDefault(); e.stopPropagation(); },
       onMouseDown: e => e.stopPropagation(),
       onClick: e => { e.stopPropagation(); setExpanded(v => !v); },
