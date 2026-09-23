@@ -346,7 +346,7 @@ func TestChannelConnectedLaterStillReachesAnExistingUser(t *testing.T) {
 	defer cleanup()
 
 	// Пользователь сохраняет настройки, когда внешних каналов ещё нет.
-	if err := h.prefs.SetAll(h.ctx, h.scope, h.leadID, []notificationprefs.Preference{
+	if err := h.prefs.SetAll(h.ctx, h.scope, h.leadID, false, []notificationprefs.Preference{
 		{Type: notificationprefs.TypeGoalComment, Enabled: true, Scope: notificationprefs.ScopeOwn,
 			ChannelOverrides: map[string]bool{notificationprefs.ChannelInApp: true}},
 	}); err != nil {

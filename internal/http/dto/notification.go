@@ -61,6 +61,9 @@ type NotificationPreference struct {
 	// Addressed marks a type that has no scope selector, so the UI renders a dash
 	// instead of a dropdown without hardcoding the type name.
 	Addressed bool `json:"addressed"`
+	// Category groups the row on the settings screen: "goals" or "system". Sent by
+	// the server for the same reason as Addressed. Ignored on PUT.
+	Category string `json:"category,omitempty"`
 }
 
 // NotificationChannelOption is one column of the settings matrix. Title comes

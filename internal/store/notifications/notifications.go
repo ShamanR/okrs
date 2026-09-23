@@ -197,7 +197,9 @@ func (r *Repository) List(ctx context.Context, scope domain.TenantScope, userID 
 
 	// The actor is joined here rather than looked up per row: one query, no N+1.
 	// A former member (no active membership, and not a system user) is returned as a
-	// neutral placeholder — the journal applies the same PII rule.
+	// neutral placeholder — the journal applies the same PII rule. Someone with a
+	// pending join request is named: the admin reading about that request has to
+	// know who is asking, and sees the same name in the request queue anyway.
 	q := `WITH RECURSIVE page AS (
 	        SELECT n.id, n.type, n.kind, n.actor_user_id, n.team_id, n.period_id, n.goal_id,
 	               n.kr_id, n.comment_id, n.entity_title, n.payload_json, n.coalesce_count,
@@ -210,7 +212,8 @@ func (r *Repository) List(ctx context.Context, scope domain.TenantScope, userID 
 	          FROM notifications n
 	          JOIN users u ON u.id = n.actor_user_id
 	          LEFT JOIN memberships m
-	                 ON m.user_id = u.id AND m.tenant_id = n.tenant_id AND m.status = 'active'` +
+	                 ON m.user_id = u.id AND m.tenant_id = n.tenant_id
+	                AND m.status IN ('active', 'requested')` +
 		inAppJoin + `
 	         WHERE n.tenant_id = ` + tenantArg + ` AND n.user_id = ` + userArg + inAppVisible
 	if f.UnreadOnly {

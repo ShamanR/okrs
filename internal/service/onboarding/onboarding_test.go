@@ -22,6 +22,11 @@ import (
 
 func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *onboarding.Service {
 	t.Helper()
+	return newOnboardingWithBus(t, pool, nil)
+}
+
+func newOnboardingWithBus(t *testing.T, pool *pgxpool.Pool, events onboarding.Publisher) *onboarding.Service {
+	t.Helper()
 	invRepo := invitations.NewInvitationRepository(pool)
 	memRepo := memberships.NewMembershipRepository(pool)
 	tnRepo := tenants.NewTenantRepository(pool)
@@ -32,7 +37,7 @@ func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *onboarding.Service 
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
-	return onboarding.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
+	return onboarding.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter, events)
 }
 
 func newSettingsForTest(t *testing.T, pool *pgxpool.Pool) *settingssvc.Service {

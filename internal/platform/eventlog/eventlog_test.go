@@ -61,6 +61,7 @@ func samples() []event.Event {
 		event.CommentDeleted{Meta: m, GoalID: 10, CommentID: 30, GoalTitle: text},
 		event.ReplyAdded{Meta: m, GoalID: 10, CommentID: 30, ParentCommentID: 29, GoalTitle: text, Text: text},
 		event.ReplyDeleted{Meta: m, GoalID: 10, CommentID: 30, GoalTitle: text},
+		event.AccessRequested{Meta: m, TenantTitle: text},
 	}
 }
 

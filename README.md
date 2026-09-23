@@ -328,7 +328,10 @@ updates.
 
 Under **Настройки → Уведомления** each person decides, per event type, whether to receive it and how
 far down the hierarchy to look — only my teams, one level below, or the whole subtree. "Someone
-resolved my remark" ignores scope and always arrives.
+resolved my remark" ignores scope and always arrives. Types are grouped into **Цели** and
+**Системные**. The system group is shown to space admins only: it holds "access request to the
+space", which notifies every admin when someone asks to join by slug, links straight to the request
+queue, and is off until the admin turns it on.
 
 ![Notification preferences](docs/screenshots/settings-notifications.png)
 

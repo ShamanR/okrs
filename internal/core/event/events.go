@@ -26,6 +26,7 @@ const (
 	KindCommentDeleted    Kind = "comment_deleted"
 	KindReplyAdded        Kind = "reply_added"
 	KindReplyDeleted      Kind = "reply_deleted"
+	KindAccessRequested   Kind = "access_requested"
 )
 
 // AllKinds lists every event Kind this package defines. Table-driven tests that claim
@@ -58,6 +59,7 @@ func AllKinds() []Kind {
 		KindCommentDeleted,
 		KindReplyAdded,
 		KindReplyDeleted,
+		KindAccessRequested,
 	}
 }
 
@@ -311,3 +313,19 @@ type ReplyDeleted struct {
 }
 
 func (ReplyDeleted) Kind() Kind { return KindReplyDeleted }
+
+// --- Membership ---
+
+// AccessRequested is a new self-service join request to a tenant: Meta.Scope is
+// the tenant asked for, Meta.ActorID the person asking. No team, no period — the
+// request is about the tenant itself. Published only for a request that was not
+// already pending, so a repeated submit notifies nobody.
+//
+// TenantTitle is carried so the notifier names the tenant without a lookup. It is
+// admin-entered text, hence untagged: it never reaches the log.
+type AccessRequested struct {
+	Meta
+	TenantTitle string
+}
+
+func (AccessRequested) Kind() Kind { return KindAccessRequested }

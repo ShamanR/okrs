@@ -142,6 +142,11 @@ func wording(in Input) (title, body string) {
 	// kr_note_updated equivalent to keep: mapping.go never produced that kind.
 	case legacyKindKRProgress:
 		return actor + " обновил прогресс", legacyProgressBody(in)
+
+	// A join request has no team or goal to give the card context, so the body
+	// names both the requester and the tenant.
+	case event.KindAccessRequested:
+		return "Заявка на доступ", actor + " просит доступ к пространству «" + in.EntityTitle + "»"
 	}
 	return FallbackTitle, in.EntityTitle
 }
@@ -274,6 +279,10 @@ func stringAt(payload map[string]any, side, field string) (string, bool) {
 // version of the bell used goal_id/team_id/period_id, which it reads nowhere, so
 // every click landed on the board with no navigation at all.
 type LinkInput struct {
+	// Kind picks the destination for notifications that are not about a goal:
+	// a join request opens the admin's request queue. Every other kind links to
+	// its goal, exactly as before.
+	Kind      event.Kind
 	GoalID    *int64
 	TeamID    *int64
 	PeriodID  *int64
@@ -288,9 +297,16 @@ type LinkInput struct {
 	GoalMissing bool
 }
 
+// AccessRequestsURL is the admin's queue of pending join requests. It must match
+// what web/static/admin.js reads: ?section=users with the "requests" filter.
+const AccessRequestsURL = "/admin?section=users&filter=requests"
+
 // TargetURL builds the link a notification navigates to. Empty when there is no
 // goal to open: the notification still renders, it just is not clickable.
 func TargetURL(in LinkInput) string {
+	if in.Kind == event.KindAccessRequested {
+		return AccessRequestsURL
+	}
 	if in.GoalID == nil || in.GoalMissing {
 		return ""
 	}

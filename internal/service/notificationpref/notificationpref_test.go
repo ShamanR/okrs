@@ -33,6 +33,10 @@ func (f *fakeRepo) ResolveAddressed(context.Context, domain.TenantScope, string,
 	return nil, nil
 }
 
+func (f *fakeRepo) ResolveTenantAdmins(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
+	return nil, nil
+}
+
 // fakeChannels — внешние каналы доставки пространства: имя -> включён ли по
 // умолчанию у сотрудников. Ровно то, что сервис настроек обязан знать, чтобы
 // отличить выбор пользователя от значения администратора.
@@ -116,7 +120,7 @@ func TestSetAllWritesNothingWhenALaterRowIsInvalid(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := notificationprefsvc.New(repo, fakeChannels{"mattermost": true})
 
-	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42,
+	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42, false,
 		[]notificationprefs.Preference{
 			{Type: notificationprefs.TypeGoalComment, Enabled: true, Scope: notificationprefs.ScopeOwn, ChannelOverrides: map[string]bool{"in_app": true}},
 			{Type: "made_up", Enabled: true, Scope: notificationprefs.ScopeOwn, ChannelOverrides: map[string]bool{"in_app": true}},
@@ -134,7 +138,7 @@ func TestSetAllWritesEveryRow(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := notificationprefsvc.New(repo, fakeChannels{"mattermost": true})
 
-	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42,
+	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42, false,
 		[]notificationprefs.Preference{
 			{Type: notificationprefs.TypeGoalComment, Enabled: true, ChannelOverrides: map[string]bool{"in_app": true}},
 			{Type: notificationprefs.TypeKRProgress, Enabled: false, ChannelOverrides: map[string]bool{"in_app": true}},
@@ -208,7 +212,7 @@ func TestEverySubmittedCellIsStoredAsAnExplicitChoice(t *testing.T) {
 	repo := &fakeRepo{}
 	svc := notificationprefsvc.New(repo, fakeChannels{"mattermost": true, "telegram": false})
 
-	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42,
+	err := svc.SetAll(context.Background(), domain.TenantScope{TenantID: 1}, 42, false,
 		[]notificationprefs.Preference{{
 			Type: notificationprefs.TypeGoalChanged, Enabled: true, Scope: "own",
 			ChannelOverrides: map[string]bool{

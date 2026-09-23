@@ -53,7 +53,7 @@ func buildRouterBase(t *testing.T, user *domain.User, baseURL string) (*chi.Mux,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
-	onboardSvc := onboardingsvc.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
+	onboardSvc := onboardingsvc.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter, nil)
 
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {

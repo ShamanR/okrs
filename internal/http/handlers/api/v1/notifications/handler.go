@@ -147,6 +147,7 @@ func targetURL(n storenotif.Notification) string {
 	// no soft-delete state to confuse this with). The format itself lives in
 	// render/notify, shared with delivery to external channels.
 	return notify.TargetURL(notify.LinkInput{
+		Kind:        event.Kind(n.Kind),
 		GoalID:      n.GoalID,
 		TeamID:      n.TeamID,
 		PeriodID:    n.PeriodID,

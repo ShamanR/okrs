@@ -211,9 +211,11 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Contact) notifychannel.Message {
 	// A former member is named by the neutral placeholder, never by their name.
 	// The bell applies the same rule through its own membership join; a message
-	// leaving the product must not be the one place it lapses.
+	// leaving the product must not be the one place it lapses. Someone with a
+	// pending join request is named, as in the bell: that request is what the
+	// message is about.
 	actor := removedActorName
-	if c, ok := contacts[it.ActorUserID]; ok && !c.Removed && c.DisplayName != "" {
+	if c, ok := contacts[it.ActorUserID]; ok && (!c.Removed || c.Requested) && c.DisplayName != "" {
 		actor = c.DisplayName
 	}
 	text := notify.Render(notify.Input{
@@ -233,6 +235,7 @@ func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Cont
 		Title: text.Title,
 		Body:  body,
 		URL: u.absoluteURL(notify.TargetURL(notify.LinkInput{
+			Kind:      event.Kind(it.Kind),
 			GoalID:    it.GoalID,
 			TeamID:    it.TeamID,
 			PeriodID:  it.PeriodID,

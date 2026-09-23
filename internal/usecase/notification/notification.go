@@ -32,6 +32,9 @@ type NotificationWriter interface {
 type PrefResolver interface {
 	Resolve(ctx context.Context, scope domain.TenantScope, notifType string, targets []notificationprefs.Target) ([]notificationprefs.Recipient, error)
 	ResolveAddressed(ctx context.Context, scope domain.TenantScope, notifType string, userIDs []int64) ([]notificationprefs.Recipient, error)
+	// ResolveTenantAdmins answers for types addressed to the tenant's admins: one
+	// actor per event, every admin but that actor per event.
+	ResolveTenantAdmins(ctx context.Context, scope domain.TenantScope, notifType string, actorIDs []int64) ([]notificationprefs.Recipient, error)
 	// DeliveryDefaults is what a recipient who never chose gets, per channel.
 	// Read once per group, not per recipient: a recipient's own answer travels in
 	// Recipient.ChannelOverrides, and only the tenant-wide default is missing.
@@ -132,14 +135,20 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 		}
 		a := anchorOf(ev)
 		m := ev.Context()
-		if notificationprefs.IsAddressed(typ) {
+		switch notificationprefs.AudienceOf(typ) {
+		case notificationprefs.AudienceAddressee:
 			// Nobody is notified about their own action.
 			if a.addressee == 0 || a.addressee == m.ActorID {
 				continue
 			}
-		} else if m.TeamID == nil {
-			// Without a team the event cannot be scoped to anyone.
-			continue
+		case notificationprefs.AudienceTenantAdmins:
+			// Needs neither team nor addressee: the tenant is the audience, and
+			// the resolver drops the actor per event.
+		default:
+			if m.TeamID == nil {
+				// Without a team the event cannot be scoped to anyone.
+				continue
+			}
 		}
 		k := groupKey{tenantID: m.Scope.TenantID, typ: typ}
 		groups[k] = append(groups[k], pending{ev: ev, anchor: a, typ: typ})
@@ -232,14 +241,22 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 }
 
 // resolve picks the addressing strategy for the group's type: addressed types carry
-// their recipient, scoped types walk the team tree.
+// their recipient, tenant-admin types go to the tenant's admins, scoped types walk
+// the team tree. Each strategy is one call per group, never one per event.
 func (u *UseCase) resolve(ctx context.Context, scope domain.TenantScope, typ string, items []pending) ([]notificationprefs.Recipient, error) {
-	if notificationprefs.IsAddressed(typ) {
+	switch notificationprefs.AudienceOf(typ) {
+	case notificationprefs.AudienceAddressee:
 		userIDs := make([]int64, len(items))
 		for i, p := range items {
 			userIDs[i] = p.anchor.addressee
 		}
 		return u.prefs.ResolveAddressed(ctx, scope, typ, userIDs)
+	case notificationprefs.AudienceTenantAdmins:
+		actorIDs := make([]int64, len(items))
+		for i, p := range items {
+			actorIDs[i] = p.ev.Context().ActorID
+		}
+		return u.prefs.ResolveTenantAdmins(ctx, scope, typ, actorIDs)
 	}
 	targets := make([]notificationprefs.Target, len(items))
 	for i, p := range items {
@@ -295,7 +312,11 @@ func (u *UseCase) deliveryFor(p pending, userID int64, channels []string) Delive
 // goal edited together with two of its KRs collapses into one "×3" notification.
 func coalesceKey(p pending, m event.Meta) string {
 	entity := "goal:0"
-	if p.typ == notificationprefs.TypeKRProgress && p.anchor.krID != nil {
+	if p.typ == notificationprefs.TypeAccessRequested {
+		// A join request is about the tenant; the actor part of the key keeps
+		// two people's requests apart.
+		entity = fmt.Sprintf("tenant:%d", m.Scope.TenantID)
+	} else if p.typ == notificationprefs.TypeKRProgress && p.anchor.krID != nil {
 		entity = fmt.Sprintf("kr:%d", *p.anchor.krID)
 	} else if p.anchor.goalID != nil {
 		entity = fmt.Sprintf("goal:%d", *p.anchor.goalID)

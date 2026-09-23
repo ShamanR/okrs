@@ -229,6 +229,11 @@ func toRows(ev event.Event) []domain.ActivityEvent {
 		r.Payload = map[string]any{"text": e.Text}
 		return []domain.ActivityEvent{r}
 
+	case event.AccessRequested:
+		// A join request is about the tenant, not about goals or teams: it has no
+		// place in the activity journal. It exists on the bus for notifications.
+		return nil
+
 	case event.ReplyDeleted:
 		r := base(e.Meta, domain.ActivityDiscussion, domain.ActionReplyDeleted, e.GoalTitle)
 		r.GoalID, r.CommentID = &e.GoalID, &e.CommentID

@@ -35,6 +35,8 @@ type fakeSvc struct {
 	// действующее состояние, поэтому без них ячейку нарисовать нельзя.
 	defaults    map[string]bool
 	defaultsErr error
+	// gotIsAdmin — роль, которую обработчик вывел из контекста запроса.
+	gotIsAdmin bool
 }
 
 func (f *fakeSvc) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
@@ -55,13 +57,15 @@ func (f fakeChannels) List(context.Context, domain.TenantScope) ([]notificationc
 	return f, nil
 }
 
-func (f *fakeSvc) GetAll(_ context.Context, _ domain.TenantScope, userID int64) ([]notificationprefs.Preference, error) {
+func (f *fakeSvc) GetAll(_ context.Context, _ domain.TenantScope, userID int64, isAdmin bool) ([]notificationprefs.Preference, error) {
 	f.gotUserID = userID
+	f.gotIsAdmin = isAdmin
 	return f.getAll, f.getErr
 }
 
-func (f *fakeSvc) SetAll(_ context.Context, _ domain.TenantScope, userID int64, ps []notificationprefs.Preference) error {
+func (f *fakeSvc) SetAll(_ context.Context, _ domain.TenantScope, userID int64, isAdmin bool, ps []notificationprefs.Preference) error {
 	f.gotUserID = userID
+	f.gotIsAdmin = isAdmin
 	f.gotCalled = append(f.gotCalled, ps...)
 	// При ошибке НИЧЕГО не записываем: настоящий сервис проверяет всю матрицу до
 	// первой записи, и фейк, копящий строки перед отказом, скрыл бы регресс этого
@@ -84,11 +88,11 @@ func fullMatrix() []notificationprefs.Preference {
 	}
 }
 
-// GET обязан вернуть все четыре типа, даже если пользователь ничего не настраивал:
-// иначе экран настроек у нового пользователя будет пустым. Значения enabled/scope
-// разные по строкам нарочно — иначе мутация, зануляющая проброс полей, осталась бы
-// незамеченной.
-func TestGetReturnsAllFourTypes(t *testing.T) {
+// GET участника обязан вернуть все четыре типа «Целей», даже если пользователь
+// ничего не настраивал: иначе экран настроек у нового пользователя будет
+// пустым. Значения enabled/scope разные по строкам нарочно — иначе мутация,
+// зануляющая проброс полей, осталась бы незамеченной.
+func TestGetForMemberReturnsTheFourGoalTypes(t *testing.T) {
 	svc := &fakeSvc{getAll: fullMatrix()}
 	h := preferences.New(svc, nil)
 
@@ -103,6 +107,7 @@ func TestGetReturnsAllFourTypes(t *testing.T) {
 			Scope     string          `json:"scope"`
 			Channels  map[string]bool `json:"channels"`
 			Addressed bool            `json:"addressed"`
+			Category  string          `json:"category"`
 		} `json:"items"`
 		Channels []struct {
 			Name      string `json:"name"`
@@ -126,9 +131,15 @@ func TestGetReturnsAllFourTypes(t *testing.T) {
 	if svc.gotUserID != 42 {
 		t.Errorf("userID passed to service = %d, want 42 (from the authenticated context)", svc.gotUserID)
 	}
+	if svc.gotIsAdmin {
+		t.Error("без роли администратора в контексте сервис не должен получать isAdmin")
+	}
 
 	var sawGoalChanged, sawAddressed bool
 	for _, it := range got.Items {
+		if it.Category != notificationprefs.CategoryGoals {
+			t.Errorf("%s: категория %q, want goals", it.Type, it.Category)
+		}
 		switch it.Type {
 		case notificationprefs.TypeMyCommentResolved:
 			sawAddressed = true

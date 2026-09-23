@@ -269,9 +269,21 @@ func TestToRowCoversEveryEventType(t *testing.T) {
 	// of this test did) would still report success after a 22nd event type was added
 	// to the event package without a table entry for it, because the count is derived
 	// from the same table it is meant to check.
+	// Events that deliberately produce no journal row. Listed rather than skipped,
+	// so a new Kind still has to be placed in one table or the other.
+	notJournaled := []event.Event{
+		event.AccessRequested{Meta: meta(1), TenantTitle: "Пространство"},
+	}
+
 	seen := map[event.Kind]bool{}
 	for _, tc := range cases {
 		seen[tc.ev.Kind()] = true
+	}
+	for _, ev := range notJournaled {
+		seen[ev.Kind()] = true
+		if rows := activitysvc.ToRowsForTest(ev); len(rows) != 0 {
+			t.Errorf("toRows(%T) вернул %d строк, want 0: событие не журналируется", ev, len(rows))
+		}
 	}
 	for _, k := range event.AllKinds() {
 		if !seen[k] {

@@ -45,6 +45,9 @@ func notifyType(ev event.Event) string {
 		// replaces KRProgressUpdated, which used to be the only KR event that
 		// notified at all — see the plan this bridges, kr-checkin-notifications).
 		return notificationprefs.TypeKRProgress
+
+	case event.AccessRequested:
+		return notificationprefs.TypeAccessRequested
 	}
 	// Deliberately silent: goal_shared, goal_unshared, goal_linked, goal_unlinked,
 	// status_changed, comment_reopened, comment_deleted and reply_deleted notify
@@ -99,6 +102,10 @@ func anchorOf(ev event.Event) anchor {
 		return anchor{goalID: id(e.GoalID), krID: id(e.KRID), title: e.KRTitle}
 	case event.KRCheckedIn:
 		return anchor{goalID: id(e.GoalID), krID: id(e.KRID), title: e.KRTitle}
+
+	case event.AccessRequested:
+		// No goal: the request is about the tenant, which the title names.
+		return anchor{title: e.TenantTitle}
 	}
 	return anchor{}
 }

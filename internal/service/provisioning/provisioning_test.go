@@ -42,7 +42,7 @@ func newOnboardingForTest(t *testing.T, pool *pgxpool.Pool) *onboarding.Service 
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	granter := grants.NewGrantsCache(grants.NewGrantRepository(pool))
-	return onboarding.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter)
+	return onboarding.New(invRepo, memRepo, memberships.NewMembershipCache(memRepo), tnRepo, settingsSvc, granter, nil)
 }
 
 func TestAttachMemberAppliesDefaultAccess(t *testing.T) {

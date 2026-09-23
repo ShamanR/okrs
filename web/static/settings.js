@@ -372,7 +372,20 @@ const NOTIF_TYPE_LABELS = {
   my_comment_resolved: { label: 'Решён мой комментарий', hint: 'Приходит всегда, независимо от охвата' },
   goal_changed: { label: 'Изменение в цели', hint: 'Правки цели и её ключевых результатов, создание и удаление' },
   kr_progress: { label: 'Обновление прогресса KR', hint: 'Изменился процент выполнения' },
+  access_requested: { label: 'Заявка на доступ к пространству', hint: 'Приходит администраторам пространства. По умолчанию выключено' },
 };
+
+// Категории матрицы в порядке показа. Категорию типа сообщает сервер (поле
+// category), клиент знает только их подписи. Категория без типов не выводится.
+const NOTIF_CATEGORIES = [
+  { id: 'goals', title: 'Цели' },
+  { id: 'system', title: 'Системные' },
+];
+
+// Тип без известной категории (ответ старого сервера) показывается в первой
+// категории, а не пропадает с экрана.
+const notifCategoryOf = it =>
+  (NOTIF_CATEGORIES.some(c => c.id === it.category) ? it.category : NOTIF_CATEGORIES[0].id);
 
 const NOTIF_SCOPES = [
   { value: 'own', label: 'Только мои команды' },
@@ -481,7 +494,14 @@ function NotificationsSettings() {
             </tr>
           </thead>
           <tbody>
-            {items.map(it => {
+            {NOTIF_CATEGORIES.flatMap(cat => {
+              const rows = items.filter(it => notifCategoryOf(it) === cat.id);
+              if (rows.length === 0) return [];
+              return [
+                <tr key={`group-${cat.id}`} className="notif-prefs__group">
+                  <th scope="colgroup" colSpan={3 + (showChannels ? channels.length : 0)}>{cat.title}</th>
+                </tr>,
+                ...rows.map(it => {
               const meta = NOTIF_TYPE_LABELS[it.type] || { label: it.type, hint: '' };
               return (
                 <tr key={it.type}>
@@ -535,6 +555,8 @@ function NotificationsSettings() {
                   ))}
                 </tr>
               );
+                }),
+              ];
             })}
           </tbody>
         </table>
@@ -670,7 +692,7 @@ function App() {
             : active === 'descriptions'
               ? (<><p className="set-intro">Вы можете редактировать описание команд, в которых являетесь лидом, а также всех вложенных в них команд.</p><DescriptionsSection me={me} hierarchy={hierarchy} /></>)
               : active === 'notifications'
-                ? (<><p className="set-intro">Уведомления приходят по целям команд, где вы руководитель. Охват задаёт, насколько глубоко вниз по структуре смотреть.</p><NotificationsSettings /></>)
+                ? (<><p className="set-intro">Уведомления приходят по целям команд, где вы руководитель. Охват задаёт, насколько глубоко вниз по структуре смотреть. Администраторам пространства доступны и системные уведомления — например, о заявках на доступ; они выключены, пока вы их не включите.</p><NotificationsSettings /></>)
                 : active === 'spaces'
                   ? (<><p className="set-intro">Пространства (тенанты), в которых вы состоите. Можно выйти из пространства, отменить заявку или отправить новую заявку на вступление по slug.</p><SpacesSection /></>)
                   : (<><p className="set-intro">Выберите узлы иерархии, которые будут видны в вашем сайдбаре. Можно отметить одну команду, целую ветвь или несколько команд из разных ветвей — родительские узлы показываются автоматически для навигации.</p><SidebarSection me={me} hierarchy={hierarchy} /></>)}

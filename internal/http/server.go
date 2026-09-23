@@ -278,8 +278,15 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		tenantsettings.NewTenantSettingsCache(st.TenantSettings), st.TenantSettings,
 		settings.NewSystemSettingsCache(st.Settings), st.Settings,
 	)
+	// A nil *eventbus.Bus must not become a non-nil interface: the service checks
+	// its publisher for nil before publishing.
+	var onboardingEvents onboardingsvc.Publisher
+	if bus != nil {
+		onboardingEvents = bus
+	}
 	onboardingSvc := onboardingsvc.New(
 		st.Invitations, st.Memberships, membershipCache, st.Tenants, settingsSvc, grantsCache,
+		onboardingEvents,
 	)
 	provisioning := provisioningsvc.New(
 		st.Tenants, tenantCache,

@@ -2510,6 +2510,79 @@ ORDER BY g.id
 LIMIT 2
 ON CONFLICT DO NOTHING;
 
+-- Системные уведомления по умолчанию выключены: администратор включает заявки на
+-- доступ сам. Демо-пользователь их включил, поэтому в колокольчике есть пример.
+INSERT INTO
+    notification_preferences (
+        tenant_id,
+        user_id,
+        type,
+        enabled,
+        scope,
+        channel_overrides
+    )
+SELECT 1, u.id, 'access_requested', TRUE, NULL, '{}'::jsonb
+FROM users u
+WHERE
+    u.provider_subject_key = 'system:anonymous-local'
+ON CONFLICT DO NOTHING;
+
+-- Заявитель — обычный пользователь с поданной, ещё не рассмотренной заявкой: пока
+-- заявка ждёт решения, уведомление называет его по имени, и он же виден в очереди
+-- «Заявки» админки.
+INSERT INTO
+    users (
+        provider_subject_key,
+        provider,
+        subject,
+        display_name,
+        email
+    )
+VALUES (
+        'demo:requester',
+        'github',
+        'demo-requester',
+        'Ольга Заявкина',
+        'olga.requester@example.com'
+    )
+ON CONFLICT (provider_subject_key) DO NOTHING;
+
+INSERT INTO
+    memberships (user_id, tenant_id, role, status)
+SELECT u.id, 1, 'user', 'requested'
+FROM users u
+WHERE
+    u.provider_subject_key = 'demo:requester'
+ON CONFLICT (user_id, tenant_id) DO NOTHING;
+
+INSERT INTO
+    notifications (
+        tenant_id,
+        user_id,
+        type,
+        kind,
+        actor_user_id,
+        entity_title,
+        payload_json,
+        coalesce_key,
+        coalesce_count
+    )
+SELECT
+    1,
+    1,
+    'access_requested',
+    'access_requested',
+    u.id,
+    t.name,
+    '{}'::jsonb,
+    'demo:access_requested:tenant:' || t.id,
+    1
+FROM tenants t
+    JOIN users u ON u.provider_subject_key = 'demo:requester'
+WHERE
+    t.id = 1
+ON CONFLICT DO NOTHING;
+
 -- ----------------------------------------------------------------
 -- Reset sequences
 -- ----------------------------------------------------------------

@@ -59,7 +59,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 	grantsCache := grants.NewGrantsCache(grants.NewGrantRepository(pool))
 	onboardingSvc := onboardingsvc.New(
 		invitations.NewInvitationRepository(pool), memRepo, memberships.NewMembershipCache(memRepo),
-		tnRepo, settingsSvc, grantsCache,
+		tnRepo, settingsSvc, grantsCache, nil,
 	)
 	prov := provisioningsvc.New(
 		tnRepo, tenants.NewTenantCache(tnRepo),
