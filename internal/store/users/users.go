@@ -368,7 +368,8 @@ type Contact struct {
 	Removed bool
 	// Requested marks someone whose join request to this tenant is pending. Still
 	// Removed — not a member, so nothing is delivered to them — but they may be
-	// named as the author of their own request, as the bell does.
+	// named as the author of their own request, as the bell does. Only there: on
+	// any other notification of theirs the placeholder still applies.
 	Requested bool
 }
 

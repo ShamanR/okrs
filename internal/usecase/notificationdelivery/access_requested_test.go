@@ -2,6 +2,7 @@ package notificationdelivery_test
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -45,8 +46,13 @@ func TestAccessRequestMessageNamesRequesterTenantAndLinksToQueue(t *testing.T) {
 	if !strings.Contains(msg.Body, "Ольга") || !strings.Contains(msg.Body, "Маркетинг") {
 		t.Fatalf("сообщение обязано назвать заявителя и пространство: %+v", msg)
 	}
-	if msg.URL != "https://okr.example.com/admin?section=users&filter=requests" {
-		t.Fatalf("ссылка на очередь заявок: %q", msg.URL)
+	// Ссылка идёт через переход: пространство заявки делается активным, и только
+	// потом открывается очередь — иначе администратор нескольких пространств
+	// увидел бы очередь своего текущего пространства.
+	want := "https://okr.example.com/open?tenant=1&to=" +
+		url.QueryEscape("/admin?section=users&filter=requests")
+	if msg.URL != want {
+		t.Fatalf("ссылка на очередь заявок: %q, want %q", msg.URL, want)
 	}
 }
 
@@ -63,6 +69,26 @@ func TestAccessRequestMessageWithoutBaseURLHasNoLink(t *testing.T) {
 	}
 	if !strings.Contains(msg.Body, "Ольга") {
 		t.Fatalf("сообщение уходит и без ссылки: %+v", msg)
+	}
+}
+
+// Имя заявителя раскрывается только в сообщении о самой заявке. Бывший
+// участник, подавший новую заявку, в сообщении о цели остаётся скрытым.
+func TestPendingRequesterIsNotNamedInOtherNotifications(t *testing.T) {
+	ch := newChannels("mattermost")
+	uc := delivery.New(delivery.Deps{Channels: ch, Contacts: withRequester()})
+
+	goal := requestItem()
+	goal.Kind = string(event.KindCommentAdded)
+	goal.EntityTitle = "Снизить отток"
+	goal.Payload = map[string]any{"text": "и вот почему"}
+
+	if err := uc.Deliver(context.Background(), scope, []notificationuc.Delivery{goal}); err != nil {
+		t.Fatalf("deliver: %v", err)
+	}
+	msg := ch.senders["mattermost"].accepted[0].msg
+	if strings.Contains(msg.Title, "Ольга") || strings.Contains(msg.Body, "Ольга") {
+		t.Fatalf("в уведомлении о цели заявитель не называется по имени: %+v", msg)
 	}
 }
 

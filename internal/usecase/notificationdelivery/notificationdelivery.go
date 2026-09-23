@@ -162,7 +162,7 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 			unaddressable++
 			continue
 		}
-		msg := u.render(it, contacts)
+		msg := u.render(scope, it, contacts)
 		target := notifychannel.Target{Email: recipient.Email}
 
 		for _, name := range it.Channels {
@@ -208,14 +208,18 @@ func (u *UseCase) Deliver(ctx context.Context, scope domain.TenantScope, items [
 // render turns one delivery into the text a channel sends. The wording comes from
 // render/notify, the same package the bell renders with, so one event does not
 // read one way in the product and another way in a messenger.
-func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Contact) notifychannel.Message {
+func (u *UseCase) render(scope domain.TenantScope, it notification.Delivery, contacts map[int64]users.Contact) notifychannel.Message {
 	// A former member is named by the neutral placeholder, never by their name.
 	// The bell applies the same rule through its own membership join; a message
-	// leaving the product must not be the one place it lapses. Someone with a
-	// pending join request is named, as in the bell: that request is what the
-	// message is about.
+	// leaving the product must not be the one place it lapses.
+	//
+	// Someone with a pending join request is named in the message about THAT
+	// request and nowhere else — the same narrow exception the bell's query makes.
+	// Widening it would reveal a former member's name again on every older
+	// notification of theirs the moment they ask to come back.
+	namedAsRequester := it.Kind == string(event.KindAccessRequested)
 	actor := removedActorName
-	if c, ok := contacts[it.ActorUserID]; ok && (!c.Removed || c.Requested) && c.DisplayName != "" {
+	if c, ok := contacts[it.ActorUserID]; ok && (!c.Removed || (c.Requested && namedAsRequester)) && c.DisplayName != "" {
 		actor = c.DisplayName
 	}
 	text := notify.Render(notify.Input{
@@ -235,7 +239,12 @@ func (u *UseCase) render(it notification.Delivery, contacts map[int64]users.Cont
 		Title: text.Title,
 		Body:  body,
 		URL: u.absoluteURL(notify.TargetURL(notify.LinkInput{
-			Kind:      event.Kind(it.Kind),
+			Kind: event.Kind(it.Kind),
+			// The message is read outside the product, where the reader's session
+			// may be active in another space. The link therefore names the space
+			// this notification belongs to and goes through the hand-off that
+			// makes it active before opening the page.
+			TenantID:  &scope.TenantID,
 			GoalID:    it.GoalID,
 			TeamID:    it.TeamID,
 			PeriodID:  it.PeriodID,

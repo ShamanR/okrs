@@ -1,6 +1,7 @@
 package notify_test
 
 import (
+	"net/url"
 	"testing"
 
 	"okrs/internal/core/event"
@@ -28,6 +29,30 @@ func TestRenderAccessRequested(t *testing.T) {
 func TestTargetURLAccessRequested(t *testing.T) {
 	if got := notify.TargetURL(notify.LinkInput{Kind: event.KindAccessRequested}); got != "/admin?section=users&filter=requests" {
 		t.Errorf("ссылка на заявку: %q", got)
+	}
+}
+
+// Ссылка, уходящая наружу, несёт пространство уведомления и ведёт через переход:
+// в мессенджере её читает человек, у которого активно может быть другое
+// пространство, и обычный путь показал бы ему чужие данные.
+func TestTargetURLWithTenantGoesThroughHandoff(t *testing.T) {
+	tenant, goal, team := int64(7), int64(5), int64(3)
+
+	got := notify.TargetURL(notify.LinkInput{Kind: event.KindAccessRequested, TenantID: &tenant})
+	want := "/open?tenant=7&to=" + url.QueryEscape("/admin?section=users&filter=requests")
+	if got != want {
+		t.Errorf("заявка: %q, want %q", got, want)
+	}
+
+	got = notify.TargetURL(notify.LinkInput{Kind: event.KindGoalFieldsChanged, TenantID: &tenant, GoalID: &goal, TeamID: &team})
+	want = "/open?tenant=7&to=" + url.QueryEscape("/?team=3&goal=5")
+	if got != want {
+		t.Errorf("цель: %q, want %q", got, want)
+	}
+
+	// Открывать нечего — переход не появляется из ниоткуда.
+	if got := notify.TargetURL(notify.LinkInput{Kind: event.KindGoalDeleted, TenantID: &tenant, GoalID: &goal, GoalMissing: true}); got != "" {
+		t.Errorf("удалённая цель: %q, want пусто", got)
 	}
 }
 

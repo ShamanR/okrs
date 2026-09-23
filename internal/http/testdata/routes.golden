@@ -70,6 +70,7 @@ GET /goal-tree
 GET /invite/{token}
 GET /login
 GET /no-access
+GET /open
 GET /period-overview
 GET /periods
 GET /settings

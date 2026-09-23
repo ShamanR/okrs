@@ -57,6 +57,29 @@ func TestRequestedActorIsNamedUntilRequestIsGone(t *testing.T) {
 		t.Fatalf("пока заявка ждёт решения, заявитель назван по имени: %+v", n)
 	}
 
+	// Исключение действует только для уведомления о самой заявке. Бывший
+	// участник, подавший новую заявку, в своих старых уведомлениях остаётся
+	// скрытым: заявка не возвращает ему доступ и не раскрывает его заново.
+	goalID := int64(10)
+	if _, err := repo.Insert(ctx, scope, notifications.InsertInput{
+		UserID: 1, Type: "goal_changed", Kind: "goal_fields_changed",
+		ActorUserID: requester, GoalID: &goalID, EntityTitle: "Цель", CoalesceKey: "old-goal",
+	}); err != nil {
+		t.Fatalf("insert goal notification: %v", err)
+	}
+	items, _, err := repo.List(ctx, scope, 1, notifications.ListFilter{Limit: 20})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	for _, n := range items {
+		if n.Type != "goal_changed" {
+			continue
+		}
+		if !n.ActorRemoved || n.ActorDisplayName != "" || n.ActorAvatarURL != "" {
+			t.Fatalf("в уведомлении о цели заявитель обязан остаться скрытым: %+v", n)
+		}
+	}
+
 	if _, err := pool.Exec(ctx, `DELETE FROM memberships WHERE user_id = $1 AND tenant_id = 1`, requester); err != nil {
 		t.Fatalf("deny: %v", err)
 	}

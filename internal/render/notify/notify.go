@@ -7,6 +7,7 @@ package notify
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -282,7 +283,11 @@ type LinkInput struct {
 	// Kind picks the destination for notifications that are not about a goal:
 	// a join request opens the admin's request queue. Every other kind links to
 	// its goal, exactly as before.
-	Kind      event.Kind
+	Kind event.Kind
+	// TenantID, when set, routes the link through the hand-off that makes that
+	// space active first — see OpenPath. Delivery to external channels sets it;
+	// the bell leaves it nil, being inside the space already.
+	TenantID  *int64
 	GoalID    *int64
 	TeamID    *int64
 	PeriodID  *int64
@@ -301,9 +306,33 @@ type LinkInput struct {
 // what web/static/admin.js reads: ?section=users with the "requests" filter.
 const AccessRequestsURL = "/admin?section=users&filter=requests"
 
+// OpenPath is the hand-off route that makes a notification's space active before
+// walking to the page it points at (served by handlers/web/openlink).
+//
+// Every page renders whatever space the SESSION has active, so a link read
+// outside the product — in a messenger, hours later, by someone who has since
+// switched spaces — would otherwise show the wrong space's board or request
+// queue. The link therefore carries the space it is about.
+const OpenPath = "/open"
+
 // TargetURL builds the link a notification navigates to. Empty when there is no
 // goal to open: the notification still renders, it just is not clickable.
 func TargetURL(in LinkInput) string {
+	return withTenant(in, targetPath(in))
+}
+
+// withTenant wraps a path into the hand-off when the caller said which space the
+// notification belongs to. The bell passes none: it is already inside that space,
+// and a redirect through the hand-off would buy nothing.
+func withTenant(in LinkInput, path string) string {
+	if in.TenantID == nil || path == "" {
+		return path
+	}
+	return OpenPath + "?tenant=" + strconv.FormatInt(*in.TenantID, 10) +
+		"&to=" + url.QueryEscape(path)
+}
+
+func targetPath(in LinkInput) string {
 	if in.Kind == event.KindAccessRequested {
 		return AccessRequestsURL
 	}

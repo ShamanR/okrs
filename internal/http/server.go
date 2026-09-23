@@ -112,6 +112,7 @@ import (
 	weblogin "okrs/internal/http/handlers/web/login"
 	weblogout "okrs/internal/http/handlers/web/logout"
 	webnoaccess "okrs/internal/http/handlers/web/noaccess"
+	openlink "okrs/internal/http/handlers/web/openlink"
 	"okrs/internal/http/handlers/web/shell"
 	"okrs/internal/http/httpdeps"
 	"okrs/internal/http/middleware"
@@ -467,6 +468,12 @@ func (s *Server) Routes() http.Handler {
 			sessiontenants.RegisterRoutes(r, sessiontenants.New(s.store.Memberships, s.store.Tenants))
 			sessiontenant.RegisterRoutes(r, sessiontenant.New(s.store.Memberships, s.store.Tenants, s.store.Sessions))
 			sessionmemberships.RegisterRoutes(r, sessionmemberships.New(s.store.Memberships, s.onboarding))
+
+			// Hand-off for links that left the product: it makes the notification's
+			// space active before walking to the page. Not membership-gated for the
+			// same reason as the switcher above — the recipient may be sitting in a
+			// space they lost, and this is the route back to the right one.
+			openlink.RegisterRoutes(r, openlink.New(s.store.Memberships, s.store.Sessions))
 
 			// Authed control-plane mounts (SaaS): authed but not membership-gated
 			// (e.g. self-service "create organization"). nil in OSS.
