@@ -3,6 +3,7 @@ package notificationdelivery_test
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -148,7 +149,8 @@ func TestDeliversToEveryChannelOfTheRecipient(t *testing.T) {
 		if !strings.Contains(got.msg.Title, "Мария") {
 			t.Fatalf("сообщение не называет автора события: %q", got.msg.Title)
 		}
-		if !strings.Contains(got.msg.URL, "goal=7") {
+		// Ссылка идёт через переход, поэтому адрес цели внутри параметра to.
+		if !strings.Contains(decodedLink(t, got.msg.URL), "goal=7") {
 			t.Fatalf("ссылка не ведёт к цели: %q", got.msg.URL)
 		}
 	}
@@ -274,12 +276,22 @@ func TestDeliveredLinkIsAbsolute(t *testing.T) {
 		t.Fatalf("deliver: %v", err)
 	}
 	got := ch.senders["mattermost"].accepted[0].msg.URL
-	if !strings.HasPrefix(got, "https://okr.example.com/?") {
-		t.Fatalf("ссылка не абсолютная: %q", got)
+	if !strings.HasPrefix(got, "https://okr.example.com/open?tenant=1&to=") {
+		t.Fatalf("ссылка не абсолютная или не несёт пространство: %q", got)
 	}
-	if !strings.Contains(got, "goal=7") || !strings.Contains(got, "comment=11") {
+	if inner := decodedLink(t, got); !strings.Contains(inner, "goal=7") || !strings.Contains(inner, "comment=11") {
 		t.Fatalf("ссылка потеряла адресацию: %q", got)
 	}
+}
+
+// decodedLink возвращает путь, на который ведёт переход (параметр to).
+func decodedLink(t *testing.T, link string) string {
+	t.Helper()
+	u, err := url.Parse(link)
+	if err != nil {
+		t.Fatalf("ссылка не разбирается: %q (%v)", link, err)
+	}
+	return u.Query().Get("to")
 }
 
 // Завершающий слэш в настройке не должен давать двойной слэш в ссылке.

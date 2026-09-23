@@ -7,8 +7,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/core/event"
 	"okrs/internal/service/provisioning"
 	"okrs/internal/service/settings"
 	"okrs/internal/store/grants"
@@ -35,6 +37,13 @@ type NewUserGranter interface {
 	RemoveAllUserGrants(ctx context.Context, scope domain.TenantScope, userID int64) error
 }
 
+// Publisher is the consumer-side port for domain events; *eventbus.Bus satisfies
+// it. The service announces a new join request and leaves who hears about it to
+// the subscribers.
+type Publisher interface {
+	Publish(ctx context.Context, ev event.Event)
+}
+
 // Service decides post-login outcomes: invitation claim, self-service join-request,
 // and new-user registration. It takes explicit scope where a tenant is in play.
 type Service struct {
@@ -44,6 +53,8 @@ type Service struct {
 	tenants  *tenants.TenantRepository
 	settings *settings.Service
 	granter  NewUserGranter
+	// events may be nil: nothing is published then.
+	events Publisher
 }
 
 func New(
@@ -53,8 +64,9 @@ func New(
 	tn *tenants.TenantRepository,
 	settings *settings.Service,
 	granter NewUserGranter,
+	events Publisher,
 ) *Service {
-	return &Service{inv: inv, mem: mem, memCache: memCache, tenants: tn, settings: settings, granter: granter}
+	return &Service{inv: inv, mem: mem, memCache: memCache, tenants: tn, settings: settings, granter: granter, events: events}
 }
 
 // GenerateInviteToken returns a random raw token and its sha256 hex hash. Only the hash is stored.
@@ -105,6 +117,8 @@ func (s *Service) ClaimInvitation(ctx context.Context, rawToken string, userID i
 
 // RequestAccess records a self-service join request (status=requested) for a tenant by slug.
 // An existing active membership → ErrAlreadyMember; unknown slug → ErrTenantNotFound.
+// A request that was not already pending publishes event.AccessRequested, so the tenant's
+// admins are notified once per request, not once per submit.
 func (s *Service) RequestAccess(ctx context.Context, slug string, userID int64) error {
 	tn, err := s.tenants.GetBySlug(ctx, slug)
 	if errors.Is(err, tenants.ErrNotFound) {
@@ -120,15 +134,24 @@ func (s *Service) RequestAccess(ctx context.Context, slug string, userID int64) 
 	if existing != nil && existing.Status == domain.MembershipActive {
 		return ErrAlreadyMember
 	}
-	if _, err := s.mem.Upsert(ctx, domain.Membership{
-		UserID:   userID,
-		TenantID: tn.ID,
-		Role:     domain.RoleUser,
-		Status:   domain.MembershipRequested,
-	}); err != nil {
+	// CreateRequest, not Upsert: it tells atomically whether THIS call created the
+	// request, so two concurrent submits notify the admins once, and a membership
+	// activated in between is not downgraded back to a request.
+	created, err := s.mem.CreateRequest(ctx, userID, tn.ID)
+	if err != nil {
 		return err
 	}
 	s.memCache.InvalidateUser(userID)
+	if s.events != nil && created {
+		s.events.Publish(ctx, event.AccessRequested{
+			Meta: event.Meta{
+				Scope:      domain.TenantScope{TenantID: tn.ID},
+				ActorID:    userID,
+				OccurredAt: time.Now(),
+			},
+			TenantTitle: tn.Name,
+		})
+	}
 	return nil
 }
 

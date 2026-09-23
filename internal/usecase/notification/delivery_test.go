@@ -77,6 +77,10 @@ func (p *channelPrefs) ResolveAddressed(_ context.Context, _ domain.TenantScope,
 	return out, nil
 }
 
+func (p *channelPrefs) ResolveTenantAdmins(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
+	return nil, nil
+}
+
 func (p *channelPrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
 	p.defaultsCalls++
 	if p.defaultsErr != nil {

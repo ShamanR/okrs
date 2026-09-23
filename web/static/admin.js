@@ -1353,7 +1353,9 @@ function InviteLinksPanel() {
 
 function UsersSection({users, teams, currentUser, reload}) {
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState('all'); // all | admins | noaccess
+  // all | admins | noaccess | requests. Начальный фильтр может прийти из адреса: уведомление
+  // о заявке на доступ ведёт на ?section=users&filter=requests.
+  const [filter, setFilter] = useState(() => readUsersFilterFromURL() || 'all');
   const [modalId, setModalId] = useState(null);
   const userCloseRef = useRef(null);
 
@@ -1730,6 +1732,14 @@ function readSectionFromURL() {
   const q = new URLSearchParams(window.location.search).get('section');
   if (ADMIN_SECTION_IDS.includes(q)) return q;
   return ADMIN_PATH_SECTION[window.location.pathname] || null;
+}
+
+// Фильтры раздела «Пользователи», которые можно задать ссылкой. Сейчас это только
+// очередь заявок: сюда ведёт уведомление о заявке на доступ (render/notify).
+const USERS_URL_FILTERS = ['requests'];
+function readUsersFilterFromURL() {
+  const f = new URLSearchParams(window.location.search).get('filter');
+  return USERS_URL_FILTERS.includes(f) ? f : null;
 }
 
 function App() {

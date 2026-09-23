@@ -59,8 +59,9 @@ function NotificationList({ items, onRead, onDelete }) {
     <div className="notif__list">
       {items.map(n => {
         // Разрешаем переход только на локальный путь. Сегодня сервер шлёт только
-        // "" или "/?team=&period=&goal=&kr=&comment=" (тот же формат, что строит
-        // buildTargetURL в ui.js), но это защита в глубину: React лишь предупреждает
+        // "", "/?team=&period=&goal=&kr=&comment=" (тот же формат, что строит
+        // buildTargetURL в ui.js) или очередь заявок "/admin?section=users&filter=requests"
+        // для уведомления о заявке на доступ, но это защита в глубину: React лишь предупреждает
         // про javascript:-href, а не блокирует его, так что единственный барьер —
         // здесь. Резолвим _notifSafeHref, а не сверяем префикс строки:
         // браузер нормализует "\" в "/", и префиксная проверка это пропускает.

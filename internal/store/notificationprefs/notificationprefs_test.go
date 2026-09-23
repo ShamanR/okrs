@@ -240,8 +240,9 @@ func TestSoftDeletedTeamBreaksChain(t *testing.T) {
 	}
 }
 
-// GetAll подставляет дефолты для типов, у которых строки нет: все четыре типа
+// GetAll подставляет дефолты для типов, у которых строки нет: все типы каталога
 // должны вернуться всегда, иначе экран настроек покажет пустоту новому пользователю.
+// Типы «Целей» по умолчанию включены, системная заявка на доступ — выключена.
 func TestGetAllReturnsDefaultsForMissingRows(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
@@ -252,10 +253,19 @@ func TestGetAllReturnsDefaultsForMissingRows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get all: %v", err)
 	}
-	if len(prefs) != 4 {
-		t.Fatalf("ожидались все 4 типа, got %d", len(prefs))
+	if len(prefs) != 5 {
+		t.Fatalf("ожидались все 5 типов, got %d", len(prefs))
 	}
 	for _, p := range prefs {
+		if p.Type == "access_requested" {
+			if p.Enabled {
+				t.Error("access_requested: системный тип по умолчанию выключен")
+			}
+			if p.Scope != "" {
+				t.Errorf("у заявки на доступ скоуп неприменим, got %q", p.Scope)
+			}
+			continue
+		}
 		if !p.Enabled {
 			t.Errorf("%s: дефолт должен быть включён", p.Type)
 		}

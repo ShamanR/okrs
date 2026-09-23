@@ -198,19 +198,29 @@ func (r *Repository) List(ctx context.Context, scope domain.TenantScope, userID 
 	// The actor is joined here rather than looked up per row: one query, no N+1.
 	// A former member (no active membership, and not a system user) is returned as a
 	// neutral placeholder — the journal applies the same PII rule.
+	//
+	// One exception, and only on the access_requested row itself: someone with a
+	// pending join request is named there, because the admin deciding on that
+	// request has to know who is asking and sees the same name in the queue anyway.
+	// It must NOT spread to their other rows — a former member who asks to come
+	// back would otherwise have their name reappear across every old notification
+	// they authored, which is exactly what the placeholder is for.
 	q := `WITH RECURSIVE page AS (
 	        SELECT n.id, n.type, n.kind, n.actor_user_id, n.team_id, n.period_id, n.goal_id,
 	               n.kr_id, n.comment_id, n.entity_title, n.payload_json, n.coalesce_count,
 	               n.created_at, n.updated_at, n.read_at,
-	               CASE WHEN m.user_id IS NULL AND u.provider <> 'system'
-	                    THEN '' ELSE u.display_name END AS actor_display_name,
-	               CASE WHEN m.user_id IS NULL AND u.provider <> 'system'
-	                    THEN '' ELSE COALESCE(u.avatar_url, '') END AS actor_avatar_url,
-	               (m.user_id IS NULL AND u.provider <> 'system') AS actor_removed
+	               CASE WHEN actor_hidden.v THEN '' ELSE u.display_name END AS actor_display_name,
+	               CASE WHEN actor_hidden.v THEN '' ELSE COALESCE(u.avatar_url, '') END AS actor_avatar_url,
+	               actor_hidden.v AS actor_removed
 	          FROM notifications n
 	          JOIN users u ON u.id = n.actor_user_id
 	          LEFT JOIN memberships m
-	                 ON m.user_id = u.id AND m.tenant_id = n.tenant_id AND m.status = 'active'` +
+	                 ON m.user_id = u.id AND m.tenant_id = n.tenant_id
+	          CROSS JOIN LATERAL (SELECT
+	                 u.provider <> 'system'
+	                 AND COALESCE(m.status, '') <> 'active'
+	                 AND NOT (n.type = 'access_requested' AND COALESCE(m.status, '') = 'requested') AS v
+	          ) actor_hidden` +
 		inAppJoin + `
 	         WHERE n.tenant_id = ` + tenantArg + ` AND n.user_id = ` + userArg + inAppVisible
 	if f.UnreadOnly {

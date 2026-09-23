@@ -366,6 +366,11 @@ type Contact struct {
 	// System users are the exception, exactly as in the bell's own query: they
 	// never hold a membership and are meant to be named.
 	Removed bool
+	// Requested marks someone whose join request to this tenant is pending. Still
+	// Removed — not a member, so nothing is delivered to them — but they may be
+	// named as the author of their own request, as the bell does. Only there: on
+	// any other notification of theirs the placeholder still applies.
+	Requested bool
 }
 
 // ContactsByIDs returns the name and address of every given user id, in one query.
@@ -385,10 +390,11 @@ func (r *UserRepository) ContactsByIDs(ctx context.Context, scope domain.TenantS
 	// leaving the product, and asking per id would be an N+1 on the delivery path.
 	rows, err := r.db.Query(ctx, `
 		SELECT u.id, u.display_name, COALESCE(u.email,''),
-		       (m.user_id IS NULL AND u.provider <> 'system') AS removed
+		       (COALESCE(m.status, '') <> 'active' AND u.provider <> 'system') AS removed,
+		       COALESCE(m.status = 'requested', FALSE) AS requested
 		  FROM users u
 		  LEFT JOIN memberships m
-		         ON m.user_id = u.id AND m.tenant_id = $2 AND m.status = 'active'
+		         ON m.user_id = u.id AND m.tenant_id = $2
 		 WHERE u.id = ANY($1)`, ids, scope.TenantID)
 	if err != nil {
 		return nil, err
@@ -398,7 +404,7 @@ func (r *UserRepository) ContactsByIDs(ctx context.Context, scope domain.TenantS
 	out := make(map[int64]Contact, len(ids))
 	for rows.Next() {
 		var c Contact
-		if err := rows.Scan(&c.ID, &c.DisplayName, &c.Email, &c.Removed); err != nil {
+		if err := rows.Scan(&c.ID, &c.DisplayName, &c.Email, &c.Removed, &c.Requested); err != nil {
 			return nil, err
 		}
 		out[c.ID] = c

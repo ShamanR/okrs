@@ -55,6 +55,23 @@ func (r *MembershipRepository) Upsert(ctx context.Context, m domain.Membership) 
 	return &out, nil
 }
 
+// CreateRequest records a self-service join request (role user, status
+// requested) unless the user already holds a membership of any status in the
+// tenant. created reports whether this call inserted the row — atomically, so of
+// two concurrent submits exactly one sees true, and an existing active
+// membership is never downgraded to a request.
+func (r *MembershipRepository) CreateRequest(ctx context.Context, userID, tenantID int64) (bool, error) {
+	tag, err := r.db.Exec(ctx, `
+		INSERT INTO memberships (user_id, tenant_id, role, status)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, tenant_id) DO NOTHING`,
+		userID, tenantID, domain.RoleUser, domain.MembershipRequested)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 func (r *MembershipRepository) Get(ctx context.Context, userID, tenantID int64) (*domain.Membership, error) {
 	var m domain.Membership
 	err := r.db.QueryRow(ctx, `

@@ -279,7 +279,7 @@ func TestRenderSubjectEmptyForKindsThatNameEntityInBody(t *testing.T) {
 	}
 }
 
-// Все 13 kind, порождающих уведомления, должны рендериться осмысленно —
+// Все 14 kind, порождающих уведомления, должны рендериться осмысленно —
 // иначе новое событие в фазе 2 молча даст пустой заголовок.
 func TestRenderCoversEveryNotifyingKind(t *testing.T) {
 	kinds := []event.Kind{
@@ -288,9 +288,10 @@ func TestRenderCoversEveryNotifyingKind(t *testing.T) {
 		event.KindGoalFieldsChanged, event.KindGoalOwnerChanged,
 		event.KindKRCreated, event.KindKRFieldsChanged, event.KindKRDeleted,
 		event.KindKRCheckedIn,
+		event.KindAccessRequested,
 	}
-	if len(kinds) != 13 {
-		t.Fatalf("перечислено %d kind, ожидалось 13", len(kinds))
+	if len(kinds) != 14 {
+		t.Fatalf("перечислено %d kind, ожидалось 14", len(kinds))
 	}
 	for _, k := range kinds {
 		got := notify.Render(notify.Input{Kind: k, ActorName: "Пётр", EntityTitle: "Цель", Count: 1})

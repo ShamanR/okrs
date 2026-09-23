@@ -578,6 +578,24 @@ func TestEmptyRecipientGroupDoesNotCallCreateBatch(t *testing.T) {
 	}
 }
 
+// Резолв администраторов пространства этим фейкам не нужен: их тесты не
+// публикуют заявок на доступ (см. access_requested_test.go).
+func (*fakePrefs) ResolveTenantAdmins(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
+	return nil, nil
+}
+
+func (emptyPrefs) ResolveTenantAdmins(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
+	return nil, nil
+}
+
+func (badOrdPrefs) ResolveTenantAdmins(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
+	return nil, nil
+}
+
+func (ordAwarePrefs) ResolveTenantAdmins(context.Context, domain.TenantScope, string, []int64) ([]notificationprefs.Recipient, error) {
+	return nil, nil
+}
+
 func (*fakePrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
 	return map[string]bool{notificationprefs.ChannelInApp: true}, nil
 }

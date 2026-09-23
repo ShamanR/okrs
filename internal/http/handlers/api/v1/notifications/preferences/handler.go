@@ -28,10 +28,12 @@ const loadFailed = "failed to load preferences"
 
 // PrefService is the port this handler needs. *notificationpref.Service satisfies it.
 type PrefService interface {
-	GetAll(ctx context.Context, scope domain.TenantScope, userID int64) ([]notificationprefs.Preference, error)
+	// GetAll returns the types this user may see; isAdmin adds the admin-only ones.
+	GetAll(ctx context.Context, scope domain.TenantScope, userID int64, isAdmin bool) ([]notificationprefs.Preference, error)
 	// SetAll writes the whole matrix, validating every row before writing any — a
 	// per-row Set would let a rejected payload leave its earlier rows applied.
-	SetAll(ctx context.Context, scope domain.TenantScope, userID int64, ps []notificationprefs.Preference) error
+	// An admin-only type from a non-admin is refused as an unknown type.
+	SetAll(ctx context.Context, scope domain.TenantScope, userID int64, isAdmin bool, ps []notificationprefs.Preference) error
 	// DeliveryDefaults is what the matrix falls back to per channel for a user who
 	// never chose. The screen shows effective state, so rendering it needs this.
 	DeliveryDefaults(ctx context.Context, scope domain.TenantScope) (map[string]bool, error)
@@ -83,6 +85,14 @@ func (h *Handler) columns(ctx context.Context, scope domain.TenantScope) ([]dto.
 	return out, nil
 }
 
+// isTenantAdmin reads the caller's role in the active tenant — the same source
+// that gates the admin area, so whoever can see the request queue is exactly who
+// may configure notifications about it.
+func isTenantAdmin(r *http.Request) bool {
+	role, ok := auth.ActiveRoleFromContext(r.Context())
+	return ok && role == domain.RoleAdmin
+}
+
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	v1.SetAPICacheControl(w)
 	scope, ok := auth.TenantScopeFromContext(r.Context())
@@ -95,7 +105,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	// шагом. Без этого «failed to load preferences» одинаково выглядит и при
 	// отвалившейся базе, и при недоступном канале, и расследовать его приходится
 	// подключением к базе.
-	prefs, err := h.svc.GetAll(r.Context(), scope, auth.UserIDFromContext(r.Context()))
+	prefs, err := h.svc.GetAll(r.Context(), scope, auth.UserIDFromContext(r.Context()), isTenantAdmin(r))
 	if err != nil {
 		v1.WriteInternalError(w, "INTERNAL", loadFailed, fmt.Errorf("preferences: %w", err))
 		return
@@ -130,6 +140,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		out.Items = append(out.Items, dto.NotificationPreference{
 			Type: p.Type, Enabled: p.Enabled, Scope: p.Scope, Channels: state,
 			Addressed: notificationprefs.IsAddressed(p.Type),
+			Category:  notificationprefs.CategoryOf(p.Type),
 		})
 	}
 	v1.WriteJSON(w, http.StatusOK, out)
@@ -188,7 +199,7 @@ func (h *Handler) Put(w http.ResponseWriter, r *http.Request) {
 	// applied while the response said the matrix was rejected — the user saw settings
 	// they never asked for. At most len(notificationprefs.AllTypes) rows reach here,
 	// rejected above for length and duplicates, so this is not an N+1 waiting to grow.
-	err := h.svc.SetAll(r.Context(), scope, userID, prefs)
+	err := h.svc.SetAll(r.Context(), scope, userID, isTenantAdmin(r), prefs)
 	switch {
 	case errors.Is(err, notificationprefsvc.ErrInvalidType):
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "unknown notification type",

@@ -21,21 +21,7 @@ type Repository struct {
 
 func NewRepository(db *pgxpool.Pool) *Repository { return &Repository{db: db} }
 
-// Notification types. Scoped types resolve through the team tree; addressed types
-// carry their recipient in the event itself.
-const (
-	TypeGoalComment       = "goal_comment"
-	TypeMyCommentResolved = "my_comment_resolved"
-	TypeGoalChanged       = "goal_changed"
-	TypeKRProgress        = "kr_progress"
-)
-
-// AllTypes is the order the settings screen renders.
-var AllTypes = []string{TypeGoalComment, TypeMyCommentResolved, TypeGoalChanged, TypeKRProgress}
-
-// IsAddressed reports whether a type is addressed rather than scope-based. An
-// addressed type has no scope selector: it is delivered to a specific person.
-func IsAddressed(t string) bool { return t == TypeMyCommentResolved }
+// Notification types and their attributes live in catalog.go.
 
 // Scope values.
 const (
@@ -85,17 +71,19 @@ type Recipient struct {
 }
 
 // defaultPreference is what applies when the user has never touched settings:
-// enabled, own team only, in-app. Missing rows are the norm, not an exception —
-// that is why nothing is backfilled on user creation.
+// the type's catalog default (on for goals, off for system types), own team only.
+// Missing rows are the norm, not an exception — that is why nothing is backfilled
+// on user creation.
 func defaultPreference(t string) Preference {
-	p := Preference{Type: t, Enabled: true, ChannelOverrides: map[string]bool{}}
+	p := Preference{Type: t, Enabled: DefaultEnabled(t), ChannelOverrides: map[string]bool{}}
 	if !IsAddressed(t) {
 		p.Scope = ScopeOwn
 	}
 	return p
 }
 
-// GetAll returns all four types, substituting defaults for rows that do not exist.
+// GetAll returns every catalog type, substituting defaults for rows that do not
+// exist. Which of them a user may see is the service's call, not the store's.
 func (r *Repository) GetAll(ctx context.Context, scope domain.TenantScope, userID int64) ([]Preference, error) {
 	rows, err := r.db.Query(ctx,
 		`SELECT type, enabled, COALESCE(scope, ''), channel_overrides
@@ -248,6 +236,46 @@ func (r *Repository) ResolveAddressed(ctx context.Context, scope domain.TenantSc
 		         ON p.tenant_id = $2 AND p.user_id = u.id AND p.type = $3
 		 WHERE COALESCE(p.enabled, TRUE)`,
 		userIDs, scope.TenantID, notifType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []Recipient
+	for rows.Next() {
+		var rc Recipient
+		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.ChannelOverrides); err != nil {
+			return nil, err
+		}
+		out = append(out, rc)
+	}
+	return out, rows.Err()
+}
+
+// ResolveTenantAdmins answers "who must be notified" for events addressed to the
+// tenant's admins: every active admin of the tenant, for each event of the batch,
+// except that event's own actor. $1 is the actors, one per event; the result
+// carries Ord so the caller maps rows back onto its batch.
+//
+// A missing preference row falls back to the type's catalog default ($4), not to
+// TRUE: system types are off until the admin turns them on, and the settings
+// screen shows exactly that.
+//
+// Батчевая операция: не превращать в цикл — это N+1.
+func (r *Repository) ResolveTenantAdmins(ctx context.Context, scope domain.TenantScope, notifType string, actorIDs []int64) ([]Recipient, error) {
+	if len(actorIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT src.ord - 1, m.user_id, COALESCE(p.channel_overrides, '{}'::jsonb)
+		  FROM unnest($1::bigint[]) WITH ORDINALITY AS src(actor_id, ord)
+		  JOIN memberships m
+		         ON m.tenant_id = $2 AND m.role = 'admin' AND m.status = 'active'
+		  LEFT JOIN notification_preferences p
+		         ON p.tenant_id = $2 AND p.user_id = m.user_id AND p.type = $3
+		 WHERE m.user_id <> src.actor_id
+		   AND COALESCE(p.enabled, $4)`,
+		actorIDs, scope.TenantID, notifType, DefaultEnabled(notifType))
 	if err != nil {
 		return nil, err
 	}

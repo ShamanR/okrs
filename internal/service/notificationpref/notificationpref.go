@@ -23,6 +23,7 @@ type Repo interface {
 	Set(ctx context.Context, scope domain.TenantScope, userID int64, p notificationprefs.Preference) error
 	ResolveRecipients(ctx context.Context, scope domain.TenantScope, notifType string, targets []notificationprefs.Target) ([]notificationprefs.Recipient, error)
 	ResolveAddressed(ctx context.Context, scope domain.TenantScope, notifType string, userIDs []int64) ([]notificationprefs.Recipient, error)
+	ResolveTenantAdmins(ctx context.Context, scope domain.TenantScope, notifType string, actorIDs []int64) ([]notificationprefs.Recipient, error)
 }
 
 // Channels is the port to the tenant's external delivery channels, declared
@@ -79,8 +80,23 @@ func EffectiveChannels(defaults map[string]bool, overrides map[string]bool) []st
 	return notificationprefs.EffectiveChannels(defaults, overrides)
 }
 
-func (s *Service) GetAll(ctx context.Context, scope domain.TenantScope, userID int64) ([]notificationprefs.Preference, error) {
-	return s.repo.GetAll(ctx, scope, userID)
+// GetAll returns the types this user may see, in catalog order: admin-only types
+// (a join request) are left out for anyone but a tenant admin. A stored row of a
+// type the user can no longer see is kept, not deleted, and shows again once the
+// role comes back.
+func (s *Service) GetAll(ctx context.Context, scope domain.TenantScope, userID int64, isAdmin bool) ([]notificationprefs.Preference, error) {
+	all, err := s.repo.GetAll(ctx, scope, userID)
+	if err != nil {
+		return nil, err
+	}
+	visible := notificationprefs.TypesFor(isAdmin)
+	out := make([]notificationprefs.Preference, 0, len(all))
+	for _, p := range all {
+		if slices.Contains(visible, p.Type) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
 }
 
 // normalize validates one preference and fills in the defaults the client may
@@ -91,8 +107,11 @@ func (s *Service) GetAll(ctx context.Context, scope domain.TenantScope, userID i
 // refused rather than stored: a preference about a channel the tenant cannot use
 // would sit in the database looking meaningful and silently start applying if
 // that name ever became real.
-func normalize(p notificationprefs.Preference, allowed map[string]bool) (notificationprefs.Preference, error) {
-	if !slices.Contains(notificationprefs.AllTypes, p.Type) {
+//
+// types is the set the caller may save: every type for Set, the role's types for
+// SetAll — an admin-only type from anyone else is as unknown as a made-up one.
+func normalize(p notificationprefs.Preference, types []string, allowed map[string]bool) (notificationprefs.Preference, error) {
+	if !slices.Contains(types, p.Type) {
 		return p, ErrInvalidType
 	}
 	if notificationprefs.IsAddressed(p.Type) {
@@ -123,7 +142,7 @@ func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int6
 	if err != nil {
 		return err
 	}
-	p, err = normalize(p, allowed)
+	p, err = normalize(p, notificationprefs.AllTypes, allowed)
 	if err != nil {
 		return err
 	}
@@ -148,14 +167,18 @@ func (s *Service) Set(ctx context.Context, scope domain.TenantScope, userID int6
 // A channel connected LATER is unaffected and still reaches everyone: it had no
 // column on the screen, so it is absent from the payload, and absence is what
 // "no opinion" means.
-func (s *Service) SetAll(ctx context.Context, scope domain.TenantScope, userID int64, ps []notificationprefs.Preference) error {
+//
+// isAdmin decides which types may be saved: a non-admin naming an admin-only type
+// is refused with ErrInvalidType, and nothing of the matrix is written.
+func (s *Service) SetAll(ctx context.Context, scope domain.TenantScope, userID int64, isAdmin bool, ps []notificationprefs.Preference) error {
 	allowed, err := s.DeliveryDefaults(ctx, scope)
 	if err != nil {
 		return err
 	}
+	types := notificationprefs.TypesFor(isAdmin)
 	checked := make([]notificationprefs.Preference, 0, len(ps))
 	for _, p := range ps {
-		n, err := normalize(p, allowed)
+		n, err := normalize(p, types, allowed)
 		if err != nil {
 			return err
 		}
@@ -177,4 +200,9 @@ func (s *Service) Resolve(ctx context.Context, scope domain.TenantScope, notifTy
 // Батчевая операция: не превращать в цикл — это N+1.
 func (s *Service) ResolveAddressed(ctx context.Context, scope domain.TenantScope, notifType string, userIDs []int64) ([]notificationprefs.Recipient, error) {
 	return s.repo.ResolveAddressed(ctx, scope, notifType, userIDs)
+}
+
+// Батчевая операция: не превращать в цикл — это N+1.
+func (s *Service) ResolveTenantAdmins(ctx context.Context, scope domain.TenantScope, notifType string, actorIDs []int64) ([]notificationprefs.Recipient, error) {
+	return s.repo.ResolveTenantAdmins(ctx, scope, notifType, actorIDs)
 }

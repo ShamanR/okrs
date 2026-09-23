@@ -150,6 +150,9 @@
 .notif-prefs td { padding: 14px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
 .notif-prefs td:first-child { padding-left: 0; }
 .notif-prefs tr:last-child td { border-bottom: none; }
+/* Заголовок категории внутри tbody: тот же стиль, что у шапки, с отступом сверху. */
+.notif-prefs__group th { padding: 18px 0 8px; color: #6b7280; }
+.notif-prefs__group:first-child th { padding-top: 10px; }
 .notif-prefs__label { font-size: 14px; font-weight: 700; color: #111827; }
 .notif-prefs__hint { font-size: 12px; color: #6b7280; margin-top: 3px; }
 .notif-prefs__na { color: #9ca3af; font-size: 14px; }
