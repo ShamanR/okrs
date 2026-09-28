@@ -1,0 +1,161 @@
+<!-- @dsCard group="Settings" -->
+<!-- @dsName Экраны настроек -->
+<!-- @dsSubtitle Панель, строки описаний, пространства, навигация -->
+<!-- @dsCss tokens.css shell.css components.css settings.css tracker.css -->
+<!-- @dsTheme dark -->
+<!-- @dsViewport 960x760 -->
+<section class="ds-section">
+  <div class="ds-section__title">Навигация настроек</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="ds-frame" style="width: 252px; height: 340px">
+        <div class="set-sidebar" style="height: 100%">
+          <div class="set-sidebar__header">
+            <div>
+              <div class="set-sidebar__logo">Платформа</div>
+              <div class="set-sidebar__sub">настройки</div>
+            </div>
+          </div>
+          <div class="set-nav">
+            <div class="set-nav__label">Личное</div>
+            <button class="set-nav__item set-nav__item--active">
+              <span class="set-nav__icon">🔔</span>
+              <span class="set-nav__body">
+                <span class="set-nav__title">Уведомления</span>
+                <span class="set-nav__hint">Каналы и типы событий</span>
+              </span>
+            </button>
+            <button class="set-nav__item">
+              <span class="set-nav__icon">🗂</span>
+              <span class="set-nav__body">
+                <span class="set-nav__title">Сайдбар</span>
+                <span class="set-nav__hint">Какие команды показывать</span>
+              </span>
+            </button>
+            <button class="set-nav__item">
+              <span class="set-nav__icon">🏢</span>
+              <span class="set-nav__body">
+                <span class="set-nav__title">Мои пространства</span>
+                <span class="set-nav__hint">Доступы и присоединение</span>
+              </span>
+            </button>
+          </div>
+          <div class="set-sidebar__footer">
+            <a class="set-back-btn" href="#"><span class="set-back-btn__arrow">←</span>К трекеру</a>
+          </div>
+        </div>
+      </div>
+      <div class="ds-item__label">.set-sidebar / .set-nav__item — двухстрочный пункт с подсказкой</div>
+    </div>
+
+    <div class="ds-col" style="flex: 1">
+      <div class="ds-item" style="align-self: stretch">
+        <div class="set-panel" style="max-width: none">
+          <div class="set-list-head">Описания команд</div>
+          <div class="desc-list">
+            <div class="desc-row" style="border-left-color: #059669">
+              <div class="desc-row__head">
+                <div class="desc-row__title">
+                  <span class="desc-row__name">Платформенная команда</span>
+                  <span class="set-type-badge" style="color: #059669; background: rgba(5,150,105,0.1)">TEAM</span>
+                </div>
+                <button class="desc-row__btn">Редактировать</button>
+              </div>
+              <div class="desc-row__lead"><span class="user-avatar__fallback" style="width: 18px; height: 18px; font-size: 8px">СИ</span>Сергей Иванов</div>
+              <div class="desc-row__desc">Инфраструктура, платформенные сервисы и внутренние инструменты.</div>
+            </div>
+            <div class="desc-row" style="border-left-color: #d97706">
+              <div class="desc-row__head">
+                <div class="desc-row__title">
+                  <span class="desc-row__name">Мобильный сквад</span>
+                  <span class="set-type-badge" style="color: #d97706; background: rgba(217,119,6,0.1)">SQUAD</span>
+                </div>
+                <button class="desc-row__btn">Редактировать</button>
+              </div>
+              <div class="desc-row__empty">Описание не заполнено</div>
+            </div>
+          </div>
+        </div>
+        <div class="ds-item__label">.set-panel + .desc-row — левая граница по цвету типа команды</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Мои пространства</div>
+  <div class="set-panel" style="max-width: none">
+    <div class="space-list">
+      <div class="space-row space-row--active">
+        <div class="space-row__body">
+          <div class="space-row__name">Платформа</div>
+          <div class="space-row__meta">
+            <span class="space-meta"><span class="space-meta__label">слаг</span><span class="space-meta__slug">platform</span></span>
+            <span class="space-meta__role">администратор</span>
+          </div>
+        </div>
+        <span class="space-status space-status--active"><span class="space-status__dot"></span>активно</span>
+        <button class="space-row__btn">Открыть</button>
+      </div>
+      <div class="space-row">
+        <div class="space-row__body">
+          <div class="space-row__name">Мобильная разработка</div>
+          <div class="space-row__meta">
+            <span class="space-meta"><span class="space-meta__label">слаг</span><span class="space-meta__slug">mobile</span></span>
+            <span class="space-meta__role">участник</span>
+          </div>
+        </div>
+        <span class="space-status space-status--pending"><span class="space-status__dot"></span>ожидает</span>
+        <button class="space-row__btn">Отменить</button>
+      </div>
+    </div>
+    <div class="space-join">
+      <div class="space-join__title">Присоединиться к пространству</div>
+      <div class="space-join__row">
+        <div class="space-join__field">
+          <label class="space-join__label">Слаг пространства</label>
+          <input class="space-join__input" value="analytics">
+        </div>
+        <button class="set-btn set-btn--primary">Отправить запрос</button>
+      </div>
+      <div class="space-join__hint">Администратор пространства получит уведомление и подтвердит доступ.</div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Выбор команд для сайдбара</div>
+  <div class="set-panel" style="max-width: none">
+    <div class="pick-toolbar">
+      <div class="pick-search"><span class="pick-search__icon">⌕</span><input class="pick-search__input" placeholder="Поиск команды"></div>
+      <button class="set-btn set-btn--ghost">Сбросить</button>
+    </div>
+    <div class="pick-head">
+      <span class="pick-head__label">Команды</span>
+      <span class="pick-head__counter">выбрано <strong>8</strong> из 24</span>
+    </div>
+    <div class="pick-tree">
+      <div class="pick-row">
+        <button class="pick-row__caret">▾</button>
+        <span class="pick-row__dot" style="background: #4338ca"></span>
+        <span class="pick-row__name">Департамент разработки</span>
+        <span class="pick-row__count">12</span>
+        <button class="pick-box pick-box--partial">–</button>
+      </div>
+      <div class="pick-row" style="padding-left: 28px">
+        <span class="pick-row__caret-spacer"></span>
+        <span class="pick-row__dot" style="background: #059669"></span>
+        <span class="pick-row__name">Платформенная команда</span>
+        <span class="pick-row__count">4</span>
+        <button class="pick-box pick-box--full">✓</button>
+      </div>
+      <div class="pick-row" style="padding-left: 28px">
+        <span class="pick-row__caret-spacer"></span>
+        <span class="pick-row__dot" style="background: #d97706"></span>
+        <span class="pick-row__name">Мобильный сквад</span>
+        <span class="pick-row__count">3</span>
+        <button class="pick-box pick-box--none"></button>
+      </div>
+    </div>
+  </div>
+</section>

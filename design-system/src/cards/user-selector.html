@@ -1,0 +1,87 @@
+<!-- @dsCard group="Forms" -->
+<!-- @dsName Выбор людей и команд -->
+<!-- @dsSubtitle UserSelector, чип пользователя, TeamCombobox -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css -->
+<!-- @dsViewport 900x760 -->
+<section class="ds-section">
+  <div class="ds-section__title">UserSelector — закрыт</div>
+  <div class="ds-surface" style="max-width: 460px">
+    <div class="user-selector">
+      <div class="user-selector__field">
+        <span class="user-chip">
+          <span class="user-avatar__fallback" style="width: 18px; height: 18px; font-size: 9px">АП</span>
+          <span class="user-chip__name">Анна Петрова</span>
+          <button class="user-chip__remove">×</button>
+        </span>
+        <input class="user-selector__input" placeholder="Добавить участника">
+      </div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.user-selector__field + .user-chip</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">UserSelector — открыт</div>
+  <div class="ds-surface" style="max-width: 460px; padding-bottom: 230px">
+    <div class="user-selector">
+      <div class="user-selector__field user-selector__field--open">
+        <input class="user-selector__input" value="пет">
+      </div>
+      <div class="user-selector__dropdown" style="position: static; margin-top: 4px">
+        <div class="user-selector__option user-selector__option--hi">
+          <span class="user-avatar__fallback" style="width: 26px; height: 26px; font-size: 11px">АП</span>
+          <span class="user-selector__option-info">
+            <span class="user-selector__option-name">Анна Петрова</span>
+            <span class="user-selector__option-team">Платформенная команда</span>
+          </span>
+        </div>
+        <div class="user-selector__option">
+          <span class="user-avatar__fallback" style="width: 26px; height: 26px; font-size: 11px">ИП</span>
+          <span class="user-selector__option-info">
+            <span class="user-selector__option-name">Иван Петров</span>
+            <span class="user-selector__option-team">Мобильная разработка</span>
+          </span>
+        </div>
+        <div class="user-selector__empty">Больше никого не найдено</div>
+      </div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.user-selector__field--open + .user-selector__dropdown</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">TeamCombobox</div>
+  <div class="ds-surface" style="max-width: 520px; padding-bottom: 230px">
+    <div class="team-combobox">
+      <div class="team-combobox__input-area team-combobox__input-area--open">
+        <span class="team-combobox__tag" style="background: rgba(5,150,105,0.12)">
+          <span class="team-combobox__tag-type" style="color: #059669">team</span>
+          <span class="team-combobox__tag-name">Платформенная</span>
+          <button class="team-combobox__tag-remove">×</button>
+        </span>
+        <input class="team-combobox__input" placeholder="Команда или подразделение">
+      </div>
+      <div class="team-combobox__dropdown" style="position: static; margin-top: 4px">
+        <div class="team-combobox__option team-combobox__option--hi" style="padding: 8px 12px">
+          <span class="team-combobox__option-stripe" style="background: #4338ca"></span>
+          <span class="team-combobox__option-type" style="color: #4338ca; background: rgba(67,56,202,0.1)">dept</span>
+          <span class="team-combobox__option-name">Департамент разработки</span>
+          <span class="team-combobox__option-lead">Сергей Иванов</span>
+        </div>
+        <div class="team-combobox__option team-combobox__option--selected" style="padding: 8px 12px">
+          <span class="team-combobox__option-stripe" style="background: #059669"></span>
+          <span class="team-combobox__option-type" style="color: #059669; background: rgba(5,150,105,0.1)">team</span>
+          <span class="team-combobox__option-name">Платформенная команда</span>
+        </div>
+        <div class="team-combobox__option team-combobox__option--blocked" style="padding: 8px 12px">
+          <span class="team-combobox__option-stripe" style="background: #d97706"></span>
+          <span class="team-combobox__option-type" style="color: #d97706; background: rgba(217,119,6,0.1)">squad</span>
+          <span class="team-combobox__option-name">Мобильный сквад</span>
+          <span class="team-combobox__option-blocked-tag">нет доступа</span>
+        </div>
+        <div class="team-combobox__empty">Ничего не найдено</div>
+      </div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.team-combobox — параллельный к .user-selector примитив с той же ролью</div>
+  </div>
+</section>

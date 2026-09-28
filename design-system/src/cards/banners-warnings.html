@@ -1,0 +1,73 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Баннеры и предупреждения -->
+<!-- @dsSubtitle Веса, совместный доступ, ошибки, лид команды -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css -->
+<!-- @dsViewport 900x620 -->
+<section class="ds-section">
+  <div class="ds-section__title">Предупреждения о весах</div>
+  <div class="ds-surface">
+    <div class="goal-weight-warn">
+      <span class="goal-weight-warn__icon">⚠</span>
+      <div class="goal-weight-warn__body">
+        <div class="goal-weight-warn__title">Сумма весов целей — 130%</div>
+        <div class="goal-weight-warn__hint">Приведите к 100%, иначе прогресс периода будет искажён</div>
+      </div>
+    </div>
+    <div class="kr-weight-warn"><span class="kr-weight-warn__icon">⚠</span>Сумма весов ключевых результатов — 120%, должна быть 100%</div>
+    <div class="ds-item__label" style="margin-top: 8px">.goal-weight-warn (жёлтый) и .kr-weight-warn (красный) — одна проблема, два цвета</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Совместный доступ</div>
+  <div class="ds-surface">
+    <div class="shared-banner">
+      <span class="shared-banner__label">общая цель</span>
+      <span class="shared-pill shared-pill--owner"><span class="shared-pill__owner-star">★</span> Платформенная</span>
+      <span class="shared-pill shared-pill--self">Моя команда</span>
+      <span class="shared-pill">Мобильная разработка</span>
+      <span class="shared-pill">Аналитика</span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.shared-banner — бирюзовая, парная к левой границе .goal-card--shared</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Ошибки</div>
+  <div class="ds-surface">
+    <div class="ds-col" style="max-width: 520px">
+      <div class="ds-item" style="align-self: stretch">
+        <div class="transfer-modal__error">Цель нельзя перенести: у команды-получателя закрыт период</div>
+        <div class="ds-item__label">.transfer-modal__error</div>
+      </div>
+      <div class="ds-item">
+        <div class="form-error-msg">Укажите название цели</div>
+        <div class="ds-item__label">.form-error-msg — под полем</div>
+      </div>
+      <div class="ds-item">
+        <span class="notif-prefs__status notif-prefs__status--err">Не удалось сохранить</span>
+        <div class="ds-item__label">.notif-prefs__status--err</div>
+      </div>
+      <div class="ds-item">
+        <span class="notif-prefs__status notif-prefs__status--ok">Сохранено</span>
+        <div class="ds-item__label">.notif-prefs__status--ok</div>
+      </div>
+      <div class="ds-item">
+        <span class="notif-prefs__dirty">Есть несохранённые изменения</span>
+        <div class="ds-item__label">.notif-prefs__dirty</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Информационный баннер настроек</div>
+  <div class="ds-surface">
+    <div class="set-lead-banner">
+      <span class="set-lead-banner__label">Вы лид команд:</span>
+      <span class="set-lead-chip"><span class="set-lead-chip__dot" style="background: #059669"></span>Платформенная</span>
+      <span class="set-lead-chip"><span class="set-lead-chip__dot" style="background: #0891b2"></span>Инфраструктура</span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.set-lead-banner — единственный акцентный баннер на токенах --accent-10 / --accent-25</div>
+  </div>
+</section>

@@ -1,0 +1,104 @@
+/* Обвязка прототипа. Всё, что не является продуктовым стилем, живёт здесь и
+   помечено префиксом .pt- — кроме трёх переопределений ниже, которые нужны,
+   чтобы приложение, рассчитанное на целую вкладку, жило внутри артефакта. */
+
+/* 1. Приложение верстается от 100vh; внутри артефакта высоту задаёт контейнер,
+      иначе страница уезжает за safe-area телефона. */
+html, body { height: 100%; }
+body { background: var(--canvas); overflow: hidden; }
+.app { height: 100%; }
+
+/* 2. Прототип светлый всегда: он показывает продукт, а не подстраивается под
+      тему зрителя. Фон задан явно, чтобы не просвечивал хост. */
+
+/* 3. Узкий экран: сайдбар уезжает за край и вызывается кнопкой. В продукте
+      такого поведения нет — это компромисс прототипа, чтобы его можно было
+      открыть с телефона. */
+.pt-burger { display: none; }
+.pt-scrim { display: none; }
+
+@media (max-width: 860px) {
+  .sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+    z-index: 320;
+  }
+  .app--nav-open .sidebar { transform: none; }
+  .pt-scrim {
+    display: block; position: absolute; inset: 0;
+    background: rgba(12, 18, 32, 0.45); z-index: 310;
+  }
+  .app:not(.app--nav-open) .pt-scrim { display: none; }
+  .pt-burger {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; flex-shrink: 0;
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    background: #fff; color: var(--text-body); font-size: 15px; cursor: pointer;
+  }
+  .topbar { padding: 10px 16px; }
+  .content { padding: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+
+/* Плашка «это прототип». Приглушена, чтобы не спорить с интерфейсом, но видна
+   всегда — иначе тестовые числа можно принять за настоящие. */
+.pt-banner {
+  position: absolute; right: 14px; bottom: 14px; z-index: 400;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: var(--radius-pill);
+  background: rgba(17, 24, 39, 0.86); color: #e5e7eb;
+  font-size: 11.5px; line-height: 1; letter-spacing: 0.01em;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
+}
+.pt-banner__dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #fbbf24; flex-shrink: 0;
+}
+.pt-banner__close {
+  border: none; background: none; color: #9ca3af;
+  font-size: 13px; line-height: 1; cursor: pointer; padding: 0 0 0 2px;
+}
+.pt-banner__close:hover { color: #fff; }
+
+/* Фокус виден везде: у продуктовых кнопок своего состояния фокуса нет. */
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Артефактный скелет при публикации даёт [hidden]{display:none!important}. Локально
+   его нет, а .pt-banner{display:flex} перебивает браузерный дефолт — дублируем,
+   иначе кнопка «скрыть плашку» работает только на опубликованной странице. */
+[hidden] { display: none !important; }
+
+/* Обзор периода рисует собственный внутренний отступ (как PeriodOverviewContent),
+   поэтому у .content его снимаем — иначе отступ удваивается. */
+.content--flush { padding: 0; }
+
+/* Раздел «Дерево целей» занимает всю рабочую область без внутренних отступов,
+   как .gt-main в продукте; здесь ему нужна явная высота внутри .content. */
+.content--flush .gt-main { height: 100%; }
+.gt-main__body { flex: 1; overflow: hidden; position: relative; display: flex; }
+.gt-main__body .gt-canvas-wrap { flex: 1; position: relative; }
+
+/* Лента активностей занимает всю рабочую область, как .act-main в продукте. */
+.content--flush .act-main { height: 100%; }
+
+/* Ряд «что можно потыкать» — подсказка на первом экране, не часть продукта. */
+.pt-hint {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 16px; padding: 10px 14px;
+  background: var(--accent-10); border: 1px solid var(--accent-25);
+  border-radius: var(--radius-lg);
+  font-size: 12.5px; color: var(--accent-deep);
+}
+.pt-hint__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px; background: #fff; border: 1px solid var(--accent-25);
+  border-radius: 5px; padding: 1px 6px;
+}

@@ -1,0 +1,93 @@
+<!-- @dsCard group="Goal tree" -->
+<!-- @dsName Холст графа целей -->
+<!-- @dsSubtitle Слои по глубине, группы команд, карточки целей, связи -->
+<!-- @dsCss tokens.css shell.css goal_tree.css -->
+<!-- @dsViewport 960x680 -->
+<section class="ds-section">
+  <div class="ds-section__title">Карточки целей — .gt-card</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="gt-card" style="position: relative; width: 210px; height: 118px">
+        <span class="gt-card__strip" style="background: #6366f1"></span>
+        <div class="gt-card__title">Удержание аудитории 2026</div>
+        <div class="gt-card__meta">
+          <span class="gt-card__team"><span class="gt-card__dot" style="--gt-accent: #6366f1"></span><span class="gt-card__teamname">Департамент</span></span>
+          <span class="gt-card__period">2026</span>
+          <span class="gt-card__pr" style="color: #2563eb">61%</span>
+        </div>
+        <div class="gt-card__bar"><div class="gt-card__barfill" style="width: 61%"></div></div>
+      </div>
+      <div class="ds-item__label">.gt-card — обычная</div>
+    </div>
+    <div class="ds-item">
+      <div class="gt-card gt-card--root" style="position: relative; width: 210px; height: 118px">
+        <button class="gt-collapse-btn">−</button>
+        <div class="gt-card__title">Стратегическая цель года</div>
+        <div class="gt-card__meta">
+          <span class="gt-card__team"><span class="gt-card__dot" style="--gt-accent: #e0952b"></span><span class="gt-card__teamname">Компания</span></span>
+          <span class="gt-card__period">2026</span>
+          <span class="gt-card__pr" style="color: #16a34a">82%</span>
+        </div>
+        <div class="gt-card__bar"><div class="gt-card__barfill" style="width: 82%"></div></div>
+      </div>
+      <div class="ds-item__label">.gt-card--root + .gt-collapse-btn</div>
+    </div>
+    <div class="ds-item">
+      <div class="gt-card gt-card--hl" style="position: relative; width: 210px; height: 118px">
+        <span class="gt-card__strip" style="background: #14b8a6"></span>
+        <div class="gt-card__title">Выбранная цель</div>
+        <div class="gt-card__meta">
+          <span class="gt-card__team"><span class="gt-card__dot" style="--gt-accent: #14b8a6"></span><span class="gt-card__teamname">Платформа</span></span>
+          <span class="gt-card__pr" style="color: #d97706">44%</span>
+        </div>
+        <div class="gt-card__bar"><div class="gt-card__barfill" style="width: 44%"></div></div>
+      </div>
+      <div class="ds-item__label">.gt-card--hl</div>
+    </div>
+    <div class="ds-item">
+      <div class="gt-card gt-card--dim" style="position: relative; width: 210px; height: 118px">
+        <span class="gt-card__strip" style="background: #94a3b8"></span>
+        <div class="gt-card__title">Вне фокуса</div>
+        <div class="gt-card__meta">
+          <span class="gt-card__team"><span class="gt-card__dot"></span><span class="gt-card__teamname">Аналитика</span></span>
+          <span class="gt-card__pr" style="color: #6b7280">12%</span>
+        </div>
+        <div class="gt-card__bar"><div class="gt-card__barfill" style="width: 12%"></div></div>
+      </div>
+      <div class="ds-item__label">.gt-card--dim</div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Слои по глубине — .gt-band</div>
+  <div class="ds-frame ds-frame--canvas" style="height: 300px">
+    <div class="gt-canvas" style="height: 100%">
+      <div class="gt-band gt-band--d0" style="top: 8px; height: 130px">
+        <span class="gt-band__label"><span class="gt-band__marker">◆</span>Годовые<span class="gt-band__count">3</span></span>
+        <div class="gt-group" style="left: 24px; top: 46px; width: 250px; height: 74px">
+          <span class="gt-group__label"><span class="gt-group__dot" style="background: #6366f1"></span><span class="gt-group__label-text">Департамент разработки</span></span>
+        </div>
+      </div>
+      <div class="gt-band gt-band--d1" style="top: 148px; height: 130px">
+        <span class="gt-band__label"><span class="gt-band__marker">◆</span>Квартальные<span class="gt-band__count">11</span></span>
+      </div>
+      <svg class="gt-edges" width="100%" height="100%">
+        <path class="gt-edge" d="M 150 140 C 150 165, 220 165, 220 190" fill="none"></path>
+        <path class="gt-edge gt-edge--dim" d="M 150 140 C 150 170, 330 170, 330 190" fill="none"></path>
+      </svg>
+    </div>
+  </div>
+  <div class="ds-item__label">.gt-band--d0…--d3 / --u — свой цвет подложки, рамки и пилюли на каждый уровень; .gt-group — пунктирная рамка команды</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Цвета слоёв</div>
+  <div class="ds-row">
+    <div class="ds-item"><span class="gt-band__label gt-band--d0" style="display: inline-flex; margin: 0">◆ Годовые</span><div class="ds-item__label">--d0 #6366f1</div></div>
+    <div class="ds-item"><span class="gt-band__label gt-band--d1" style="display: inline-flex; margin: 0">◆ Квартальные</span><div class="ds-item__label">--d1 #14b8a6</div></div>
+    <div class="ds-item"><span class="gt-band__label gt-band--d2" style="display: inline-flex; margin: 0">◆ Глубже</span><div class="ds-item__label">--d2 #f59e0b</div></div>
+    <div class="ds-item"><span class="gt-band__label gt-band--d3" style="display: inline-flex; margin: 0">◆ Ещё глубже</span><div class="ds-item__label">--d3 #ec4899</div></div>
+    <div class="ds-item"><span class="gt-band__label gt-band--u" style="display: inline-flex; margin: 0">◆ Без связей</span><div class="ds-item__label">--u #94a3b8</div></div>
+  </div>
+</section>

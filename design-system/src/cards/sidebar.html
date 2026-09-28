@@ -1,0 +1,83 @@
+<!-- @dsCard group="Navigation" -->
+<!-- @dsName Сайдбар -->
+<!-- @dsSubtitle Тенант, колокольчик, разделы, футер с пользователем -->
+<!-- @dsCss tokens.css shell.css components.css sidebar.css -->
+<!-- @dsTheme dark -->
+<!-- @dsViewport 760x660 -->
+<section class="ds-section">
+  <div class="ds-section__title">Полный сайдбар</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="ds-frame ds-frame--sidebar">
+        <div class="sidebar">
+          <div class="sidebar__tenant">
+            <span class="sidebar__tenant-avatar">ПК</span>
+            <button class="sidebar__tenant-main">
+              <span class="sidebar__tenant-name">Платформа</span>
+              <span class="sidebar__tenant-chevron">▾</span>
+            </button>
+            <button class="sidebar__bell">
+              <span class="sidebar__bell-icon">🔔</span>
+              <span class="sidebar__bell-badge">7</span>
+            </button>
+          </div>
+
+          <div class="sidebar__sections">
+            <div class="sidebar__section-label">Разделы</div>
+            <a class="sidebar__navlink sidebar__navlink--active" href="#"><span class="sidebar__navlink-icon">◎</span>Трекер целей</a>
+            <a class="sidebar__navlink" href="#"><span class="sidebar__navlink-icon">⌗</span>Граф целей</a>
+            <a class="sidebar__navlink" href="#"><span class="sidebar__navlink-icon">≡</span>Активность</a>
+            <a class="sidebar__navlink" href="#"><span class="sidebar__navlink-icon">▤</span>Обзор периода</a>
+          </div>
+
+          <div class="sidebar__context">
+            <div class="sidebar__section-label">Администрирование</div>
+            <a class="sidebar__navlink" href="#"><span class="sidebar__navlink-icon">⚙</span>Настройки</a>
+            <a class="sidebar__navlink" href="#"><span class="sidebar__navlink-icon">👥</span>Участники</a>
+          </div>
+
+          <div class="sidebar__footer">
+            <a class="sidebar__footer-link" href="#"><span class="sidebar__footer-icon">?</span>Справка</a>
+            <div class="sidebar__user">
+              <span class="user-avatar__fallback" style="width: 34px; height: 34px; font-size: 13px">АП</span>
+              <div class="sidebar__user-info">
+                <div class="sidebar__user-name">Анна Петрова</div>
+                <div class="sidebar__user-sub">a.petrova@example.com</div>
+              </div>
+              <button class="sidebar__user-more">⋯</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ds-item__label">.sidebar — 252px, фон #0c1220</div>
+    </div>
+
+    <div class="ds-col">
+      <div class="ds-item">
+        <div class="ds-surface" style="width: 300px; background: #131b2e; border-color: rgba(255,255,255,0.1); padding: 6px">
+          <button class="sidebar__tenant-item sidebar__tenant-item--active"><span class="sidebar__tenant-item-icon">✓</span>Платформа</button>
+          <button class="sidebar__tenant-item"><span class="sidebar__tenant-item-icon">·</span>Мобильная разработка</button>
+          <button class="sidebar__tenant-item"><span class="sidebar__tenant-item-icon">+</span>Присоединиться</button>
+        </div>
+        <div class="ds-item__label">.sidebar__tenant-menu — переключение пространства</div>
+      </div>
+
+      <div class="ds-item">
+        <div class="ds-surface" style="width: 300px; background: #131b2e; border-color: rgba(255,255,255,0.1); padding: 6px">
+          <a class="sidebar__user-menu-item" href="#"><span class="sidebar__user-menu-icon">⚙</span>Мои настройки</a>
+          <a class="sidebar__user-menu-item" href="#"><span class="sidebar__user-menu-icon">🔔</span>Уведомления</a>
+          <button class="sidebar__user-menu-item sidebar__user-menu-item--danger"><span class="sidebar__user-menu-icon">⏻</span>Выйти</button>
+        </div>
+        <div class="ds-item__label">.sidebar__user-menu</div>
+      </div>
+
+      <div class="ds-item">
+        <div class="ds-row">
+          <span class="sidebar__bell" style="position: relative"><span class="sidebar__bell-icon">🔔</span><span class="sidebar__bell-badge">7</span></span>
+          <span class="sidebar__bell" style="position: relative"><span class="sidebar__bell-icon">🔔</span><span class="sidebar__bell-badge sidebar__bell-badge--zero">0</span></span>
+        </div>
+        <div class="ds-item__label">.sidebar__bell-badge / --zero</div>
+      </div>
+    </div>
+  </div>
+</section>

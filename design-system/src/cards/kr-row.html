@@ -1,0 +1,93 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Ключевые результаты -->
+<!-- @dsSubtitle Строка KR, заметки, обнуление, секция внутри цели -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
+<!-- @dsViewport 900x720 -->
+<section class="ds-section">
+  <div class="ds-section__title">Секция KR внутри карточки цели</div>
+  <div class="goal-card">
+    <div class="goal-card__body" style="padding-bottom: 8px">
+      <div class="goal-card__title-row"><span class="goal-card__title">Вывести retention 30d на 42%</span></div>
+    </div>
+    <div class="kr-section">
+      <div class="kr-weight-warn"><span class="kr-weight-warn__icon">⚠</span>Сумма весов ключевых результатов — 120%, должна быть 100%</div>
+
+      <div class="kr-item kr-item--reorderable">
+        <span class="kr-item__drag-handle">⋮⋮</span>
+        <div class="kr-row">
+          <div class="kr-row__main">
+            <span class="kr-weight-chip">40%</span>
+            <div class="kr-info">
+              <div class="kr-name">Доля активных пользователей в неделю</div>
+              <div class="kr-health-badge-row"><span class="badge" style="color: #16a34a; background: #16a34a15">● On Track</span></div>
+              <div class="kr-desc md-content">Считаем по событию <code>session_start</code>, окно 7 дней.</div>
+              <div class="kr-detail-row">
+                <div class="kr-bar-wrap"><div class="progress-bar" style="height: 6px; border-radius: 3px"><div class="progress-bar__fill" style="width: 78%; background: #16a34a; border-radius: 3px"></div></div></div>
+                <span class="kr-pct" style="color: #16a34a">78%</span>
+                <span class="kr-detail">33,8% / 42%</span>
+                <span class="kr-updated" style="color: #9ca3af">1 день назад</span>
+              </div>
+            </div>
+            <span class="kr-notes-slot"><button class="kr-notes-btn">💬 2</button></span>
+            <button class="kr-edit-btn">Изменить</button>
+            <button class="kr-delete-btn">×</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="kr-item kr-item--reorderable">
+        <span class="kr-item__drag-handle">⋮⋮</span>
+        <div class="kr-row">
+          <div class="kr-row__main">
+            <span class="kr-weight-chip">30%</span>
+            <div class="kr-info">
+              <div class="kr-name">Перенос трёх сервисов на новый рантайм</div>
+              <div class="kr-health-badge-row"><span class="badge" style="color: #d97706; background: #d9770615">▲ At Risk</span></div>
+              <div class="kr-detail-row">
+                <div class="kr-bar-wrap"><div class="progress-bar" style="height: 6px; border-radius: 3px"><div class="progress-bar__fill" style="width: 33%; background: #d97706; border-radius: 3px"></div></div></div>
+                <span class="kr-pct" style="color: #d97706">33%</span>
+                <span class="kr-detail">1 / 3 шт</span>
+                <span class="kr-updated" style="color: #d97706">9 дней назад</span>
+              </div>
+              <div class="kr-zeroing-note kr-zeroing-note--clamp"><span class="kr-zeroing-note__icon">⊘</span>Обнулено: команда сменила приоритет, перенос отложен до следующего квартала</div>
+            </div>
+            <span class="kr-notes-slot"></span>
+            <button class="kr-edit-btn">Изменить</button>
+            <button class="kr-delete-btn">×</button>
+          </div>
+        </div>
+      </div>
+
+      <button class="kr-add-btn">+ Ключевой результат</button>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Заметки к результату</div>
+  <div class="ds-surface">
+    <div class="kr-notes">
+      <div class="kr-note">
+        <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">АП</span>
+        <div class="kr-note__content">
+          <div class="kr-note__header">
+            <span class="kr-note__author">Анна Петрова</span>
+            <span class="kr-note__date">3 дня назад</span>
+          </div>
+          <div class="kr-note__text md-content">Взяли данные из новой витрины, цифра выросла на 1,2 п.п.</div>
+        </div>
+      </div>
+      <div class="kr-note">
+        <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">СИ</span>
+        <div class="kr-note__content">
+          <div class="kr-note__header">
+            <span class="kr-note__author">Сергей Иванов</span>
+            <span class="kr-note__date">неделю назад</span>
+          </div>
+          <div class="kr-note__text md-content">Перепроверил методику, расхождений нет.</div>
+        </div>
+      </div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.kr-notes — отступ слева и линия-направляющая</div>
+  </div>
+</section>

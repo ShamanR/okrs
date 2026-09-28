@@ -1,0 +1,96 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Карточка цели -->
+<!-- @dsSubtitle Обычная, общая, устаревшая, перетаскиваемая -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
+<!-- @dsViewport 900x820 -->
+<section class="ds-section">
+  <div class="ds-section__title">Полная карточка</div>
+  <div class="goal-card">
+    <div class="goal-card__body">
+      <div class="goal-card__meta">
+        <span class="badge" style="color: #2563eb; background: #2563eb15">в плане</span>
+        <span class="goal-card__weight">вес 40%</span>
+        <span class="goal-link-label goal-link-label--up">↑ 1</span>
+        <span class="goal-link-label goal-link-label--down">↓ 3</span>
+        <span class="goal-card__spacer"></span>
+        <span class="goal-card__owner"><span class="goal-card__owner-label">владелец</span><span class="uinfo"><span class="uinfo__initials" style="width: 18px; height: 18px; font-size: 8px; background: #7c3aed">СИ</span><span class="uinfo__name">Сергей Иванов</span></span></span>
+        <button class="goal-card__copy-link">🔗</button>
+      </div>
+      <div class="goal-card__title-row">
+        <span class="goal-card__title">Вывести retention 30d на 42%</span>
+        <span class="goal-card__edit-hint">нажмите, чтобы изменить</span>
+        <button class="goal-card__delete-btn">×</button>
+      </div>
+      <div class="goal-card__desc md-content">Удержание считаем по когорте зарегистрировавшихся в первый месяц квартала. Источник — витрина <code>dm_retention</code>.</div>
+      <div class="goal-card__progress">
+        <div class="goal-card__progress-header">
+          <div class="goal-card__progress-left">
+            <span class="goal-card__progress-pct" style="color: #2563eb">64%</span>
+            <span class="goal-card__health-badge" style="color: #2563eb; background: #2563eb15">в плане</span>
+          </div>
+          <span class="goal-card__updated" style="color: #9ca3af">обновлено 2 дня назад</span>
+        </div>
+        <div class="progress-bar" style="height: 8px; border-radius: 4px">
+          <div class="progress-bar__fill" style="width: 64%; background: #2563eb; border-radius: 4px"></div>
+          <div class="progress-bar__forecast" style="left: 70%; height: 14px"></div>
+        </div>
+        <div class="goal-card__forecast-label">план на сегодня 70%</div>
+      </div>
+      <div class="goal-card__tags">
+        <span class="kr-weight-badge">Σ весов KR 120%</span>
+      </div>
+    </div>
+    <div class="goal-card__footer">
+      <button class="goal-card__footer-btn goal-card__footer-btn--has-comments">💬 Комментарии <span class="comment-unresolved-badge">2</span></button>
+      <span class="goal-card__footer-divider"></span>
+      <button class="goal-card__footer-btn">📈 История</button>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Варианты состояния</div>
+  <div class="goal-card goal-card--shared">
+    <div class="goal-card__body">
+      <div class="shared-banner">
+        <span class="shared-banner__label">общая цель</span>
+        <span class="shared-pill shared-pill--owner"><span class="shared-pill__owner-star">★</span> Платформенная</span>
+        <span class="shared-pill shared-pill--self">Моя команда</span>
+        <span class="shared-pill">Мобильная разработка</span>
+      </div>
+      <div class="goal-card__title-row"><span class="goal-card__title">Единый онбординг сервисов</span></div>
+      <div class="goal-card__progress">
+        <div class="goal-card__progress-header">
+          <div class="goal-card__progress-left"><span class="goal-card__progress-pct" style="color: #16a34a">91%</span></div>
+        </div>
+        <div class="progress-bar" style="height: 8px; border-radius: 4px"><div class="progress-bar__fill" style="width: 91%; background: #16a34a; border-radius: 4px"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.goal-card--shared — левая граница #0891b2 + .shared-banner</div>
+
+  <div class="goal-card goal-card--stale" style="margin-top: 12px">
+    <div class="goal-card__body">
+      <div class="goal-card__meta"><span class="badge" style="color: #d97706; background: #d9770615">нет обновлений</span></div>
+      <div class="goal-card__title-row"><span class="goal-card__title">Сократить время сборки до 6 минут</span></div>
+      <div class="goal-card__progress">
+        <div class="goal-card__progress-header">
+          <div class="goal-card__progress-left"><span class="goal-card__progress-pct" style="color: #d97706">35%</span></div>
+          <span class="goal-card__updated" style="color: #d97706">без обновлений 21 день</span>
+        </div>
+        <div class="progress-bar" style="height: 8px; border-radius: 4px"><div class="progress-bar__fill" style="width: 35%; background: #d97706; border-radius: 4px"></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.goal-card--stale — граница #fde68a</div>
+
+  <div style="position: relative; margin: 12px 0 0 24px">
+    <div class="goal-card goal-card--dragging" style="margin-bottom: 0">
+      <span class="drag-handle">⋮⋮</span>
+      <div class="goal-card__body">
+        <div class="goal-card__title-row"><span class="goal-card__title">Перетаскиваемая цель</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.goal-card--dragging + .drag-handle</div>
+</section>

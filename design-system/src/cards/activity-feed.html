@@ -1,0 +1,91 @@
+<!-- @dsCard group="Activity" -->
+<!-- @dsName Лента активности -->
+<!-- @dsSubtitle Группы по датам, типы событий, вложенный markdown -->
+<!-- @dsCss tokens.css shell.css components.css activity.css markdown.css -->
+<!-- @dsViewport 900x700 -->
+<section class="ds-section">
+  <div class="ds-section__title">Лента — .act-feed</div>
+  <div class="ds-frame" style="background: #edf0f4">
+    <div class="act-feed" style="padding: 8px 16px 16px">
+      <div class="act-group">
+        <div class="act-group__label">СЕГОДНЯ</div>
+
+        <div class="act-row">
+          <span class="act-row__icon act-row__icon--progress">📈</span>
+          <div class="act-row__body">
+            <div class="act-row__text">
+              <span class="act-row__avatar act-row__avatar--fallback">АП</span>
+              <span class="act-row__actor">Анна Петрова</span> обновила прогресс: <span class="act-was">28%</span> → 33,8%
+            </div>
+            <div class="act-row__meta">
+              <span class="act-badge">Платформенная команда</span>
+              <span class="act-badge act-badge--period">2026 Q3</span>
+              <a class="act-row__link" href="#">Открыть цель</a>
+              <span class="act-row__time">12 мин назад</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="act-row">
+          <span class="act-row__icon act-row__icon--discussion">💬</span>
+          <div class="act-row__body">
+            <div class="act-row__text">
+              <span class="act-row__avatar act-row__avatar--fallback">СИ</span>
+              <span class="act-row__actor">Сергей Иванов</span> прокомментировал цель
+            </div>
+            <div class="act-row__md md-content">
+              <p>Пересчитал по новой методике — расхождение <code>0,4 п.п.</code></p>
+              <ul><li>витрина обновлена</li><li>дашборд перепривязан</li></ul>
+            </div>
+            <div class="act-row__meta">
+              <span class="act-badge">Платформенная команда</span>
+              <a class="act-row__link" href="#">Открыть обсуждение</a>
+              <span class="act-row__time">40 мин назад</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="act-row">
+          <span class="act-row__icon act-row__icon--status">🚦</span>
+          <div class="act-row__body">
+            <div class="act-row__text">
+              <span class="act-row__avatar act-row__avatar--fallback">ИП</span>
+              <span class="act-row__actor">Иван Петров</span> перевёл цели в статус <span class="act-was">Черновик</span> → В работе
+            </div>
+            <div class="act-row__meta">
+              <span class="act-badge">Мобильная разработка</span>
+              <span class="act-row__time">2 ч назад</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="act-group">
+        <div class="act-group__label">ВЧЕРА</div>
+        <div class="act-row">
+          <span class="act-row__icon act-row__icon--composition">🧩</span>
+          <div class="act-row__body">
+            <div class="act-row__text">
+              <span class="act-row__avatar act-row__avatar--fallback">МК</span>
+              <span class="act-row__actor">Мария Ковалёва</span> добавила ключевой результат
+            </div>
+            <div class="act-row__meta">
+              <span class="act-badge">Аналитика</span>
+              <span class="act-row__time">вчера, 18:20</span>
+            </div>
+          </div>
+        </div>
+        <div class="act-row">
+          <span class="act-row__icon">•</span>
+          <div class="act-row__body">
+            <div class="act-row__text"><span class="act-row__actor">Система</span> закрыла период 2026 Q2</div>
+            <div class="act-row__meta"><span class="act-row__time">вчера, 00:05</span></div>
+          </div>
+        </div>
+      </div>
+
+      <button class="act-more">Показать ещё</button>
+    </div>
+  </div>
+  <div class="ds-item__label">.act-row__icon — цвет подложки по категории: progress / composition / status / discussion</div>
+</section>

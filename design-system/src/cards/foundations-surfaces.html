@@ -1,0 +1,54 @@
+<!-- @dsCard group="Foundations" -->
+<!-- @dsName Поверхности и радиусы -->
+<!-- @dsSubtitle Токены радиусов, фактические тени, скроллбар, экран загрузки -->
+<!-- @dsCss tokens.css shell.css tracker.css goal_tree.css -->
+<!-- @dsViewport 900x620 -->
+<section class="ds-section">
+  <div class="ds-section__title">Радиусы — токены</div>
+  <div class="ds-row">
+    <div class="ds-item"><div style="width: 92px; height: 60px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-sm)"></div><div class="ds-item__label">--radius-sm 6px</div></div>
+    <div class="ds-item"><div style="width: 92px; height: 60px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-md)"></div><div class="ds-item__label">--radius-md 8px</div></div>
+    <div class="ds-item"><div style="width: 92px; height: 60px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-lg)"></div><div class="ds-item__label">--radius-lg 12px</div></div>
+    <div class="ds-item"><div style="width: 92px; height: 60px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-pill)"></div><div class="ds-item__label">--radius-pill 999px</div></div>
+  </div>
+  <div class="ds-section__note">Фактически в компонентах встречаются и 7, 9, 10, 14, 16, 20 px мимо токенов (<code>.modal-box</code> 14, <code>.modal-confirm-box</code> 20, <code>.set-panel</code> 14). Приведение к шкале — первый кандидат на унификацию.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Тени — фактические</div>
+  <div class="ds-row">
+    <div class="ds-item"><div style="width: 150px; height: 64px; background: #fff; border: 1px solid #f0f1f3; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05)"></div><div class="ds-item__label">.goal-card — карточка в покое</div></div>
+    <div class="ds-item"><div style="width: 150px; height: 64px; background: #fff; border-radius: 10px; box-shadow: 0 4px 14px rgba(0,0,0,0.1)"></div><div class="ds-item__label">.child-card:hover</div></div>
+    <div class="ds-item"><div style="width: 150px; height: 64px; background: #fff; border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,0.15)"></div><div class="ds-item__label">.team-combobox__dropdown</div></div>
+    <div class="ds-item"><div style="width: 150px; height: 64px; background: #fff; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.25)"></div><div class="ds-item__label">.modal-box</div></div>
+    <div class="ds-item"><div style="width: 150px; height: 64px; background: #fff; border-radius: 20px; box-shadow: 0 24px 70px rgba(15,23,42,0.3)"></div><div class="ds-item__label">.modal-confirm-box</div></div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Поверхности</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item"><div style="width: 190px; height: 74px; background: var(--canvas); border-radius: 10px; border: 1px solid var(--border)"></div><div class="ds-item__label">--canvas — фон рабочей области</div></div>
+    <div class="ds-item"><div style="width: 190px; height: 74px; background: var(--surface); border-radius: 10px; border: 1px solid var(--border)"></div><div class="ds-item__label">--surface — карточка, топбар</div></div>
+    <div class="ds-item"><div style="width: 190px; height: 74px; background: var(--surface-subtle); border-radius: 10px; border: 1px solid var(--border)"></div><div class="ds-item__label">--surface-subtle — вложенные блоки</div></div>
+    <div class="ds-item"><div style="width: 190px; height: 74px; background: #f9fafb; border-radius: 10px; border: 1px solid #f0f1f3"></div><div class="ds-item__label">#f9fafb — .toggle-box, .kr-num-section</div></div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Скроллбар</div>
+  <div class="ds-surface" style="max-width: 360px">
+    <div style="height: 92px; overflow-y: scroll; font-size: 13px; color: var(--text-body); line-height: 1.6">
+      Общий скроллбар задан в <code>shell.css</code>: ширина 6px, дорожка прозрачная, ползунок <code>--scrollbar-thumb</code> #cbd5e1, при наведении #94a3b8.<br>Прокрути этот блок, чтобы увидеть ползунок.<br>Строка три.<br>Строка четыре.<br>Строка пять.<br>Строка шесть.
+    </div>
+  </div>
+  <div class="ds-section__note">В тёмных панелях скроллбар переопределён точечно (<code>.notif__list</code> — 4px, белый полупрозрачный), общего тёмного варианта нет.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Экран загрузки</div>
+  <div class="ds-surface ds-surface--flush" style="max-width: 420px">
+    <div class="loading-screen" style="height: 96px">Загрузка…</div>
+  </div>
+  <div class="ds-section__label ds-item__label">.loading-screen — единый для всех SPA-shell</div>
+</section>

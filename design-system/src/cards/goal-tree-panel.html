@@ -1,0 +1,122 @@
+<!-- @dsCard group="Goal tree" -->
+<!-- @dsName Панель и контролы графа -->
+<!-- @dsSubtitle Детали цели, зум, выбор корня и периода -->
+<!-- @dsCss tokens.css shell.css goal_tree.css -->
+<!-- @dsViewport 960x740 -->
+<section class="ds-section">
+  <div class="ds-section__title">Панель деталей — .gt-panel</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="ds-frame" style="width: 320px; height: 560px; background: #fff">
+        <div class="gt-panel" style="position: absolute; width: 320px">
+          <div class="gt-panel__header">
+            <div class="gt-panel__title">Вывести retention 30d на 42%</div>
+            <button class="gt-panel__close">×</button>
+          </div>
+          <div class="gt-panel__body">
+            <div class="gt-panel__path">
+              <a class="gt-panel__path-link" href="#">Департамент</a>
+              <span class="gt-panel__path-sep">/</span>
+              <a class="gt-panel__path-link" href="#">Платформа</a>
+            </div>
+            <div class="gt-panel__badges">
+              <span class="gt-badge" style="color: #2563eb; background: #2563eb15">в плане</span>
+              <span class="gt-panel__pill">2026 Q3</span>
+              <span class="gt-panel__weight">вес 40%</span>
+            </div>
+            <div class="gt-panel__barwrap">
+              <div class="gt-panel__bar"><div class="gt-panel__barfill" style="width: 64%"></div></div>
+              <span class="gt-panel__pct">64%</span>
+            </div>
+            <div class="gt-panel__links">
+              <span class="gt-panel__updown">вверх <b>1</b></span>
+              <span class="gt-panel__updown">вниз <b>3</b></span>
+              <button class="gt-panel__focus">◎ В фокус</button>
+            </div>
+            <div class="gt-panel__row"><span class="gt-panel__label">Владелец</span><span class="gt-panel__value">Сергей Иванов</span></div>
+            <div class="gt-panel__row"><span class="gt-panel__label">Обновлено</span><span class="gt-panel__value">2 дня назад</span></div>
+            <div class="gt-panel__section">
+              <div class="gt-panel__section-title">Цель выше</div>
+              <div class="gt-panel__parent">
+                <div class="gt-panel__parent-title">Удержание аудитории 2026</div>
+                <div class="gt-panel__parent-meta">Департамент разработки · 61%</div>
+              </div>
+              <div class="gt-panel__muted">Ниже — 3 цели команд</div>
+            </div>
+          </div>
+          <div class="gt-panel__footer">
+            <button class="gt-panel__toggle gt-panel__toggle--on">Ветка развёрнута</button>
+            <a class="gt-panel__open" href="#">Открыть</a>
+          </div>
+        </div>
+      </div>
+      <div class="ds-item__label">.gt-panel — 320px, выезжает справа</div>
+    </div>
+
+    <div class="ds-col">
+      <div class="ds-item">
+        <div class="gt-topbar" style="width: 420px; border-radius: 10px; border: 1px solid var(--border)">
+          <label class="gt-topbar__toggle"><input type="checkbox"> Только корневые цели</label>
+          <button class="gt-topbar__reset">Сбросить фокус</button>
+        </div>
+        <div class="ds-item__label">.gt-topbar</div>
+      </div>
+
+      <div class="ds-item">
+        <div class="gt-zoom-ctrl" style="position: static">
+          <button>−</button>
+          <span class="gt-zoom-ctrl__num" style="display: inline-flex; align-items: center; justify-content: center">100%</span>
+          <button>+</button>
+          <button>⤢</button>
+        </div>
+        <div class="ds-item__label">.gt-zoom-ctrl</div>
+      </div>
+
+      <div class="ds-item">
+        <div style="width: 300px; background: #0c1220; border-radius: 10px; padding: 12px">
+          <div class="gt-controls__label" style="margin-bottom: 6px">Корневая цель</div>
+          <div class="gt-rootpick gt-rootpick--open">
+            <button class="gt-rootpick__trigger">
+              <span class="gt-rootpick__value">Все корневые цели</span>
+              <span class="gt-rootpick__chev">▾</span>
+            </button>
+          </div>
+          <div class="gt-psel" style="margin-top: 10px">
+            <button class="gt-psel__trigger">
+              <span class="gt-psel__dot" style="background: #16a34a"></span>
+              <span class="gt-psel__value">2026 Q3</span>
+              <span class="gt-psel__chev">▾</span>
+            </button>
+          </div>
+        </div>
+        <div class="ds-item__label">.gt-rootpick / .gt-psel — тёмные контролы в сайдбаре</div>
+      </div>
+
+      <div class="ds-item">
+        <div class="gt-rootpick__panel" style="position: static; width: 300px; max-height: none">
+          <input class="gt-rootpick__search" placeholder="Поиск цели">
+          <div class="gt-rootpick__list">
+            <button class="gt-rootpick__all gt-rootpick__all--on">Все корневые цели</button>
+            <div class="gt-rootpick__group">
+              <div class="gt-rootpick__group-head">
+                <span class="gt-rootpick__group-dot" style="background: #6366f1"></span>
+                <span class="gt-rootpick__group-name">Департамент разработки</span>
+                <span class="gt-rootpick__group-type">DEPT</span>
+              </div>
+              <button class="gt-rootpick__row gt-rootpick__row--on">
+                <span class="gt-rootpick__row-title">Удержание аудитории 2026</span>
+                <span class="gt-rootpick__row-meta">2026 · 61%</span>
+                <span class="gt-rootpick__row-check">✓</span>
+              </button>
+              <button class="gt-rootpick__row">
+                <span class="gt-rootpick__row-title">Рост активной базы</span>
+                <span class="gt-rootpick__row-meta">2026 · 44%</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="ds-item__label">.gt-rootpick__panel</div>
+      </div>
+    </div>
+  </div>
+</section>

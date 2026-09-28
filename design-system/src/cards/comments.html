@@ -1,0 +1,79 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Комментарии -->
+<!-- @dsSubtitle Обсуждение, задачи, ответы, решённые ветки, форма -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
+<!-- @dsViewport 900x780 -->
+<section class="ds-section">
+  <div class="ds-section__title">Панель обсуждения</div>
+  <div class="goal-card">
+    <div class="comments-section">
+      <div class="comments-panel">
+        <div class="comments-panel__title">
+          Обсуждение
+          <span class="comments-panel__unresolved">2 нерешённых</span>
+        </div>
+
+        <div class="comment comment--task-open">
+          <span class="user-avatar__fallback" style="width: 26px; height: 26px; font-size: 11px">АП</span>
+          <div class="comment__content">
+            <div class="comment__header">
+              <span class="comment__author">Анна Петрова</span>
+              <span class="comment__date">2 дня назад</span>
+            </div>
+            <div class="comment__text md-content">Нужно пересчитать базу: методику удержания поменяли в середине квартала.</div>
+            <div class="comment__actions">
+              <button class="comment__resolve-btn">Решено</button>
+              <span class="comment__actions-inline">
+                <button class="comment__link-btn"><span class="comment__link-ic">↩</span>Ответить</button>
+                <span class="comment__sep">·</span>
+                <button class="comment__link-btn">Изменить</button>
+                <span class="comment__sep">·</span>
+                <button class="comment__link-btn comment__link-btn--danger">Удалить</button>
+              </span>
+            </div>
+            <div class="comment__replies">
+              <div class="comment comment--reply" style="margin-bottom: 0">
+                <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">СИ</span>
+                <div class="comment__content">
+                  <div class="comment__header">
+                    <span class="comment__author">Сергей Иванов</span>
+                    <span class="comment__date">вчера</span>
+                  </div>
+                  <div class="comment__text md-content">Пересчитал, расхождение 0,4 п.п. — обновил значение.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="comments-panel__resolved-head">Решённые</div>
+        <div class="comment comment--resolved">
+          <span class="user-avatar__fallback" style="width: 26px; height: 26px; font-size: 11px">ИП</span>
+          <div class="comment__content">
+            <div class="comment__header">
+              <span class="comment__author">Иван Петров</span>
+              <span class="comment__date">неделю назад</span>
+              <span class="comment__resolved-badge">решено</span>
+            </div>
+            <div class="comment__text md-content">Добавьте ссылку на дашборд в описание.</div>
+            <div class="comment__resolved-meta">
+              <span class="comment__resolved-info">решено Анной Петровой 3 дня назад</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="comment-compose">
+          <span class="user-avatar__fallback" style="width: 26px; height: 26px; font-size: 11px">АП</span>
+          <div class="comment-compose__right">
+            <textarea class="form-textarea form-textarea--sm" style="min-height: 64px" placeholder="Написать комментарий"></textarea>
+            <div class="comment-submit-row">
+              <button class="comment-cancel">Отмена</button>
+              <button class="comment-submit comment-submit--active">Отправить</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.comment--task-open — жёлтая подложка у нерешённой задачи; .comment--resolved приглушается</div>
+</section>

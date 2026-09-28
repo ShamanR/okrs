@@ -1,0 +1,79 @@
+<!-- @dsCard group="Navigation" -->
+<!-- @dsName Топбар и степпер статусов -->
+<!-- @dsSubtitle Шапка экрана, прогресс периода, переключение статуса целей -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css settings.css -->
+<!-- @dsViewport 960x620 -->
+<section class="ds-section">
+  <div class="ds-section__title">Топбар трекера</div>
+  <div class="ds-frame">
+    <div class="topbar">
+      <div class="topbar__main">
+        <div class="topbar__title">Платформенная команда</div>
+        <span class="topbar__lead">
+          <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">СИ</span>
+          <span class="topbar__lead-name">Сергей Иванов</span>
+          <span class="topbar__lead-role">лид</span>
+        </span>
+        <div class="topbar__spacer"></div>
+        <div class="topbar__progress">
+          <div class="progress-bar" style="height: 8px; border-radius: 4px; width: 160px">
+            <div class="progress-bar__fill" style="width: 88%; background: #16a34a; border-radius: 4px"></div>
+          </div>
+          <span class="topbar__progress-pct">88%</span>
+        </div>
+        <button class="topbar__add-btn">+ Цель</button>
+      </div>
+      <div class="topbar__desc">Инфраструктура, платформенные сервисы и внутренние инструменты</div>
+    </div>
+  </div>
+  <div class="ds-item__label">.topbar — белая полоса высотой от 54px, описание второй строкой</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Степпер статусов</div>
+  <div class="ds-frame">
+    <div class="status-stepper">
+      <button class="status-stepper__btn" style="color: #fff; background: #7c3aed">Черновик</button>
+      <span class="status-stepper__connector"></span>
+      <button class="status-stepper__btn" style="color: #6b7280; background: #f3f4f6">К валидации</button>
+      <span class="status-stepper__connector"></span>
+      <button class="status-stepper__btn" style="color: #6b7280; background: #f3f4f6">В работе</button>
+      <span class="status-stepper__connector"></span>
+      <button class="status-stepper__btn" disabled>Закрыты</button>
+      <div class="status-stepper__meta">
+        <span class="status-stepper__changed">изменено 2 дня назад</span>
+        <span class="status-stepper__locked status-stepper__locked--progress">правки заблокированы</span>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.status-stepper — цвета активного шага задаются инлайн из JS</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Пустой степпер</div>
+  <div class="ds-frame">
+    <div class="status-stepper">
+      <span class="status-stepper__no-goals">Целей нет</span>
+      <button class="status-stepper__btn" disabled>Черновик</button>
+      <span class="status-stepper__connector"></span>
+      <button class="status-stepper__btn" disabled>К валидации</button>
+    </div>
+  </div>
+  <div class="ds-item__label">.status-stepper__no-goals</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Топбар настроек</div>
+  <div class="ds-frame">
+    <div class="set-topbar">
+      <a class="set-topbar__pill" href="#">← К трекеру</a>
+      <span class="set-topbar__divider"></span>
+      <div class="set-breadcrumbs">
+        <span class="set-breadcrumbs__root">Настройки</span>
+        <span class="set-breadcrumbs__sep">/</span>
+        <span class="set-breadcrumbs__cur">Уведомления</span>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.set-topbar — другая высота и логика, чем у .topbar</div>
+</section>

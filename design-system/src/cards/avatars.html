@@ -1,0 +1,56 @@
+<!-- @dsCard group="Data display" -->
+<!-- @dsName Аватары и представление пользователя -->
+<!-- @dsSubtitle Инициалы, фото, строка автора, всплывающая карточка -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css activity.css -->
+<!-- @dsViewport 900x620 -->
+<section class="ds-section">
+  <div class="ds-section__title">Заглушка с инициалами</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="user-avatar__fallback" style="width: 18px; height: 18px; font-size: 9px">АП</span><div class="ds-item__label">18px — в чипе</div></div>
+      <div class="ds-item"><span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">АП</span><div class="ds-item__label">22px — в строке</div></div>
+      <div class="ds-item"><span class="user-avatar__fallback" style="width: 26px; height: 26px; font-size: 11px">АП</span><div class="ds-item__label">26px — в списке</div></div>
+      <div class="ds-item"><span class="user-avatar__fallback" style="width: 34px; height: 34px; font-size: 13px">АП</span><div class="ds-item__label">34px — в шапке</div></div>
+      <div class="ds-item"><span class="user-avatar__fallback" style="width: 44px; height: 44px; font-size: 16px">АП</span><div class="ds-item__label">44px — в карточке</div></div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.user-avatar__fallback — размер приходит инлайн, фон всегда --accent</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Автор в строке — .uinfo</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="uinfo"><span class="uinfo__initials" style="width: 20px; height: 20px; font-size: 9px; background: #7c3aed">АП</span><span class="uinfo__name">Анна Петрова</span></span><div class="ds-item__label">.uinfo + .uinfo__initials</div></div>
+      <div class="ds-item"><span class="avatar"><span class="avatar__initials" style="width: 22px; height: 22px; font-size: 10px; background: #0891b2">СИ</span><span class="avatar__name">Сергей Иванов</span></span><div class="ds-item__label">.avatar — параллельный набор с той же ролью</div></div>
+      <div class="ds-item"><span class="topbar__lead"><span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">СИ</span><span class="topbar__lead-name">Сергей Иванов</span><span class="topbar__lead-role">лид</span></span><div class="ds-item__label">.topbar__lead</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Три набора классов (<code>.uinfo</code>, <code>.avatar</code>, <code>.user-avatar__fallback</code>) рисуют один и тот же кружок с инициалами — очевидный кандидат на единый компонент.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Всплывающая карточка пользователя</div>
+  <div class="ds-surface" style="max-width: 420px">
+    <div class="uinfo__popup" style="position: static">
+      <span class="uinfo__popup-initials" style="width: 44px; height: 44px; font-size: 16px; background: #7c3aed">АП</span>
+      <span class="uinfo__popup-body">
+        <span class="uinfo__popup-name">Анна Петрова</span>
+        <span class="uinfo__popup-email">a.petrova@example.com</span>
+        <span class="uinfo__popup-team">Платформенная команда</span>
+      </span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.uinfo__popup — позиционируется fixed рядом с курсором</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Аватар в ленте активности</div>
+  <div class="ds-surface" style="max-width: 460px">
+    <div class="act-row__text">
+      <span class="act-row__avatar act-row__avatar--fallback">АП</span>
+      <span class="act-row__actor">Анна Петрова</span> обновила прогресс
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.act-row__avatar--fallback — 20px, фон #cbd5e1, четвёртая реализация</div>
+  </div>
+</section>

@@ -5,3 +5,5 @@ cmd/server/__debug_*
 CLAUDE.md
 GEMINI.mg
 .opencode.json
+# Артефакт сборки дизайн-системы
+design-system/dist/

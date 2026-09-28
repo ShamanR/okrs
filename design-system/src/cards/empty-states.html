@@ -1,0 +1,62 @@
+<!-- @dsCard group="Data display" -->
+<!-- @dsName Пустые состояния -->
+<!-- @dsSubtitle Нет данных, нет доступа, загрузка -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css activity.css goal_tree.css -->
+<!-- @dsViewport 900x680 -->
+<section class="ds-section">
+  <div class="ds-section__title">Основное — .empty-state</div>
+  <div class="ds-surface">
+    <div class="empty-state" style="padding: 40px 0">
+      <div class="empty-state__icon">🎯</div>
+      <div class="empty-state__title">Целей пока нет</div>
+      <div class="empty-state__text">Создайте первую цель периода, чтобы команда видела приоритеты</div>
+      <button class="empty-state__btn">Создать цель</button>
+    </div>
+    <div class="ds-item__label">.empty-state — с действием</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">В настройках — .set-empty</div>
+  <div class="ds-surface">
+    <div class="set-empty">
+      <div class="set-empty__icon">📭</div>
+      <div class="set-empty__title">Нет доступных пространств</div>
+      <div class="set-empty__text">Попросите администратора добавить вас или присоединитесь по слагу</div>
+    </div>
+    <div class="ds-item__label">.set-empty — без действия</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Нет доступа — .no-access</div>
+  <div class="ds-surface ds-surface--flush" style="max-width: 300px; background: #0c1220; border-color: rgba(255,255,255,0.1)">
+    <div class="no-access">
+      <div class="no-access__icon">🔒</div>
+      <div class="no-access__text">Нет доступа к дереву</div>
+      <div class="no-access__hint">Запросите доступ у администратора пространства</div>
+    </div>
+  </div>
+  <div class="ds-item__label">.no-access — внутри тёмного сайдбара</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Короткие заглушки</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item"><div class="ds-surface" style="width: 240px"><div class="act-empty">Событий не найдено</div></div><div class="ds-item__label">.act-empty</div></div>
+    <div class="ds-item"><div class="ds-surface" style="width: 240px"><div class="pick-empty">Команды не найдены</div></div><div class="ds-item__label">.pick-empty</div></div>
+    <div class="ds-item"><div class="ds-surface" style="width: 240px"><div class="goal-parent-picker__empty">Подходящих целей нет</div></div><div class="ds-item__label">.goal-parent-picker__empty</div></div>
+    <div class="ds-item"><div class="ds-surface" style="width: 240px"><div class="team-combobox__empty">Ничего не найдено</div></div><div class="ds-item__label">.team-combobox__empty</div></div>
+    <div class="ds-item"><div class="ds-surface" style="width: 240px"><div class="child-card__empty">Целей нет</div></div><div class="ds-item__label">.child-card__empty</div></div>
+  </div>
+  <div class="ds-section__note">Пять разных вариантов одного сообщения «ничего не найдено»: 12–14px, серые трёх оттенков, один курсивом.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Загрузка</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item"><div class="ds-surface ds-surface--flush" style="width: 260px"><div class="loading-screen" style="height: 84px">Загрузка…</div></div><div class="ds-item__label">.loading-screen</div></div>
+    <div class="ds-item"><div class="ds-surface" style="width: 260px"><div class="cluster-loading" style="padding: 24px 0">Загрузка команд…</div></div><div class="ds-item__label">.cluster-loading</div></div>
+    <div class="ds-item"><div class="ds-surface ds-surface--flush" style="width: 260px; background: #f8fafc"><div class="gt-state" style="height: 84px">Строим граф…</div></div><div class="ds-item__label">.gt-state</div></div>
+  </div>
+</section>

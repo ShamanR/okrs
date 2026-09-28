@@ -1,0 +1,112 @@
+<!-- @dsCard group="Overlays" -->
+<!-- @dsName Поповеры и подсказки -->
+<!-- @dsSubtitle Тултип, связи целей, меню экспорта, пикер родителя -->
+<!-- @dsCss tokens.css shell.css tracker.css -->
+<!-- @dsViewport 960x720 -->
+<section class="ds-section">
+  <div class="ds-section__title">Подсказка — .info-hint</div>
+  <div class="ds-surface">
+    <div class="ds-row ds-row--top">
+      <div class="ds-item">
+        <div class="field-label">Вес цели <span class="info-hint">i</span></div>
+        <div class="ds-item__label">.info-hint — иконка в подписи поля</div>
+      </div>
+      <div class="ds-item">
+        <div class="info-hint__tooltip" style="position: static; transform: none; max-width: 280px">Вес определяет вклад цели в общий прогресс периода. Сумма весов целей одного уровня должна быть 100%.</div>
+        <div class="ds-item__label">.info-hint__tooltip — тёмная, fixed рядом с иконкой</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Связанные цели</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="goal-links-popup" style="position: static">
+        <div class="goal-links-popup__head">Цели выше</div>
+        <button class="goal-links-popup__row">
+          <span class="goal-links-popup__row-title">Удержание аудитории 2026</span>
+          <span class="goal-links-popup__row-meta">Департамент разработки · 2026</span>
+          <span class="goal-links-popup__row-progress">61%</span>
+        </button>
+        <button class="goal-links-popup__row">
+          <span class="goal-links-popup__row-title">Рост активной базы</span>
+          <span class="goal-links-popup__row-meta">Продукт · 2026 Q3</span>
+          <span class="goal-links-popup__row-progress">44%</span>
+        </button>
+      </div>
+      <div class="ds-item__label">.goal-links-popup</div>
+    </div>
+
+    <div class="ds-item">
+      <div class="ds-surface" style="width: 380px">
+        <div class="goal-links-section" style="margin-top: 0; padding-top: 0; border-top: none">
+          <div class="goal-links-section__head">Связанные цели</div>
+          <div class="goal-links-section__hint">Цель наследует прогресс от связанных снизу</div>
+          <div class="goal-link-card">
+            <span class="goal-link-card__arrow">↑</span>
+            <span class="goal-link-card__title">Удержание аудитории 2026</span>
+            <span class="goal-link-card__meta">2026</span>
+            <button class="goal-link-card__remove">×</button>
+          </div>
+          <button class="goal-link-add">+ Связать с целью</button>
+        </div>
+      </div>
+      <div class="ds-item__label">.goal-links-section — та же сущность внутри модалки</div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Меню экспорта</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <button class="export-menu__btn">⋯</button>
+      <div class="ds-item__label">.export-menu__btn</div>
+    </div>
+    <div class="ds-item">
+      <div class="export-menu__dropdown" style="position: static">
+        <button class="export-menu__item">
+          <span class="export-menu__item-title">Экспорт в Markdown</span>
+          <span class="export-menu__item-sub">Цель со всеми ключевыми результатами</span>
+        </button>
+        <button class="export-menu__item">
+          <span class="export-menu__item-title">Скопировать ссылку</span>
+          <span class="export-menu__item-sub">Прямая ссылка на цель</span>
+        </button>
+      </div>
+      <div class="ds-item__label">.export-menu__dropdown</div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Пикер родительской цели</div>
+  <div class="modal-box goal-parent-picker" style="width: min(640px, 100%); max-height: none">
+    <div class="modal-header"><div class="goal-parent-picker__title">Выбор родительской цели</div><button class="modal-close">×</button></div>
+    <div class="goal-parent-picker__filters">
+      <div class="period-select period-select--light"><button class="period-select__trigger"><span class="period-select__dot" style="background: #16a34a"></span><span class="period-select__name">2026 Q3</span><span class="period-select__chev">▾</span></button></div>
+      <input class="goal-parent-picker__search" placeholder="Найти цель">
+    </div>
+    <div class="goal-parent-picker__list">
+      <div class="goal-parent-picker__group">
+        <div class="goal-parent-picker__group-head">
+          <span class="goal-parent-picker__group-dot" style="background: #4338ca"></span>
+          Департамент разработки
+          <span class="goal-parent-picker__group-type">DEPT</span>
+        </div>
+        <button class="goal-parent-picker__row">
+          <span class="goal-parent-picker__row-title">Удержание аудитории 2026</span>
+          <span class="goal-parent-picker__row-meta">2026 · вес 40%</span>
+        </button>
+        <button class="goal-parent-picker__row goal-parent-picker__row--selected">
+          <span class="goal-parent-picker__row-title">Рост активной базы</span>
+          <span class="goal-parent-picker__row-meta">2026 Q3 · уже выбрана</span>
+          <span class="goal-parent-picker__row-check">✓</span>
+        </button>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.goal-parent-picker — группировка по командам, строки в две строки текста</div>
+</section>

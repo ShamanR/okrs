@@ -1,0 +1,112 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Редактор ключевого результата -->
+<!-- @dsSubtitle Числовые поля, шкала достижения, этапы, выбор статуса -->
+<!-- @dsCss tokens.css shell.css tracker.css -->
+<!-- @dsViewport 900x820 -->
+<section class="ds-section">
+  <div class="ds-section__title">Числовой результат</div>
+  <div class="ds-surface ds-surface--flush" style="padding: 18px 20px">
+    <div class="kr-num-section">
+      <div class="kr-num-section__title">Значения</div>
+      <div class="kr-num-fields">
+        <div class="kr-num-field">
+          <div class="kr-num-field__label">Старт</div>
+          <label class="kr-num-input-suffix"><input class="form-input form-input--sm" value="28"><span class="kr-num-input-suffix__unit">%</span></label>
+        </div>
+        <div class="kr-num-field">
+          <div class="kr-num-field__label">Текущее</div>
+          <label class="kr-num-input-suffix"><input class="form-input form-input--sm" value="33.8"><span class="kr-num-input-suffix__unit">%</span></label>
+        </div>
+        <div class="kr-num-field">
+          <div class="kr-num-field__label">Цель <span class="info-hint">i</span></div>
+          <label class="kr-num-input-suffix"><input class="form-input form-input--sm" value="42"><span class="kr-num-input-suffix__unit">%</span></label>
+        </div>
+      </div>
+      <div class="kr-progress-row">
+        <span class="kr-progress-row__label">Прогресс</span>
+        <span class="kr-pct" style="color: #16a34a">41%</span>
+      </div>
+      <div class="progress-bar" style="height: 6px; border-radius: 3px"><div class="progress-bar__fill" style="width: 41%; background: #16a34a; border-radius: 3px"></div></div>
+    </div>
+
+    <div class="kr-guide">
+      <div class="kr-guide__title">Шкала достижения</div>
+      <div class="kr-guide__steps">
+        <div class="kr-guide__step kr-guide__step--reached"><span class="kr-guide__step-val">28%</span><span class="kr-guide__step-pct">0%</span></div>
+        <div class="kr-guide__step kr-guide__step--reached"><span class="kr-guide__step-val">31,5%</span><span class="kr-guide__step-pct">25%</span></div>
+        <div class="kr-guide__step"><span class="kr-guide__step-val">35%</span><span class="kr-guide__step-pct">50%</span></div>
+        <div class="kr-guide__step"><span class="kr-guide__step-val">38,5%</span><span class="kr-guide__step-pct">75%</span></div>
+        <div class="kr-guide__step"><span class="kr-guide__step-val">42%</span><span class="kr-guide__step-pct">100%</span></div>
+      </div>
+      <div class="kr-guide__hint">Прогресс считается линейно между стартом и целью.</div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Этапы</div>
+  <div class="ds-surface">
+    <div class="kr-steps-header">
+      <span class="kr-steps-title">Этапы</span>
+      <span class="kr-steps-sum kr-steps-sum--bad">Σ 110%</span>
+    </div>
+    <div class="kr-steps-cols">
+      <span class="kr-steps-cols__check"></span>
+      <span class="kr-steps-cols__name">Название</span>
+      <span class="kr-steps-cols__weight">Вес</span>
+      <span class="kr-steps-cols__del"></span>
+    </div>
+    <div class="kr-step-row">
+      <input type="checkbox" checked>
+      <input class="form-input form-input--sm" value="Пилот на одной команде">
+      <input class="form-input form-input--sm form-input--center" style="width: 60px" value="40">
+      <button class="kr-step-delete">×</button>
+    </div>
+    <div class="kr-step-row">
+      <input type="checkbox">
+      <input class="form-input form-input--sm" value="Раскатка на департамент">
+      <input class="form-input form-input--sm form-input--center" style="width: 60px" value="70">
+      <button class="kr-step-delete">×</button>
+    </div>
+    <button class="kr-step-add">+ Этап</button>
+    <div class="ds-item__label" style="margin-top: 8px">.kr-steps-sum--bad — сумма весов не 100%</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Контрольные точки</div>
+  <div class="ds-surface">
+    <div class="kr-section-head">
+      <span class="kr-section-head__title">Контрольные точки</span>
+      <span class="kr-section-head__opt">необязательно</span>
+    </div>
+    <div class="kr-cp-head">
+      <span class="kr-cp-head__label">Дата</span>
+      <span class="kr-cp-head__label">Ожидаемое значение</span>
+      <span></span>
+    </div>
+    <div class="kr-cp-row">
+      <input class="form-input form-input--sm" value="2026-08-15">
+      <input class="form-input form-input--sm" value="35">
+      <button class="kr-step-delete">×</button>
+    </div>
+    <div class="kr-section-sep"></div>
+    <button class="kr-dashed-btn">+ Контрольная точка</button>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Выбор статуса — .kr-health-cards</div>
+  <div class="ds-surface">
+    <div class="kr-health-section">
+      <div class="kr-health-section__label">Статус результата</div>
+      <div class="kr-health-cards">
+        <button class="kr-health-card"><span class="kr-health-card__title" style="color: #6b7280">○ Not Started</span><span class="kr-health-card__hint">Работа ещё не началась</span></button>
+        <button class="kr-health-card kr-health-card--active" style="border-color: #16a34a; background: #16a34a0f; color: #16a34a"><span class="kr-health-card__title" style="color: #16a34a">● On Track</span><span class="kr-health-card__hint">Идём по плану</span></button>
+        <button class="kr-health-card"><span class="kr-health-card__title" style="color: #d97706">▲ At Risk</span><span class="kr-health-card__hint">Есть риск не достичь</span></button>
+        <button class="kr-health-card"><span class="kr-health-card__title" style="color: #15803d">✓ Closed</span><span class="kr-health-card__hint">Результат закрыт</span></button>
+      </div>
+    </div>
+  </div>
+  <div class="ds-section__note">Подписи статусов английские, весь остальной интерфейс — русский.</div>
+</section>
