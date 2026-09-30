@@ -256,6 +256,9 @@ func MapKeyResult(kr domain.KeyResult) dto.KeyResult {
 		Note:            note,
 		CreatedAt:       kr.CreatedAt,
 		UpdatedAt:       kr.UpdatedAt,
+		// Отдаём как есть, включая nil: интерфейсу нужно отличать «прогресс не
+		// обновляли» от «обновляли давно», а по UpdatedAt это не различить.
+		ProgressUpdatedAt: kr.ProgressUpdatedAt,
 	}
 }
 

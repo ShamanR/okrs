@@ -154,6 +154,10 @@ function mapKR(kr) {
     // kr.updated_at, но не заметку, и старая заметка не должна выглядеть свежей.
     note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at), daysAgo: daysAgo(kr.note.updated_at) } : null,
     updatedAt: kr.updated_at, updatedDaysAgo: daysAgo(kr.updated_at),
+    // Давность ПРОГРЕССА — отдельное поле: kr.updated_at двигает любая правка KR
+    // (название, вес, описание, состояние), а progress_updated_at — только чек-ин.
+    // null означает, что прогресс ещё не обновляли ни разу.
+    progressDaysAgo: kr.progress_updated_at ? daysAgo(kr.progress_updated_at) : null,
   };
 }
 function mapGoal(g) {
@@ -1339,7 +1343,10 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
   const [confirmDelete, setConfirmDelete] = useState(false);
   const progress = kr.progress;
   // Цвет давности задаётся классом: fresh → warn → stale по тому же порогу.
-  const staleLevel = kr.updatedDaysAgo > staleDays ? 'stale' : kr.updatedDaysAgo > staleDays * 0.6 ? 'warn' : 'fresh';
+  // Цвет давности считаем по прогрессу, а не по kr.updated_at. Если прогресс ещё
+  // не обновляли, это не «свежо» — показываем как устаревшее.
+  const pAgo = kr.progressDaysAgo;
+  const staleLevel = pAgo == null || pAgo > staleDays ? 'stale' : pAgo > staleDays * 0.6 ? 'warn' : 'fresh';
   // Правка текстовых полей открыта только в «черновике» и «к валидации»; в «в работе»
   // строка предлагает обновление прогресса, в закрытом периоде — ничего.
   // Через actionAvailability, а не через editMode === 'full': знание «что при каком
@@ -1402,8 +1409,9 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
                 </button>
               )}
               {!canEditText && (
-                <span className={`kr-updated kr-updated--${staleLevel}`} title="Последнее обновление прогресса">
-                  {kr.updatedDaysAgo === 0 ? 'обн. сегодня' : `обн. ${kr.updatedDaysAgo}д назад`}
+                <span className={`kr-updated kr-updated--${staleLevel}`}
+                  title={pAgo == null ? 'Прогресс ещё не обновляли' : 'Последнее обновление прогресса'}>
+                  {pAgo == null ? 'без обновлений' : pAgo === 0 ? 'обн. сегодня' : `обн. ${pAgo}д назад`}
                 </span>
               )}
             </div>
