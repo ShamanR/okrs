@@ -1624,8 +1624,10 @@ function pluralRu(n, forms) {
 // ExportModal fetches server-rendered Markdown for the chosen scope/options and lets the user
 // preview, copy or download it. Generation is entirely server-side (single source of truth);
 // this component only displays the returned text and derives the download Blob from it.
-function ExportModal({ goal, teamId, periodId, info, onClose }) {
-  const [scope, setScope] = useState('goal');
+// initialScope задаёт охват по точке вызова: из меню цели — «одна цель», из меню
+// команды — «цели команды». Так охват совпадает с тем, откуда экспорт открыли.
+function ExportModal({ goal, teamId, periodId, info, onClose, initialScope = 'goal' }) {
+  const [scope, setScope] = useState(initialScope);
   const [full, setFull] = useState(false);
   const [comments, setComments] = useState(false);
   const [data, setData] = useState(null);
@@ -1857,7 +1859,7 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone, 
   );
 }
 
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => { }, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Ключевые результаты видны всегда, поэтому раскрывать по глубокой ссылке нечего:
@@ -1975,6 +1977,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
               onClick: () => copyGoalURL(currentTeamId, periodId, goal.id) },
             { icon: '➡', label: lockReason(editMode, 'goal_move') ? 'Скопировать в другую команду' : 'Перенести или скопировать',
               onClick: () => setTransfer(true) },
+            // Экспорт остаётся и здесь: охват «одна цель» иначе недоступен — из меню
+            // команды выбрать конкретную цель нечем. Меню команды даёт охват команды
+            // и поддерева, это меню — охват самой цели.
+            { icon: '⇩', label: 'Экспорт в Markdown', onClick: () => onExportGoal(goal) },
             { sep: true },
             { icon: '×', label: isShared ? 'Открепить от команды' : 'Удалить', danger: true,
               onClick: () => setConfirmDeleteGoal(true), reason: deleteLockReason(editMode, 'цель') },
@@ -3027,6 +3033,9 @@ function App() {
   const [dragState, setDragState] = useState({ srcId: null });
   const [priFilter, setPriFilter] = useState({});
   const [exportOpen, setExportOpen] = useState(false);
+  // Экспорт открывается из двух мест: меню команды (охват «цели команды») и меню
+  // цели (охват «одна цель»). Окно живёт здесь, потому что здесь лежит exportInfo.
+  const [exportGoal, setExportGoal] = useState(null);
   const allGoals = (teamOKR?.goals || []).map(mapGoal);
   // Фильтр по приоритету сужает только показ, данные остаются прежними.
   const activePri = PRI_LEVELS.filter(p => priFilter[p]);
@@ -3203,7 +3212,7 @@ function App() {
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} onExportGoal={setExportGoal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
             dragProps={!lockReason(editMode, 'reorder') ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
@@ -3218,7 +3227,11 @@ function App() {
 
       {exportOpen && allGoals.length > 0 && (
         <ExportModal goal={allGoals[0]} teamId={selId} periodId={periodId} info={exportInfo}
-          onClose={() => setExportOpen(false)} />
+          initialScope="team" onClose={() => setExportOpen(false)} />
+      )}
+      {exportGoal && (
+        <ExportModal goal={exportGoal} teamId={selId} periodId={periodId} info={exportInfo}
+          initialScope="goal" onClose={() => setExportGoal(null)} />
       )}
       {goalModal && <GoalModal
         goal={goalModal === 'new' ? null : goalModal}

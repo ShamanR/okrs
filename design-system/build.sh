@@ -25,7 +25,9 @@ out="$ds/dist"
 rm -rf "$out"
 mkdir -p "$out/components"
 
-tmp="$(mktemp -t dsbuild)"
+# mktemp -t PREFIX — это BSD-форма: GNU coreutils требует в шаблоне минимум три X
+# и падает с «too few X's in template». Явный путь с XXXXXX работает в обоих.
+tmp="$(mktemp "${TMPDIR:-/tmp}/dsbuild.XXXXXX")"
 trap 'rm -f "$tmp"' EXIT
 
 # Рабочее дерево местами в CRLF, поэтому директивы читаем из нормализованной копии.
