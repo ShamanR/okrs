@@ -473,15 +473,27 @@ function PrioritySelect({ value, onChange }) {
 
 // Меню действий строки — одинаковое у цели и у KR. Пункт, недоступный по статусу,
 // остаётся в списке и объясняет причину, а не исчезает.
-function MenuItem({ icon, label, onClick, danger = false, reason = null, onDone }) {
+function MenuItem({ icon, label, onClick, danger = false, reason = null, onDone, confirmLabel = null }) {
+  const [done, setDone] = useState(false);
   const cls = ['act-menu__item', danger ? 'act-menu__item--danger' : '',
+    done ? 'act-menu__item--done' : '',
     reason ? 'act-menu__item--disabled act-menu__item--why' : ''].filter(Boolean).join(' ');
+  // Пункт с confirmLabel подтверждает выполнение на себе же и только потом закрывает меню:
+  // иначе подтверждение исчезает вместе с меню и действие выглядит беззвучным.
+  const run = async () => {
+    if (!confirmLabel) { onDone(); onClick(); return; }
+    const ok = await onClick();
+    if (ok === false) { onDone(); return; }
+    setDone(true);
+    setTimeout(onDone, 900);
+  };
   return (
     <button type="button" className={cls}
       aria-disabled={reason ? true : undefined}
       aria-label={reason ? `${label}. ${reason}` : undefined}
-      onClick={reason ? undefined : () => { onDone(); onClick(); }}>
-      <span className="act-menu__ic">{icon}</span>{label}
+      onClick={reason ? undefined : run}>
+      <span className="act-menu__ic">{done ? '✓' : icon}</span>{done ? confirmLabel : label}
+      {done && <span className="visually-hidden" role="status">{confirmLabel}</span>}
       {reason && <span className="act-menu__lock" aria-hidden="true">?</span>}
       {reason && <span className="act-menu__why" role="tooltip">{reason}</span>}
     </button>
@@ -1306,7 +1318,7 @@ function KRNote({ note, updatedDaysAgo, open, onToggle }) {
   );
 }
 
-function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null }) {
+function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null }) {
   // Closed period is shown as fully done — purely visual (stored health_status is untouched),
   // so reopening the period restores each KR's original status.
   const displayHealth = periodStatus === 'closed' ? 'done' : kr.healthStatus;
@@ -1381,6 +1393,8 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             </div>
             <RowMenu items={[
               { icon: '✎', label: 'Редактировать', onClick: openEdit, reason: editLockReason(editMode, 'KR') },
+              { icon: '🔗', label: 'Копировать ссылку', confirmLabel: 'Скопировано',
+                onClick: () => copyGoalURL(teamId, periodId, goalId, kr.id) },
               kr.note && { icon: '📝', label: showNote ? 'Скрыть заметку' : 'Показать заметку', onClick: () => setShowNote(!showNote) },
               { sep: true },
               { icon: '×', label: 'Удалить', danger: true, onClick: () => setConfirmDelete(true),
@@ -1566,9 +1580,10 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, onReply, onDel
 // Copy a shareable deep-link to this goal. URL shape and open behavior match the
 // activity-log "↗ к цели" link (shared buildTargetURL from ui.js). For a shared goal
 // the link points at the currently-open team, so it resolves back to the same board.
-// Копирование ссылки на цель: используется и кнопкой, и пунктом меню строки.
-async function copyGoalURL(teamId, periodId, goalId) {
-  const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId });
+// Копирование ссылки на цель или на её ключевой результат: пункт «Копировать ссылку»
+// есть в меню обоих, и оба подтверждают копирование через confirmLabel в MenuItem.
+async function copyGoalURL(teamId, periodId, goalId, krId = null) {
+  const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId, kr_id: krId });
   if (!path) return false;
   const url = location.origin + path;
   try {
@@ -1582,36 +1597,6 @@ async function copyGoalURL(teamId, periodId, goalId) {
     }
     return true;
   } catch { return false; }
-}
-
-function CopyLinkButton({ teamId, periodId, goalId }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async e => {
-    e.stopPropagation();
-    const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId });
-    if (!path) return;
-    const url = location.origin + path;
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(url);
-      } else {
-        const ta = document.createElement('textarea');
-        ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.focus(); ta.select();
-        document.execCommand('copy'); document.body.removeChild(ta);
-      }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch { /* silent: leave icon unchanged on failure */ }
-  };
-  return (
-    <button type="button" onClick={copy}
-      className={`goal-card__copy-link${copied ? ' goal-card__copy-link--copied' : ''}`}
-      title={copied ? 'Скопировано' : 'Скопировать ссылку на цель'}
-      aria-label="Скопировать ссылку на цель">
-      {copied ? '✓' : '🔗'}
-    </button>
-  );
 }
 
 // ── MARKDOWN EXPORT ─────────────────────────────────────────────────────────
@@ -1957,7 +1942,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
           <span className="goal-card__progress-pct">{prog}%</span>
           <RowMenu items={[
             { icon: '✎', label: 'Редактировать', onClick: () => onEditGoal(goal), reason: editLockReason(editMode, 'цель') },
-            { icon: '🔗', label: 'Копировать ссылку', onClick: () => copyGoalURL(currentTeamId, periodId, goal.id) },
+            { icon: '🔗', label: 'Копировать ссылку', confirmLabel: 'Скопировано',
+              onClick: () => copyGoalURL(currentTeamId, periodId, goal.id) },
             { icon: '➡', label: 'Перенести или скопировать', onClick: () => setTransfer(true) },
             { sep: true },
             { icon: '×', label: isShared ? 'Открепить от команды' : 'Удалить', danger: true,
@@ -2009,7 +1995,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
               className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
               {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
               <KRRow kr={kr} goalId={goal.id} goalTitle={goal.title} editMode={editMode} onReload={onReload}
-                accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast} />
+                accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast}
+                teamId={currentTeamId} periodId={periodId} />
             </div>
           );
         })}

@@ -47,8 +47,6 @@
       <div class="ds-item"><button class="desc-row__btn">Редактировать</button><div class="ds-item__label">.desc-row__btn</div></div>
       <div class="ds-item"><button class="space-row__btn">Открыть</button><div class="ds-item__label">.space-row__btn</div></div>
       <div class="ds-item"><button class="act-more">Показать ещё</button><div class="ds-item__label">.act-more</div></div>
-      <div class="ds-item"><button class="goal-card__copy-link" title="Скопировать ссылку">🔗</button><div class="ds-item__label">.goal-card__copy-link</div></div>
-      <div class="ds-item"><button class="goal-card__copy-link goal-card__copy-link--copied">✓</button><div class="ds-item__label">— --copied</div></div>
     </div>
   </div>
 </section>
@@ -95,30 +93,9 @@
 </section>
 
 <section class="ds-section">
-  <div class="ds-section__title">Иконочное действие — .icon-btn</div>
+  <div class="ds-section__title">Недоступное действие — .action-lock и .act-menu__item--disabled</div>
   <div class="ds-surface">
     <div class="ds-row">
-      <div class="ds-item"><button class="icon-btn" aria-label="Редактировать">✎</button><div class="ds-item__label">.icon-btn</div></div>
-      <div class="ds-item"><button class="icon-btn icon-btn--accent" aria-label="Обновить прогресс">↑</button><div class="ds-item__label">.icon-btn--accent</div></div>
-      <div class="ds-item"><button class="icon-btn icon-btn--danger" aria-label="Удалить">×</button><div class="ds-item__label">.icon-btn--danger</div></div>
-      <div class="ds-item"><button class="icon-btn" aria-label="Показать заметку">📝</button><div class="ds-item__label">заметка</div></div>
-      <div class="ds-item"><span class="icon-btn-slot"></span><div class="ds-item__label">.icon-btn-slot — пустой слот</div></div>
-    </div>
-  </div>
-  <div class="ds-section__note">Единый элемент действия доски: правка цели и ключевого результата, обновление прогресса, удаление, заметка. Размер 26×26 совпадает с .goal-card__copy-link, поэтому действия карточки читаются одним рядом. Подпись действия обязательна (aria-label + title).</div>
-</section>
-
-<section class="ds-section">
-  <div class="ds-section__title">Заблокированное действие — .icon-btn--locked и .action-lock</div>
-  <div class="ds-surface">
-    <div class="ds-row">
-      <div class="ds-item">
-        <span class="action-lock">
-          <button class="icon-btn icon-btn--locked" aria-disabled="true" aria-label="Редактировать цель">✎<span class="icon-btn__lock">🔒</span></button>
-          <span class="action-lock__tip" role="tooltip">Состав целей зафиксирован: команда в статусе «В работе»</span>
-        </span>
-        <div class="ds-item__label">иконочное действие</div>
-      </div>
       <div class="ds-item">
         <span class="action-lock">
           <button class="topbar__add-btn topbar__add-btn--locked" aria-disabled="true">+ Добавить цель 🔒</button>
@@ -126,17 +103,25 @@
         </span>
         <div class="ds-item__label">.topbar__add-btn--locked</div>
       </div>
-      <div class="ds-item">
-        <span class="action-lock">
-          <button class="kr-add-btn kr-add-btn--locked" aria-disabled="true">+ Добавить KR 🔒</button>
-          <span class="action-lock__tip" role="tooltip">Период закрыт: доступны только комментарии</span>
-        </span>
-        <div class="ds-item__label">.kr-add-btn--locked</div>
-      </div>
     </div>
     <div class="ds-section__note" style="margin-top: 10px">Подсказка .action-lock__tip показывается по наведению и по фокусу с клавиатуры — наведите или пройдите Tab'ом. Заблокированная кнопка намеренно не disabled: иначе она не получала бы фокус и не могла бы назвать причину. Само действие гасится обработчиком.</div>
   </div>
-  <div class="ds-section__note">Недоступное по статусу действие не исчезает с доски, а остаётся на своём месте — так связь статуса команды и блокировки видна там, где пользователь ищет кнопку.</div>
+  <div class="ds-section__note">Недоступное по статусу действие остаётся на своём месте — так связь статуса команды и блокировки видна там, где пользователь ищет кнопку. Исключение одно: кнопка добавления KR внутри карточки скрывается, её причину берёт на себя баннер режима.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Пункт меню действий — .act-menu__item</div>
+  <div class="ds-surface">
+    <div class="export-menu__dropdown" style="position:static;display:block;width:260px">
+      <button type="button" class="act-menu__item"><span class="act-menu__ic">✎</span>Редактировать</button>
+      <button type="button" class="act-menu__item"><span class="act-menu__ic">🔗</span>Копировать ссылку</button>
+      <button type="button" class="act-menu__item act-menu__item--done"><span class="act-menu__ic">✓</span>Скопировано</button>
+      <button type="button" class="act-menu__item act-menu__item--disabled act-menu__item--why" aria-disabled="true"><span class="act-menu__ic">➡</span>Перенести или скопировать<span class="act-menu__lock">?</span><span class="act-menu__why" role="tooltip" style="display:block">Состав целей зафиксирован: команда в статусе «В работе»</span></button>
+      <div class="act-menu__sep"></div>
+      <button type="button" class="act-menu__item act-menu__item--danger"><span class="act-menu__ic">×</span>Удалить</button>
+    </div>
+  </div>
+  <div class="ds-section__note">Пункт, который что-то копирует, подтверждает это на себе — .act-menu__item--done с ✓ — и только потом закрывает меню: иначе подтверждение исчезает вместе с меню. Недоступный пункт остаётся в списке и называет причину.</div>
 </section>
 
 <section class="ds-section">
@@ -147,6 +132,7 @@
       <div class="ds-item"><button type="button" class="kr-row-btn kr-row-btn--accent"><span>↻</span>Обновить</button><div class="ds-item__label">.kr-row-btn--accent</div></div>
       <div class="ds-item"><button type="button" class="tb-menu__btn" aria-label="Ещё">···</button><div class="ds-item__label">.tb-menu__btn</div></div>
       <div class="ds-item"><button type="button" class="export-menu__btn" aria-label="Ещё">···</button><div class="ds-item__label">.export-menu__btn</div></div>
+      <div class="ds-item"><span class="icon-btn-slot"></span><div class="ds-item__label">.icon-btn-slot — пустой слот</div></div>
     </div>
   </div>
   <div class="ds-section__note">Одно действие строки занимает фиксированную колонку: в «Черновике» и «К валидации» это «Редактировать», в «В работе» — «Обновить» акцентом. Остальное убрано в меню ···.</div>

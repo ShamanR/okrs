@@ -233,28 +233,18 @@
 .btn--danger:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
 .btn--primary { background: var(--accent); color: white; font-weight: 600; }
 .btn--primary:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
-/* ── ICON ACTION BUTTON ──────────────────────────────────────────────────────── */
-/* Единый элемент действия доски: редактирование цели и KR, обновление прогресса,
-   удаление, заметка. Размер и рамка совпадают с .goal-card__copy-link, поэтому
-   все действия карточки читаются как один ряд.
-   Заблокированный вариант намеренно не использует disabled: кнопка обязана
+/* ── ЗАБЛОКИРОВАННОЕ ДЕЙСТВИЕ ────────────────────────────────────────────────── */
+/* Обёртка недоступного действия: сам элемент остаётся на месте в приглушённом
+   виде, а причину называет подсказка по наведению и по фокусу.
+   Заблокированный вариант намеренно не использует disabled: элемент обязан
    получать фокус с клавиатуры, чтобы объяснить причину блокировки. Само действие
    гасится в обработчике. */
 .action-lock { position: relative; display: inline-flex; flex-shrink: 0; }
-.icon-btn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
-.icon-btn:hover { background: #f9fafb; border-color: #d1d5db; color: #374151; }
-.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.icon-btn--accent { border-color: var(--accent); background: var(--accent-10); color: var(--accent); }
-.icon-btn--accent:hover { background: var(--accent-15); border-color: var(--accent-strong); color: var(--accent-strong); }
-.icon-btn--danger { border-color: #fca5a5; background: #fff1f1; color: #dc2626; }
-.icon-btn--danger:hover { background: #fee2e2; border-color: #f87171; color: #b91c1c; }
-.icon-btn--locked, .icon-btn--locked:hover { cursor: default; border-color: #f0f1f3; background: #fafafa; color: #c9cdd3; }
-.icon-btn__lock { position: absolute; right: -3px; bottom: -4px; font-size: 11px; line-height: 1; color: #6b7280; pointer-events: none; }
 .action-lock__tip { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 60; display: none; width: max-content; max-width: 260px; padding: 7px 10px; border-radius: 8px; background: #111827; color: #f3f4f6; font-size: 11.5px; font-weight: 500; line-height: 1.45; box-shadow: 0 8px 24px rgba(0,0,0,0.25); pointer-events: none; }
 .action-lock:hover .action-lock__tip, .action-lock:focus-within .action-lock__tip { display: block; }
 .topbar .action-lock__tip { bottom: auto; top: calc(100% + 6px); right: 0; }
-/* Текстовые кнопки доски в заблокированном виде — «+ Добавить цель», «+ Добавить KR». */
-.kr-add-btn--locked, .kr-add-btn--locked:hover { cursor: default; border-style: solid; border-color: #f0f1f3; background: #fafafa; color: #c9cdd3; }
+/* Кнопка создания цели в заблокированном виде. Кнопка «+ Добавить KR» в этом
+   режиме не гасится, а скрывается — причину называет баннер режима. */
 .topbar__add-btn--locked, .topbar__add-btn--locked:hover { cursor: default; background: #e5e7eb; color: #9ca3af; }
 .icon-btn-slot { width: 26px; flex-shrink: 0; }
 
@@ -554,9 +544,6 @@
 .goal-card__spacer { flex: 1; }
 .goal-card__owner { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; }
 .goal-card__owner-label { color: #6b7280; font-weight: 500; }
-.goal-card__copy-link { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
-.goal-card__copy-link:hover { background: #f9fafb; border-color: #d1d5db; color: #374151; }
-.goal-card__copy-link--copied { border-color: #86efac; background: #f0fdf4; color: #16a34a; }
 .goal-card__title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .goal-card__title { font-size: 16px; font-weight: 700; color: #111827; line-height: 1.35; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }
 .title-edit { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px; background: transparent; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; }
@@ -585,6 +572,8 @@
 .act-menu__why::after { content: ''; position: absolute; left: 100%; top: 50%; margin-top: -5px; border: 5px solid transparent; border-left-color: #111827; }
 .act-menu__item--why:hover .act-menu__why, .act-menu__item--why:focus .act-menu__why { display: block; }
 .act-menu__sep { height: 1px; background: #f1f5f9; margin: 4px 2px; }
+.act-menu__item--done, .act-menu__item--done .act-menu__ic, .act-menu__item--done:hover { color: #16a34a; background: #f0fdf4; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .goal-card__title--readonly { cursor: default; }
 .goal-card__desc { font-size: 14px; color: #6b7280; margin-bottom: 12px; line-height: 1.5; --md-collapse-max: 6em; }
 /* Collapsed height caps are written as lines x line-height so they read as a
@@ -752,10 +741,6 @@
 .gc2 .goal-card__title { font-size: 15.5px; line-height: 1.35; text-wrap: pretty; }
 .gc2__stats { display: flex; align-items: baseline; gap: 6px; flex-shrink: 0; padding-top: 1px; }
 .gc2 .goal-card__progress-pct { font-size: 16px; font-weight: 800; color: var(--health); line-height: 1.2; }
-.gc2__icon-btn { position: relative; flex-shrink: 0; height: 26px; min-width: 26px; padding: 0 6px; border: none; background: transparent; border-radius: 6px; font-size: 13px; color: #6b7280; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
-.gc2__icon-btn:hover { background: #f1f5f9; color: #374151; }
-.gc2__icon-btn--on { color: #374151; font-weight: 600; }
-.gc2__icon-btn .comment-unresolved-badge { margin-left: 3px; }
 .gc2__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-top: 4px; font-size: 12.5px; color: #6b7280; }
 .gc2__meta .goal-card__owner { gap: 4px; }
 .gc2__meta .goal-card__forecast, .gc2__meta .goal-card__updated { font-size: 12.5px; }
