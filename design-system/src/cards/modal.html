@@ -11,7 +11,7 @@
         <div class="modal-header">
           <div>
             <div class="modal-title">Перенос цели</div>
-            <div class="modal-subtitle">Затронет 4 ключевых результата</div>
+            <div class="modal-subtitle"><span class="modal-cap">Цель</span>Отказ от старого кабинета Медиа</div>
           </div>
           <button class="modal-close">×</button>
         </div>
@@ -121,4 +121,15 @@
     </div>
   </div>
   <div class="ds-section__note">Два диалога подтверждения с разными радиусами (14 / 20), тенями и наборами кнопок. Сведение к одному — заметное упрощение.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Метка над значением — .modal-cap</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="modal-subtitle"><span class="modal-cap">Цель</span>Поддерживать доску задач команды в Jira в актуальном состоянии</div>
+    <div style="height: 14px"></div>
+    <span class="modal-cap">Ключевой результат</span>
+    <div class="field-label">p95 latency API кабинета</div>
+  </div>
+  <div class="ds-section__note">Без метки два текста подряд читаются одинаково и непонятно, где цель, а где ключевой результат — особенно когда название цели длинное и переносится. Метка ставится соседним элементом сверху: .field-label — flex-контейнер, вложенный блок встал бы слева от текста.</div>
 </section>

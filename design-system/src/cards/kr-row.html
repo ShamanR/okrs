@@ -1,139 +1,31 @@
 <!-- @dsCard group="Goals" -->
 <!-- @dsName Ключевые результаты -->
-<!-- @dsSubtitle Строка KR, действия, заметки, обнуление, секция внутри цели -->
+<!-- @dsSubtitle Статус, измерение, действия строки, меню -->
 <!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
-<!-- @dsViewport 900x820 -->
-<section class="ds-section">
-  <div class="ds-section__title">Секция KR внутри карточки цели</div>
-  <div class="goal-card">
-    <div class="goal-card__body" style="padding-bottom: 8px">
-      <div class="goal-card__title-row"><span class="goal-card__title">Вывести retention 30d на 42%</span></div>
-    </div>
-    <div class="kr-section">
-      <div class="kr-weight-warn"><span class="kr-weight-warn__icon">⚠</span>Сумма весов ключевых результатов — 120%, должна быть 100%</div>
-
-      <div class="kr-item kr-item--reorderable">
-        <span class="kr-item__drag-handle">⋮⋮</span>
-        <div class="kr-row">
-          <div class="kr-row__main">
-            <span class="kr-weight-chip">40%</span>
-            <div class="kr-info">
-              <div class="kr-name">Доля активных пользователей в неделю</div>
-              <div class="kr-health-badge-row"><span class="badge" style="color: #16a34a; background: #16a34a15">● On Track</span></div>
-              <div class="kr-desc md-content">Считаем по событию <code>session_start</code>, окно 7 дней.</div>
-              <div class="kr-detail-row">
-                <div class="kr-bar-wrap"><div class="progress-bar" style="height: 6px; border-radius: 3px"><div class="progress-bar__fill" style="width: 78%; background: #16a34a; border-radius: 3px"></div></div></div>
-                <span class="kr-pct">78%</span>
-                <span class="kr-detail">33,8% / 42%</span>
-                <span class="kr-updated kr-updated--fresh">1 день назад</span>
-              </div>
-            </div>
-            <div class="kr-row__actions" data-no-drag>
-              <button class="icon-btn" aria-label="Показать заметку">📝</button>
-              <button class="icon-btn" aria-label="Редактировать KR">✎</button>
-              <button class="icon-btn icon-btn--danger" aria-label="Удалить KR">×</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="kr-item kr-item--reorderable">
-        <span class="kr-item__drag-handle">⋮⋮</span>
-        <div class="kr-row">
-          <div class="kr-row__main">
-            <span class="kr-weight-chip">30%</span>
-            <div class="kr-info">
-              <div class="kr-name">Перенос трёх сервисов на новый рантайм</div>
-              <div class="kr-health-badge-row"><span class="badge" style="color: #d97706; background: #d9770615">▲ At Risk</span></div>
-              <div class="kr-detail-row">
-                <div class="kr-bar-wrap"><div class="progress-bar" style="height: 6px; border-radius: 3px"><div class="progress-bar__fill" style="width: 33%; background: #d97706; border-radius: 3px"></div></div></div>
-                <span class="kr-pct">33%</span>
-                <span class="kr-detail">1 / 3 шт</span>
-                <span class="kr-updated kr-updated--warn">9 дней назад</span>
-              </div>
-              <div class="kr-zeroing-note kr-zeroing-note--clamp"><span class="kr-zeroing-note__icon">⊘</span>Обнулено: команда сменила приоритет, перенос отложен до следующего квартала</div>
-            </div>
-            <div class="kr-row__actions" data-no-drag>
-              <span class="icon-btn-slot"></span>
-              <button class="icon-btn" aria-label="Редактировать KR">✎</button>
-              <button class="icon-btn icon-btn--danger" aria-label="Удалить KR">×</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <button class="kr-add-btn">+ Добавить KR</button>
-    </div>
-  </div>
-</section>
-
-<section class="ds-section">
-  <div class="ds-section__title">Заметки к результату</div>
-  <div class="ds-surface">
-    <div class="kr-notes">
-      <div class="kr-note">
-        <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">АП</span>
-        <div class="kr-note__content">
-          <div class="kr-note__header">
-            <span class="kr-note__author">Анна Петрова</span>
-            <span class="kr-note__date">3 дня назад</span>
-          </div>
-          <div class="kr-note__text md-content">Взяли данные из новой витрины, цифра выросла на 1,2 п.п.</div>
-        </div>
-      </div>
-      <div class="kr-note">
-        <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">СИ</span>
-        <div class="kr-note__content">
-          <div class="kr-note__header">
-            <span class="kr-note__author">Сергей Иванов</span>
-            <span class="kr-note__date">неделю назад</span>
-          </div>
-          <div class="kr-note__text md-content">Перепроверил методику, расхождений нет.</div>
-        </div>
-      </div>
-    </div>
-    <div class="ds-item__label" style="margin-top: 8px">.kr-notes — отступ слева и линия-направляющая</div>
-  </div>
-</section>
-
-<section class="ds-section">
-  <div class="ds-section__title">Действия строки в трёх режимах</div>
-  <div class="ds-surface">
-    <div class="ds-row">
-      <div class="ds-item">
-        <div class="kr-row__actions">
-          <span class="icon-btn-slot"></span>
-          <button class="icon-btn" aria-label="Редактировать KR">✎</button>
-          <button class="icon-btn icon-btn--danger" aria-label="Удалить KR">×</button>
-        </div>
-        <div class="ds-item__label">полное редактирование</div>
-      </div>
-      <div class="ds-item">
-        <div class="kr-row__actions">
-          <span class="icon-btn-slot"></span>
-          <button class="icon-btn icon-btn--accent" aria-label="Обновить прогресс">↑</button>
-          <span class="action-lock">
-            <button class="icon-btn icon-btn--locked" aria-disabled="true" aria-label="Удалить KR">×<span class="icon-btn__lock">🔒</span></button>
-            <span class="action-lock__tip" role="tooltip">Состав целей зафиксирован: команда в статусе «В работе»</span>
-          </span>
-        </div>
-        <div class="ds-item__label">«В работе» — только прогресс</div>
-      </div>
-      <div class="ds-item">
-        <div class="kr-row__actions">
-          <span class="icon-btn-slot"></span>
-          <span class="action-lock">
-            <button class="icon-btn icon-btn--locked" aria-disabled="true" aria-label="Редактировать KR">✎<span class="icon-btn__lock">🔒</span></button>
-            <span class="action-lock__tip" role="tooltip">Период закрыт: доступны только комментарии</span>
-          </span>
-          <span class="action-lock">
-            <button class="icon-btn icon-btn--locked" aria-disabled="true" aria-label="Удалить KR">×<span class="icon-btn__lock">🔒</span></button>
-            <span class="action-lock__tip" role="tooltip">Период закрыт: доступны только комментарии</span>
-          </span>
-        </div>
-        <div class="ds-item__label">«Закрыт» — только комментарии</div>
-      </div>
-    </div>
-  </div>
-  <div class="ds-section__note">Позиция и размер блока действий одинаковы у цели и у ключевого результата. Обновление прогресса занимает место редактирования, а не добавляется рядом. Пустой .icon-btn-slot держит ширину, когда заметки нет.</div>
-</section>
+<!-- @dsViewport 1000x900 -->
+<section class="ds-section"><div class="ds-section__title">Статус KR · .kr-hdot (16px, подсказка по наведению)</div>
+<div class="ds-surface ds-row" style="padding-top:60px">
+<div class="ds-item"><span class="kr-hdot kr-hdot--not_started" tabindex="0" style="--hc:#6b7280"><span class="kr-hdot__mark">○</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">○ Not Started</span><span class="kr-hdot__hint">Работа ещё не началась</span></span></span><span class="ds-item__label">Not Started</span></div>
+<div class="ds-item"><span class="kr-hdot kr-hdot--on_track" tabindex="0" style="--hc:#16a34a"><span class="kr-hdot__mark">●</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">● On Track</span><span class="kr-hdot__hint">Идём по плану</span></span></span><span class="ds-item__label">On Track</span></div>
+<div class="ds-item"><span class="kr-hdot kr-hdot--at_risk" tabindex="0" style="--hc:#d97706"><span class="kr-hdot__mark">▲</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">▲ At Risk</span><span class="kr-hdot__hint">Есть риск не достичь</span></span></span><span class="ds-item__label">At Risk</span></div>
+<div class="ds-item"><span class="kr-hdot kr-hdot--done" tabindex="0" style="--hc:#15803d"><span class="kr-hdot__mark">✓</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">✓ Closed</span><span class="kr-hdot__hint">Работы по цели завершены, прогресс больше не изменится</span></span></span><span class="ds-item__label">Closed</span></div>
+</div></section>
+<section class="ds-section"><div class="ds-section__title">Колонка измерения · .kr-measure</div>
+<div class="ds-surface" style="display:grid;grid-template-columns:auto minmax(150px,210px);gap:10px 16px;align-items:center;max-width:460px">
+<div class="kr-target-col"><span class="kr-target__val"><span class="kr-target__dir kr-target__dir--up">↑</span>11 → 12 шт</span></div><div class="kr-progress-col__body kr-progress-col__body--row"><div class="kr-progress-col__bar"><div class="progress-bar" style="height:5px;border-radius:2.5px"><div class="progress-bar__fill" style="width:62%;background:#7c3aed;border-radius:2.5px"></div><div class="progress-bar__forecast" style="top:-3px;left:70%;height:11px"></div></div></div><span class="kr-pct" style="color:#7c3aed">62%</span></div>
+<div class="kr-target-col"><span class="kr-target__val"><span class="kr-target__dir kr-target__dir--down">↓</span>420 → 300 мс</span></div><div class="kr-progress-col__body kr-progress-col__body--row"><div class="kr-progress-col__bar"><div class="progress-bar" style="height:5px;border-radius:2.5px"><div class="progress-bar__fill" style="width:40%;background:#dc2626;border-radius:2.5px"></div><div class="progress-bar__forecast" style="top:-3px;left:70%;height:11px"></div></div></div><span class="kr-pct" style="color:#dc2626">40%</span></div>
+<div class="kr-target-col"><span class="kr-target__val">false → true</span></div><div class="kr-progress-col__body kr-progress-col__body--row"><div class="kr-progress-col__bar"><div class="progress-bar" style="height:5px;border-radius:2.5px"><div class="progress-bar__fill" style="width:0%;background:#7c3aed"></div></div></div><span class="kr-pct" style="color:#7c3aed">0%</span></div>
+<div class="kr-target-col"><span class="kr-target__val">1 → 3 шагов</span></div><div class="kr-progress-col__body kr-progress-col__body--row"><div class="kr-progress-col__bar"><div class="progress-bar" style="height:5px;border-radius:2.5px"><div class="progress-bar__fill" style="width:30%;background:#7c3aed;border-radius:2.5px"></div></div></div><span class="kr-pct" style="color:#7c3aed">30%</span></div>
+</div>
+<div class="ds-section__note">Метрика: ↑/↓ текущее → цель {unit}. True/False: false → true. Шаги: выполнено → всего. Полоса с риской плана к сегодня; краснеет, если отставание больше 20 п.п. Отдельных подписей типа KR нет.</div></section>
+<section class="ds-section"><div class="ds-section__title">Действия строки · колонка фиксированной ширины 148px</div>
+<div class="ds-surface ds-row">
+<div class="ds-item"><div class="kr-row__actions"><div class="kr-update-stack"><button type="button" class="kr-row-btn"><span>✎</span>Редактировать</button></div><div class="export-menu"><button class="export-menu__btn">···</button></div></div><span class="ds-item__label">Черновик · К валидации</span></div>
+<div class="ds-item"><div class="kr-row__actions"><div class="kr-update-stack"><button type="button" class="kr-row-btn kr-row-btn--accent"><span>↻</span>Обновить</button><span class="kr-updated" style="color:#d97706">обн. 12д назад</span></div><div class="export-menu"><button class="export-menu__btn">···</button></div></div><span class="ds-item__label">В работе</span></div>
+<div class="ds-item"><div class="kr-row__actions"><div class="kr-update-stack"><span class="kr-updated" style="color:#6b7280">обн. 40д назад</span></div><div class="export-menu"><button class="export-menu__btn">···</button></div></div><span class="ds-item__label">Закрыт</span></div>
+</div>
+<div class="ds-section__note">Давность обновления — над кнопкой «Обновить», в черновике и на валидации скрыта. Колонка не меняет ширину при смене статуса.</div></section>
+<section class="ds-section"><div class="ds-section__title">Меню ··· · недоступный пункт объясняет причину</div>
+<div class="ds-surface" style="display:flex;justify-content:flex-end;padding:20px 20px 20px 300px">
+<div class="export-menu__dropdown" style="position:static;display:block;width:240px"><button type="button" class="act-menu__item act-menu__item--disabled act-menu__item--why" aria-disabled="true"><span class="act-menu__ic">✎</span>Редактировать<span class="act-menu__lock">?</span><span class="act-menu__why" role="tooltip" style="display:block">Цели в статусе «В работе»: состав зафиксирован. Меняется только прогресс.</span></button><button type="button" class="act-menu__item"><span class="act-menu__ic">🔗</span>Копировать ссылку</button><div class="act-menu__sep"></div><button type="button" class="act-menu__item act-menu__item--danger act-menu__item--disabled act-menu__item--why" aria-disabled="true"><span class="act-menu__ic">×</span>Удалить<span class="act-menu__lock">?</span></button></div>
+</div></section>

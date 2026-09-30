@@ -35,17 +35,19 @@
 <section class="ds-section">
   <div class="ds-section__title">Прогресс в строке KR</div>
   <div class="ds-surface" style="max-width: 520px">
-    <div class="kr-detail-row">
-      <div class="kr-bar-wrap">
-        <div class="progress-bar" style="height: 6px; border-radius: 3px">
-          <div class="progress-bar__fill" style="width: 46%; background: #d97706; border-radius: 3px"></div>
+    <div class="kr-progress-col__body kr-progress-col__body--row">
+      <div class="kr-progress-col__bar">
+        <div class="progress-bar" style="height: 5px; border-radius: 2.5px">
+          <div class="progress-bar__fill" style="width: 46%; background: #d97706; border-radius: 2.5px"></div>
+          <div class="progress-bar__forecast" style="top: -3px; left: 70%; height: 11px"></div>
         </div>
       </div>
       <span class="kr-pct" style="color: #d97706">46%</span>
-      <span class="kr-detail">920 / 2000 шт</span>
-      <span class="kr-updated" style="color: #9ca3af">4 дня назад</span>
     </div>
-    <div class="ds-item__label" style="margin-top: 8px">.kr-detail-row / .kr-bar-wrap / .kr-pct / .kr-detail</div>
+    <div class="ds-item__label" style="margin-top: 8px">.kr-progress-col__body / .kr-progress-col__bar / .kr-pct</div>
+    <div class="ds-section__note" style="margin-top: 8px">Полоса KR — 5px с риской ожидаемого темпа. Значение и цель живут
+      в соседней колонке .kr-target-col, давность обновления — в блоке действий строки; целиком строка показана
+      на карточке «Ключевые результаты».</div>
   </div>
 </section>
 

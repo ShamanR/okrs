@@ -1,78 +1,13 @@
 <!-- @dsCard group="Navigation" -->
-<!-- @dsName Топбар и степпер статусов -->
-<!-- @dsSubtitle Шапка экрана, прогресс периода, переключение статуса целей -->
-<!-- @dsCss tokens.css shell.css components.css tracker.css settings.css -->
-<!-- @dsViewport 960x620 -->
-<section class="ds-section">
-  <div class="ds-section__title">Топбар трекера</div>
-  <div class="ds-frame">
-    <div class="topbar">
-      <div class="topbar__main">
-        <div class="topbar__title">Платформенная команда</div>
-        <span class="topbar__lead">
-          <span class="user-avatar__fallback" style="width: 22px; height: 22px; font-size: 10px">СИ</span>
-          <span class="topbar__lead-name">Сергей Иванов</span>
-          <span class="topbar__lead-role">лид</span>
-        </span>
-        <div class="topbar__spacer"></div>
-        <div class="topbar__progress">
-          <div class="progress-bar" style="height: 8px; border-radius: 4px; width: 160px">
-            <div class="progress-bar__fill" style="width: 88%; background: #16a34a; border-radius: 4px"></div>
-          </div>
-          <span class="topbar__progress-pct">88%</span>
-        </div>
-        <button class="topbar__add-btn">+ Цель</button>
-      </div>
-      <div class="topbar__desc">Инфраструктура, платформенные сервисы и внутренние инструменты</div>
-    </div>
-  </div>
-  <div class="ds-item__label">.topbar — белая полоса высотой от 54px, описание второй строкой</div>
-</section>
-
-<section class="ds-section">
-  <div class="ds-section__title">Степпер статусов</div>
-  <div class="ds-frame">
-    <div class="status-stepper">
-      <button class="status-stepper__btn" style="color: #fff; background: #7c3aed">Черновик</button>
-      <span class="status-stepper__connector"></span>
-      <button class="status-stepper__btn" style="color: #6b7280; background: #f3f4f6">К валидации</button>
-      <span class="status-stepper__connector"></span>
-      <button class="status-stepper__btn" style="color: #6b7280; background: #f3f4f6">В работе</button>
-      <span class="status-stepper__connector"></span>
-      <button class="status-stepper__btn" disabled>Закрыты</button>
-      <div class="status-stepper__meta">
-        <span class="status-stepper__changed">изменено 2 дня назад</span>
-      </div>
-    </div>
-  </div>
-  <div class="ds-item__label">.status-stepper — цвета активного шага задаются инлайн из JS</div>
-</section>
-
-<section class="ds-section">
-  <div class="ds-section__title">Пустой степпер</div>
-  <div class="ds-frame">
-    <div class="status-stepper">
-      <span class="status-stepper__no-goals">Целей нет</span>
-      <button class="status-stepper__btn" disabled>Черновик</button>
-      <span class="status-stepper__connector"></span>
-      <button class="status-stepper__btn" disabled>К валидации</button>
-    </div>
-  </div>
-  <div class="ds-item__label">.status-stepper__no-goals</div>
-</section>
-
-<section class="ds-section">
-  <div class="ds-section__title">Топбар настроек</div>
-  <div class="ds-frame">
-    <div class="set-topbar">
-      <a class="set-topbar__pill" href="#">← К трекеру</a>
-      <span class="set-topbar__divider"></span>
-      <div class="set-breadcrumbs">
-        <span class="set-breadcrumbs__root">Настройки</span>
-        <span class="set-breadcrumbs__sep">/</span>
-        <span class="set-breadcrumbs__cur">Уведомления</span>
-      </div>
-    </div>
-  </div>
-  <div class="ds-item__label">.set-topbar — другая высота и логика, чем у .topbar</div>
-</section>
+<!-- @dsName Топбар и статусы -->
+<!-- @dsSubtitle Фильтр приоритетов, меню, баннер режима в строке статусов -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css -->
+<!-- @dsViewport 1280x700 -->
+<div class="ds-section__title">Топбар · фильтр приоритетов и меню ···</div>
+<div class="ds-frame"><div class="topbar"><div class="topbar__main"><div class="topbar__title">Платформенная команда</div><span class="tb-lead"><span style="width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:8px;background:#7c3aed">СИ</span><span class="tb-lead__name">Сергей Иванов</span><span class="tb-lead__role">· лид</span></span><div class="tb-pri"><span class="tb-cap">Приоритет</span><div class="tb-pri__seg" role="group"><button type="button" class="tb-pri__btn" style="--pc:#dc2626" disabled>P0<span class="tb-pri__n">0</span></button><button type="button" class="tb-pri__btn tb-pri__btn--on" style="--pc:#d97706" aria-pressed="true">P1<span class="tb-pri__n">2</span></button><button type="button" class="tb-pri__btn" style="--pc:#2563eb">P2<span class="tb-pri__n">1</span></button><button type="button" class="tb-pri__btn" style="--pc:#6b7280" disabled>P3<span class="tb-pri__n">0</span></button></div><button type="button" class="tb-pri__clear" aria-label="Сбросить фильтр">×</button></div><div class="topbar__spacer"></div><div class="topbar__progress"><span class="tb-cap">Цели узла</span><div class="topbar__progress-bar"><div class="progress-bar" style="height:6px;border-radius:3px"><div class="progress-bar__fill" style="width:74%;background:#16a34a;border-radius:3px"></div><div class="progress-bar__forecast" style="top:-3px;left:70%;height:12px"></div></div></div><span class="topbar__progress-pct" style="color:#16a34a">74%</span></div><button class="topbar__add-btn">+ Добавить цель</button><div class="export-menu tb-menu"><button type="button" class="tb-menu__btn" aria-label="Ещё">···</button><div class="export-menu__dropdown tb-menu__dropdown"><button type="button" class="act-menu__item"><span class="act-menu__ic">⇩</span>Экспорт в Markdown</button></div></div></div></div></div>
+<div style="height:40px"></div>
+<div class="ds-section__title">Строка статусов · баннер режима справа от чипов</div>
+<div class="ds-frame"><div class="status-stepper"><button class="status-stepper__btn" style="background:#7c3aed15;color:#7c3aed">Черновик</button><div class="status-stepper__connector"></div><button class="status-stepper__btn" style="background:#7c3aed;color:#fff">К валидации</button><div class="status-stepper__connector"></div><button class="status-stepper__btn">В работе</button><div class="status-stepper__connector"></div><button class="status-stepper__btn">Закрыты</button><div class="mode-banner mode-banner--info"><span class="mode-banner__icon">✓</span><span class="mode-banner__text"><span class="mode-banner__status">К валидации</span><span class="mode-banner__rest"> — получите от руководителя апрув на цели и переведите в статус «В работе»</span></span></div><div class="status-stepper__meta"><span class="status-stepper__changed">изменён 15 июн.</span></div></div></div>
+<div class="ds-frame"><div class="status-stepper"><span class="status-stepper__no-goals">Нет целей</span><button class="status-stepper__btn" style="background:#7c3aed;color:#fff">Черновик</button><div class="status-stepper__connector"></div><button class="status-stepper__btn">К валидации</button><div class="status-stepper__connector"></div><button class="status-stepper__btn">В работе</button><div class="status-stepper__connector"></div><button class="status-stepper__btn">Закрыты</button><div class="mode-banner mode-banner--info"><span class="mode-banner__icon">✎</span><span class="mode-banner__text"><span class="mode-banner__status">Черновик</span><span class="mode-banner__rest"> — заполните черновик целей. Когда будете готовы показать руководителю — переведите в статус «К валидации»</span></span></div></div></div>
+<div class="ds-frame"><div class="status-stepper"><button class="status-stepper__btn" style="background:#7c3aed15;color:#7c3aed">Черновик</button><div class="status-stepper__connector"></div><button class="status-stepper__btn" style="background:#7c3aed15;color:#7c3aed">К валидации</button><div class="status-stepper__connector"></div><button class="status-stepper__btn" style="background:#7c3aed;color:#fff">В работе</button><div class="status-stepper__connector"></div><button class="status-stepper__btn">Закрыты</button><div class="mode-banner mode-banner--progress"><span class="mode-banner__icon">🔒</span><span class="mode-banner__text"><span class="mode-banner__status">В работе</span><span class="mode-banner__rest"> — меняются только прогресс и комментарии</span></span></div></div></div>
+<div class="ds-section__note">Фильтр приоритетов — сегмент с числом целей, пустые уровни неактивны. Меню ··· топбара содержит только экспорт. Баннер режима: фиолетовый-инфо в «Черновике» и «К валидации», янтарный в «В работе», серый при закрытом периоде; на узкой ширине сжимается до плашки со статусом.</div>

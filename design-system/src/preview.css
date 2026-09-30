@@ -4,7 +4,10 @@
 .ds-page { background: #edf0f4; color: #111827; padding: 0; }
 .ds-page--dark { background: #0c1220; color: #e2e8f0; }
 
-.ds-wrap { padding: 24px; display: flex; flex-direction: column; gap: 28px; }
+/* Слева 44px — под ручку перетаскивания (.drag-handle позиционируется на -20px),
+   иначе она обрезается краем превью. Шаг 14px: карточки идут плоским списком
+   «подпись → образец → пояснение», а не группами. */
+.ds-wrap { padding: 24px 24px 24px 44px; display: flex; flex-direction: column; gap: 14px; }
 
 .ds-section { display: flex; flex-direction: column; gap: 12px; }
 .ds-section__title {
