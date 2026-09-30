@@ -1,6 +1,0 @@
-{
-  "projectId": "12e552f0-1aaf-4d84-9013-9cef887d4dd2",
-  "shape": "custom",
-  "localDir": "design-system/dist",
-  "note": "Дизайн-система этого репозитория — не компонентная библиотека: это рукописные HTML-превью в design-system/src/cards/, которые при сборке инлайнят реальные web/static/*.css. Конвертер /design-sync (package/storybook) здесь неприменим — собирать через ./design-system/build.sh и ./design-system/prototype/build.sh, заливать содержимое design-system/dist/."
-}
