@@ -3047,8 +3047,10 @@ function App() {
 
   // A team's goal weights are expected to sum to 100%. When they don't, surface a
   // warning so the author can redistribute weight or add a goal.
-  const goalWeightSum = goals.reduce((s, g) => s + (g.weight || 0), 0);
-  const goalWeightOff = goals.length > 0 && goalWeightSum !== 100;
+  // Считается по всем целям периода: фильтр по приоритету сужает показ, а не состав,
+  // иначе при выбранном фильтре появлялось бы ложное «сумма весов ≠ 100%».
+  const goalWeightSum = allGoals.reduce((s, g) => s + (g.weight || 0), 0);
+  const goalWeightOff = allGoals.length > 0 && goalWeightSum !== 100;
   const goalWeightDelta = 100 - goalWeightSum;
   const hasChildren = overview && (overview.children_summary?.items?.length > 0);
   // Context passed to the per-goal export menu: period label, team hierarchy path and the
@@ -3056,7 +3058,7 @@ function App() {
   const exportInfo = selId ? {
     periodName: curPeriod?.name || '',
     teamPath: treePathNames(hierarchy, selId) || (teamOKR?.team?.name ? [teamOKR.team.name] : []),
-    teamGoalCount: goals.length,
+    teamGoalCount: allGoals.length,
     subtreeTeamCount: countSubtree(findTreeNode(hierarchy, selId)),
   } : null;
   const goalWeightWarn = goalWeightOff ? (
@@ -3167,14 +3169,14 @@ function App() {
         <div className="content">
           {!hasChildren && goalWeightWarn}
           {hasChildren && <ClusterView overview={overview} onSelect={selectTeam} greenThreshold={greenThreshold} />}
-          {goals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
+          {allGoals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
             <div className="empty-state">
               <div className="empty-state__icon">🔒</div>
               <div className="empty-state__title">Нет доступа</div>
               <div className="empty-state__text">За доступом обратитесь к администратору</div>
             </div>
           )}
-          {goals.length === 0 && !overview && hierarchy.length > 0 && (
+          {allGoals.length === 0 && !overview && hierarchy.length > 0 && (
             <div className="empty-state">
               <div className="empty-state__icon">📋</div>
               <div className="empty-state__title">Цели не добавлены</div>
@@ -3205,7 +3207,7 @@ function App() {
         goal={goalModal === 'new' ? null : goalModal}
         teamId={selId} periodId={periodId}
         teamName={teamOKR?.team?.name || ''} periodName={curPeriod?.name || ''}
-        existingGoals={goals} me={me}
+        existingGoals={allGoals} me={me}
         onSave={() => { setGoalModal(null); reload(); }}
         onClose={() => setGoalModal(null)}
         accent={accent} allTeams={hierarchy} periods={periods} />}
