@@ -583,9 +583,17 @@
 .kr-note--long:hover { background: #eef0f3; }
 .kr-note__label { flex-shrink: 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #6b7280; }
 .kr-note__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Текст заметки рендерится как Markdown, то есть блоками. В свёрнутом виде делаем
+   их строчными — иначе ни nowrap, ни многоточие к содержимому не применяются. */
+.kr-note__text > * { margin: 0; }
+.kr-note:not(.kr-note--open) .kr-note__text > * { display: inline; }
+.kr-note:not(.kr-note--open) .kr-note__text br { display: none; }
 .kr-note__toggle { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--accent); }
 .kr-note--open { flex-wrap: wrap; padding: 8px 10px; }
-.kr-note--open .kr-note__text { white-space: pre-wrap; word-break: break-word; flex-basis: calc(100% - 160px); }
+/* Раскрытая заметка — обычный поток Markdown: pre-wrap здесь лишний, он бы оставил
+   переводы строк исходника поверх уже собранных абзацев. */
+.kr-note--open .kr-note__text { white-space: normal; word-break: break-word; flex-basis: calc(100% - 160px); }
+.kr-note--open .kr-note__text > * + * { margin-top: .5em; }
 .kr-note__meta { flex-basis: 100%; padding-left: 0; font-size: 12px; color: #6b7280; }
 @container (max-width: 720px) { .kr-note { margin-left: 0; } }
 

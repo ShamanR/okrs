@@ -150,7 +150,9 @@ function mapKR(kr) {
     weight: kr.weight, krType: kr.kind, progress: kr.progress,
     healthStatus: kr.health_status || 'not_started',
     start, target, current, done, stages, unit, checkpoints, zeroing,
-    note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at) } : null,
+    // daysAgo у заметки — её собственный, не KR: правка названия или веса KR трогает
+    // kr.updated_at, но не заметку, и старая заметка не должна выглядеть свежей.
+    note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at), daysAgo: daysAgo(kr.note.updated_at) } : null,
     updatedAt: kr.updated_at, updatedDaysAgo: daysAgo(kr.updated_at),
   };
 }
@@ -1025,8 +1027,10 @@ function KRScale({ start, target, current, unit, checkpoints, color }) {
         <div className="kr-scale__track">
           <div className="kr-scale__fill" style={{ width: `${posOf(cur)}%`, background: color }} />
         </div>
+        {/* Сравнение включающее и по направлению: у убывающей метрики значение,
+            равное отметке, уже её достигло — прогресс за неё расчёт начисляет. */}
         {cps.map((c, i) => (
-          <span key={i} className={`kr-scale__cp${(cur >= c.v) === up ? ' kr-scale__cp--hit' : ''}`}
+          <span key={i} className={`kr-scale__cp${(up ? cur >= c.v : cur <= c.v) ? ' kr-scale__cp--hit' : ''}`}
             style={{ left: `${posOf(c.v)}%` }}
             title={`Промежуточное значение: ${fmtVal(c.v, unit)} → ${c.pct}% прогресса`} />
         ))}
@@ -1301,18 +1305,23 @@ function KRTarget({ kr }) {
 }
 
 // Заметка к прогрессу — однострочная под строкой KR, длинная разворачивается по клику.
-function KRNote({ note, updatedDaysAgo, open, onToggle }) {
+function KRNote({ note, open, onToggle }) {
   const text = (note && note.text) || '';
   if (!text) return null;
   const long = text.length > 90 || text.includes('\n');
-  const ago = updatedDaysAgo === 0 ? 'сегодня' : `${updatedDaysAgo}д назад`;
+  // Давность берём у самой заметки: kr.updated_at двигает любая правка KR.
+  const d = note.daysAgo;
+  const ago = d === 0 ? 'сегодня' : d != null ? `${d}д назад` : note.date;
   const cls = ['kr-note', open ? 'kr-note--open' : '', long ? 'kr-note--long' : ''].filter(Boolean).join(' ');
   const press = long ? { role: 'button', tabIndex: 0, 'aria-expanded': open, onClick: onToggle,
     onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } } : {};
   return (
     <div className={cls} data-no-drag {...press}>
       <span className="kr-note__label">Заметка</span>
-      <span className="kr-note__text">{text}</span>
+      {/* Разметка в тексте заметки нормативна (content-safety, «Поля, поддерживающие
+          разметку»), поэтому текст всегда идёт через Markdown. В свёрнутом виде CSS
+          делает содержимое строчным и обрезает его в одну строку. */}
+      <Markdown text={text} className="kr-note__text" />
       {long && <span className="kr-note__toggle">{open ? 'Свернуть' : 'Ещё'}</span>}
       {open && <span className="kr-note__meta">
         Обновлена вместе с прогрессом{note.author ? ` · ${note.author}` : ''} · {ago}
@@ -1409,7 +1418,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             ]} />
           </div>
         </div>
-        {showNote && <KRNote note={kr.note} updatedDaysAgo={kr.updatedDaysAgo} open onToggle={() => setShowNote(false)} />}
+        {showNote && <KRNote note={kr.note} open onToggle={() => setShowNote(false)} />}
       </div>
       {modal === 'progress' && <KRProgressModal kr={kr} goalTitle={goalTitle} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
       {modal === 'edit' && <KREditModal kr={kr} goalId={goalId} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}

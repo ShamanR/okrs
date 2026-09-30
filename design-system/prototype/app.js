@@ -518,7 +518,7 @@ function krNote(kr) {
   const ago = kr.updatedDaysAgo === 0 ? 'сегодня' : kr.updatedDaysAgo + 'д назад';
   return `<div class="kr-note${open ? ' kr-note--open' : ''}${long ? ' kr-note--long' : ''}"${long ? ` role="button" tabindex="0" aria-expanded="${open}" data-kr-note="${kr.id}"` : ''} data-no-drag>
     <span class="kr-note__label">Заметка</span>
-    <span class="kr-note__text">${esc(text)}</span>
+    <div class="md-content kr-note__text"><p>${esc(text)}</p></div>
     ${long ? `<span class="kr-note__toggle">${open ? 'Свернуть' : 'Ещё'}</span>` : ''}
     ${open ? `<span class="kr-note__meta">Обновлена вместе с прогрессом · ${ago}</span>` : ''}
   </div>`;
