@@ -1,0 +1,92 @@
+<!-- @dsCard group="Data display" -->
+<!-- @dsName Прогресс -->
+<!-- @dsSubtitle Полосы прогресса, прогноз, сводка по кластеру -->
+<!-- @dsCss tokens.css shell.css tracker.css goal_tree.css -->
+<!-- @dsViewport 900x640 -->
+<section class="ds-section">
+  <div class="ds-section__title">Полоса прогресса — .progress-bar</div>
+  <div class="ds-surface">
+    <div class="ds-col">
+      <div class="ds-item" style="align-self: stretch">
+        <div class="progress-bar" style="height: 8px; border-radius: 4px; width: 100%">
+          <div class="progress-bar__fill" style="width: 64%; background: #2563eb; border-radius: 4px"></div>
+          <div class="progress-bar__forecast" style="left: 72%; height: 14px"></div>
+        </div>
+        <div class="ds-item__label">.progress-bar + .progress-bar__fill + .progress-bar__forecast (метка плана)</div>
+      </div>
+      <div class="ds-item" style="align-self: stretch">
+        <div class="progress-bar" style="height: 6px; border-radius: 3px; width: 100%">
+          <div class="progress-bar__fill" style="width: 88%; background: #16a34a; border-radius: 3px"></div>
+        </div>
+        <div class="ds-item__label">опережает — #16a34a</div>
+      </div>
+      <div class="ds-item" style="align-self: stretch">
+        <div class="progress-bar" style="height: 6px; border-radius: 3px; width: 100%">
+          <div class="progress-bar__fill" style="width: 22%; background: #ef4444; border-radius: 3px"></div>
+          <div class="progress-bar__forecast" style="left: 60%; height: 12px"></div>
+        </div>
+        <div class="ds-item__label">отстаёт — #ef4444, прогноз далеко впереди факта</div>
+      </div>
+    </div>
+    <div class="ds-section__note" style="margin-top: 12px">Высота и радиус приходят пропсами из JS, поэтому в интерфейсе встречаются 4, 6, 8 и 10 px. Фиксированная шкала высот — кандидат в токены.</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Прогресс в строке KR</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="kr-progress-col__body kr-progress-col__body--row">
+      <div class="kr-progress-col__bar">
+        <div class="progress-bar" style="height: 5px; border-radius: 2.5px">
+          <div class="progress-bar__fill" style="width: 46%; background: #d97706; border-radius: 2.5px"></div>
+          <div class="progress-bar__forecast" style="top: -3px; left: 70%; height: 11px"></div>
+        </div>
+      </div>
+      <span class="kr-pct" style="color: #d97706">46%</span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.kr-progress-col__body / .kr-progress-col__bar / .kr-pct</div>
+    <div class="ds-section__note" style="margin-top: 8px">Полоса KR — 5px с риской ожидаемого темпа. Значение и цель живут
+      в соседней колонке .kr-target-col, давность обновления — в блоке действий строки; целиком строка показана
+      на карточке «Ключевые результаты».</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Сводка по кластеру — .cluster-overview</div>
+  <div class="cluster-overview">
+    <div class="cluster-overview__left">
+      <div class="cluster-overview__label">Прогресс</div>
+      <div class="cluster-overview__pct" style="color: #2563eb">57%</div>
+    </div>
+    <div class="cluster-overview__right">
+      <div class="cluster-overview__bar-header">
+        <span class="cluster-overview__teams-label">6 команд · 24 цели</span>
+        <span class="cluster-overview__health-label" style="color: #2563eb">в плане</span>
+      </div>
+      <div class="progress-bar" style="height: 10px; border-radius: 5px">
+        <div class="progress-bar__fill" style="width: 57%; background: #2563eb; border-radius: 5px"></div>
+        <div class="progress-bar__forecast" style="left: 62%; height: 16px"></div>
+      </div>
+      <div class="cluster-overview__forecast">План на сегодня — 62%</div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Прогресс в панели графа</div>
+  <div class="ds-surface" style="max-width: 320px">
+    <div class="gt-panel__barwrap">
+      <div class="gt-panel__bar"><div class="gt-panel__barfill" style="width: 73%"></div></div>
+      <span class="gt-panel__pct">73%</span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.gt-panel__bar — собственная реализация, не переиспользует .progress-bar</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Полоса на карточке графа</div>
+  <div class="ds-surface" style="max-width: 240px">
+    <div class="gt-card__bar"><div class="gt-card__barfill" style="width: 40%"></div></div>
+    <div class="ds-item__label" style="margin-top: 8px">.gt-card__bar — третья реализация той же сущности</div>
+  </div>
+</section>

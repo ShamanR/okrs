@@ -1,0 +1,89 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Баннеры и предупреждения -->
+<!-- @dsSubtitle Режим редактирования, веса, совместный доступ, ошибки, лид команды -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css -->
+<!-- @dsViewport 900x760 -->
+<section class="ds-section">
+  <div class="ds-section__title">Режим редактирования — .mode-banner</div>
+  <div class="mode-banner mode-banner--progress">
+    <span class="mode-banner__icon">🔒</span>
+    <span class="mode-banner__text"><span class="mode-banner__status">В работе</span> — состав целей зафиксирован. Доступны обновление прогресса и комментарии.</span>
+  </div>
+  <div class="mode-banner mode-banner--info">
+    <span class="mode-banner__icon">✎</span>
+    <span class="mode-banner__text"><span class="mode-banner__status">Черновик</span><span class="mode-banner__rest"> — заполните черновик целей. Когда будете готовы показать руководителю — переведите в статус «К валидации»</span></span>
+  </div>
+  <div class="mode-banner mode-banner--closed">
+    <span class="mode-banner__icon">🔒</span>
+    <span class="mode-banner__text"><span class="mode-banner__status">Период закрыт</span> — доступны только комментарии.</span>
+  </div>
+  <div class="ds-section__note">Идёт сразу под степпером статусов, во всю ширину доски. Объясняет режим целиком: какой статус, что доступно, что закрыто. В полном редактировании не рендерится — объяснять нечего, а постоянный баннер на самом частом экране был бы шумом.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Предупреждения о весах</div>
+  <div class="ds-surface">
+    <div class="goal-weight-warn">
+      <span class="goal-weight-warn__icon">⚠</span>
+      <div class="goal-weight-warn__body">
+        <div class="goal-weight-warn__title">Сумма весов целей — 130%</div>
+        <div class="goal-weight-warn__hint">Приведите к 100%, иначе прогресс периода будет искажён</div>
+      </div>
+    </div>
+    <div class="kr-weight-warn"><span class="kr-weight-warn__icon">⚠</span>Сумма весов ключевых результатов — 120%, должна быть 100%</div>
+    <div class="ds-item__label" style="margin-top: 8px">.goal-weight-warn (жёлтый) и .kr-weight-warn (красный) — одна проблема, два цвета</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Совместный доступ</div>
+  <div class="ds-surface">
+    <div class="gc-share-strip" aria-label="Общая цель">
+      <span class="gc-share-strip__label">⇄ Общая цель</span>
+      <span class="gc-share-strip__team gc-share-strip__team--owner" title="Команда-владелец цели">Платформенная<span class="gc-share-strip__role">владелец</span></span>
+      <span class="gc-share-strip__team">Мобильная разработка</span>
+      <span class="gc-share-strip__team">Аналитика</span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.gc-share-strip — полоса под шапкой карточки, парная к левой границе .goal-card--shared</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Ошибки</div>
+  <div class="ds-surface">
+    <div class="ds-col" style="max-width: 520px">
+      <div class="ds-item" style="align-self: stretch">
+        <div class="transfer-modal__error">Цель нельзя перенести: у команды-получателя закрыт период</div>
+        <div class="ds-item__label">.transfer-modal__error</div>
+      </div>
+      <div class="ds-item">
+        <div class="form-error-msg">Укажите название цели</div>
+        <div class="ds-item__label">.form-error-msg — под полем</div>
+      </div>
+      <div class="ds-item">
+        <span class="notif-prefs__status notif-prefs__status--err">Не удалось сохранить</span>
+        <div class="ds-item__label">.notif-prefs__status--err</div>
+      </div>
+      <div class="ds-item">
+        <span class="notif-prefs__status notif-prefs__status--ok">Сохранено</span>
+        <div class="ds-item__label">.notif-prefs__status--ok</div>
+      </div>
+      <div class="ds-item">
+        <span class="notif-prefs__dirty">Есть несохранённые изменения</span>
+        <div class="ds-item__label">.notif-prefs__dirty</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Информационный баннер настроек</div>
+  <div class="ds-surface">
+    <div class="set-lead-banner">
+      <span class="set-lead-banner__label">Вы лид команд:</span>
+      <span class="set-lead-chip"><span class="set-lead-chip__dot" style="background: #059669"></span>Платформенная</span>
+      <span class="set-lead-chip"><span class="set-lead-chip__dot" style="background: #0891b2"></span>Инфраструктура</span>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.set-lead-banner — единственный акцентный баннер на токенах --accent-10 / --accent-25</div>
+  </div>
+</section>

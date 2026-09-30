@@ -343,8 +343,8 @@ the space has no external channels.
 
 ### Markdown export
 
-The `···` menu on a goal card opens the export dialog. Three scopes: this goal, the team's goals,
-or the team and everything below it. Two levels of detail, comments optional.
+The `···` menu in the board header opens the export dialog. Three scopes: one goal, the team's
+goals, or the team and everything below it. Two levels of detail, comments optional.
 
 ![Markdown export](docs/screenshots/export-markdown.png)
 

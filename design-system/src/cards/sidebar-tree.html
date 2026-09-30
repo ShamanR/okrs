@@ -1,0 +1,103 @@
+<!-- @dsCard group="Navigation" -->
+<!-- @dsName Дерево и выбор периода -->
+<!-- @dsSubtitle Узлы дерева команд, PeriodSelect в тёмном и светлом варианте -->
+<!-- @dsCss tokens.css shell.css sidebar.css tracker.css -->
+<!-- @dsTheme dark -->
+<!-- @dsViewport 900x700 -->
+<section class="ds-section">
+  <div class="ds-section__title">Дерево команд в сайдбаре</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="ds-frame" style="width: 252px; background: #0c1220; padding: 6px 0">
+        <div class="sidebar__subsection-label"><span class="sidebar__subsection-star">★</span>Избранное</div>
+        <div class="sidebar-node__row" style="padding: 5px 10px">
+          <span class="sidebar-node__toggle">▾</span>
+          <span class="sidebar-node__dot" style="background: #4338ca"></span>
+          <span class="sidebar-node__name sidebar-node__name--d0">Департамент разработки</span>
+          <span class="sidebar-node__progress" style="color: #2563eb">57%</span>
+          <span class="sidebar-node__star sidebar-node__star--on">★</span>
+        </div>
+        <div class="sidebar-node__row sidebar-node__row--selected" style="padding: 5px 10px 5px 22px">
+          <span class="sidebar-node__toggle">▸</span>
+          <span class="sidebar-node__dot" style="background: #059669"></span>
+          <span class="sidebar-node__name sidebar-node__name--d1 sidebar-node__name--selected">Платформенная команда</span>
+          <span class="sidebar-node__progress" style="color: #16a34a">88%</span>
+          <span class="sidebar-node__star">☆</span>
+        </div>
+        <div class="sidebar-node__row" style="padding: 5px 10px 5px 34px">
+          <span class="sidebar-node__spacer"></span>
+          <span class="sidebar-node__dot" style="background: #d97706"></span>
+          <span class="sidebar-node__name sidebar-node__name--dx">Мобильный сквад</span>
+          <span class="sidebar-node__progress" style="color: #ef4444">22%</span>
+          <span class="sidebar-node__star">☆</span>
+        </div>
+        <div class="sidebar-node__row" style="padding: 5px 10px 5px 34px">
+          <span class="sidebar-node__spacer"></span>
+          <span class="sidebar-node__dot" style="background: #64748b"></span>
+          <span class="sidebar-node__name sidebar-node__name--dx">Без целей</span>
+          <span class="sidebar-node__progress" style="color: #d1d5db">—</span>
+          <span class="sidebar-node__star">☆</span>
+        </div>
+      </div>
+      <div class="ds-item__label">.sidebar-node__row — три уровня начертания (--d0 / --d1 / --dx)</div>
+    </div>
+
+    <div class="ds-col">
+      <div class="ds-item">
+        <div style="width: 300px">
+          <div class="sidebar__period-label">Период</div>
+          <select class="sidebar__period-select"><option>2026 Q3</option></select>
+        </div>
+        <div class="ds-item__label">.sidebar__period-select — нативный select</div>
+      </div>
+
+      <div class="ds-item">
+        <div class="period-select" style="width: 300px">
+          <button class="period-select__trigger">
+            <span class="period-select__dot" style="background: #16a34a"></span>
+            <span class="period-select__name">2026 Q3</span>
+            <span class="period-select__chev">▾</span>
+          </button>
+        </div>
+        <div class="ds-item__label">.period-select__trigger — тёмный вариант по умолчанию</div>
+      </div>
+
+      <div class="ds-item">
+        <div class="period-select period-select--light" style="width: 300px">
+          <button class="period-select__trigger">
+            <span class="period-select__dot" style="background: #16a34a"></span>
+            <span class="period-select__name">2026 Q3</span>
+            <span class="period-select__chev">▾</span>
+          </button>
+        </div>
+        <div class="ds-item__label">.period-select--light — opt-in для светлых экранов</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Меню выбора периода</div>
+  <div class="period-select__menu" style="position: static; width: 430px">
+    <div class="period-select__group">2026</div>
+    <button class="period-select__item is-selected">
+      <span class="period-select__indent"></span>
+      <span class="period-select__item-name">2026 Q3</span>
+      <span class="period-select__range">01.07 — 30.09</span>
+      <span class="period-select__badge-wrap"><span class="period-select__badge" style="color: #16a34a; background: #16a34a22">активный</span></span>
+    </button>
+    <button class="period-select__item">
+      <span class="period-select__indent"></span>
+      <span class="period-select__item-name">2026 Q2</span>
+      <span class="period-select__range">01.04 — 30.06</span>
+      <span class="period-select__badge-wrap"><span class="period-select__badge" style="color: #94a3b8; background: rgba(148,163,184,0.18)">закрыт</span></span>
+    </button>
+    <button class="period-select__item">
+      <span class="period-select__indent"></span>
+      <span class="period-select__item-name">2026 год</span>
+      <span class="period-select__range">01.01 — 31.12</span>
+      <span class="period-select__badge-wrap"></span>
+    </button>
+  </div>
+  <div class="ds-item__label">.period-select__menu — колонки названия, дат и бейджа фиксированной ширины</div>
+</section>

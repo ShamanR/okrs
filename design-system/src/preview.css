@@ -1,0 +1,60 @@
+/* Обвязка превью дизайн-системы. НЕ часть продукта: всё под префиксом .ds-,
+   ни одно правило не переопределяет продуктовые классы. Подключается последней,
+   поэтому здесь нельзя задавать стили компонентов — только каркас страницы. */
+.ds-page { background: #edf0f4; color: #111827; padding: 0; }
+.ds-page--dark { background: #0c1220; color: #e2e8f0; }
+
+/* Слева 44px — под ручку перетаскивания (.drag-handle позиционируется на -20px),
+   иначе она обрезается краем превью. Шаг 14px: карточки идут плоским списком
+   «подпись → образец → пояснение», а не группами. */
+.ds-wrap { padding: 24px 24px 24px 44px; display: flex; flex-direction: column; gap: 14px; }
+
+.ds-section { display: flex; flex-direction: column; gap: 12px; }
+.ds-section__title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #94a3b8;
+}
+.ds-page--dark .ds-section__title { color: #64748b; }
+.ds-section__note { font-size: 12px; line-height: 1.5; color: #6b7280; max-width: 70ch; }
+.ds-page--dark .ds-section__note { color: #94a3b8; }
+.ds-section__note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+  background: rgba(15, 23, 42, 0.07); border-radius: 4px; padding: 1px 5px;
+}
+.ds-page--dark .ds-section__note code { background: rgba(255, 255, 255, 0.1); }
+
+/* Ряд образцов: элементы сохраняют собственные размеры, выравниваются по низу. */
+.ds-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.ds-row--top { align-items: flex-start; }
+.ds-col { display: flex; flex-direction: column; gap: 10px; }
+.ds-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+/* Подпись под образцом — чем именно он является в коде. */
+.ds-item { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.ds-item__label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px; color: #94a3b8; letter-spacing: -0.1px;
+}
+.ds-page--dark .ds-item__label { color: #64748b; }
+
+/* Белая подложка для компонентов, которые в продукте лежат на .surface. */
+.ds-surface { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px 18px; }
+.ds-surface--flush { padding: 0; overflow: hidden; }
+.ds-page--dark .ds-surface { background: #131b2e; border-color: rgba(255, 255, 255, 0.1); }
+
+/* Контейнер фиксированной ширины для компонентов, которые в продукте растянуты
+   на всю колонку (сайдбар, панели) — иначе превью врёт про пропорции. */
+.ds-frame { position: relative; overflow: hidden; border-radius: 12px; border: 1px solid rgba(15, 23, 42, 0.1); }
+.ds-frame--sidebar { height: 560px; width: 252px; }
+.ds-frame--panel { height: 420px; width: 420px; }
+.ds-frame--canvas { height: 420px; background: #f8fafc; }
+
+/* Свотчи палитры. */
+.ds-swatches { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.ds-swatch { display: flex; flex-direction: column; gap: 6px; }
+.ds-swatch__chip { height: 46px; border-radius: 8px; border: 1px solid rgba(15, 23, 42, 0.08); }
+.ds-swatch__name { font-size: 12px; font-weight: 600; color: #374151; }
+.ds-swatch__value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; color: #9ca3af;
+}
+.ds-page--dark .ds-swatch__name { color: #e2e8f0; }

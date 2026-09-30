@@ -1,0 +1,60 @@
+<!-- @dsCard group="Goals" -->
+<!-- @dsName Редактор KR -->
+<!-- @dsSubtitle Способ измерения, метрика, шаги; окно обновления прогресса -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
+<!-- @dsViewport 860x1400 -->
+<section class="ds-section"><div class="ds-section__title">Окно «Редактировать KR»</div>
+<div class="ds-surface" style="max-width:760px">
+<div class="kre-name-row"><div class="kre-name-row__name"><div class="kr-num-field__label">Название</div><input class="form-input" value="p95 latency API кабинета"></div><div class="kre-name-row__weight"><div class="kr-num-field__label">Вес<span class="has-tip kre-tip" tabindex="0" data-tip-title="Вес KR" data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели должна быть 100%. Больше вес — сильнее KR влияет на итог цели.">?</span></div><label class="kr-num-input-suffix"><input class="form-input form-input--center" value="50"><span class="kr-num-input-suffix__unit">%</span></label></div></div>
+<div class="kr-measure-pick"><div class="kr-num-field__label">Как измеряем прогресс</div><div class="kr-measure-pick__hint">Определяет, как считается процент выполнения KR</div>
+<div class="kr-measure-pick__opts" role="radiogroup">
+<button type="button" role="radio" aria-checked="true" class="kr-measure-opt kr-measure-opt--on"><span class="kr-measure-opt__head"><span class="kr-measure-opt__ic">123</span>Метрика</span><span class="kr-measure-opt__desc">Старт → цель, вводите текущее значение</span><span class="kr-measure-opt__ex">p95 latency 800 → 300 мс</span></button>
+<button type="button" role="radio" aria-checked="false" class="kr-measure-opt"><span class="kr-measure-opt__head"><span class="kr-measure-opt__ic">✓</span>True / False</span><span class="kr-measure-opt__desc">Достигнут или нет: 0% или 100%</span><span class="kr-measure-opt__ex">сервис переведён на k8s</span></button>
+<button type="button" role="radio" aria-checked="false" class="kr-measure-opt"><span class="kr-measure-opt__head"><span class="kr-measure-opt__ic">☰</span>Шаги проекта</span><span class="kr-measure-opt__desc">Сумма весов выполненных шагов</span><span class="kr-measure-opt__ex">RFC → миграция БД → отключение legacy</span></button>
+</div></div>
+<div class="kr-num-section"><div class="kr-num-section__title">Метрика</div>
+<div class="kre-metric-row"><div class="kre-metric-row__unit"><div class="kr-num-field__label">Единица</div><select class="form-select form-select--sm"><option>мс</option></select></div><div class="kre-metric-row__val"><div class="kr-num-field__label">Старт (было)</div><div class="kr-num-input-suffix"><input class="form-input form-input--sm" value="800"><span class="kr-num-input-suffix__unit">мс</span></div></div><span class="kre-metric-row__arrow">→</span><div class="kre-metric-row__val"><div class="kr-num-field__label">Цель (станет)</div><div class="kr-num-input-suffix"><input class="form-input form-input--sm" value="300"><span class="kr-num-input-suffix__unit">мс</span></div></div></div>
+<div class="kre-metric-note">Текущее значение на старте равно стартовому — дальше меняется при обновлении прогресса.</div>
+</div>
+</div>
+<div class="ds-surface" style="max-width:760px;margin-top:12px">
+<div class="kr-num-section"><div class="kr-num-section__title">Промежуточные значения (для метрики)</div>
+<div class="kr-checkpoints"><div class="kr-section-head"><span class="kr-section-head__title">Промежуточные значения</span><span class="kr-section-head__opt">опционально</span><span class="info-hint" tabindex="0">?</span></div>
+<div class="kr-cp-head"><span class="kr-cp-head__label">Значение (мс)</span><span class="kr-cp-head__label">Прогресс, %</span><span></span></div>
+<div class="kr-cp-row"><input class="form-input form-input--sm" value="600"><input class="form-input form-input--sm" value="50"><button class="kr-step-delete">×</button></div>
+<div class="kr-cp-row"><input class="form-input form-input--sm" value="400"><input class="form-input form-input--sm" value="85"><button class="kr-step-delete">×</button></div>
+<button type="button" class="kr-dashed-btn">+ Добавить промежуточное значение</button></div></div>
+<div class="kr-num-section"><div class="kr-steps-header"><div class="kr-steps-title">Шаги проекта</div><div class="kr-steps-sum kr-steps-sum--ok">Сумма: 100</div></div>
+<div class="kr-steps-cols"><span class="kr-steps-cols__name">Название шага</span><span class="kr-steps-cols__weight">Вес, %</span><span class="kr-steps-cols__del"></span></div>
+<div class="kr-step-row"><input class="form-input form-input--sm" style="flex:1" value="RFC"><input class="form-input form-input--sm form-input--center" style="width:60px" value="20"><button class="kr-step-delete">×</button></div>
+<div class="kr-step-row"><input class="form-input form-input--sm" style="flex:1" value="Миграция БД"><input class="form-input form-input--sm form-input--center" style="width:60px" value="50"><button class="kr-step-delete">×</button></div>
+<div class="kr-step-row"><input class="form-input form-input--sm" style="flex:1" value="Отключение legacy"><input class="form-input form-input--sm form-input--center" style="width:60px" value="30"><button class="kr-step-delete">×</button></div>
+<button class="kr-step-add">+ Добавить шаг</button></div>
+<div class="kr-num-section"><div class="kr-num-section__title">True / False</div><div class="kre-metric-note" style="margin-top:0">Прогресс 0% до достижения результата, 100% — после. Отмечается при обновлении прогресса.</div></div>
+</div>
+<div class="ds-section__note">Тип KR подаётся как способ измерения прогресса — три карточки с кратким описанием и техническим примером. В редакторе нет текущего значения, галочек шагов и отметки «выполнено»: всё это вводится только в окне «Обновить прогресс».</div></section>
+<section class="ds-section"><div class="ds-section__title">Окно «Обновить прогресс» · метрика с промежуточными значениями</div>
+<div class="ds-surface" style="max-width:760px">
+<span class="modal-cap">Ключевой результат</span>
+<div class="field-label">Заведение TV и ООН баннеров в Self Service</div>
+<div class="kr-modal-desc md-content"><p>Пейсменты TV и ООН доступны в <strong>Self Service</strong>.</p></div>
+<div class="kr-num-section kr-num-section--compact">
+<div class="kr-num-line"><span class="kr-num-line__lbl">Текущее значение</span><label class="kr-num-input-suffix kr-num-input-suffix--compact"><input class="form-input form-input--sm" value="80"><span class="kr-num-input-suffix__unit">%</span></label><span class="kr-num-line__range">из 100 % · старт 0 %</span><span class="kr-pct kr-num-line__pct" style="color:#7c3aed">90%</span></div>
+<div class="kr-scale"><div class="kr-scale__track"><div class="kr-scale__fill" style="width:80%;background:#7c3aed"></div></div><span class="kr-scale__cp kr-scale__cp--hit" style="left:30%"></span><span class="kr-scale__cp kr-scale__cp--hit" style="left:70%"></span><span class="kr-scale__cur" style="left:80%;border-color:#7c3aed"></span></div>
+<div class="kr-scale__labels"><span class="kr-scale__lbl" style="left:0">0</span><span class="kr-scale__lbl kr-scale__lbl--cp" style="left:30%">30<b>50%</b></span><span class="kr-scale__lbl kr-scale__lbl--cp" style="left:70%">70<b>85%</b></span><span class="kr-scale__lbl" style="left:100%">100</span></div>
+<div class="kr-scale__note">Промежуточные значения задают, какой прогресс даёт значение метрики — шкала нелинейная.</div>
+</div>
+</div>
+<div class="ds-surface" style="max-width:760px;margin-top:12px">
+<div class="kr-health-section"><div class="kr-health-section__label">Статус результата</div>
+<div class="kr-health-cards">
+<button class="kr-health-card" style="color:#6b7280"><span class="kr-health-card__title">○ Not Started</span><span class="kr-health-card__hint">Работа ещё не началась</span></button>
+<button class="kr-health-card kr-health-card--active" style="color:#16a34a"><span class="kr-health-card__title">● On Track</span><span class="kr-health-card__hint">Идём по плану</span></button>
+<button class="kr-health-card" style="color:#d97706"><span class="kr-health-card__title">▲ At Risk</span><span class="kr-health-card__hint">Есть риск не достичь</span></button>
+<button class="kr-health-card" style="color:#15803d"><span class="kr-health-card__title">✓ Closed</span><span class="kr-health-card__hint">Работы по цели завершены, прогресс больше не изменится</span></button>
+</div></div>
+<div class="kr-progress-field" style="margin-top:14px"><div class="kr-progress-field__label">Комментарий <span class="kr-progress-field__hint">необязательно</span></div>
+<div class="md-editor"><div class="md-editor__bar"><div class="md-editor__tools"><button class="md-editor__btn"><b>B</b></button><button class="md-editor__btn"><i>I</i></button><span class="md-editor__divider"></span><button class="md-editor__btn">•</button><button class="md-editor__btn">1.</button></div><div class="md-editor__tabs"><button class="md-editor__tab md-editor__tab--active">Написать</button><button class="md-editor__tab">Просмотр</button></div></div><textarea class="form-textarea form-textarea--sm" style="min-height:64px" placeholder="Что изменилось с прошлой отметки"></textarea></div></div>
+<div class="kr-zeroing-note" style="margin-top:10px"><span class="kr-zeroing-note__icon">⊘</span>Критерий обнуления: сервис не выведен до конца квартала</div>
+</div>
+<div class="ds-section__note">Старт и цель не редактируются. Описание KR — отрендеренный Markdown в серой плашке, над ним метка «Ключевой результат». Комментарий к обновлению — Markdown-редактор. Окно шириной 760px.</div></section>

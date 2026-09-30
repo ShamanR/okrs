@@ -1,0 +1,82 @@
+<!-- @dsCard group="Foundations" -->
+<!-- @dsName Типографика -->
+<!-- @dsSubtitle Реальная шкала: заголовки экранов, карточек, модалок, подписи -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css activity.css -->
+<!-- @dsViewport 900x720 -->
+<section class="ds-section">
+  <div class="ds-section__title">Гарнитура</div>
+  <div class="ds-section__note">Inter с системным фолбэком, задаётся один раз в <code>shell.css</code> на <code>body</code>. Отдельной шкалы размеров нет: каждый размер объявлен в своём компоненте — ниже собраны фактические.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Заголовки экрана</div>
+  <div class="ds-surface">
+    <div class="ds-col">
+      <div class="ds-item"><div class="topbar__title">Цели департамента разработки</div><div class="ds-item__label">.topbar__title — 17/800</div></div>
+      <div class="ds-item"><div class="set-breadcrumbs__cur">Уведомления</div><div class="ds-item__label">.set-breadcrumbs__cur — 17/800</div></div>
+      <div class="ds-item"><div class="topbar__desc">Квартальные цели и ключевые результаты команды</div><div class="ds-item__label">.topbar__desc — 13/400, muted</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Заголовки карточек и модалок</div>
+  <div class="ds-surface">
+    <div class="ds-col">
+      <div class="ds-item"><div class="modal-title--goal">Редактирование цели</div><div class="ds-item__label">.modal-title--goal — 18/700</div></div>
+      <div class="ds-item"><div class="modal-title modal-title--lg">Перенос цели</div><div class="ds-item__label">.modal-title--lg — 16/700</div></div>
+      <div class="ds-item"><div class="modal-title">Подтверждение</div><div class="ds-item__label">.modal-title — 15/700</div></div>
+      <div class="ds-item"><div class="goal-card__title goal-card__title--readonly">Вывести retention 30d на 42%</div><div class="ds-item__label">.goal-card__title — 15/700</div></div>
+      <div class="ds-item"><div class="child-card__name">Платформенная команда</div><div class="ds-item__label">.child-card__name — 13/600</div></div>
+      <div class="ds-item"><div class="kr-name">Доля активных пользователей в неделю</div><div class="ds-item__label">.kr-name — 13/500</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Подписи разделов</div>
+  <div class="ds-surface">
+    <div class="ds-col">
+      <div class="ds-item"><div class="section-label">Дочерние команды</div><div class="ds-item__label">.section-label — 11/700, uppercase, 0.6px</div></div>
+      <div class="ds-item"><div class="set-list-head">Описания команд</div><div class="ds-item__label">.set-list-head — 11/700, uppercase</div></div>
+      <div class="ds-item"><div class="kr-steps-title">Этапы</div><div class="ds-item__label">.kr-steps-title — 11/700, uppercase</div></div>
+      <div class="ds-item"><div class="act-group__label">СЕГОДНЯ</div><div class="ds-item__label">.act-group__label — 11/700, 0.6px</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Основной текст и подписи</div>
+  <div class="ds-surface">
+    <div class="ds-col">
+      <div class="ds-item"><div class="act-row__text">Анна Петрова обновила прогресс по ключевому результату</div><div class="ds-item__label">.act-row__text — 14/400</div></div>
+      <div class="ds-item"><div class="goal-card__desc">Описание цели на карточке: до четырёх строк, дальше сворачивается в <code>.md-collapsible</code>.</div><div class="ds-item__label">.goal-card__desc — 13/400, line-height 1.5</div></div>
+      <div class="ds-item"><div class="kr-desc">Описание ключевого результата — три строки до сворачивания.</div><div class="ds-item__label">.kr-desc — 11/400, line-height 1.4</div></div>
+      <div class="ds-item"><div class="field-label">Название цели<span class="field-label__required">*</span></div><div class="ds-item__label">.field-label — 13/600</div></div>
+      <div class="ds-item"><div class="modal-subtitle">Изменения затронут 4 ключевых результата</div><div class="ds-item__label">.modal-subtitle — 12/400, muted</div></div>
+      <div class="ds-item"><div class="kr-updated" style="min-width: 0; text-align: left; color: #9ca3af">обновлено 3 дня назад</div><div class="ds-item__label">.kr-updated — 11/400</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Числовые акценты</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><div class="cluster-overview__pct" style="color: #16a34a">78%</div><div class="ds-item__label">.cluster-overview__pct — 34/800</div></div>
+      <div class="ds-item"><div class="goal-card__progress-pct" style="color: #2563eb">64%</div><div class="ds-item__label">.goal-card__progress-pct — 20/800</div></div>
+      <div class="ds-item"><div class="child-card__goals-pct" style="color: #d97706">41%</div><div class="ds-item__label">.child-card__goals-pct — 14/800</div></div>
+      <div class="ds-item"><div class="kr-pct" style="color: #16a34a">92%</div><div class="ds-item__label">.kr-pct — 11/700</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Моноширинный</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="space-meta__slug">platform-team</span><div class="ds-item__label">.space-meta__slug — 12px mono</div></div>
+      <div class="ds-item"><span class="export-modal__filename">okr-export-2026-q3.md</span><div class="ds-item__label">.export-modal__filename — 12px mono</div></div>
+    </div>
+  </div>
+</section>

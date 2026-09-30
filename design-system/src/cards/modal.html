@@ -1,0 +1,135 @@
+<!-- @dsCard group="Overlays" -->
+<!-- @dsName Модальные окна -->
+<!-- @dsSubtitle Каркас, размеры, шапка и подвал, подтверждение -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css -->
+<!-- @dsViewport 960x760 -->
+<section class="ds-section">
+  <div class="ds-section__title">Каркас — .modal-box</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="modal-box" style="width: 440px">
+        <div class="modal-header">
+          <div>
+            <div class="modal-title">Перенос цели</div>
+            <div class="modal-subtitle"><span class="modal-cap">Цель</span>Отказ от старого кабинета Медиа</div>
+          </div>
+          <button class="modal-close">×</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group form-group--sm">
+            <div class="field-label">Команда-получатель</div>
+            <select class="form-select form-select--sm"><option>Мобильная разработка</option></select>
+          </div>
+          <label class="transfer-modal__check"><input type="checkbox" checked> Перенести ключевые результаты</label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn--secondary">Отмена</button>
+          <button class="btn btn--primary">Перенести</button>
+        </div>
+      </div>
+      <div class="ds-item__label">.modal-box--w380 — 440px, простое действие</div>
+    </div>
+
+    <div class="ds-col">
+      <div class="ds-item">
+        <div class="ds-surface" style="width: 300px">
+          <div class="ds-col">
+            <div class="ds-item__label">--w380 → min(440px, 94vw)</div>
+            <div class="ds-item__label">--w480 → min(780px, 94vw), тело со скроллом</div>
+            <div class="ds-item__label">--w560 → min(820px, 94vw)</div>
+            <div class="ds-item__label">--w600 → min(960px, 95vw), radius 16</div>
+            <div class="ds-item__label">--w720 → min(760px, 95vw), колонка</div>
+          </div>
+        </div>
+        <div class="ds-item__label">Имена модификаторов разошлись с фактической шириной</div>
+      </div>
+      <div class="ds-item">
+        <div class="ds-surface" style="width: 300px">
+          <div class="ds-col">
+            <div class="ds-item__label">.modal-overlay--z300 — базовый слой</div>
+            <div class="ds-item__label">--z400 — поверх модалки</div>
+            <div class="ds-item__label">--z600 — пикер над формой</div>
+            <div class="ds-item__label">.modal-confirm-overlay — z 9000</div>
+          </div>
+        </div>
+        <div class="ds-item__label">Слои оверлеев</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Модалка цели — липкие шапка и подвал</div>
+  <div class="modal-box" style="width: min(700px, 100%)">
+    <div class="modal-header modal-header--goal modal-header--sticky">
+      <div class="modal-title--goal">Редактирование цели</div>
+      <button class="modal-close modal-close--lg">×</button>
+    </div>
+    <div class="modal-body modal-body--goal">
+      <div class="form-group">
+        <div class="field-label">Название<span class="field-label__required">*</span></div>
+        <input class="form-input form-input--goal" value="Вывести retention 30d на 42%">
+      </div>
+      <div class="form-row" style="margin-bottom: 0">
+        <div class="form-col">
+          <div class="field-label">Владелец</div>
+          <select class="form-select"><option>Сергей Иванов</option></select>
+        </div>
+        <div class="form-col form-col--w140">
+          <div class="field-label">Вес</div>
+          <div class="form-weight-wrap"><input class="form-input form-input--weight" value="40"><span class="form-weight-pct">%</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer modal-footer--goal">
+      <button class="btn btn--danger">Удалить</button>
+      <button class="btn btn--secondary">Отмена</button>
+      <button class="btn btn--primary">Сохранить</button>
+    </div>
+  </div>
+  <div class="ds-item__label">.modal-header--goal / .modal-body--goal / .modal-footer--goal</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Подтверждение — два независимых варианта</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="modal-box modal-box--w380" style="width: 400px">
+        <div class="confirm-body">
+          <div class="confirm-title">Удалить ключевой результат?</div>
+          <div class="confirm-message">Действие необратимо. История прогресса будет удалена вместе с результатом.</div>
+        </div>
+        <div class="confirm-footer">
+          <button class="btn btn--secondary">Отмена</button>
+          <button class="btn btn--danger">Удалить</button>
+        </div>
+      </div>
+      <div class="ds-item__label">.confirm-body — внутри .modal-box (tracker.css)</div>
+    </div>
+    <div class="ds-item">
+      <div class="modal-confirm-box" style="width: 400px">
+        <div class="modal-confirm-title">Есть несохранённые изменения</div>
+        <div class="modal-confirm-message">Закрыть окно и потерять правки?</div>
+        <div class="modal-confirm-hint">Нажмите <span class="modal-confirm-key">Esc</span> ещё раз, чтобы закрыть без сохранения.</div>
+        <div class="modal-confirm-actions">
+          <button class="modal-confirm-btn">Остаться</button>
+          <button class="modal-confirm-btn modal-confirm-btn--danger">Не сохранять</button>
+          <button class="modal-confirm-btn modal-confirm-btn--primary">Сохранить</button>
+        </div>
+      </div>
+      <div class="ds-item__label">.modal-confirm-box — общий для трекера и админки (components.css)</div>
+    </div>
+  </div>
+  <div class="ds-section__note">Два диалога подтверждения с разными радиусами (14 / 20), тенями и наборами кнопок. Сведение к одному — заметное упрощение.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Метка над значением — .modal-cap</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="modal-subtitle"><span class="modal-cap">Цель</span>Поддерживать доску задач команды в Jira в актуальном состоянии</div>
+    <div style="height: 14px"></div>
+    <span class="modal-cap">Ключевой результат</span>
+    <div class="field-label">p95 latency API кабинета</div>
+  </div>
+  <div class="ds-section__note">Без метки два текста подряд читаются одинаково и непонятно, где цель, а где ключевой результат — особенно когда название цели длинное и переносится. Метка ставится соседним элементом сверху: .field-label — flex-контейнер, вложенный блок встал бы слева от текста.</div>
+</section>

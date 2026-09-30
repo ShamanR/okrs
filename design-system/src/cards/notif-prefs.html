@@ -1,0 +1,63 @@
+<!-- @dsCard group="Settings" -->
+<!-- @dsName Таблица настроек уведомлений -->
+<!-- @dsSubtitle Типы событий по каналам доставки -->
+<!-- @dsCss tokens.css shell.css settings.css -->
+<!-- @dsViewport 900x620 -->
+<section class="ds-section">
+  <div class="ds-section__title">Таблица — .notif-prefs</div>
+  <div class="set-panel" style="max-width: none">
+    <div class="notif-prefs-scroll">
+      <table class="notif-prefs">
+        <thead>
+          <tr>
+            <th>Тип события</th>
+            <th class="notif-prefs__ch">В приложении</th>
+            <th class="notif-prefs__ch">Почта</th>
+            <th class="notif-prefs__ch">Mattermost</th>
+            <th>Периодичность</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="notif-prefs__group"><th colspan="5">Мои цели</th></tr>
+          <tr>
+            <td>
+              <div class="notif-prefs__label">Отметка по ключевому результату</div>
+              <div class="notif-prefs__hint">Кто-то обновил прогресс или статус в моей цели</div>
+            </td>
+            <td class="notif-prefs__ch"><input type="checkbox" checked></td>
+            <td class="notif-prefs__ch"><input type="checkbox" checked></td>
+            <td class="notif-prefs__ch"><input type="checkbox"></td>
+            <td><select><option>Сразу</option><option>Дайджест раз в день</option></select></td>
+          </tr>
+          <tr>
+            <td>
+              <div class="notif-prefs__label">Комментарий к цели</div>
+              <div class="notif-prefs__hint">Новое обсуждение или ответ в ветке</div>
+            </td>
+            <td class="notif-prefs__ch"><input type="checkbox" checked></td>
+            <td class="notif-prefs__ch"><input type="checkbox"></td>
+            <td class="notif-prefs__ch"><input type="checkbox" checked></td>
+            <td><select><option>Сразу</option></select></td>
+          </tr>
+          <tr class="notif-prefs__group"><th colspan="5">Администрирование</th></tr>
+          <tr>
+            <td>
+              <div class="notif-prefs__label">Запрос доступа к пространству</div>
+              <div class="notif-prefs__hint">Доступно только администраторам</div>
+            </td>
+            <td class="notif-prefs__ch"><input type="checkbox" checked></td>
+            <td class="notif-prefs__ch"><input type="checkbox" checked></td>
+            <td class="notif-prefs__ch"><span class="notif-prefs__na">—</span></td>
+            <td><select disabled><option>Сразу</option></select></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="notif-prefs__actions">
+      <button class="set-btn set-btn--primary">Сохранить</button>
+      <button class="set-btn set-btn--ghost">Сбросить</button>
+      <span class="notif-prefs__dirty">Есть несохранённые изменения</span>
+    </div>
+  </div>
+  <div class="ds-item__label">Первая колонка не уже 220px; колонки каналов — по центру; горизонтальный скролл внутри блока</div>
+</section>

@@ -58,4 +58,8 @@ type KeyResult struct {
 	Note            *KRNote   `json:"note"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	// ProgressUpdatedAt — время последнего обновления прогресса, а не любой правки
+	// KR: UpdatedAt двигает и смена названия, веса или описания. nil означает, что
+	// прогресс ещё ни разу не обновляли.
+	ProgressUpdatedAt *time.Time `json:"progress_updated_at"`
 }

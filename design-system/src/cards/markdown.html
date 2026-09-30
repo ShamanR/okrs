@@ -1,0 +1,87 @@
+<!-- @dsCard group="Content" -->
+<!-- @dsName Markdown -->
+<!-- @dsSubtitle Отрисовка, сворачивание длинного текста, редактор -->
+<!-- @dsCss tokens.css shell.css markdown.css tracker.css -->
+<!-- @dsViewport 900x760 -->
+<section class="ds-section">
+  <div class="ds-section__title">Отрисованный markdown — .md-content</div>
+  <div class="ds-surface" style="max-width: 560px">
+    <div class="goal-card__desc md-content">
+      <h2>Как считаем удержание</h2>
+      <p>Когорта — пользователи, <strong>зарегистрировавшиеся</strong> в первый месяц квартала.</p>
+      <ul>
+        <li>источник — витрина <code>dm_retention</code></li>
+        <li>окно — 30 дней с даты регистрации</li>
+      </ul>
+      <blockquote>Методику меняли в середине квартала, старые значения не сопоставимы.</blockquote>
+      <p><a href="#">Дашборд с деталями</a></p>
+    </div>
+    <div class="ds-item__label" style="margin-top: 10px">Типографику задаёт хост (<code>.goal-card__desc</code>), <code>.md-content</code> — только структуру</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Свёрнутое описание — .md-collapsible</div>
+  <div class="ds-surface" style="max-width: 560px">
+    <div class="md-collapsible md-collapsible--clipped">
+      <div class="md-collapsible__body goal-card__desc md-content" style="--md-collapse-max: 6em; --md-fade-bg: #fff">
+        <p>Первая строка описания цели, которая занимает всю ширину карточки.</p>
+        <p>Вторая строка, третья строка и ещё сколько-то текста, который не помещается в четыре строки и должен быть скрыт под градиентом.</p>
+        <p>Этот абзац уже за пределами видимой области и виден только после разворачивания.</p>
+      </div>
+      <button class="md-collapsible__toggle"><span class="md-collapsible__caret">▾</span><span class="md-collapsible__label">Показать полностью</span></button>
+    </div>
+    <div class="ds-item__label" style="margin-top: 10px">Высота задаётся в em как число строк: цель 4×1.5 = 6em, KR 3×1.4 = 4.2em</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Редактор — .md-editor</div>
+  <div class="ds-surface" style="max-width: 560px">
+    <div class="md-editor">
+      <div class="md-editor__bar">
+        <div class="md-editor__tools">
+          <button class="md-editor__btn"><b>B</b></button>
+          <button class="md-editor__btn"><i>I</i></button>
+          <span class="md-editor__divider"></span>
+          <button class="md-editor__btn">•</button>
+          <button class="md-editor__btn">1.</button>
+          <span class="md-editor__divider"></span>
+          <button class="md-editor__btn">🔗</button>
+          <button class="md-editor__btn" disabled>❝</button>
+        </div>
+        <div class="md-editor__tabs">
+          <button class="md-editor__tab md-editor__tab--active">Текст</button>
+          <button class="md-editor__tab">Превью</button>
+        </div>
+      </div>
+      <textarea class="form-textarea form-textarea--sm" style="min-height: 96px">## Как считаем удержание
+
+Когорта — пользователи, **зарегистрировавшиеся** в первый месяц квартала.</textarea>
+      <div class="md-editor__hint"><strong>Markdown:</strong> **жирный**, *курсив*, - список, [ссылка](url)</div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 10px">Единая рамка: панель, безрамочное поле, подсказка в подвале</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Превью в редакторе</div>
+  <div class="ds-surface" style="max-width: 560px">
+    <div class="md-editor">
+      <div class="md-editor__bar">
+        <div class="md-editor__tools"></div>
+        <div class="md-editor__tabs">
+          <button class="md-editor__tab">Текст</button>
+          <button class="md-editor__tab md-editor__tab--active">Превью</button>
+        </div>
+      </div>
+      <div class="md-editor__preview">
+        <div class="md-content" style="font-size: 14px; color: #374151; line-height: 1.55">
+          <h2>Как считаем удержание</h2>
+          <p>Когорта — пользователи, <strong>зарегистрировавшиеся</strong> в первый месяц квартала.</p>
+        </div>
+      </div>
+      <div class="md-editor__hint"><strong>Markdown:</strong> **жирный**, *курсив*, - список, [ссылка](url)</div>
+    </div>
+  </div>
+</section>

@@ -1,7 +1,15 @@
 cmd/server/__debug_*
-.vscode/*
+.vscode/
 .superpowers/*
 .DS_Store 
 CLAUDE.md
 GEMINI.mg
 .opencode.json
+# Артефакт сборки дизайн-системы
+design-system/dist/
+# Локальное состояние синхронизации с Claude Design (id проекта, заметки)
+.design-sync/
+.agents/
+.claude/
+.gortex/
+.opencode/

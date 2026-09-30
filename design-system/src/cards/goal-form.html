@@ -1,0 +1,21 @@
+<!-- @dsCard group="Forms" -->
+<!-- @dsName Форма цели -->
+<!-- @dsSubtitle Название и вес, приоритет, тип работы, фокус -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css -->
+<!-- @dsViewport 960x620 -->
+<div class="ds-section__title">Окно цели · раскладка полей</div>
+<div class="ds-surface" style="border-radius:14px;padding:22px 28px 260px;max-width:860px">
+<div class="form-row goal-name-row"><div class="form-col"><div class="field-label">Название<span class="field-label__required">*</span><span class="info-hint" tabindex="0">?</span></div><input class="form-input form-input--goal" value="Отказ от старого кабинета Медиа"></div><div class="form-col--w140"><div class="field-label"><span>Вес <span style="font-weight:400;color:#9ca3af;font-size:13px">(45/100)</span></span><span class="info-hint" tabindex="0">?</span></div><div class="form-weight-wrap"><input class="form-input form-input--weight" value="10"><span class="form-weight-pct">%</span></div></div></div>
+<div class="form-row goal-meta-row">
+<div class="form-col"><div class="field-label">Приоритет<span class="info-hint" tabindex="0">?</span></div><div class="pri-select"><button type="button" class="pri-select__btn" aria-expanded="true"><span class="badge" style="color:#d97706;background:#d9770618">P1</span><span class="pri-select__txt">Высокий</span><span class="pri-select__caret">▾</span></button>
+<div class="pri-select__menu" role="listbox">
+<button type="button" class="pri-select__opt"><span class="badge" style="color:#dc2626;background:#dc262618">P0</span><span class="pri-select__opt-txt"><b>Критичный</b><span>Без этой цели период провален</span></span></button>
+<button type="button" class="pri-select__opt pri-select__opt--on"><span class="badge" style="color:#d97706;background:#d9770618">P1</span><span class="pri-select__opt-txt"><b>Высокий</b><span>Ключевая цель периода, делаем обязательно</span></span><span class="pri-select__check">✓</span></button>
+<button type="button" class="pri-select__opt"><span class="badge" style="color:#2563eb;background:#2563eb18">P2</span><span class="pri-select__opt-txt"><b>Средний</b><span>Можно сдвинуть при нехватке ресурсов</span></span></button>
+<button type="button" class="pri-select__opt"><span class="badge" style="color:#6b7280;background:#6b728018">P3</span><span class="pri-select__opt-txt"><b>Низкий</b><span>Делаем, если останется время</span></span></button>
+</div></div></div>
+<div class="form-col"><div class="field-label">Тип работы<span class="info-hint" tabindex="0">?</span></div><div class="seg-group"><button class="seg-btn seg-btn--active">delivery</button><button class="seg-btn">discovery</button></div></div>
+<div class="form-col"><div class="field-label">Фокус<span class="info-hint" tabindex="0">?</span></div><select class="form-select"><option>Speed Efficiency</option></select></div>
+</div>
+</div>
+<div class="ds-section__note">Строка 1: название + вес со счётчиком суммы. Строка 2: приоритет (выпадающий список с цветными бейджами, как в списке целей) · тип работы · фокус. У каждого поля — «?» с тёмной подсказкой; у приоритета и фокуса в ней по строке на значение, код значения окрашен так же, как бейдж на карточке.</div>

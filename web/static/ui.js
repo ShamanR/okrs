@@ -24,6 +24,79 @@ function buildTargetURL(target) {
   return qs ? '/?' + qs : null;
 }
 
+// ── СТАТУС КОМАНДЫ → РЕЖИМ РЕДАКТИРОВАНИЯ ДОСКИ ────────────────────────────────
+// Единственное место, где интерфейс знает, что при каком статусе доступно. Режим
+// выводится из статуса команды в периоде (см. spec team-period-lifecycle):
+//   full           — «нет целей», «черновик», «к валидации»
+//   progress_only  — «в работе»
+//   comments_only  — «закрыт»
+// Виды действий:
+//   structure — меняют состав целей и KR: создание, правка, удаление, порядок
+//   progress  — обновление прогресса ключевого результата
+// Интерфейс намеренно строже сервера: в «закрыт» сервер принимает обновление
+// прогресса, но доска предлагает только комментарии — так предписывает требование
+// «Режимы редактирования выводятся из статуса».
+const EDIT_MODE_LOCK = {
+  progress_only: 'Состав целей зафиксирован: команда в статусе «В работе»',
+  comments_only: 'Период закрыт: доступны только комментарии',
+};
+const EDIT_MODE_ALLOWS = {
+  full: { structure: true, progress: true },
+  progress_only: { structure: false, progress: true },
+  comments_only: { structure: false, progress: false },
+};
+// goal_move — это перенос цели ИЗ текущей команды: он убирает цель из её состава,
+// поэтому подчиняется тому же замку, что создание и удаление. Копирование цели в
+// другую команду или период состав текущей команды не меняет и замку не подчиняется —
+// отдельного вида для него здесь нет намеренно.
+const ACTION_KIND = {
+  goal_create: 'structure', goal_edit: 'structure', goal_delete: 'structure',
+  goal_move: 'structure',
+  kr_create: 'structure', kr_edit: 'structure', kr_delete: 'structure',
+  reorder: 'structure', progress_update: 'progress',
+};
+
+// { allowed, reason }: reason заполнен только когда действие заблокировано.
+function actionAvailability(editMode, action) {
+  const kind = ACTION_KIND[action];
+  if (!kind) return { allowed: true, reason: null };
+  const allows = EDIT_MODE_ALLOWS[editMode] || EDIT_MODE_ALLOWS.full;
+  if (allows[kind]) return { allowed: true, reason: null };
+  return { allowed: false, reason: EDIT_MODE_LOCK[editMode] || null };
+}
+
+// Короткая форма для разметки: причина блокировки либо null.
+const lockReason = (editMode, action) => actionAvailability(editMode, action).reason;
+
+// Развёрнутые причины для пунктов меню: называют статус и говорят, что сделать,
+// чтобы действие открылось. `what` — «цель» или «KR».
+function editLockReason(editMode, what) {
+  if (editMode === 'comments_only') return `Период закрыт — ${what} уже нельзя изменить.`;
+  if (editMode === 'progress_only') return `Цели в статусе «В работе»: состав зафиксирован. Меняется только прогресс. Чтобы редактировать ${what}, верните статус «К валидации».`;
+  return null;
+}
+function deleteLockReason(editMode, what) {
+  if (editMode === 'comments_only') return `Период закрыт — удалить ${what} нельзя, история периода сохраняется.`;
+  if (editMode === 'progress_only') return `Цели в статусе «В работе»: состав зафиксирован. Чтобы удалить ${what}, верните статус «К валидации».`;
+  return null;
+}
+
+// ── ЗАБЛОКИРОВАННОЕ ДЕЙСТВИЕ ──────────────────────────────────────────────────
+// Недоступное по статусу действие не исчезает с доски: кнопка остаётся на месте,
+// принимает фокус с клавиатуры (поэтому не disabled — иначе фокус не дать) и
+// называет причину. Подсказку .action-lock__tip рисует CSS по :hover и :focus-within.
+
+// Обёртка подсказки о блокировке. Годится и для текстовых действий доски —
+// «+ Добавить цель», «+ Добавить KR», — которые остаются кнопками, а не иконками.
+function LockedAction({ reason, children }) {
+  return (
+    <span className="action-lock">
+      {children}
+      <span className="action-lock__tip" role="tooltip">{reason}</span>
+    </span>
+  );
+}
+
 // ── ОБЩЕЕ ПОВЕДЕНИЕ ЗАКРЫТИЯ МОДАЛОК ────────────────────────────────────────────
 // useModalClose — единое поведение всех модальных окон приложения:
 //   • Escape / крестик / клик по оверлею → requestClose();

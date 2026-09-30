@@ -1,0 +1,78 @@
+<!-- @dsCard group="Data display" -->
+<!-- @dsName Бейджи и пилюли -->
+<!-- @dsSubtitle Статусы, веса, метки связей, теги пространств -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css activity.css sidebar.css -->
+<!-- @dsViewport 960x720 -->
+<section class="ds-section">
+  <div class="ds-section__title">Базовый бейдж — .badge</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="badge" style="color: #16a34a; background: #16a34a15">опережает</span><div class="ds-item__label">ahead</div></div>
+      <div class="ds-item"><span class="badge" style="color: #2563eb; background: #2563eb15">в плане</span><div class="ds-item__label">on_track</div></div>
+      <div class="ds-item"><span class="badge" style="color: #ef4444; background: #ef444415">отстаёт</span><div class="ds-item__label">below</div></div>
+      <div class="ds-item"><span class="badge" style="color: #d97706; background: #d9770615">нет обновлений</span><div class="ds-item__label">stale</div></div>
+      <div class="ds-item"><span class="badge" style="color: #6b7280; background: #d1d5db40">нет целей</span><div class="ds-item__label">no_goals</div></div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">Цвет и фон приходят инлайн из <code>HEALTH_COLOR</code>; в CSS только форма.</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Статус ключевого результата</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="badge" style="color: #6b7280; background: #6b728015">○ Not Started</span><div class="ds-item__label">not_started</div></div>
+      <div class="ds-item"><span class="badge" style="color: #16a34a; background: #16a34a15">● On Track</span><div class="ds-item__label">on_track</div></div>
+      <div class="ds-item"><span class="badge" style="color: #d97706; background: #d9770615">▲ At Risk</span><div class="ds-item__label">at_risk</div></div>
+      <div class="ds-item"><span class="badge" style="color: #fff; background: #15803d">✓ Closed</span><div class="ds-item__label">done — инверсия</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Веса и предупреждения</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="kr-weight-chip">30%</span><div class="ds-item__label">.kr-weight-chip</div></div>
+      <div class="ds-item"><span class="gc-comments-toggle__pill">не решено 2</span><div class="ds-item__label">.gc-comments-toggle__pill</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Связи целей и совместный доступ</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="goal-link-label goal-link-label--up">↑ 2 выше</span><div class="ds-item__label">--up</div></div>
+      <div class="ds-item"><span class="goal-link-label goal-link-label--down">↓ 5 ниже</span><div class="ds-item__label">--down</div></div>
+      <div class="ds-item"><span class="gc-share-strip__team gc-share-strip__team--owner">Платформенная<span class="gc-share-strip__role">владелец</span></span><div class="ds-item__label">--owner</div></div>
+      <div class="ds-item"><span class="gc-share-strip__team">Мобильная разработка</span><div class="ds-item__label">.gc-share-strip__team</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Лента активности</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="act-badge">Платформенная команда</span><div class="ds-item__label">.act-badge</div></div>
+      <div class="ds-item"><span class="act-badge act-badge--period">2026 Q3</span><div class="ds-item__label">--period</div></div>
+      <div class="ds-item"><span class="act-tab__n" style="background: rgba(15,23,42,0.08)">24</span><div class="ds-item__label">.act-tab__n</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Настройки и пространства</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><span class="set-type-badge" style="color: #4338ca; background: rgba(67,56,202,0.1)">DEPT</span><div class="ds-item__label">.set-type-badge</div></div>
+      <div class="ds-item"><span class="space-meta__role">администратор</span><div class="ds-item__label">.space-meta__role</div></div>
+      <div class="ds-item"><span class="space-meta__slug">platform-team</span><div class="ds-item__label">.space-meta__slug</div></div>
+      <div class="ds-item"><span class="space-status space-status--active"><span class="space-status__dot"></span>активно</span><div class="ds-item__label">--active</div></div>
+      <div class="ds-item"><span class="space-status space-status--pending"><span class="space-status__dot"></span>ожидает</span><div class="ds-item__label">--pending</div></div>
+      <div class="ds-item"><span class="set-lead-chip"><span class="set-lead-chip__dot" style="background: #059669"></span>Сергей Иванов</span><div class="ds-item__label">.set-lead-chip</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Пять независимых наборов пилюль с радиусами 4 / 6 / 12 / 20 / 999 и разной высотой — самая разрозненная группа в системе.</div>
+</section>

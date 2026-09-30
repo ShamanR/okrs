@@ -9,6 +9,8 @@ body {
   background: var(--canvas);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
 }
 
 a { color: var(--link); text-decoration: none; }
@@ -28,5 +30,5 @@ textarea { resize: vertical; }
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 15px;
 }

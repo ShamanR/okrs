@@ -6,49 +6,49 @@
 
 /* ── Шапка тенанта ── */
 .sidebar__tenant { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.sidebar__tenant-avatar { width: 34px; height: 34px; border-radius: 8px; background: #16a34a; color: #fff; font-weight: 800; font-size: 13px; letter-spacing: -0.3px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar__tenant-avatar { width: 34px; height: 34px; border-radius: 8px; background: #16a34a; color: #fff; font-weight: 800; font-size: 14px; letter-spacing: -0.3px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .sidebar__tenant-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; background: none; border: none; color: #fff; cursor: pointer; font-family: inherit; padding: 0; text-align: left; }
 .sidebar__tenant-main:disabled { cursor: default; }
-.sidebar__tenant-name { flex: 1; min-width: 0; font-size: 15px; font-weight: 800; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar__tenant-chevron { color: #64748b; font-size: 11px; flex-shrink: 0; }
+.sidebar__tenant-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__tenant-chevron { color: #64748b; font-size: 12px; flex-shrink: 0; }
 .sidebar__tenant-menu { position: absolute; top: calc(100% - 2px); left: 12px; right: 12px; z-index: 50; background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 6px; }
-.sidebar__tenant-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; color: #cbd5e1; font-size: 13px; font-weight: 500; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; }
+.sidebar__tenant-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; }
 .sidebar__tenant-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
 .sidebar__tenant-item--active { color: #fff; }
 .sidebar__tenant-item-icon { width: 18px; text-align: center; flex-shrink: 0; }
 
 /* ── Колокольчик ── */
-.sidebar__bell { position: relative; background: rgba(255,255,255,0.06); border: none; color: #cbd5e1; width: 34px; height: 34px; border-radius: 9px; cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; }
+.sidebar__bell { position: relative; background: rgba(255,255,255,0.06); border: none; color: #cbd5e1; width: 34px; height: 34px; border-radius: 9px; cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
 .sidebar__bell:hover { background: rgba(255,255,255,0.14); color: #fff; }
 .sidebar__bell-icon { line-height: 1; }
-.sidebar__bell-badge { position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sidebar__bell-badge { position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .sidebar__bell-badge--zero { background: rgba(255,255,255,0.14); color: #94a3b8; }
 
 /* ── Глобальные разделы ── */
 .sidebar__sections { padding: 6px 8px 2px; }
-.sidebar__section-label { font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 4px 8px 3px; }
-.sidebar__navlink { display: flex; align-items: center; gap: 9px; padding: 6px 8px; text-decoration: none; color: #cbd5e1; font-size: 13px; font-weight: 500; border-radius: 7px; cursor: pointer; background: none; border: none; width: 100%; text-align: left; font-family: inherit; }
+.sidebar__section-label { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 4px 8px 3px; }
+.sidebar__navlink { display: flex; align-items: center; gap: 9px; padding: 6px 8px; text-decoration: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 7px; cursor: pointer; background: none; border: none; width: 100%; text-align: left; font-family: inherit; }
 .sidebar__navlink:hover { background: rgba(255,255,255,0.05); color: #fff; }
 .sidebar__navlink--active { background: rgba(124,58,237,0.18); color: #fff; }
 .sidebar__navlink--active .sidebar__navlink-icon { color: #a78bfa; }
-.sidebar__navlink-icon { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
+.sidebar__navlink-icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
 
 /* ── Контекстная навигация (settings/admin) ── */
 .sidebar__context { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px; border-top: 1px solid rgba(255,255,255,0.06); }
 
 /* ── Футер ── */
 .sidebar__footer { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.06); padding: 6px 8px 10px; }
-.sidebar__footer-link { display: flex; align-items: center; gap: 9px; padding: 6px 8px; text-decoration: none; color: #cbd5e1; font-size: 13px; font-weight: 500; border-radius: 7px; }
+.sidebar__footer-link { display: flex; align-items: center; gap: 9px; padding: 6px 8px; text-decoration: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 7px; }
 .sidebar__footer-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
-.sidebar__footer-icon { width: 16px; text-align: center; font-size: 13px; flex-shrink: 0; }
+.sidebar__footer-icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
 .sidebar__user { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px; margin-top: 4px; }
 .sidebar__user-info { flex: 1; min-width: 0; }
-.sidebar__user-name { font-size: 14px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar__user-sub { font-size: 12px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sidebar__user-more { background: none; border: none; color: #94a3b8; font-size: 18px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: 8px; flex-shrink: 0; letter-spacing: 1px; }
+.sidebar__user-name { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__user-sub { font-size: 13px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__user-more { background: none; border: none; color: #94a3b8; font-size: 19px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: 8px; flex-shrink: 0; letter-spacing: 1px; }
 .sidebar__user-more:hover { background: rgba(255,255,255,0.1); color: #fff; }
 .sidebar__user-menu { position: absolute; bottom: calc(100% - 2px); left: 10px; right: 10px; z-index: 50; background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 6px; }
-.sidebar__user-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; color: #cbd5e1; font-size: 13px; font-weight: 500; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; text-decoration: none; }
+.sidebar__user-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; text-decoration: none; }
 .sidebar__user-menu-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
 .sidebar__user-menu-item--danger, .sidebar__user-menu-item--danger:hover { color: #f87171; }
 .sidebar__user-menu-icon { width: 18px; text-align: center; flex-shrink: 0; }
@@ -57,12 +57,12 @@
 .fb-nudge__overlay { position: fixed; inset: 0; background: rgba(12,18,32,0.55); z-index: 2100; display: flex; align-items: center; justify-content: center; padding: 16px; }
 .fb-nudge__card { position: relative; width: 380px; max-width: 92vw; background: #fff; border-radius: 16px; padding: 28px 26px 26px; box-shadow: 0 20px 50px rgba(15,23,42,0.35); text-align: center; animation: fbNudgeIn 0.18s ease; }
 @keyframes fbNudgeIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
-.fb-nudge__close { position: absolute; top: 12px; right: 12px; background: #f1f5f9; border: none; color: #64748b; font-size: 13px; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; }
+.fb-nudge__close { position: absolute; top: 12px; right: 12px; background: #f1f5f9; border: none; color: #64748b; font-size: 14px; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; }
 .fb-nudge__close:hover { background: #e2e8f0; color: #0f172a; }
-.fb-nudge__icon { font-size: 34px; line-height: 1; margin-bottom: 12px; }
-.fb-nudge__title { font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; margin-bottom: 8px; }
-.fb-nudge__text { font-size: 14px; color: #475569; line-height: 1.55; margin-bottom: 20px; }
-.fb-nudge__btn { display: inline-block; width: 100%; box-sizing: border-box; padding: 11px 16px; border-radius: 10px; background: #7c3aed; color: #fff; font-size: 14px; font-weight: 700; text-decoration: none; }
+.fb-nudge__icon { font-size: 36px; line-height: 1; margin-bottom: 12px; }
+.fb-nudge__title { font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; margin-bottom: 8px; }
+.fb-nudge__text { font-size: 15px; color: #475569; line-height: 1.55; margin-bottom: 20px; }
+.fb-nudge__btn { display: inline-block; width: 100%; box-sizing: border-box; padding: 11px 16px; border-radius: 10px; background: #7c3aed; color: #fff; font-size: 15px; font-weight: 700; text-decoration: none; }
 .fb-nudge__btn:hover { background: #6d28d9; }
 
 /* ── NotificationsBell / NotificationsPanel ── */
@@ -83,12 +83,12 @@
   flex-direction: column;
 }
 .notif__panel-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
-.notif__panel-title { font-size: 16px; font-weight: 700; color: #f1f5f9; margin-right: auto;}
-.notif__mark-all { background: none; border: none; color: #a78bfa; font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
+.notif__panel-title { font-size: 17px; font-weight: 700; color: #f1f5f9; margin-right: auto;}
+.notif__mark-all { background: none; border: none; color: #a78bfa; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
 .notif__mark-all:hover { color: #c4b5fd; text-decoration: underline; }
-.notif__gear { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; text-decoration: none; }
+.notif__gear { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; text-decoration: none; }
 .notif__gear:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
-.notif__close { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.notif__close { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .notif__close:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
 
 .notif__list { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
@@ -110,12 +110,12 @@
 .notif__item-row { display: flex; align-items: flex-start; gap: 10px; }
 .notif__item-main { flex: 1; min-width: 0; }
 .notif__item-head { display: flex; align-items: baseline; gap: 8px; }
-.notif__item-title { font-size: 13px; font-weight: 700; color: #f1f5f9; flex: 1; min-width: 0; }
-.notif__item-time { font-size: 11px; color: #64748b; flex-shrink: 0; white-space: nowrap; }
-.notif__item-body { font-size: 12px; color: #94a3b8; line-height: 1.45; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.notif__item-title { font-size: 14px; font-weight: 700; color: #f1f5f9; flex: 1; min-width: 0; }
+.notif__item-time { font-size: 12px; color: #64748b; flex-shrink: 0; white-space: nowrap; }
+.notif__item-body { font-size: 13px; color: #94a3b8; line-height: 1.45; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 
-.notif__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; color: #475569; font-size: 14px; gap: 8px; }
-.notif__empty-icon { font-size: 32px; }
+.notif__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; color: #475569; font-size: 15px; gap: 8px; }
+.notif__empty-icon { font-size: 34px; }
 
 /* Запись списка уведомлений: обёртка нужна, чтобы кнопка удаления была СОСЕДОМ
    кликабельной части, а не потомком — <button> внутри <a> невалиден. */
@@ -123,7 +123,7 @@
 /* Место справа под кнопку: без этого время в шапке уезжает под неё. */
 .notif__entry .notif__item { padding-right: 40px; }
 .notif__item-context {
-  font-size: 11px;
+  font-size: 12px;
   color: #64748b;
   margin-top: 4px;
   overflow: hidden;
@@ -137,7 +137,7 @@
   background: none;
   border: none;
   color: #64748b;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1;
   padding: 4px 6px;
   border-radius: 6px;

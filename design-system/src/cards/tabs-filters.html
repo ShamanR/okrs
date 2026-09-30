@@ -1,0 +1,61 @@
+<!-- @dsCard group="Navigation" -->
+<!-- @dsName Вкладки и фильтры -->
+<!-- @dsSubtitle Категории ленты, чипы, переключатель диапазона -->
+<!-- @dsCss tokens.css shell.css components.css activity.css tracker.css markdown.css -->
+<!-- @dsViewport 960x520 -->
+<section class="ds-section">
+  <div class="ds-section__title">Панель фильтров ленты</div>
+  <div class="ds-frame">
+    <div class="act-topbar">
+      <div class="act-tabs">
+        <button class="act-tab act-tab--on">Всё <span class="act-tab__n">124</span></button>
+        <button class="act-tab">Прогресс <span class="act-tab__n">58</span></button>
+        <button class="act-tab">Состав <span class="act-tab__n">31</span></button>
+        <button class="act-tab">Статусы <span class="act-tab__n">22</span></button>
+        <button class="act-tab">Обсуждения <span class="act-tab__n">13</span></button>
+      </div>
+      <div class="act-filters">
+        <input class="act-search" placeholder="Поиск по событиям">
+        <select class="act-select"><option>Все периоды</option></select>
+        <div class="act-author">
+          <div class="user-selector">
+            <div class="user-selector__field"><input class="user-selector__input" placeholder="Автор"></div>
+          </div>
+        </div>
+        <button class="act-chip act-chip--on">Только мои команды</button>
+        <div class="act-range">
+          <button class="act-range__btn act-range__btn--on">7 дней</button>
+          <button class="act-range__btn">30 дней</button>
+          <button class="act-range__btn">Период</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-item__label">.act-topbar — вкладки над рядом фильтров</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Состояния элементов</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button class="act-tab">Обычная</button><div class="ds-item__label">.act-tab</div></div>
+      <div class="ds-item"><button class="act-tab act-tab--on">Выбранная</button><div class="ds-item__label">--on</div></div>
+      <div class="ds-item"><button class="act-chip">Чип</button><div class="ds-item__label">.act-chip</div></div>
+      <div class="ds-item"><button class="act-chip act-chip--on">Чип включён</button><div class="ds-item__label">--on (оранжевый, не акцентный)</div></div>
+      <div class="ds-item"><div class="act-range"><button class="act-range__btn act-range__btn--on">A</button><button class="act-range__btn">B</button></div><div class="ds-item__label">.act-range</div></div>
+      <div class="ds-item"><div class="seg-group" style="width: 180px"><button class="seg-btn seg-btn--active">A</button><button class="seg-btn">B</button></div><div class="ds-item__label">.seg-group — тот же паттерн в модалках</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Три варианта одного «выбранного» состояния: сплошной акцент (<code>.act-tab--on</code>), светлая акцентная заливка (<code>.act-range__btn--on</code>) и оранжевая (<code>.act-chip--on</code>).</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Вкладки редактора</div>
+  <div class="ds-surface" style="max-width: 280px">
+    <div class="md-editor__tabs">
+      <button class="md-editor__tab md-editor__tab--active">Текст</button>
+      <button class="md-editor__tab">Превью</button>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.md-editor__tabs — четвёртый вариант переключателя</div>
+  </div>
+</section>

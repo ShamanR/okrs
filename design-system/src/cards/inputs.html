@@ -1,0 +1,128 @@
+<!-- @dsCard group="Forms" -->
+<!-- @dsName Поля ввода -->
+<!-- @dsSubtitle input / textarea / select, размеры, ошибка, суффиксы -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css activity.css -->
+<!-- @dsViewport 960x780 -->
+<section class="ds-section">
+  <div class="ds-section__title">Текстовое поле — .form-input</div>
+  <div class="ds-surface">
+    <div class="form-row">
+      <div class="form-col">
+        <div class="field-label">Название цели<span class="field-label__required">*</span></div>
+        <input class="form-input form-input--goal" value="Вывести retention 30d на 42%">
+        <div class="ds-item__label" style="margin-top: 5px">.form-input--goal — 11/13, radius 9, border 1.5</div>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-col">
+        <div class="field-label">Базовый размер</div>
+        <input class="form-input" value="Значение">
+        <div class="ds-item__label" style="margin-top: 5px">.form-input — 10/12, radius 8</div>
+      </div>
+      <div class="form-col form-col--w140">
+        <div class="field-label">Компактный</div>
+        <input class="form-input form-input--sm" value="42">
+        <div class="ds-item__label" style="margin-top: 5px">.form-input--sm</div>
+      </div>
+      <div class="form-col form-col--w140">
+        <div class="field-label">По центру</div>
+        <input class="form-input form-input--sm form-input--center" value="0">
+        <div class="ds-item__label" style="margin-top: 5px">--center</div>
+      </div>
+    </div>
+    <div class="form-row" style="margin-bottom: 0">
+      <div class="form-col">
+        <div class="field-label">С ошибкой</div>
+        <input class="form-input form-input--error" value="">
+        <div class="form-error-msg">Укажите название цели</div>
+        <div class="ds-item__label" style="margin-top: 5px">.form-input--error + .form-error-msg</div>
+      </div>
+      <div class="form-col form-col--w140">
+        <div class="field-label">Вес</div>
+        <div class="form-weight-wrap">
+          <input class="form-input form-input--weight" value="30">
+          <span class="form-weight-pct">%</span>
+        </div>
+        <div class="ds-item__label" style="margin-top: 5px">.form-weight-wrap + .form-weight-pct</div>
+      </div>
+      <div class="form-col form-col--w140">
+        <div class="field-label">С единицей</div>
+        <label class="kr-num-input-suffix">
+          <input class="form-input form-input--sm" value="1200">
+          <span class="kr-num-input-suffix__unit">шт</span>
+        </label>
+        <div class="ds-item__label" style="margin-top: 5px">.kr-num-input-suffix</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Многострочное — .form-textarea</div>
+  <div class="ds-surface">
+    <div class="form-row" style="margin-bottom: 0">
+      <div class="form-col">
+        <div class="field-label">Описание цели</div>
+        <textarea class="form-textarea" style="min-height: 96px">Поддерживается Markdown: списки, ссылки, выделение.</textarea>
+        <div class="ds-item__label" style="margin-top: 5px">.form-textarea — min-height 160</div>
+      </div>
+      <div class="form-col">
+        <div class="field-label">Комментарий</div>
+        <textarea class="form-textarea form-textarea--sm" style="min-height: 96px">Компактный вариант.</textarea>
+        <div class="ds-item__label" style="margin-top: 5px">.form-textarea--sm — min-height 110</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Выпадающие списки</div>
+  <div class="ds-surface">
+    <div class="form-row" style="margin-bottom: 0">
+      <div class="form-col">
+        <div class="field-label">Тип результата</div>
+        <select class="form-select"><option>Числовой</option><option>Логический</option></select>
+        <div class="ds-item__label" style="margin-top: 5px">.form-select — border 1.5, radius 9</div>
+      </div>
+      <div class="form-col">
+        <div class="field-label">Компактный</div>
+        <select class="form-select form-select--sm"><option>Квартал</option><option>Год</option></select>
+        <div class="ds-item__label" style="margin-top: 5px">.form-select--sm</div>
+      </div>
+      <div class="form-col">
+        <div class="field-label">Фильтр ленты</div>
+        <select class="act-select"><option>Все авторы</option></select>
+        <div class="ds-item__label" style="margin-top: 5px">.act-select — border #d7dde7, radius 9</div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-section__note">Три параллельные системы полей: <code>.form-*</code> (трекер), <code>.set-*</code> (настройки), <code>.act-*</code> (лента) — с разными цветами границы (#e5e7eb / #d7dde7) и толщиной (1 / 1.5).</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Поля настроек и поиска</div>
+  <div class="ds-surface">
+    <div class="ds-col">
+      <div class="ds-item" style="align-self: stretch; max-width: 460px">
+        <textarea class="set-textarea" rows="2">Описание команды в настройках.</textarea>
+        <div class="ds-item__label">.set-textarea — focus даёт кольцо --accent-25</div>
+      </div>
+      <div class="ds-item" style="align-self: stretch; max-width: 460px">
+        <div class="pick-search"><span class="pick-search__icon">⌕</span><input class="pick-search__input" placeholder="Поиск команды"></div>
+        <div class="ds-item__label">.pick-search + .pick-search__input</div>
+      </div>
+      <div class="ds-item" style="align-self: stretch; max-width: 460px">
+        <input class="act-search" placeholder="Поиск по ленте" style="width: 100%">
+        <div class="ds-item__label">.act-search</div>
+      </div>
+      <div class="ds-item" style="align-self: stretch; max-width: 460px">
+        <input class="space-join__input" value="platform-team">
+        <div class="ds-item__label">.space-join__input — моноширинный, для слага</div>
+      </div>
+      <div class="ds-item" style="align-self: stretch; max-width: 460px">
+        <input class="goal-parent-picker__search" placeholder="Найти цель" style="width: 100%">
+        <div class="ds-item__label">.goal-parent-picker__search</div>
+      </div>
+    </div>
+  </div>
+</section>

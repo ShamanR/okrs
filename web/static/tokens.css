@@ -2,6 +2,19 @@
    стилей), поэтому var(--*) доступны в tracker.css / settings.css / components.css.
    Единый источник правды для акцента, палитры текста/границ и радиусов. */
 :root {
+  /* Локальные переменные компонентов — значения по умолчанию; компоненты
+     переопределяют их у себя. Аннотация @kind читается панелью токенов
+     в Claude Design, чтобы показать переменную нужным типом. */
+  --md-collapse-max: none; /* @kind other */
+  --md-fade-bg: #ffffff; /* @kind color */
+  --health: #6b7280; /* @kind color */
+  --health-soft: #f3f4f6; /* @kind color */
+  --gt-band-bg: #f8fafc; /* @kind color */
+  --gt-band-line: #e5e7eb; /* @kind color */
+  --gt-band-accent: #7c3aed; /* @kind color */
+  --gt-band-pill: #ffffff; /* @kind color */
+  --gt-band-text: #374151; /* @kind color */
+
   /* Акцент (фиолетовый). Альфы используются в tracker.css / settings.css. */
   --accent: #7c3aed;
   --accent-10: rgba(124, 58, 237, 0.06);

@@ -1,0 +1,139 @@
+<!-- @dsCard group="Actions" -->
+<!-- @dsName Кнопки -->
+<!-- @dsSubtitle primary / secondary / danger / иконочные / пунктирные / строчные -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css settings.css activity.css sidebar.css -->
+<!-- @dsViewport 960x920 -->
+<section class="ds-section">
+  <div class="ds-section__title">Базовые — .btn</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button class="btn btn--primary">Сохранить</button><div class="ds-item__label">.btn--primary</div></div>
+      <div class="ds-item"><button class="btn btn--secondary">Отмена</button><div class="ds-item__label">.btn--secondary</div></div>
+      <div class="ds-item"><button class="btn btn--danger">Удалить</button><div class="ds-item__label">.btn--danger</div></div>
+      <div class="ds-item"><button class="btn btn--primary" disabled>Сохранить</button><div class="ds-item__label">.btn--primary:disabled</div></div>
+      <div class="ds-item"><button class="btn btn--danger" disabled>Удалить</button><div class="ds-item__label">.btn--danger:disabled</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Одна высота (9/18, radius 8, 13px). Различие primary 600 / danger 700 по начертанию — расхождение в коде, не намерение.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Кнопки настроек — .set-btn</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button class="set-btn set-btn--primary">Сохранить</button><div class="ds-item__label">.set-btn--primary</div></div>
+      <div class="ds-item"><button class="set-btn set-btn--ghost">Отмена</button><div class="ds-item__label">.set-btn--ghost</div></div>
+      <div class="ds-item"><button class="set-btn set-btn--primary" disabled>Сохранить</button><div class="ds-item__label">.set-btn:disabled</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Параллельная система к <code>.btn</code>: те же роли, другой паддинг (8/16) и hover через <code>filter: brightness</code>. Сведение к одному набору — очевидное упрощение.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Акцентные действия экрана</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button class="topbar__add-btn">+ Добавить цель</button><div class="ds-item__label">.topbar__add-btn</div></div>
+      <div class="ds-item"><button class="empty-state__btn">Создать первую цель</button><div class="ds-item__label">.empty-state__btn</div></div>
+      <div class="ds-item"><a class="fb-nudge__btn" href="#" style="width: auto">Оставить отзыв</a><div class="ds-item__label">.fb-nudge__btn</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Вторичные — строчные и табличные</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button class="desc-row__btn">Редактировать</button><div class="ds-item__label">.desc-row__btn</div></div>
+      <div class="ds-item"><button class="space-row__btn">Открыть</button><div class="ds-item__label">.space-row__btn</div></div>
+      <div class="ds-item"><button class="act-more">Показать ещё</button><div class="ds-item__label">.act-more</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Пунктирные — добавление</div>
+  <div class="ds-surface">
+    <div class="ds-col" style="max-width: 460px">
+      <div class="ds-item" style="align-self: stretch"><button class="kr-dashed-btn">+ Добавить ключевой результат</button><div class="ds-item__label">.kr-dashed-btn</div></div>
+      <div class="ds-item"><button class="kr-add-btn">+ KR</button><div class="ds-item__label">.kr-add-btn</div></div>
+      <div class="ds-item" style="align-self: stretch"><button class="kr-step-add">+ Этап</button><div class="ds-item__label">.kr-step-add</div></div>
+      <div class="ds-item"><button class="kr-zeroing-btn"><span class="kr-zeroing-btn__icon">⊘</span> Обнулить результат</button><div class="ds-item__label">.kr-zeroing-btn</div></div>
+      <div class="ds-item"><button class="goal-link-add">+ Связать с целью</button><div class="ds-item__label">.goal-link-add</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Четыре пунктирные кнопки с разным радиусом (7/7/8/10) и паддингом при одной роли.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Сегментированный выбор — .seg-group</div>
+  <div class="ds-surface" style="max-width: 420px">
+    <div class="seg-group">
+      <button class="seg-btn seg-btn--active">число</button>
+      <button class="seg-btn">да/нет</button>
+      <button class="seg-btn">этапы</button>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.seg-group / .seg-btn / .seg-btn--active</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Кнопки в комментариях и модалках</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button class="comment-submit comment-submit--active">Отправить</button><div class="ds-item__label">.comment-submit--active</div></div>
+      <div class="ds-item"><button class="comment-submit comment-submit--disabled">Отправить</button><div class="ds-item__label">— --disabled</div></div>
+      <div class="ds-item"><button class="comment-cancel">Отмена</button><div class="ds-item__label">.comment-cancel</div></div>
+      <div class="ds-item"><button class="comment__resolve-btn">Решено</button><div class="ds-item__label">.comment__resolve-btn</div></div>
+      <div class="ds-item"><button class="modal-confirm-btn modal-confirm-btn--primary">Сохранить</button><div class="ds-item__label">.modal-confirm-btn--primary</div></div>
+      <div class="ds-item"><button class="modal-confirm-btn modal-confirm-btn--danger">Не сохранять</button><div class="ds-item__label">— --danger</div></div>
+      <div class="ds-item"><button class="modal-confirm-btn">Остаться</button><div class="ds-item__label">.modal-confirm-btn</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Недоступное действие — .action-lock и .act-menu__item--disabled</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item">
+        <span class="action-lock">
+          <button class="topbar__add-btn topbar__add-btn--locked" aria-disabled="true">+ Добавить цель 🔒</button>
+          <span class="action-lock__tip" role="tooltip">Состав целей зафиксирован: команда в статусе «В работе»</span>
+        </span>
+        <div class="ds-item__label">.topbar__add-btn--locked</div>
+      </div>
+    </div>
+    <div class="ds-section__note" style="margin-top: 10px">Подсказка .action-lock__tip показывается по наведению и по фокусу с клавиатуры — наведите или пройдите Tab'ом. Заблокированная кнопка намеренно не disabled: иначе она не получала бы фокус и не могла бы назвать причину. Само действие гасится обработчиком.</div>
+  </div>
+  <div class="ds-section__note">Недоступное по статусу действие остаётся на своём месте — так связь статуса команды и блокировки видна там, где пользователь ищет кнопку. Исключение одно: кнопка добавления KR внутри карточки скрывается, её причину берёт на себя баннер режима.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Пункт меню действий — .act-menu__item</div>
+  <div class="ds-surface">
+    <div class="export-menu__dropdown" style="position:static;display:block;width:260px">
+      <button type="button" class="act-menu__item"><span class="act-menu__ic">✎</span>Редактировать</button>
+      <button type="button" class="act-menu__item"><span class="act-menu__ic">🔗</span>Копировать ссылку</button>
+      <button type="button" class="act-menu__item act-menu__item--done"><span class="act-menu__ic">✓</span>Скопировано</button>
+      <button type="button" class="act-menu__item act-menu__item--disabled act-menu__item--why" aria-disabled="true"><span class="act-menu__ic">➡</span>Перенести или скопировать<span class="act-menu__lock">?</span><span class="act-menu__why" role="tooltip" style="display:block">Состав целей зафиксирован: команда в статусе «В работе»</span></button>
+      <div class="act-menu__sep"></div>
+      <button type="button" class="act-menu__item act-menu__item--danger"><span class="act-menu__ic">×</span>Удалить</button>
+    </div>
+  </div>
+  <div class="ds-section__note">Пункт, который что-то копирует, подтверждает это на себе — .act-menu__item--done с ✓ — и только потом закрывает меню: иначе подтверждение исчезает вместе с меню. Недоступный пункт остаётся в списке и называет причину.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Действие строки KR — .kr-row-btn</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item"><button type="button" class="kr-row-btn"><span>✎</span>Редактировать</button><div class="ds-item__label">.kr-row-btn</div></div>
+      <div class="ds-item"><button type="button" class="kr-row-btn kr-row-btn--accent"><span>↻</span>Обновить</button><div class="ds-item__label">.kr-row-btn--accent</div></div>
+      <div class="ds-item"><button type="button" class="tb-menu__btn" aria-label="Ещё">···</button><div class="ds-item__label">.tb-menu__btn</div></div>
+      <div class="ds-item"><button type="button" class="export-menu__btn" aria-label="Ещё">···</button><div class="ds-item__label">.export-menu__btn</div></div>
+      <div class="ds-item"><span class="kr-row__spacer"></span><div class="ds-item__label">.kr-row__spacer — пустой слот</div></div>
+    </div>
+  </div>
+  <div class="ds-section__note">Одно действие строки занимает фиксированную колонку: в «Черновике» и «К валидации» это «Редактировать», в «В работе» — «Обновить» акцентом. Остальное убрано в меню ···.</div>
+</section>

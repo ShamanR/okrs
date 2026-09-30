@@ -1,0 +1,96 @@
+<!-- @dsCard group="Forms" -->
+<!-- @dsName Переключатели и флажки -->
+<!-- @dsSubtitle toggle, чекбоксы, трёхсостояние выбора, строки выбора -->
+<!-- @dsCss tokens.css shell.css tracker.css settings.css goal_tree.css -->
+<!-- @dsViewport 900x680 -->
+<section class="ds-section">
+  <div class="ds-section__title">Тумблер — .toggle-*</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="toggle-box" style="margin-bottom: 12px">
+      <label class="toggle-row">
+        <span class="toggle-track toggle-track--on"><span class="toggle-knob toggle-knob--on"></span></span>
+        <span class="toggle-text">
+          <span class="toggle-title">Обнулить результат</span>
+          <span class="toggle-subtitle">Прогресс сбросится в 0% с пояснением</span>
+        </span>
+      </label>
+      <div class="toggle-content">
+        <div class="toggle-content__label">Причина <span class="toggle-content__required">*</span></div>
+        <textarea class="form-textarea form-textarea--sm" style="min-height: 60px"></textarea>
+      </div>
+    </div>
+    <div class="toggle-box">
+      <label class="toggle-row">
+        <span class="toggle-track"><span class="toggle-knob"></span></span>
+        <span class="toggle-text">
+          <span class="toggle-title">Выключено</span>
+          <span class="toggle-subtitle">Состояние по умолчанию</span>
+        </span>
+      </label>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.toggle-box / .toggle-row / .toggle-track--on / .toggle-knob--on / .toggle-content</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Трёхсостояние выбора — .pick-box</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="ds-row">
+      <div class="ds-item"><button class="pick-box pick-box--full">✓</button><div class="ds-item__label">--full</div></div>
+      <div class="ds-item"><button class="pick-box pick-box--partial">–</button><div class="ds-item__label">--partial</div></div>
+      <div class="ds-item"><button class="pick-box pick-box--none"></button><div class="ds-item__label">--none</div></div>
+    </div>
+    <div style="margin-top: 14px">
+      <div class="pick-row">
+        <button class="pick-row__caret">▾</button>
+        <span class="pick-row__dot" style="background: #4338ca"></span>
+        <span class="pick-row__name">Департамент разработки</span>
+        <span class="pick-row__count">12</span>
+        <button class="pick-box pick-box--partial">–</button>
+      </div>
+      <div class="pick-row">
+        <span class="pick-row__caret-spacer"></span>
+        <span class="pick-row__dot" style="background: #059669"></span>
+        <span class="pick-row__name">Платформенная команда</span>
+        <span class="pick-row__count">4</span>
+        <button class="pick-box pick-box--full">✓</button>
+      </div>
+    </div>
+    <div class="ds-item__label" style="margin-top: 8px">.pick-row — строка дерева выбора в настройках сайдбара</div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Флажки в строке</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="ds-col">
+      <label class="transfer-modal__check"><input type="checkbox" checked> Перенести ключевые результаты</label>
+      <label class="export-modal__check"><input type="checkbox" checked> Включить описания</label>
+      <label class="gt-topbar__toggle"><input type="checkbox"> Показать только корневые цели</label>
+      <div class="ds-item__label">.transfer-modal__check · .export-modal__check · .gt-topbar__toggle</div>
+    </div>
+  </div>
+  <div class="ds-section__note">Нативный <code>&lt;input type="checkbox"&gt;</code> без общих стилей; <code>accent-color</code> задан только в таблице уведомлений. Общий чекбокс — отсутствующий примитив.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Выбор значения KR</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <label class="kr-boolean-label">
+      <input type="checkbox" checked>
+      <span class="kr-boolean-text">Результат достигнут</span>
+      <span class="kr-boolean-pct" style="color: #16a34a">100%</span>
+    </label>
+    <label class="kr-stage-label" style="background: #f5f3ff">
+      <input type="checkbox" checked>
+      <span class="kr-stage-name">Пилот на одной команде</span>
+      <span class="kr-stage-weight">30%</span>
+    </label>
+    <label class="kr-stage-label">
+      <input type="checkbox">
+      <span class="kr-stage-name">Раскатка на департамент</span>
+      <span class="kr-stage-weight">70%</span>
+    </label>
+    <div class="ds-item__label" style="margin-top: 8px">.kr-boolean-label · .kr-stage-label</div>
+  </div>
+</section>

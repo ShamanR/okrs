@@ -1,0 +1,93 @@
+<!-- @dsCard group="Overlays" -->
+<!-- @dsName Панель уведомлений -->
+<!-- @dsSubtitle Тёмная выезжающая панель, записи, пустое состояние, nudge -->
+<!-- @dsCss tokens.css shell.css sidebar.css -->
+<!-- @dsTheme dark -->
+<!-- @dsViewport 960x700 -->
+<section class="ds-section">
+  <div class="ds-section__title">Панель — .notif__panel</div>
+  <div class="ds-row ds-row--top">
+    <div class="ds-item">
+      <div class="ds-frame" style="width: 420px; height: 480px">
+        <div class="notif__panel" style="position: absolute; height: 100%">
+          <div class="notif__panel-head">
+            <span class="notif__panel-title">Уведомления</span>
+            <button class="notif__mark-all">Прочитать все</button>
+            <a class="notif__gear" href="#">⚙</a>
+            <button class="notif__close">×</button>
+          </div>
+          <div class="notif__list">
+            <div class="notif__entry">
+              <a class="notif__item notif__item--unread" href="#">
+                <div class="notif__item-row">
+                  <div class="notif__item-main">
+                    <div class="notif__item-head">
+                      <span class="notif__item-title">Анна Петрова отметилась по KR</span>
+                      <span class="notif__item-time">12 мин</span>
+                    </div>
+                    <div class="notif__item-body">● On Track → ▲ At Risk. «Интеграция откладывается до следующего спринта»</div>
+                    <div class="notif__item-context">Платформенная команда · 2026 Q3</div>
+                  </div>
+                </div>
+              </a>
+              <button class="notif__item-delete">×</button>
+            </div>
+            <div class="notif__entry">
+              <a class="notif__item" href="#">
+                <div class="notif__item-row">
+                  <div class="notif__item-main">
+                    <div class="notif__item-head">
+                      <span class="notif__item-title">Запрос доступа к пространству</span>
+                      <span class="notif__item-time">2 ч</span>
+                    </div>
+                    <div class="notif__item-body">Иван Петров просит доступ к пространству «Платформа»</div>
+                    <div class="notif__item-context">Администрирование</div>
+                  </div>
+                </div>
+              </a>
+              <button class="notif__item-delete">×</button>
+            </div>
+            <div class="notif__entry">
+              <a class="notif__item" href="#">
+                <div class="notif__item-row">
+                  <div class="notif__item-main">
+                    <div class="notif__item-head">
+                      <span class="notif__item-title">Новый комментарий к цели</span>
+                      <span class="notif__item-time">вчера</span>
+                    </div>
+                    <div class="notif__item-body">«Давайте поднимем цель на уровень департамента»</div>
+                    <div class="notif__item-context">Удержание аудитории 2026</div>
+                  </div>
+                </div>
+              </a>
+              <button class="notif__item-delete">×</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ds-item__label">.notif__item--unread — акцентная подложка; кнопка удаления всегда видима</div>
+    </div>
+
+    <div class="ds-col">
+      <div class="ds-item">
+        <div class="ds-frame" style="width: 300px; height: 190px; background: #0c1220">
+          <div class="notif__empty" style="height: 100%">
+            <div class="notif__empty-icon">🔕</div>
+            Уведомлений пока нет
+          </div>
+        </div>
+        <div class="ds-item__label">.notif__empty</div>
+      </div>
+      <div class="ds-item">
+        <div class="fb-nudge__card" style="width: 300px">
+          <button class="fb-nudge__close">×</button>
+          <div class="fb-nudge__icon">💬</div>
+          <div class="fb-nudge__title">Как вам трекер?</div>
+          <div class="fb-nudge__text">Пара минут вашего времени поможет сделать следующий квартал удобнее.</div>
+          <a class="fb-nudge__btn" href="#">Оставить отзыв</a>
+        </div>
+        <div class="ds-item__label">.fb-nudge__card — светлая карточка поверх тёмного оверлея</div>
+      </div>
+    </div>
+  </div>
+</section>
