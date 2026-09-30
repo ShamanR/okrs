@@ -65,11 +65,13 @@
 ## Impact
 
 - `web/static/tracker.js`: `GoalCard`, `KRRow`, `KREditModal`, `KRProgressModal`, `GoalModal`,
-  `StatusStepper`, шапка доски в `App`; новые `KRHealthDot`, `KRTarget`, `KRScale`, `RowMenu`,
-  `PriorityFilter`, `PrioritySelect`, `ModeBanner`.
-- `web/static/ui.js`: `actionAvailability` и тексты причин блокировки.
+  `TransferGoalModal`, `StatusStepper`, `copyGoalURL`, шапка доски в `App`; новые `KRHealthDot`,
+  `KRTarget`, `KRScale`, `MenuItem`, `RowMenu`, `PriorityFilter`, `PrioritySelect`, `ModeBanner`.
+- `web/static/ui.js`: `actionAvailability`, `LockedAction` и тексты причин блокировки.
 - `web/static/*.css`: классы `gc2__*`, `gc-share-strip`, `gc-comments-toggle`, `kr-hdot`,
-  `kr-measure`, `kr-scale`, `kr-row-btn`, `tb-pri`, `pri-select`, `mode-banner`, `modal-cap`.
+  `kr-measure`, `kr-scale`, `kr-row-btn`, `tb-pri`, `pri-select`, `mode-banner`, `modal-cap`,
+  `act-menu__item--done/--fail`; удалены классы прежней карточки (`goal-card__meta*`,
+  `goal-card__footer*`, `kr-guide*`, `kr-notes*` и другие — всего 65).
 - `design-system/src/cards/`: карточки доски и окон, плюс новые `goal-form` и `export-transfer`.
 - `design-system/prototype/`: экран доски целей — на нём согласуется вид **до** реализации.
 - Серверная часть, схема БД и контракты API не затрагиваются.

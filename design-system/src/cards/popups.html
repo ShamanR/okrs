@@ -59,7 +59,7 @@
 </section>
 
 <section class="ds-section">
-  <div class="ds-section__title">Меню экспорта</div>
+  <div class="ds-section__title">Меню действий строки</div>
   <div class="ds-row ds-row--top">
     <div class="ds-item">
       <button class="export-menu__btn">⋯</button>
@@ -67,14 +67,10 @@
     </div>
     <div class="ds-item">
       <div class="export-menu__dropdown" style="position: static">
-        <button class="export-menu__item">
-          <span class="export-menu__item-title">Экспорт в Markdown</span>
-          <span class="export-menu__item-sub">Цель со всеми ключевыми результатами</span>
-        </button>
-        <button class="export-menu__item">
-          <span class="export-menu__item-title">Скопировать ссылку</span>
-          <span class="export-menu__item-sub">Прямая ссылка на цель</span>
-        </button>
+        <button type="button" class="act-menu__item"><span class="act-menu__ic">✎</span>Редактировать</button>
+        <button type="button" class="act-menu__item"><span class="act-menu__ic">🔗</span>Копировать ссылку</button>
+        <div class="act-menu__sep"></div>
+        <button type="button" class="act-menu__item act-menu__item--danger"><span class="act-menu__ic">×</span>Удалить</button>
       </div>
       <div class="ds-item__label">.export-menu__dropdown</div>
     </div>

@@ -69,14 +69,13 @@
 .topbar__main { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
 .topbar__desc { font-size: 14px; color: #6b7280; line-height: 1.4; }
 .topbar__title { font-size: 18px; font-weight: 800; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; max-width: 100%; min-width: 0; }
-.topbar__lead { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; background: #f3f4f6; border-radius: 20px; flex-shrink: 0; }
-.topbar__lead-name { font-size: 13px; color: #374151; font-weight: 500; }
-.topbar__lead-role { font-size: 12px; color: #6b7280; }
 .topbar__spacer { flex: 1 1 0; min-width: 0; }
 .topbar__progress { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 0; }
 
 .tb-cap { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; white-space: nowrap; }
 .tb-lead { display: inline-flex; align-items: center; gap: 7px; padding: 3px 12px 3px 3px; background: #f3f4f6; border-radius: 999px; flex-shrink: 0; }
+/* .tb-lead__name и .kr-detail продукт не рисует — их использует прототип
+   design-system/prototype, который инлайнит этот же файл. Не мёртвые. */
 .tb-lead__name { font-size: 14px; font-weight: 500; color: #111827; white-space: nowrap; }
 .tb-lead__role { font-size: 13px; color: #6b7280; white-space: nowrap; }
 .tb-pri { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: 6px; }
@@ -246,7 +245,7 @@
 /* Кнопка создания цели в заблокированном виде. Кнопка «+ Добавить KR» в этом
    режиме не гасится, а скрывается — причину называет баннер режима. */
 .topbar__add-btn--locked, .topbar__add-btn--locked:hover { cursor: default; background: #e5e7eb; color: #9ca3af; }
-.icon-btn-slot { width: 26px; flex-shrink: 0; }
+.kr-row__spacer { width: 26px; flex-shrink: 0; }
 
 /* ── FORM ELEMENTS ───────────────────────────────────────────────────────────── */
 .form-group { margin-bottom: 16px; }
@@ -272,9 +271,6 @@
 .pri-select__opt-txt b { font-size: 14px; font-weight: 600; }
 .pri-select__opt-txt span { font-size: 12px; color: #6b7280; line-height: 1.4; }
 .pri-select__check { color: var(--accent); font-weight: 700; }
-.seg-btn--pri { border-color: #e5e7eb !important; background: #fff !important; color: #6b7280 !important; font-weight: 700; }
-.seg-btn--pri:hover { border-color: var(--pc) !important; color: var(--pc) !important; }
-.seg-btn--pri-on { background: color-mix(in srgb, var(--pc) 10%, #fff) !important; border-color: var(--pc) !important; color: var(--pc) !important; }
 .goal-name-row { align-items: flex-start; }
 .goal-name-row .form-col--w140 .form-input--weight { height: auto; }
 
@@ -297,6 +293,9 @@
 .seg-group { display: flex; gap: 6px; }
 .seg-btn { flex: 1; padding: 9px 0; border-radius: 8px; border: 2px solid #e5e7eb; background: white; color: #6b7280; font-size: 14px; font-weight: 700; cursor: pointer; text-transform: capitalize; }
 .seg-btn--active { border-color: var(--accent); color: var(--accent); background: #f5f3ff; }
+.seg-btn--locked, .seg-btn--locked:hover { cursor: default; border-color: #f0f1f3; background: #fafafa; color: #c9cdd3; }
+.seg-group .action-lock { flex: 1; }
+.seg-group .action-lock .seg-btn { width: 100%; }
 
 /* ── TRANSFER (copy/move) MODAL ───────────────────────────────────────────────── */
 .transfer-modal { width: min(560px, 94vw); max-height: 92vh; overflow: auto; }
@@ -377,23 +376,12 @@
 .modal-body > .field-label:first-child { font-size: 16px; font-weight: 700; color: #111827; line-height: 1.35; margin-bottom: 10px; text-transform: none; letter-spacing: 0; }
 .modal-body .md-collapsible { --md-fade-bg: #f9fafb; margin-bottom: 14px; }
 .modal-body .md-collapsible > .kr-modal-desc { margin-bottom: 0; }
-.kr-num-static { height: 34px; display: flex; align-items: center; padding: 0 2px; font-size: 15px; font-weight: 600; color: #374151; font-variant-numeric: tabular-nums; cursor: default; }
 .kr-num-field__label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
 .kr-num-input-suffix { position: relative; display: block; }
 .kr-num-input-suffix .form-input { width: 100%; padding-right: 40px; }
 .kr-num-input-suffix__unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #6b7280; white-space: nowrap; pointer-events: none; }
 .kr-progress-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
 .kr-progress-row__label { font-size: 13px; color: #6b7280; }
-.kr-guide { margin-top: 12px; padding: 12px 14px; background: #eef6fa; border: 1px solid #cfe6ee; border-radius: 10px; }
-.kr-guide__title { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #2b7a99; margin-bottom: 10px; }
-.kr-guide__steps { display: flex; flex-wrap: wrap; gap: 10px; }
-.kr-guide__step { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 60px; padding: 7px 14px; border: 1.5px dashed #9ec7d6; border-radius: 9px; background: #fff; line-height: 1.2; }
-.kr-guide__step--reached { border-style: solid; border-color: #2b6f86; background: #2b6f86; }
-.kr-guide__step-val { font-size: 12px; font-weight: 700; color: #2b7a99; }
-.kr-guide__step-pct { font-size: 13px; font-weight: 600; color: #6aa3b6; margin-top: 2px; }
-.kr-guide__step--reached .kr-guide__step-val { color: #fff; }
-.kr-guide__step--reached .kr-guide__step-pct { color: #cfe6ee; }
-.kr-guide__hint { margin-top: 10px; font-size: 13px; color: #2b7a99; }
 .kr-steps-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
 .kr-steps-title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
 .kr-steps-sum { font-size: 12px; font-weight: 600; }
@@ -402,10 +390,10 @@
 .kr-step-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .kr-steps-cols { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .kr-steps-cols span { font-size: 12px; font-weight: 600; color: #6b7280; }
-.kr-steps-cols__check { width: 16px; flex-shrink: 0; text-align: center; }
 .kr-steps-cols__name { flex: 1; text-transform: uppercase; letter-spacing: 0.02em; }
 .kr-steps-cols__weight { width: 60px; flex-shrink: 0; text-align: center; }
 .kr-steps-cols__del { width: 18px; flex-shrink: 0; }
+.kr-checkpoints { margin-top: 12px; }
 .kr-cp-head, .kr-cp-row { display: grid; grid-template-columns: 1fr 110px 20px; gap: 8px; align-items: center; }
 .kr-cp-head { margin-bottom: 4px; }
 .kr-cp-row { margin-bottom: 8px; }
@@ -422,13 +410,8 @@
 .kr-zeroing-btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border: 1px dashed #d1d5db; border-radius: 8px; background: transparent; color: #4b5563; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color .12s; }
 .kr-zeroing-btn:hover { border-color: #9ca3af; }
 .kr-zeroing-btn__icon { font-size: 16px; color: #6b7280; line-height: 1; }
-.kr-note-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
-.kr-note-optional { color: #6b7280; font-weight: 400; }
 
 /* ── KR PROGRESS MODAL ───────────────────────────────────────────────────────── */
-.kr-progress-desc { padding: 14px 22px; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }
-.kr-progress-desc__label { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #6b7280; margin-bottom: 5px; }
-.kr-progress-desc__text { font-size: 14.5px; color: #374151; line-height: 1.5; white-space: pre-wrap; }
 .kr-progress-field { margin-bottom: 14px; }
 .kr-progress-field__label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
 .kr-progress-field__hint { color: #6b7280; font-weight: 400; }
@@ -447,12 +430,8 @@
 .kr-name { font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kr-desc { font-size: 12px; color: #6b7280; white-space: pre-wrap; word-break: break-word; margin-top: 2px; line-height: 1.4; --md-collapse-max: 4.2em; }
 .kr-row .md-collapsible { --md-fade-bg: #fff; }
-.kr-detail-row { display: flex; align-items: center; gap: 10px; }
-.kr-bar-wrap { flex: 1; max-width: 160px; }
 .kr-pct { font-size: 12px; font-weight: 700; flex-shrink: 0; color: var(--accent); }
 .kr-detail { font-size: 13px; color: #6b7280; font-variant-numeric: tabular-nums; }
-.kr-detail--done { color: #16a34a; font-weight: 600; }
-.kr-detail--todo { color: #6b7280; font-weight: 600; }
 .kr-zeroing-note { margin-top: 4px; font-size: 12px; line-height: 1.4; color: #c2410c; word-break: break-word; }
 .kr-zeroing-note--clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .kr-zeroing-note--md { font-size: 14px; margin-top: 8px; }
@@ -467,12 +446,8 @@
 .kr-row__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 /* ── KR NOTES ────────────────────────────────────────────────────────────────── */
-.kr-notes { margin-top: 10px; margin-left: 36px; border-left: 2px solid #f0f1f3; padding-left: 12px; }
 .kr-note { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
-.kr-note__content { flex: 1; }
-.kr-note__header { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; }
 .kr-note__author { font-size: 12px; font-weight: 600; color: #374151; }
-.kr-note__date { font-size: 11px; color: #6b7280; }
 .kr-note__text { font-size: 13px; color: #374151; background: #f9fafb; padding: 6px 9px; border-radius: 6px; }
 
 /* ── COMMENTS PANEL ──────────────────────────────────────────────────────────── */
@@ -539,11 +514,7 @@
 .goal-card:hover > .drag-handle, .kr-item:hover > .kr-item__drag-handle { color: #374151 !important; }
 
 .goal-card__body { padding: 16px 18px; }
-.goal-card__meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
-.goal-card__weight { font-size: 12px; color: #6b7280; font-weight: 500; }
-.goal-card__spacer { flex: 1; }
 .goal-card__owner { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; }
-.goal-card__owner-label { color: #6b7280; font-weight: 500; }
 .goal-card__title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
 .goal-card__title { font-size: 16px; font-weight: 700; color: #111827; line-height: 1.35; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }
 .title-edit { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px; background: transparent; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; }
@@ -573,6 +544,7 @@
 .act-menu__item--why:hover .act-menu__why, .act-menu__item--why:focus .act-menu__why { display: block; }
 .act-menu__sep { height: 1px; background: #f1f5f9; margin: 4px 2px; }
 .act-menu__item--done, .act-menu__item--done .act-menu__ic, .act-menu__item--done:hover { color: #16a34a; background: #f0fdf4; }
+.act-menu__item--fail, .act-menu__item--fail .act-menu__ic, .act-menu__item--fail:hover { color: #b45309; background: #fffbeb; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .goal-card__title--readonly { cursor: default; }
 .goal-card__desc { font-size: 14px; color: #6b7280; margin-bottom: 12px; line-height: 1.5; --md-collapse-max: 6em; }
@@ -583,38 +555,20 @@
    single value covers them all. */
 .goal-card__body > .md-collapsible { margin-bottom: 12px; --md-fade-bg: #fff; }
 
-.shared-banner { margin-bottom: 12px; padding: 8px 10px; background: #ecfeff; border-radius: 8px; border: 1px solid #a5f3fc; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.shared-banner__label { font-size: 12px; color: #0e7490; font-weight: 600; flex-shrink: 0; }
-.shared-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: white; border: 1px solid rgba(8,145,178,0.38); font-size: 12px; font-weight: 500; color: #164e63; }
-.shared-pill--self { background: #e0f2fe; border-color: #38bdf8; color: #0369a1; }
-.shared-pill--owner { font-weight: 600; }
-.shared-pill__owner-star { color: #f59e0b; font-size: 13px; line-height: 1; }
 
 .goal-card__progress { margin-bottom: 10px; }
 .goal-card__progress-pct { font-size: 21px; font-weight: 800; letter-spacing: -0.5px; }
-.goal-card__health-badge { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
-.goal-card__updated { font-size: 12px; font-weight: 500; }
 /* ── GOAL CARD: плотность ────────────────────────────────────────────────────── */
 /* Метаданные цели идут одной строкой: приоритет, вес, тип, фокус, связи, драйверы,
    ссылка и экспорт. Блок драйверов сжимается первым, остальное не переносится. */
-.goal-card__meta--row { flex-wrap: nowrap; }
-.goal-card__meta--row .goal-card__owner { min-width: 0; overflow: hidden; }
-.goal-card__meta--row .goal-card__owner .uinfo__name { overflow: hidden; text-overflow: ellipsis; }
-.goal-card__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 /* Цвет здоровья задаётся один раз на карточке и переиспользуется процентом,
    индикатором и полосой прогресса — в разметке цветов не остаётся. */
 .goal-card { --health: var(--text-muted); --health-soft: var(--surface-subtle); }
 .goal-card__progress-pct { color: var(--health); }
-.goal-card__health-badge { color: var(--health); background: var(--health-soft); }
 /* Строка прогресса: процент, индикатор здоровья, прогноз, давность обновления. */
-.goal-card__progress-line { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
-.goal-card__updated { color: var(--text-muted); }
-.goal-card__forecast { font-size: 12px; color: #6b7280; white-space: nowrap; }
-.goal-card__updated--warn { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 999px; font-weight: 600; }
 /* Ключевые результаты видны всегда — переключателя блока нет. */
 .kr-section__empty { padding: 8px 0 2px; font-size: 13px; color: #6b7280; }
 
-.goal-card__footer { display: flex; border-top: 1px solid #f3f4f6; background: #fafafa; }
 .gc-comments-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 14px; border: none; border-top: 1px solid #f3f4f6; background: transparent; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; color: #4b5563; text-align: left; border-radius: 0 0 10px 10px; }
 .gc-comments-toggle:hover { background: #fafafa; }
 .gc-comments-toggle__caret { font-size: 10px; color: #9ca3af; transition: transform .15s; width: 12px; }
@@ -634,10 +588,6 @@
 .kr-note--open .kr-note__text { white-space: pre-wrap; word-break: break-word; flex-basis: calc(100% - 160px); }
 .kr-note__meta { flex-basis: 100%; padding-left: 0; font-size: 12px; color: #6b7280; }
 @container (max-width: 720px) { .kr-note { margin-left: 0; } }
-.goal-card__footer-btn { flex: 1; padding: 8px 0; border: none; background: transparent; cursor: pointer; font-size: 13px; font-weight: 500; color: #6b7280; display: flex; align-items: center; justify-content: center; gap: 5px; }
-.goal-card__footer-btn--has-comments { color: #374151; }
-.comment-unresolved-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; background: #dc2626; }
-.kr-weight-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
 
 /* ── KR SECTION ──────────────────────────────────────────────────────────────── */
 .kr-section { padding: 4px 18px 14px; border-top: 1px solid #f3f4f6; }
@@ -658,15 +608,12 @@
 /* ── КОМПАКТНАЯ ПЛОТНОСТЬ ЦЕЛЕЙ ────────────────────────────────────────────── */
 .goal-card { margin-bottom: 8px; border-radius: 10px; }
 .goal-card__body { padding: 10px 14px 8px; }
-.goal-card__meta { margin-bottom: 4px; gap: 6px; }
 .goal-card__title-row { margin-bottom: 2px; }
 .goal-card__title { font-size: 15px; line-height: 1.3; }
 .goal-card__desc { font-size: 13px; line-height: 1.45; margin-bottom: 6px; --md-collapse-max: 2.9em; }
 .goal-card__body > .md-collapsible { margin-bottom: 6px; }
 .goal-card__progress { margin-bottom: 2px; }
-.goal-card__progress-line { gap: 8px; margin-bottom: 3px; }
 .goal-card__progress-pct { font-size: 17px; }
-.shared-banner { margin-bottom: 6px; padding: 5px 8px; }
 .kr-section { padding: 0 14px 8px; }
 .kr-row { padding: 6px 0; }
 .kr-row__main { gap: 8px; align-items: center; }
@@ -679,14 +626,19 @@
 .kr-row { container-type: inline-size; }
 .kr-row__main { display: grid; grid-template-columns: auto auto minmax(180px,1fr) minmax(96px,160px) minmax(130px,190px) auto; column-gap: 14px; align-items: center; }
 .kr-info { align-self: center; }
-.kr-status-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
-.kr-status-col .kr-updated { min-width: 0; text-align: left; font-size: 12px; font-variant-numeric: tabular-nums; }
 .kr-progress-col { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; }
 .kr-progress-col__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .kr-hdot { position: relative; flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--hc); color: #fff; font-size: 9px; font-weight: 700; line-height: 1; cursor: help; outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--hc) 18%, #fff); }
 .kr-row__main > .kr-hdot { margin-right: -6px; }
 .kr-hdot:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--hc); }
-.kr-hdot--not_started { background: #9ca3af; }
+/* Здоровье KR — фиксированный перечень из четырёх состояний, поэтому его цвета
+   живут в CSS, а не приезжают инлайном: --hc задаётся модификатором и дальше
+   читается фоном, подсветкой и заголовком поповера. У not_started фон намеренно
+   светлее своего --hc — подсветка и заголовок остаются на тёмном. */
+.kr-hdot--not_started { --hc: #6b7280; background: #9ca3af; }
+.kr-hdot--on_track { --hc: #16a34a; }
+.kr-hdot--at_risk { --hc: #d97706; }
+.kr-hdot--done { --hc: #15803d; }
 .kr-hdot--at_risk .kr-hdot__mark { font-size: 8px; transform: translateY(-0.5px); }
 .kr-hdot__pop { display: none; position: absolute; z-index: 30; bottom: calc(100% + 8px); left: -6px; width: max-content; max-width: 240px; padding: 8px 10px; background: #111827; color: #f9fafb; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); flex-direction: column; gap: 2px; text-align: left; pointer-events: none; }
 .kr-hdot__pop::after { content: ''; position: absolute; top: 100%; left: 14px; margin-left: -5px; border: 5px solid transparent; border-top-color: #111827; }
@@ -698,12 +650,8 @@
 .kr-hdot:hover .kr-hdot__pop, .kr-hdot:focus .kr-hdot__pop { display: flex; }
 .kr-hdot__title { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--hc) 45%, #fff); }
 .kr-hdot__hint { font-size: 11.5px; line-height: 1.4; color: #e5e7eb; white-space: normal; }
-.kr-progress-col__top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
-.kr-progress-col__top .kr-pct { font-size: 14px; }
-.kr-progress-col__top .kr-detail { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .kr-measure { display: contents; }
 .kr-target-col { display: flex; align-items: baseline; gap: 5px; min-width: 0; font-size: 13px; color: #374151; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.kr-target__lbl { color: #6b7280; font-size: 12px; flex-shrink: 0; }
 .kr-target__val { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .kr-target__dir { font-weight: 700; margin-right: 3px; }
 .kr-target__dir--up { color: #16a34a; }
@@ -711,7 +659,6 @@
 .kr-progress-col__body--row { flex-direction: row; align-items: center; gap: 8px; }
 .kr-progress-col__bar { flex: 1; min-width: 0; }
 .kr-progress-col__body--row .kr-pct { font-size: 14px; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
-.kr-progress-col__type { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; }
 .kr-row__actions { display: flex; align-items: center; gap: 6px; }
 .kr-update-stack { display: flex; flex-direction: column-reverse; align-items: stretch; gap: 3px; width: 148px; flex: 0 0 148px; }
 .kr-update-stack .kr-row-btn { justify-content: center; width: 100%; box-sizing: border-box; }
@@ -719,7 +666,6 @@
 @container (max-width: 720px) {
   .kr-row__main { grid-template-columns: auto auto minmax(0,1fr) auto; row-gap: 6px; }
   .kr-info { grid-column: 3; }
-  .kr-status-col { grid-column: 2; grid-row: 2; flex-direction: row; align-items: center; gap: 8px; }
   .kr-measure { display: flex; align-items: center; gap: 12px; grid-column: 3; grid-row: 2; min-width: 0; }
   .kr-target-col { flex: 0 1 auto; }
   .kr-target-col:empty { display: none; }
@@ -730,7 +676,6 @@
   .kr-row-btn span { font-size: 13px; }
 }
 .kr-section__empty { padding: 4px 0 0; }
-.goal-card__footer-btn { padding: 5px 0; }
 .goal-weight-warn { margin-bottom: 10px; padding: 10px 14px; }
 
 /* ── Компактная раскладка карточки цели (gc2) ── */
@@ -739,13 +684,7 @@
 .gc2__title-wrap { flex: 1; min-width: 0; }
 .gc2 .goal-card__title-row { margin: 0; }
 .gc2 .goal-card__title { font-size: 15.5px; line-height: 1.35; text-wrap: pretty; }
-.gc2__stats { display: flex; align-items: baseline; gap: 6px; flex-shrink: 0; padding-top: 1px; }
 .gc2 .goal-card__progress-pct { font-size: 16px; font-weight: 800; color: var(--health); line-height: 1.2; }
-.gc2__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-top: 4px; font-size: 12.5px; color: #6b7280; }
-.gc2__meta .goal-card__owner { gap: 4px; }
-.gc2__meta .goal-card__forecast, .gc2__meta .goal-card__updated { font-size: 12.5px; }
-.gc2__dot { color: #d1d5db; }
-.gc2__shared { font-size: 12px; font-weight: 600; color: #0891b2; background: #0891b214; border-radius: 4px; padding: 1px 6px; cursor: default; }
 .gc2__bar { margin-top: 6px; }
 .gc2 .goal-card__desc { margin: 6px 0 0; }
 .goal-card__desc.md-content, .kr-desc.md-content { white-space: normal; }
@@ -898,13 +837,8 @@
 .export-menu__btn { border: none; background: transparent; color: #6b7280; cursor: pointer; font-size: 17px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
 .export-menu__btn:hover { background: #f1f5f9; color: #374151; }
 .export-menu__dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.14); padding: 6px; z-index: 50; min-width: 240px; }
-.export-menu__item { display: block; width: 100%; text-align: left; border: none; background: transparent; cursor: pointer; border-radius: 8px; padding: 8px 10px; }
-.export-menu__item:hover { background: #f8fafc; }
-.export-menu__item-title { display: block; font-size: 14px; font-weight: 700; color: #111827; }
-.export-menu__item-sub { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; }
 
 /* KR health status — list badge spacing + modal selector cards */
-.kr-health-badge-row { margin-bottom: 4px; }
 .kr-health-section { margin-top: 14px; }
 .kr-health-section__label { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
 .kr-health-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }

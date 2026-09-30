@@ -175,19 +175,6 @@ function userInfo(u, size) {
   return `<span class="uinfo">${avatar(u.initials, size)}<span class="uinfo__name">${esc(u.name)}</span></span>`;
 }
 
-// ── Иконочная кнопка действия и блокировка по статусу ────────────────────────
-// Единый элемент действия доски: редактирование цели и KR, обновление прогресса,
-// удаление, заметка. Заблокированный вариант остаётся на своём месте, получает
-// фокус с клавиатуры и объясняет причину — поэтому не disabled.
-function iconBtn(icon, label, attrs = '', opts = {}) {
-  const { locked = null, variant = '' } = opts;
-  const cls = ['icon-btn', variant ? 'icon-btn--' + variant : '', locked ? 'icon-btn--locked' : ''].filter(Boolean).join(' ');
-  const body = `<button class="${cls}" type="button" aria-label="${esc(label)}"` +
-    (locked ? ' aria-disabled="true"' : ` title="${esc(label)}" ${attrs}`) + `>${icon}` +
-    (locked ? '<span class="icon-btn__lock">🔒</span>' : '') + '</button>';
-  return locked ? `<span class="action-lock">${body}<span class="action-lock__tip" role="tooltip">${esc(locked)}</span></span>` : body;
-}
-
 // Единственное место, где интерфейс знает правило «статус → редактирование».
 // structure — изменение состава целей и KR, progress — обновление прогресса.
 const LOCK_REASON = {
@@ -598,7 +585,7 @@ function krRow(goal, kr, teamId) {
         </div>
         </div>
         <div class="kr-row__actions" data-no-drag>
-          <span class="icon-btn-slot"></span>
+          <span class="kr-row__spacer"></span>
           <div class="kr-update-stack">
           ${mode === 'progress_only'
             ? `<button type="button" class="kr-row-btn kr-row-btn--accent" data-kr-progress="${goal.id}:${kr.id}"><span>↻</span>Обновить</button>`
@@ -686,7 +673,7 @@ function goalCard(goal, teamId) {
   const shared = goal.shareTeams;
   const updatedText = goal.updatedDaysAgo === 0 ? 'сегодня' : goal.updatedDaysAgo + 'д назад';
 
-  return `<div class="goal-card${shared ? ' goal-card--shared' : ''}${isStale ? ' goal-card--stale' : ''}${canEdit ? ' goal-card--reorderable' : ''}"
+  return `<div class="goal-card${shared ? ' goal-card--shared' : ''}${isStale ? ' goal-card--stale' : ''}${canEdit ? '' : ''}"
        style="--health:${hC};--health-soft:${hC}18"
        ${canEdit ? `data-goal-item="${goal.id}"` : ''}>
     ${canEdit ? `<div class="drag-handle" title="Перетащите для изменения порядка" data-goal-handle="${goal.id}">⋮⋮</div>` : ''}
@@ -733,7 +720,7 @@ function goalCard(goal, teamId) {
 
     <button type="button" class="gc-comments-toggle${showCom ? ' gc-comments-toggle--open' : ''}${unresolved ? ' gc-comments-toggle--warn' : ''}" data-comments="${goal.id}" aria-expanded="${showCom ? 'true' : 'false'}">
       <span class="gc-comments-toggle__caret">▶</span>
-      <span class="gc-comments-toggle__label">Комментарии</span>
+      <span>Комментарии</span>
       ${goal.comments.length ? `<span class="gc-comments-toggle__count">· ${goal.comments.length}</span>` : ''}
       ${unresolved ? `<span class="gc-comments-toggle__pill">не решено ${unresolved}</span>` : ''}
     </button>

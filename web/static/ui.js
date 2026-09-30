@@ -45,8 +45,13 @@ const EDIT_MODE_ALLOWS = {
   progress_only: { structure: false, progress: true },
   comments_only: { structure: false, progress: false },
 };
+// goal_move — это перенос цели ИЗ текущей команды: он убирает цель из её состава,
+// поэтому подчиняется тому же замку, что создание и удаление. Копирование цели в
+// другую команду или период состав текущей команды не меняет и замку не подчиняется —
+// отдельного вида для него здесь нет намеренно.
 const ACTION_KIND = {
   goal_create: 'structure', goal_edit: 'structure', goal_delete: 'structure',
+  goal_move: 'structure',
   kr_create: 'structure', kr_edit: 'structure', kr_delete: 'structure',
   reorder: 'structure', progress_update: 'progress',
 };

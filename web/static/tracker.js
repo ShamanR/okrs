@@ -385,9 +385,8 @@ const KR_BEHIND_PP = 20;
 // только CSS (::after + attr, :hover/:focus), поэтому обработчиков здесь нет.
 function KRHealthDot({ status }) {
   const s = KR_HEALTH_LABEL[status] ? status : 'not_started';
-  const c = KR_HEALTH_COLOR[s];
   return (
-    <span className={`kr-hdot kr-hdot--${s}`} tabIndex={0} style={{ '--hc': c }}
+    <span className={`kr-hdot kr-hdot--${s}`} tabIndex={0}
       aria-label={`Статус KR: ${KR_HEALTH_LABEL[s]}`} data-no-drag>
       <span className="kr-hdot__mark">{KR_HEALTH_ICON[s]}</span>
       <span className="kr-hdot__pop" role="tooltip">
@@ -473,34 +472,38 @@ function PrioritySelect({ value, onChange }) {
 
 // Меню действий строки — одинаковое у цели и у KR. Пункт, недоступный по статусу,
 // остаётся в списке и объясняет причину, а не исчезает.
-function MenuItem({ icon, label, onClick, danger = false, reason = null, onDone, confirmLabel = null }) {
-  const [done, setDone] = useState(false);
+function MenuItem({ icon, label, onClick, danger = false, reason = null, onDone, confirmLabel = null, failLabel = 'Не удалось' }) {
+  const [state, setState] = useState(null); // null | 'done' | 'fail'
+  const done = state === 'done', failed = state === 'fail';
   const cls = ['act-menu__item', danger ? 'act-menu__item--danger' : '',
-    done ? 'act-menu__item--done' : '',
+    done ? 'act-menu__item--done' : '', failed ? 'act-menu__item--fail' : '',
     reason ? 'act-menu__item--disabled act-menu__item--why' : ''].filter(Boolean).join(' ');
-  // Пункт с confirmLabel подтверждает выполнение на себе же и только потом закрывает меню:
-  // иначе подтверждение исчезает вместе с меню и действие выглядит беззвучным.
+  // Пункт с confirmLabel отчитывается о результате на себе же и только потом закрывает
+  // меню: иначе и подтверждение, и отказ исчезают вместе с меню, и действие выглядит
+  // беззвучным — а копирование в буфер отказать может (страница без фокуса, нет прав).
   const run = async () => {
     if (!confirmLabel) { onDone(); onClick(); return; }
     const ok = await onClick();
-    if (ok === false) { onDone(); return; }
-    setDone(true);
-    setTimeout(onDone, 900);
+    setState(ok === false ? 'fail' : 'done');
+    setTimeout(onDone, ok === false ? 1600 : 900);
   };
   return (
     <button type="button" className={cls}
       aria-disabled={reason ? true : undefined}
       aria-label={reason ? `${label}. ${reason}` : undefined}
       onClick={reason ? undefined : run}>
-      <span className="act-menu__ic">{done ? '✓' : icon}</span>{done ? confirmLabel : label}
-      {done && <span className="visually-hidden" role="status">{confirmLabel}</span>}
+      <span className="act-menu__ic">{done ? '✓' : failed ? '⚠' : icon}</span>
+      {done ? confirmLabel : failed ? failLabel : label}
+      {state && <span className="visually-hidden" role="status">{done ? confirmLabel : failLabel}</span>}
       {reason && <span className="act-menu__lock" aria-hidden="true">?</span>}
       {reason && <span className="act-menu__why" role="tooltip">{reason}</span>}
     </button>
   );
 }
 
-function RowMenu({ items }) {
+// btnClass/dropdownClass — чтобы меню в шапке доски выглядело как в прототипе:
+// там это кнопка 36×36 с рамкой, а не безрамочные «···» строки цели.
+function RowMenu({ items, btnClass = 'export-menu__btn', dropdownClass = '' }) {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -511,10 +514,10 @@ function RowMenu({ items }) {
   }, [open]);
   return (
     <div className="export-menu" ref={ref} data-no-drag>
-      <button type="button" className="export-menu__btn" title="Ещё" aria-label="Ещё"
+      <button type="button" className={btnClass} title="Ещё" aria-label="Ещё"
         onClick={() => setOpen(!open)}>···</button>
       {open && (
-        <div className="export-menu__dropdown">
+        <div className={`export-menu__dropdown${dropdownClass ? ` ${dropdownClass}` : ''}`}>
           {items.filter(Boolean).map((it, i) => it.sep
             ? <div key={i} className="act-menu__sep" />
             : <MenuItem key={i} {...it} onDone={() => setOpen(false)} />)}
@@ -1175,7 +1178,7 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 </div>
               </div>
               {isNew && <div className="kre-metric-note">Текущее значение на старте равно стартовому — дальше меняется при обновлении прогресса.</div>}
-              <div className="kr-checkpoints" style={{ marginTop: 12 }}>
+              <div className="kr-checkpoints">
                 <div className="kr-section-head">
                   <span className="kr-section-head__title">Промежуточные значения</span>
                   <span className="kr-section-head__opt">опционально</span>
@@ -1330,7 +1333,9 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
   const staleLevel = kr.updatedDaysAgo > staleDays ? 'stale' : kr.updatedDaysAgo > staleDays * 0.6 ? 'warn' : 'fresh';
   // Правка текстовых полей открыта только в «черновике» и «к валидации»; в «в работе»
   // строка предлагает обновление прогресса, в закрытом периоде — ничего.
-  const canEditText = editMode === 'full';
+  // Через actionAvailability, а не через editMode === 'full': знание «что при каком
+  // статусе можно» живёт в одном месте (решение 4 в design.md).
+  const canEditText = !lockReason(editMode, 'kr_edit');
   // Полоса KR краснеет, когда отставание от ожидаемого темпа больше порога.
   const krBehind = periodStatus !== 'closed' && forecast != null && forecast - progress > KR_BEHIND_PP;
   const krBarC = krBehind ? '#dc2626' : 'var(--accent)';
@@ -1373,7 +1378,9 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             </div>
           </div>
           <div className="kr-row__actions" data-no-drag>
-            <span className="icon-btn-slot" />
+            {/* Распорка держит колонку действий одной ширины во всех режимах:
+                в «закрыт» кнопки нет, но строка не должна съезжать. */}
+            <span className="kr-row__spacer" />
             <div className="kr-update-stack">
               {editMode === 'progress_only' && (
                 <button type="button" className="kr-row-btn kr-row-btn--accent" onClick={() => setModal('progress')}>
@@ -1586,17 +1593,24 @@ async function copyGoalURL(teamId, periodId, goalId, krId = null) {
   const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId, kr_id: krId });
   if (!path) return false;
   const url = location.origin + path;
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+  // Clipboard API может существовать и при этом отказать: страница без фокуса,
+  // окно без разрешения, небезопасный контекст. Поэтому textarea — не ветка
+  // «если API нет», а именно резерв на отказ: иначе копирование молча срывается.
+  const viaTextarea = () => {
+    const ta = document.createElement('textarea');
+    ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
       await navigator.clipboard.writeText(url);
-    } else {
-      const ta = document.createElement('textarea');
-      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      document.execCommand('copy'); document.body.removeChild(ta);
-    }
-    return true;
-  } catch { return false; }
+      return true;
+    } catch { /* падаем в резерв ниже */ }
+  }
+  try { return viaTextarea(); } catch { return false; }
 }
 
 // ── MARKDOWN EXPORT ─────────────────────────────────────────────────────────
@@ -1727,7 +1741,11 @@ function ExportModal({ goal, teamId, periodId, info, onClose }) {
 }
 
 // TransferGoalModal copies or moves a goal into a chosen team + period.
-function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone }) {
+function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone, editMode = 'full' }) {
+  // Перенос убирает цель из состава текущей команды, поэтому закрыт тем же замком,
+  // что правка и удаление. Копирование состав не меняет и доступно в любом статусе:
+  // скопировать цели закрытого периода в новый — обычная работа, а не правка старого.
+  const moveLock = lockReason(editMode, 'goal_move');
   const [mode, setMode] = useState('copy'); // 'copy' | 'move'
   const [targetTeam, setTargetTeam] = useState(teamId);
   const [targetPeriod, setTargetPeriod] = useState(periodId);
@@ -1796,7 +1814,11 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone }
         <div className="modal-body">
           <div className="seg-group transfer-modal__mode">
             <button type="button" className={`seg-btn${mode === 'copy' ? ' seg-btn--active' : ''}`} onClick={() => setMode('copy')}>⧉ Копировать</button>
-            <button type="button" className={`seg-btn${mode === 'move' ? ' seg-btn--active' : ''}`} onClick={() => setMode('move')}>➡ Перенести</button>
+            {moveLock
+              ? <LockedAction reason={moveLock}>
+                  <button type="button" aria-disabled="true" className="seg-btn seg-btn--locked">➡ Перенести 🔒</button>
+                </LockedAction>
+              : <button type="button" className={`seg-btn${mode === 'move' ? ' seg-btn--active' : ''}`} onClick={() => setMode('move')}>➡ Перенести</button>}
           </div>
 
           <div className="transfer-modal__field">
@@ -1860,7 +1882,9 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   const forecast = goal.progressMeta?.forecast ?? null;
   const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast, greenThreshold)];
   const health = healthOf(prog, isStale, forecast, greenThreshold);
-  const canEdit = editMode === 'full';
+  // Как и в KRRow — через actionAvailability, чтобы правило статуса было записано
+  // в одном месте (решение 4 в design.md). Переупорядочивание идёт тем же замком.
+  const canEdit = !lockReason(editMode, 'reorder');
   // Правка текстовых полей цели открыта только там же, где полное редактирование:
   // в «в работе» и «закрыт» заголовок перестаёт быть элементом управления.
   const canEditText = canEdit;
@@ -1873,7 +1897,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   const otherTeams = (goal.shareTeams || []).filter(t => t.id !== currentTeamId);
   const isShared = otherTeams.length > 0;
   const krWeightSum = (goal.krs || []).reduce((s, k) => s + (k.weight || 0), 0);
-  const krWeightOff = krWeightSum !== 100;
+  // У цели без KR сумма весов равна нулю по определению, а не по ошибке: предупреждать
+  // там не о чем, и «нет KR» говорит сама пустая секция. Так же огранено предупреждение
+  // о сумме весов целей в App.
+  const krWeightOff = (goal.krs || []).length > 0 && krWeightSum !== 100;
   const krWeightDelta = 100 - krWeightSum;
 
   const addGoalComment = async text => { await apiPost(`/api/v1/goals/${goal.id}/comments`, { text }); onReload(); };
@@ -1889,9 +1916,11 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
     onReload();
   };
 
+  // Модификатора --reorderable у цели нет: ручка перетаскивания и так рисуется
+  // условно и позиционируется сама, отдельного класса-крючка под неё не нужно.
+  // У .kr-item--reorderable он есть — там он реально сдвигает строку под ручку.
   const cardClass = ['goal-card',
     isDragging ? 'goal-card--dragging' : '',
-    canReorderGoal ? 'goal-card--reorderable' : '',
     isShared ? 'goal-card--shared' : '',
     isStale ? 'goal-card--stale' : '',
   ].filter(Boolean).join(' ');
@@ -1944,7 +1973,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
             { icon: '✎', label: 'Редактировать', onClick: () => onEditGoal(goal), reason: editLockReason(editMode, 'цель') },
             { icon: '🔗', label: 'Копировать ссылку', confirmLabel: 'Скопировано',
               onClick: () => copyGoalURL(currentTeamId, periodId, goal.id) },
-            { icon: '➡', label: 'Перенести или скопировать', onClick: () => setTransfer(true) },
+            { icon: '➡', label: lockReason(editMode, 'goal_move') ? 'Скопировать в другую команду' : 'Перенести или скопировать',
+              onClick: () => setTransfer(true) },
             { sep: true },
             { icon: '×', label: isShared ? 'Открепить от команды' : 'Удалить', danger: true,
               onClick: () => setConfirmDeleteGoal(true), reason: deleteLockReason(editMode, 'цель') },
@@ -2008,12 +2038,12 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
         className={`gc-comments-toggle${showCom ? ' gc-comments-toggle--open' : ''}${unresolvedCount > 0 ? ' gc-comments-toggle--warn' : ''}`}
         onClick={() => setShowCom(!showCom)}>
         <span className="gc-comments-toggle__caret">▶</span>
-        <span className="gc-comments-toggle__label">Комментарии</span>
+        <span>Комментарии</span>
         {(goal.comments || []).length > 0 && <span className="gc-comments-toggle__count">· {goal.comments.length}</span>}
         {unresolvedCount > 0 && <span className="gc-comments-toggle__pill">не решено {unresolvedCount}</span>}
       </button>
       {transfer && <TransferGoalModal goal={goal} teamId={currentTeamId} periodId={periodId} allTeams={allTeams}
-        onClose={() => setTransfer(false)} onDone={onReload} />}
+        editMode={editMode} onClose={() => setTransfer(false)} onDone={onReload} />}
       {newKR && <KREditModal kr={null} goalId={goal.id} onSave={() => { setNewKR(false); onReload(); }} onClose={() => setNewKR(false)} accent={accent} />}
       {confirmDeleteGoal && <ConfirmModal
         title={isShared ? 'Открепить цель от команды?' : 'Удалить цель?'}
@@ -3137,7 +3167,7 @@ function App() {
             {/* Экспорт переехал из меню цели в меню команды: выгрузка всё равно умеет
                 расширять охват до команды, а по цели она якорится первой из списка. */}
             <div className="tb-menu">
-              <RowMenu items={[
+              <RowMenu btnClass="tb-menu__btn" dropdownClass="tb-menu__dropdown" items={[
                 { icon: '⇩', label: 'Экспорт в Markdown', onClick: () => setExportOpen(true),
                   reason: allGoals.length ? null : 'В этом периоде у команды нет целей — выгружать нечего.' },
               ]} />
@@ -3174,14 +3204,14 @@ function App() {
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
           {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
-            dragProps={editMode === 'full' ? {
+            dragProps={!lockReason(editMode, 'reorder') ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
               onDragOver: (e) => { if (dragState.srcId && dragState.srcId !== g.id) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } },
               onDrop: (e) => { e.preventDefault(); handleReorderGoals(dragState.srcId, g.id); setDragState({ srcId: null }); },
               onDragEnd: () => setDragState({ srcId: null }),
             } : null}
-            onReorderKR={editMode === 'full' ? (fromId, toId) => handleReorderKRs(g.id, fromId, toId) : null}
+            onReorderKR={!lockReason(editMode, 'reorder') ? (fromId, toId) => handleReorderKRs(g.id, fromId, toId) : null}
           />)}
         </div>
       </div>
