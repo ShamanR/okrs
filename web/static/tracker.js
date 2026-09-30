@@ -211,26 +211,6 @@ function calcKRProgress(kr) {
   return clampPct(Math.round((cur - start) / (target - start) * 100));
 }
 
-// numericalGuide builds the checkpoint guide for a numerical KR: every checkpoint
-// with its reached state, plus the next unreached checkpoint (or the target once
-// all checkpoints are passed) and the remaining distance to it. Returns null when
-// the KR has no checkpoints.
-function numericalGuide(kr) {
-  const cps = (kr.checkpoints || [])
-    .filter(c => c.value !== '' && c.value !== null && c.value !== undefined)
-    .map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) }))
-    .sort((a, b) => a.value - b.value);
-  if (!cps.length) return null;
-  const cur = Number(kr.current || 0);
-  const target = Number(kr.target ?? 100);
-  const steps = cps.map(c => ({ ...c, reached: cur >= c.value }));
-  const upcoming = cps.find(c => c.value > cur);
-  let next = null;
-  if (upcoming) next = { value: upcoming.value, pct: upcoming.pct, remaining: upcoming.value - cur, isTarget: false };
-  else if (cur < target) next = { value: target, pct: 100, remaining: target - cur, isTarget: true };
-  return { steps, next };
-}
-
 // ── DESIGN CONSTANTS ──────────────────────────────────────────────────────────
 const HEALTH_COLOR = { ahead: '#16a34a', on_track: '#2563eb', below: '#ef4444', stale: '#d97706', no_goals: '#d1d5db' };
 const HEALTH_LABEL = { ahead: 'опережает', on_track: 'в плане', below: 'отстаёт', stale: 'нет обновлений', no_goals: 'нет целей' };
@@ -239,6 +219,12 @@ const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706'
 const KR_UNITS = ['%', 'RPS', 'мс', 'сек', 'мин', 'час', 'дней', 'шт', '₽', 'запросов', 'ошибок', 'пользователей', 'заказов', 'рублей'];
 const KR_TYPE_LABEL = { BOOLEAN: 'Бинарный', PROJECT: 'Проектный', NUMERICAL: 'Числовой' };
 const KR_TYPE_OPTIONS = ['BOOLEAN', 'PROJECT', 'NUMERICAL'];
+// Выбор способа измерения в окне KR: значок, название, что считает и пример.
+const KR_MEASURE_INFO = {
+  NUMERICAL: { icon: '123', title: 'Метрика', desc: 'Старт → цель, вводите текущее значение', ex: 'p95 latency 800 → 300 мс' },
+  BOOLEAN: { icon: '✓', title: 'True / False', desc: 'Достигнут или нет: 0% или 100%', ex: 'сервис переведён на k8s' },
+  PROJECT: { icon: '☰', title: 'Шаги проекта', desc: 'Сумма весов выполненных шагов', ex: 'RFC → миграция БД → отключение legacy' },
+};
 // Manual KR health status (not the forecast-based HEALTH_COLOR above).
 const KR_HEALTH_COLOR = { not_started: '#6b7280', on_track: '#16a34a', at_risk: '#d97706', done: '#15803d' };
 const KR_HEALTH_LABEL = { not_started: 'Not Started', on_track: 'On Track', at_risk: 'At Risk', done: 'Closed' };
@@ -250,19 +236,6 @@ const KR_HEALTH_HINT = {
   at_risk: 'Фиксируем существенный риск для достижения результата',
   done: 'Работа над KR завершена',
 };
-const KR_TYPE_HINT = (
-  <span className="kr-type-hint">
-    <span style={{ display: 'block', marginBottom: 8 }}>
-      <b style={{ color: KR_TYPE_C.BOOLEAN }}>Бинарный</b> — результат либо выполнен, либо нет. Например: «Проведён аудит», «Запущен сервис».
-    </span>
-    <span style={{ display: 'block', marginBottom: 8 }}>
-      <b style={{ color: KR_TYPE_C.PROJECT }}>Проектный</b> — результат состоит из нескольких этапов. Прогресс — сумма вкладов завершённых этапов.
-    </span>
-    <span style={{ display: 'block' }}>
-      <b style={{ color: KR_TYPE_C.NUMERICAL }}>Числовой</b> — результат измеряется числом: проценты, деньги, RPS, штуки, дни, миллисекунды. Прогресс считается линейно от старта к цели или через промежуточные значения.
-    </span>
-  </span>
-);
 
 // fmtNum formats a number with space thousands separators, keeping existing fractional digits.
 function fmtNum(n) {
@@ -392,6 +365,151 @@ function Badge({ label, color = '#6b7280', bg }) {
 function PriBadge({ p }) {
   const c = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' }[p] || '#6b7280';
   return <Badge label={p} color={c} />;
+}
+
+// Приоритет цели: короткое имя и цвет — для селектора в окне цели и бейджа на карточке.
+const PRI_LEVELS = ['P0', 'P1', 'P2', 'P3'];
+const PRI_SHORT = { P0: 'Критичный', P1: 'Высокий', P2: 'Средний', P3: 'Низкий' };
+const PRI_COLOR = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' };
+// Подсказка приоритета цели.
+const PRI_HINT = {
+  P0: 'Критично: без этой цели период провален. Ресурсы — в первую очередь.',
+  P1: 'Высокий: ключевая цель периода, делаем обязательно.',
+  P2: 'Средний: важно, но можно сдвинуть при нехватке ресурсов.',
+  P3: 'Низкий: делаем, если останется время.',
+};
+// Полоса KR краснеет, если отставание от ожидаемого темпа больше этого значения.
+const KR_BEHIND_PP = 20;
+
+// Здоровье KR — цветная точка с поповером. Поповер и подсказки has-tip рисует
+// только CSS (::after + attr, :hover/:focus), поэтому обработчиков здесь нет.
+function KRHealthDot({ status }) {
+  const s = KR_HEALTH_LABEL[status] ? status : 'not_started';
+  const c = KR_HEALTH_COLOR[s];
+  return (
+    <span className={`kr-hdot kr-hdot--${s}`} tabIndex={0} style={{ '--hc': c }}
+      aria-label={`Статус KR: ${KR_HEALTH_LABEL[s]}`} data-no-drag>
+      <span className="kr-hdot__mark">{KR_HEALTH_ICON[s]}</span>
+      <span className="kr-hdot__pop" role="tooltip">
+        <span className="kr-hdot__title">{KR_HEALTH_ICON[s]} {KR_HEALTH_LABEL[s]}</span>
+        <span className="kr-hdot__hint">{KR_HEALTH_HINT[s] || ''}</span>
+      </span>
+    </span>
+  );
+}
+
+// Подсказка фокуса: по строке на тему, название окрашено как бейдж на карточке.
+// Названия берутся из focusLabel, чтобы подсказка и выпадающий список не разошлись.
+const FOCUS_HINT = {
+  PROFITABILITY: 'выручка и маржинальность',
+  STABILITY: 'надёжность и меньше инцидентов',
+  SPEED_EFFICIENCY: 'скорость поставки и эффективность процессов',
+  TECH_INDEPENDENCE: 'уход от внешних и legacy-зависимостей',
+};
+const FOCUS_HINT_BLOCK = (
+  <>
+    На какую стратегическую тему работает цель.
+    {FOCUS_OPTIONS.map(f => (
+      <span key={f} className="hint-row">
+        <span className="hint-code" style={{ color: FOCUS_COLORS[f] || FOCUS_COLORS.DEFAULT }}>{focusLabel(f)}</span>
+        {' — '}{FOCUS_HINT[f]}
+      </span>
+    ))}
+  </>
+);
+
+// Подсказка приоритета: вступление и по строке на уровень, код уровня окрашен так же,
+// как бейдж на карточке, — подсказка и доска читаются одним кодом.
+const PRIORITY_HINT = (
+  <>
+    Насколько цель важна относительно других.
+    {PRI_LEVELS.map(p => (
+      <span key={p} className="hint-row">
+        <span className="hint-code" style={{ color: PRI_COLOR[p] }}>{p}</span>
+        {' — '}{PRI_HINT[p]}
+      </span>
+    ))}
+  </>
+);
+
+// Выбор приоритета в окне цели: бейдж, короткое имя и пояснение каждого уровня —
+// вместо четырёх кнопок P0..P3, по которым не видно, чем они отличаются.
+function PrioritySelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="pri-select" ref={ref}>
+      <button type="button" className="pri-select__btn" aria-haspopup="listbox" aria-expanded={open}
+        onClick={() => setOpen(!open)}>
+        <PriBadge p={value} />
+        <span className="pri-select__txt">{PRI_SHORT[value] || ''}</span>
+        <span className="pri-select__caret">▾</span>
+      </button>
+      {open && (
+        <div className="pri-select__menu" role="listbox">
+          {PRI_LEVELS.map(p => (
+            <button key={p} type="button" role="option" aria-selected={value === p}
+              className={`pri-select__opt${value === p ? ' pri-select__opt--on' : ''}`}
+              onClick={() => { onChange(p); setOpen(false); }}>
+              <PriBadge p={p} />
+              <span className="pri-select__opt-txt">
+                <b>{PRI_SHORT[p]}</b>
+                <span>{PRI_HINT[p] || ''}</span>
+              </span>
+              {value === p && <span className="pri-select__check">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Меню действий строки — одинаковое у цели и у KR. Пункт, недоступный по статусу,
+// остаётся в списке и объясняет причину, а не исчезает.
+function MenuItem({ icon, label, onClick, danger = false, reason = null, onDone }) {
+  const cls = ['act-menu__item', danger ? 'act-menu__item--danger' : '',
+    reason ? 'act-menu__item--disabled act-menu__item--why' : ''].filter(Boolean).join(' ');
+  return (
+    <button type="button" className={cls}
+      aria-disabled={reason ? true : undefined}
+      aria-label={reason ? `${label}. ${reason}` : undefined}
+      onClick={reason ? undefined : () => { onDone(); onClick(); }}>
+      <span className="act-menu__ic">{icon}</span>{label}
+      {reason && <span className="act-menu__lock" aria-hidden="true">?</span>}
+      {reason && <span className="act-menu__why" role="tooltip">{reason}</span>}
+    </button>
+  );
+}
+
+function RowMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+  return (
+    <div className="export-menu" ref={ref} data-no-drag>
+      <button type="button" className="export-menu__btn" title="Ещё" aria-label="Ещё"
+        onClick={() => setOpen(!open)}>···</button>
+      {open && (
+        <div className="export-menu__dropdown">
+          {items.filter(Boolean).map((it, i) => it.sep
+            ? <div key={i} className="act-menu__sep" />
+            : <MenuItem key={i} {...it} onDone={() => setOpen(false)} />)}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function KRHealthBadge({ status }) {
@@ -607,7 +725,7 @@ function PeriodStartedTeamModal({ team, onClose }) {
 }
 
 // ── STATUS STEPPER ────────────────────────────────────────────────────────────
-function StatusStepper({ status, hasGoals, onChange, accent, statusChangedAt }) {
+function StatusStepper({ status, hasGoals, onChange, accent, statusChangedAt, editMode }) {
   const curIdx = STATUS_STEPS.findIndex(s => s.k === status);
   return (
     <div className="status-stepper">
@@ -624,11 +742,75 @@ function StatusStepper({ status, hasGoals, onChange, accent, statusChangedAt }) 
           </React.Fragment>
         );
       })}
+      <ModeBanner editMode={editMode} status={status} />
       <div className="status-stepper__meta">
         {statusChangedAt && <span className="status-stepper__changed">изменён {fmtDate(statusChangedAt)}</span>}
-        {status === 'in_progress' && <span className="status-stepper__locked status-stepper__locked--progress">🔒 Редактирование заблокировано</span>}
-        {status === 'closed' && <span className="status-stepper__locked status-stepper__locked--closed">🔒 Период закрыт</span>}
       </div>
+    </div>
+  );
+}
+
+// Фильтр доски по приоритету. Счётчик у кнопки показывает, сколько целей этого
+// приоритета есть в периоде; приоритет без целей нажать нельзя. Фильтр не сужает
+// данные — только то, что показано, поэтому сброс возвращает полный список.
+function PriorityFilter({ goals, value, onChange }) {
+  if (!goals.length) return null;
+  const any = PRI_LEVELS.some(p => value[p]);
+  return (
+    <div className="tb-pri">
+      <span className="tb-cap">Приоритет</span>
+      <div className="tb-pri__seg" role="group" aria-label="Фильтр по приоритету">
+        {PRI_LEVELS.map(p => {
+          const n = goals.filter(g => g.priority === p).length;
+          const on = !!value[p];
+          return (
+            <button key={p} type="button" aria-pressed={on} disabled={!n}
+              className={`tb-pri__btn${on ? ' tb-pri__btn--on' : ''}`}
+              style={{ '--pc': PRI_COLOR[p] }}
+              onClick={() => onChange({ ...value, [p]: !on })}>
+              {p}<span className="tb-pri__n">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+      {any && (
+        <button type="button" className="tb-pri__clear" title="Сбросить фильтр"
+          aria-label="Сбросить фильтр" onClick={() => onChange({})}>×</button>
+      )}
+    </div>
+  );
+}
+
+// ── MODE BANNER ───────────────────────────────────────────────────────────────
+// Объясняет режим редактирования целиком: какой статус, что доступно, что закрыто.
+// В полном редактировании объяснять нечего — баннер не рендерится.
+// В полном редактировании баннер подсказывает следующий шаг жизненного цикла,
+// в остальных режимах — объясняет, что заблокировано и почему.
+const STATUS_BANNER = {
+  forming: { variant: 'info', icon: '✎', status: 'Черновик',
+    text: 'заполните черновик целей. Когда будете готовы показать руководителю — переведите в статус «К валидации»',
+    full: 'Заполните черновик целей. Когда будете готовы показать руководителю — переведите в статус «К валидации».' },
+  ready: { variant: 'info', icon: '✓', status: 'К валидации',
+    text: 'получите от руководителя апрув на цели и переведите в статус «В работе»',
+    full: 'Получите от руководителя апрув на цели и переведите в статус «В работе».' },
+};
+const MODE_BANNER = {
+  progress_only: { variant: 'progress', icon: '🔒', status: 'В работе',
+    text: 'меняются только прогресс и комментарии',
+    full: 'Состав целей зафиксирован. Доступны обновление прогресса и комментарии.' },
+  comments_only: { variant: 'closed', icon: '🔒', status: 'Период закрыт',
+    text: 'доступны только комментарии', full: 'Доступны только комментарии.' },
+};
+function ModeBanner({ editMode, status }) {
+  const b = (editMode === 'full' && STATUS_BANNER[status]) || MODE_BANNER[editMode];
+  if (!b) return null;
+  return (
+    <div className={`mode-banner mode-banner--${b.variant}`} title={`${b.status}. ${b.full}`}>
+      <span className="mode-banner__icon" aria-hidden="true">{b.icon}</span>
+      <span className="mode-banner__text">
+        <span className="mode-banner__status">{b.status}</span>
+        <span className="mode-banner__rest"> — {b.text}</span>
+      </span>
     </div>
   );
 }
@@ -650,10 +832,9 @@ function useOverlayClose(onClose) {
 }
 
 // ── KR PROGRESS MODAL ─────────────────────────────────────────────────────────
-function KRProgressModal({ kr, onSave, onClose, accent }) {
+function KRProgressModal({ kr, onSave, onClose, accent, goalTitle = '' }) {
   const [form, setForm] = useState({ ...kr, stages: (kr.stages || []).map(s => ({ ...s })) });
   const [note, setNote] = useState(kr.note?.text ?? ''); const [saving, setSaving] = useState(false);
-  const [descDraft, setDescDraft] = useState(''); const [descEditing, setDescEditing] = useState(false);
   const [health, setHealth] = useState(kr.healthStatus || 'not_started');
   const [healthTouched, setHealthTouched] = useState(false);
   const pickHealth = (s) => { setHealth(s); setHealthTouched(true); };
@@ -667,7 +848,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
     if (form.krType === 'PROJECT') return (form.stages || []).some((s, i) => !!s.done !== !!((kr.stages || [])[i] || {}).done);
     return false;
   })();
-  const isDirty = dirtyProgress || healthTouched || note.trim() !== initialNote.trim() || (descEditing && descDraft.trim() !== '');
+  const isDirty = dirtyProgress || healthTouched || note.trim() !== initialNote.trim();
   // Mirror the server's 100%→done rule, which fires ONLY on a real <100→100 transition: preview
   // Done only when an unedited-health KR is being pushed from below 100 up to 100 in this modal.
   // A KR already at 100% (kr.progress === 100) keeps its stored/manual health — matching the badge
@@ -693,10 +874,6 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
       } else if (form.krType === 'PROJECT') {
         await apiPost(`/api/v1/krs/${kr.id}/progress/project`, { stages: form.stages.map(s => ({ id: s.id, done: !!s.done })), ...healthField, ...noteField });
       }
-      const trimmedDesc = descDraft.trim();
-      if (descEditing && trimmedDesc) {
-        await apiPost(`/api/v1/krs/${kr.id}/description`, { description: trimmedDesc });
-      }
       onSave();
     } catch (e) { alert('Ошибка сохранения: ' + e.message); }
     finally { setSaving(false); }
@@ -714,88 +891,55 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
       <div onClick={e => e.stopPropagation()} className="modal-box modal-box--w480">
         <div className="modal-header">
           <div>
-            <div className="modal-title">Обновить прогресс</div>
-            <div className="modal-subtitle">{kr.name}</div>
+            <div className="modal-title modal-title--lg">Обновить прогресс</div>
+            {goalTitle && (
+              <div className="modal-subtitle">
+                <span className="modal-cap">Цель</span>
+                {goalTitle}
+              </div>
+            )}
           </div>
           <button onClick={requestClose} className="modal-close">×</button>
         </div>
-        {kr.desc ? (
-          <div className="kr-progress-desc">
-            <div className="kr-progress-desc__label">Описание</div>
-            <Markdown text={kr.desc} className="kr-progress-desc__text" />
-          </div>
-        ) : descEditing ? (
-          <div className="kr-progress-desc">
-            <div className="kr-progress-desc__label">Описание</div>
-            <textarea value={descDraft} onChange={e => setDescDraft(e.target.value)} rows={3} autoFocus
-              placeholder="Добавьте описание для контекста…"
-              className="form-textarea form-textarea--sm" style={{ resize: 'vertical' }} />
-          </div>
-        ) : (
-          <div className="kr-progress-desc">
-            <button type="button" onClick={() => setDescEditing(true)} className="kr-zeroing-btn">
-              <span className="kr-zeroing-btn__icon">＋</span> Добавить описание
-            </button>
-          </div>
-        )}
         <div className="modal-body">
+          <span className="modal-cap">Ключевой результат</span>
+          <div className="field-label">{kr.name}</div>
+          {kr.desc && <Markdown text={kr.desc} className="kr-modal-desc md-content" />}
           {form.krType === 'NUMERICAL' && (
-            <div className="kr-progress-field">
-              <div className="kr-progress-field__label">Текущее значение <span className="kr-progress-field__hint">({fmtVal(form.start, form.unit)} → {fmtVal(form.target, form.unit)})</span></div>
-              <NumInput value={form.current} onChange={v => set('current', v)} className="form-input" />
-              {(() => {
-                const guide = numericalGuide(form);
-                if (!guide) return null;
-                return (
-                  <div className="kr-guide">
-                    <div className="kr-guide__title">Ориентир по шагам</div>
-                    <div className="kr-guide__steps">
-                      {guide.steps.map((s, i) => (
-                        <div key={i} className={`kr-guide__step${s.reached ? ' kr-guide__step--reached' : ''}`}>
-                          <span className="kr-guide__step-val">{fmtVal(s.value, form.unit)}</span>
-                          <span className="kr-guide__step-pct">{s.pct}%</span>
-                        </div>
-                      ))}
-                    </div>
-                    {guide.next && (
-                      <div className="kr-guide__hint">
-                        {guide.next.isTarget
-                          ? `До цели ${fmtVal(guide.next.value, form.unit)}: ${fmtVal(guide.next.remaining, form.unit)}`
-                          : `До следующего шага ${fmtVal(guide.next.value, form.unit)} (${guide.next.pct}%): ${fmtVal(guide.next.remaining, form.unit)}`}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-              {zeroingNote}
-              <div style={{ marginTop: 10 }}>
-                <div className="kr-progress-row">
-                  <span className="kr-progress-row__label">Прогресс</span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: accent }}>{progress}%</span>
-                </div>
-                <ProgressBar value={progress} h={6} color={accent} />
+            <div className="kr-num-section kr-num-section--compact">
+              <div className="kr-num-line">
+                <span className="kr-num-line__lbl">Текущее значение</span>
+                <label className="kr-num-input-suffix kr-num-input-suffix--compact">
+                  <NumInput value={form.current} onChange={v => set('current', v)} className="form-input form-input--sm" />
+                  {form.unit && <span className="kr-num-input-suffix__unit">{form.unit}</span>}
+                </label>
+                <span className="kr-num-line__range">из {fmtVal(form.target, form.unit)} · старт {fmtVal(form.start, form.unit)}</span>
+                <span className="kr-pct kr-num-line__pct" style={{ color: accent }}>{progress}%</span>
               </div>
+              <KRScale start={form.start} target={form.target} current={form.current}
+                unit={form.unit} checkpoints={kr.checkpoints} color={accent} />
+              {zeroingNote}
             </div>
           )}
           {form.krType === 'BOOLEAN' && (
             <>
               <label className="kr-boolean-label">
                 <input type="checkbox" checked={!!form.done} onChange={e => set('done', e.target.checked)} style={{ width: 18, height: 18, accentColor: accent }} />
-                <span className="kr-boolean-text">Выполнено</span>
+                <span className="kr-boolean-text">Результат достигнут</span>
                 <span className="kr-boolean-pct" style={{ color: form.done ? '#16a34a' : '#9ca3af' }}>{form.done ? '100%' : '0%'}</span>
               </label>
               {zeroingNote}
             </>
           )}
           {form.krType === 'PROJECT' && (
-            <div className="kr-progress-field">
-              <div className="kr-progress-field__label">Шаги</div>
+            <div className="kr-num-section">
+              <div className="kr-num-section__title">Этапы</div>
               {form.stages.map((s, i) => (
                 <label key={s.id || i} className="kr-stage-label"
                   style={{ background: s.done ? `${accent}08` : '#f9fafb', border: `1px solid ${s.done ? `${accent}30` : '#f0f1f3'}` }}>
                   <input type="checkbox" checked={!!s.done} onChange={e => setStage(i, 'done', e.target.checked)} style={{ width: 16, height: 16, accentColor: accent }} />
                   <span className="kr-stage-name" style={{ fontWeight: s.done ? 600 : 400 }}>{s.name}</span>
-                  <span className="kr-stage-weight">вес {s.weight}</span>
+                  <span className="kr-stage-weight">{s.weight}%</span>
                 </label>
               ))}
               {zeroingNote}
@@ -809,7 +953,7 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
             </div>
           )}
           <div className="kr-health-section">
-            <div className="kr-health-section__label">Health статус</div>
+            <div className="kr-health-section__label">Статус результата</div>
             <div className="kr-health-cards">
               {KR_HEALTH_OPTIONS.map(s => (
                 <button key={s} type="button" onClick={() => pickHealth(s)}
@@ -823,8 +967,8 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
               ))}
             </div>
           </div>
-          <div>
-            <div className="kr-note-label">Заметка <span className="kr-note-optional">(опционально)</span></div>
+          <div className="kr-progress-field" style={{ marginTop: 14 }}>
+            <div className="kr-progress-field__label">Комментарий <span className="kr-progress-field__hint">необязательно</span></div>
             <MarkdownEditor value={note} onChange={setNote} rows={3} placeholder="Контекст, блокеры…"
               textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ resize: 'vertical' }} />
             {kr.note && (
@@ -848,6 +992,47 @@ function KRProgressModal({ kr, onSave, onClose, accent }) {
   );
 }
 
+// Шкала текущего значения с промежуточными отметками. Положение отметки — доля
+// пути от старта к цели, а её подпись говорит, какой процент прогресса она даёт:
+// из-за промежуточных значений шкала нелинейная, и это видно глазом.
+function KRScale({ start, target, current, unit, checkpoints, color }) {
+  const s0 = Number(start) || 0;
+  const t0 = Number(target ?? 100);
+  const cur = Number(current) || 0;
+  const posOf = v => t0 === s0 ? 0 : Math.max(0, Math.min(100, (v - s0) / (t0 - s0) * 100));
+  const cps = (checkpoints || [])
+    .filter(c => c.value !== '' && c.value !== null && c.value !== undefined)
+    .map(c => ({ v: Number(c.value), pct: Number(c.progress_percent) }));
+  const up = t0 >= s0;
+  return (
+    <>
+      <div className="kr-scale">
+        <div className="kr-scale__track">
+          <div className="kr-scale__fill" style={{ width: `${posOf(cur)}%`, background: color }} />
+        </div>
+        {cps.map((c, i) => (
+          <span key={i} className={`kr-scale__cp${(cur >= c.v) === up ? ' kr-scale__cp--hit' : ''}`}
+            style={{ left: `${posOf(c.v)}%` }}
+            title={`Промежуточное значение: ${fmtVal(c.v, unit)} → ${c.pct}% прогресса`} />
+        ))}
+        <span className="kr-scale__cur" style={{ left: `${posOf(cur)}%`, borderColor: color }} />
+      </div>
+      <div className="kr-scale__labels">
+        <span className="kr-scale__lbl" style={{ left: 0 }}>{fmtNum(s0)}</span>
+        {cps.map((c, i) => (
+          <span key={i} className="kr-scale__lbl kr-scale__lbl--cp" style={{ left: `${posOf(c.v)}%` }}>
+            {fmtNum(c.v)}<b>{c.pct}%</b>
+          </span>
+        ))}
+        <span className="kr-scale__lbl" style={{ left: '100%' }}>{fmtNum(t0)}</span>
+      </div>
+      {cps.length > 0 && (
+        <div className="kr-scale__note">Промежуточные значения задают, какой прогресс даёт значение метрики — шкала нелинейная.</div>
+      )}
+    </>
+  );
+}
+
 // ── KR EDIT MODAL ─────────────────────────────────────────────────────────────
 function KREditModal({ kr, goalId, onSave, onClose, accent }) {
   const isNew = !kr;
@@ -864,7 +1049,6 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
   const addCp = () => setForm(f => ({ ...f, checkpoints: [...(f.checkpoints || []), { value: '', progress_percent: '' }] }));
   const remCp = i => setForm(f => ({ ...f, checkpoints: (f.checkpoints || []).filter((_, j) => j !== i) }));
   const sw = form.stages.reduce((s, st) => s + Number(st.weight || 0), 0);
-  const prev = calcKRProgress(form);
   const save = async () => {
     if (!form.name.trim()) return;
     setSaving(true);
@@ -879,7 +1063,9 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
         fd.append('numerical_unit', form.unit || '%');
         fd.append('numerical_start', String(Number(form.start) || 0));
         fd.append('numerical_target', String(Number(form.target) || 0));
-        fd.append('numerical_current', String(Number(form.current) || 0));
+        // Редактор не трогает прогресс: у нового KR текущее значение равно стартовому,
+        // дальше оно меняется только через окно обновления прогресса.
+        fd.append('numerical_current', String(Number(isNew ? form.start : form.current) || 0));
         (form.checkpoints || []).forEach(c => {
           if (c.value === '' || c.value === null || c.value === undefined) return;
           fd.append('checkpoint_value[]', String(Number(c.value) || 0));
@@ -910,61 +1096,73 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
           <button onClick={requestClose} className="modal-close">×</button>
         </div>
         <div className="modal-body">
-          <div className="form-group--sm">
-            <div className="kr-num-field__label">Название</div>
-            <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Что измеряет этот KR?" className="form-input" />
+          <div className="kre-name-row">
+            <div className="kre-name-row__name">
+              <div className="kr-num-field__label">Название</div>
+              <input value={form.name} onChange={e => set('name', e.target.value)} placeholder="Что измеряет этот KR?" className="form-input" />
+            </div>
+            <div className="kre-name-row__weight">
+              <div className="kr-num-field__label">Вес<span className="has-tip kre-tip" tabIndex={0}
+                data-tip-title="Вес KR"
+                data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели должна быть 100%. Больше вес — сильнее KR влияет на итог цели.">?</span></div>
+              <label className="kr-num-input-suffix">
+                <input type="number" min={0} max={100} value={form.weight} onChange={e => set('weight', e.target.value)} className="form-input form-input--center" />
+                <span className="kr-num-input-suffix__unit">%</span>
+              </label>
+            </div>
           </div>
           <div className="form-group--sm">
             <div className="kr-num-field__label">Описание</div>
             <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={2}
               textareaClassName="form-textarea form-textarea--sm" textareaStyle={{ resize: 'vertical' }} />
           </div>
-          <div className="form-row" style={{ marginBottom: 14 }}>
-            <div className="form-col">
-              <div className="kr-num-field__label">Вес</div>
-              <input type="number" min={0} max={100} value={form.weight} onChange={e => set('weight', e.target.value)} className="form-input" />
-            </div>
-            <div className="form-col">
-              <div className="kr-num-field__label">Тип Key Result<InfoHint>{KR_TYPE_HINT}</InfoHint></div>
-              <select value={form.krType} onChange={e => set('krType', e.target.value)} className="form-select">
-                {KR_TYPE_OPTIONS.map(t => <option key={t} value={t}>{KR_TYPE_LABEL[t]}</option>)}
-              </select>
+          {/* Способ измерения — карточками: по списку было не видно, чем типы отличаются. */}
+          <div className="kr-measure-pick">
+            <div className="kr-num-field__label">Как измеряем прогресс</div>
+            <div className="kr-measure-pick__hint">Определяет, как считается процент выполнения KR</div>
+            <div className="kr-measure-pick__opts" role="radiogroup">
+              {KR_TYPE_OPTIONS.map(t => (
+                <button key={t} type="button" role="radio" aria-checked={form.krType === t}
+                  className={`kr-measure-opt${form.krType === t ? ' kr-measure-opt--on' : ''}`}
+                  onClick={() => set('krType', t)}>
+                  <span className="kr-measure-opt__head">
+                    <span className="kr-measure-opt__ic">{KR_MEASURE_INFO[t].icon}</span>{KR_MEASURE_INFO[t].title}
+                  </span>
+                  <span className="kr-measure-opt__desc">{KR_MEASURE_INFO[t].desc}</span>
+                  <span className="kr-measure-opt__ex">{KR_MEASURE_INFO[t].ex}</span>
+                </button>
+              ))}
             </div>
           </div>
           {form.krType === 'NUMERICAL' && (
             <div className="kr-num-section">
-              <div className="kr-num-section__title">Числовой прогресс</div>
-              <div className="form-row" style={{ marginBottom: 10 }}>
-                <div className="form-col">
-                  <div className="kr-num-field__label">Стартовое значение</div>
+              <div className="kr-num-section__title">Метрика</div>
+              {/* Единица, старт и цель — одной строкой. Текущее значение редактор не
+                  показывает: им распоряжается окно обновления прогресса. */}
+              <div className="kre-metric-row">
+                <div className="kre-metric-row__unit">
+                  <div className="kr-num-field__label">Единица</div>
+                  <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select form-select--sm">
+                    {KR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div className="kre-metric-row__val">
+                  <div className="kr-num-field__label">Старт (было)</div>
                   <div className="kr-num-input-suffix">
                     <NumInput value={form.start} onChange={v => set('start', v)} className="form-input form-input--sm" />
                     <span className="kr-num-input-suffix__unit">{form.unit}</span>
                   </div>
                 </div>
-                <div className="form-col">
-                  <div className="kr-num-field__label">Единица измерения</div>
-                  <select value={form.unit || '%'} onChange={e => set('unit', e.target.value)} className="form-select form-select--sm">
-                    {KR_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="form-row" style={{ marginBottom: 10 }}>
-                <div className="form-col">
-                  <div className="kr-num-field__label">Цель</div>
+                <span className="kre-metric-row__arrow" aria-hidden="true">→</span>
+                <div className="kre-metric-row__val">
+                  <div className="kr-num-field__label">Цель (станет)</div>
                   <div className="kr-num-input-suffix">
                     <NumInput value={form.target} onChange={v => set('target', v)} className="form-input form-input--sm" />
                     <span className="kr-num-input-suffix__unit">{form.unit}</span>
                   </div>
                 </div>
-                <div className="form-col">
-                  <div className="kr-num-field__label">Текущее значение</div>
-                  <div className="kr-num-input-suffix">
-                    <NumInput value={form.current} onChange={v => set('current', v)} className="form-input form-input--sm" />
-                    <span className="kr-num-input-suffix__unit">{form.unit}</span>
-                  </div>
-                </div>
               </div>
+              {isNew && <div className="kre-metric-note">Текущее значение на старте равно стартовому — дальше меняется при обновлении прогресса.</div>}
               <div className="kr-checkpoints" style={{ marginTop: 12 }}>
                 <div className="kr-section-head">
                   <span className="kr-section-head__title">Промежуточные значения</span>
@@ -987,20 +1185,12 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
                 ))}
                 <button type="button" onClick={addCp} className="kr-dashed-btn">+ Добавить промежуточное значение</button>
               </div>
-              <div className="kr-progress-row" style={{ marginTop: 10 }}>
-                <span className="kr-progress-row__label">Прогресс</span>
-                <span style={{ fontSize: 12, fontWeight: 700, color: accent }}>{prev}%</span>
-              </div>
-              <ProgressBar value={prev} h={5} color={accent} />
             </div>
           )}
           {form.krType === 'BOOLEAN' && (
             <div className="kr-num-section">
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                <input type="checkbox" checked={!!form.done} onChange={e => set('done', e.target.checked)} style={{ width: 18, height: 18, accentColor: accent }} />
-                <span className="kr-boolean-text">Выполнено</span>
-                <span style={{ marginLeft: 'auto', fontWeight: 700, color: form.done ? '#16a34a' : '#9ca3af' }}>{form.done ? '100%' : '0%'}</span>
-              </label>
+              <div className="kr-num-section__title">True / False</div>
+              <div className="kre-metric-note" style={{ marginTop: 0 }}>Прогресс 0% до достижения результата, 100% — после. Отмечается при обновлении прогресса.</div>
             </div>
           )}
           {form.krType === 'PROJECT' && (
@@ -1011,7 +1201,6 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
               </div>
               {form.stages.length > 0 && (
                 <div className="kr-steps-cols">
-                  <span className="kr-steps-cols__check">✓</span>
                   <span className="kr-steps-cols__name">Название шага</span>
                   <span className="kr-steps-cols__weight">Вес, %</span>
                   <span className="kr-steps-cols__del" />
@@ -1019,7 +1208,6 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
               )}
               {form.stages.map((st, i) => (
                 <div key={st.id || i} className="kr-step-row">
-                  <input type="checkbox" checked={!!st.done} onChange={e => setSt(i, 'done', e.target.checked)} style={{ width: 16, height: 16, accentColor: accent, flexShrink: 0 }} />
                   <input value={st.name} onChange={e => setSt(i, 'name', e.target.value)} placeholder="Название шага" className="form-input form-input--sm" style={{ flex: 1 }} />
                   <input type="number" min={0} value={st.weight} onChange={e => setSt(i, 'weight', Number(e.target.value))} className="form-input form-input--sm form-input--center" style={{ width: 60 }} />
                   <button onClick={() => remSt(i)} className="kr-step-delete">×</button>
@@ -1078,7 +1266,47 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
 }
 
 // ── KR ROW ────────────────────────────────────────────────────────────────────
-function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7, periodStatus }) {
+// Целевое значение KR: направление ↑/↓ выводится из того, растёт метрика или падает.
+function KRTarget({ kr }) {
+  if (kr.krType === 'BOOLEAN') return <span className="kr-target__val">false → true</span>;
+  if (kr.krType === 'PROJECT') {
+    const st = kr.stages || [];
+    return <span className="kr-target__val">{st.filter(s => s.done).length} → {st.length} шагов</span>;
+  }
+  const start = Number(kr.start) || 0;
+  const target = Number(kr.target) || 0;
+  const cur = Number(kr.current) || 0;
+  const up = target >= start;
+  return (
+    <span className="kr-target__val">
+      <span className={`kr-target__dir kr-target__dir--${up ? 'up' : 'down'}`}>{up ? '↑' : '↓'}</span>
+      {fmtNum(cur)} → {fmtNum(target)}{kr.unit ? ` ${kr.unit}` : ''}
+    </span>
+  );
+}
+
+// Заметка к прогрессу — однострочная под строкой KR, длинная разворачивается по клику.
+function KRNote({ note, updatedDaysAgo, open, onToggle }) {
+  const text = (note && note.text) || '';
+  if (!text) return null;
+  const long = text.length > 90 || text.includes('\n');
+  const ago = updatedDaysAgo === 0 ? 'сегодня' : `${updatedDaysAgo}д назад`;
+  const cls = ['kr-note', open ? 'kr-note--open' : '', long ? 'kr-note--long' : ''].filter(Boolean).join(' ');
+  const press = long ? { role: 'button', tabIndex: 0, 'aria-expanded': open, onClick: onToggle,
+    onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } } : {};
+  return (
+    <div className={cls} data-no-drag {...press}>
+      <span className="kr-note__label">Заметка</span>
+      <span className="kr-note__text">{text}</span>
+      {long && <span className="kr-note__toggle">{open ? 'Свернуть' : 'Ещё'}</span>}
+      {open && <span className="kr-note__meta">
+        Обновлена вместе с прогрессом{note.author ? ` · ${note.author}` : ''} · {ago}
+      </span>}
+    </div>
+  );
+}
+
+function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null }) {
   // Closed period is shown as fully done — purely visual (stored health_status is untouched),
   // so reopening the period restores each KR's original status.
   const displayHealth = periodStatus === 'closed' ? 'done' : kr.healthStatus;
@@ -1086,63 +1314,83 @@ function KRRow({ kr, goalId, editMode, onReload, accent, staleDays = 7, periodSt
   const [showNote, setShowNote] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const progress = kr.progress;
-  const staleC = kr.updatedDaysAgo > staleDays ? '#dc2626' : kr.updatedDaysAgo > staleDays * 0.6 ? '#d97706' : '#10b981';
-  let detail = null;
-  if (kr.krType === 'BOOLEAN') detail = <span className="kr-detail" style={{ color: kr.done ? '#16a34a' : '#9ca3af', fontWeight: 600 }}>{kr.done ? '✓ Выполнено' : '○ Не выполнено'}</span>;
-  else if (kr.krType === 'PROJECT') detail = <span className="kr-detail">{(kr.stages || []).filter(s => s.done).length}/{(kr.stages || []).length} шагов</span>;
-  else detail = <span className="kr-detail">{fmtVal(kr.current, kr.unit)} / {fmtVal(kr.target, kr.unit)}</span>;
+  // Цвет давности задаётся классом: fresh → warn → stale по тому же порогу.
+  const staleLevel = kr.updatedDaysAgo > staleDays ? 'stale' : kr.updatedDaysAgo > staleDays * 0.6 ? 'warn' : 'fresh';
+  // Правка текстовых полей открыта только в «черновике» и «к валидации»; в «в работе»
+  // строка предлагает обновление прогресса, в закрытом периоде — ничего.
+  const canEditText = editMode === 'full';
+  // Полоса KR краснеет, когда отставание от ожидаемого темпа больше порога.
+  const krBehind = periodStatus !== 'closed' && forecast != null && forecast - progress > KR_BEHIND_PP;
+  const krBarC = krBehind ? '#dc2626' : 'var(--accent)';
+  const openEdit = () => setModal('edit');
   const onSaved = () => { setModal(null); onReload(); };
+  const progressTitle = `Прогресс ${progress}%`
+    + (forecast != null ? ` · ожидаемо к сегодня ${forecast}%` : '')
+    + (krBehind ? ` · отставание больше ${KR_BEHIND_PP} п.п.` : '');
   return (
     <>
       <div className="kr-row">
         <div className="kr-row__main">
-          <div className="kr-weight-chip">{kr.weight}</div>
+          <KRHealthDot status={displayHealth} />
+          <div className="kr-weight-chip has-tip" tabIndex={0}
+            data-tip-title={`Вес KR · ${kr.weight}%`}
+            data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели — 100%.">{kr.weight}%</div>
           <div className="kr-info">
-            <div className="kr-health-badge-row"><KRHealthBadge status={displayHealth} /></div>
-            <div className="kr-name">{kr.name}</div>
-            {kr.desc && <CollapsibleMarkdown text={kr.desc} className="kr-desc" />}
-            <div className="kr-detail-row">
-              <div className="kr-bar-wrap"><ProgressBar value={progress} h={4} color={accent} /></div>
-              <span className="kr-pct" style={{ color: accent }}>{progress}%</span>
-              {detail}
+            <div className={`kr-name-row${canEditText ? ' title-editable' : ''}`}
+              {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать KR', onClick: openEdit,
+                onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); } } } : {})}>
+              <div className="kr-name">{kr.name}</div>
+              {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
             </div>
+            {kr.desc && <CollapsibleMarkdown text={kr.desc} className="kr-desc" />}
             {kr.zeroing && (
               <div className="kr-zeroing-note kr-zeroing-note--clamp" title={kr.zeroing}>
                 <span className="kr-zeroing-note__icon">⊘</span>Критерий обнуления: {kr.zeroing}
               </div>
             )}
           </div>
-          <Badge label={KR_TYPE_LABEL[kr.krType] || kr.krType} color={KR_TYPE_C[kr.krType]} />
-          <span className="kr-updated" style={{ color: staleC }}>{kr.updatedDaysAgo === 0 ? 'сегодня' : `${kr.updatedDaysAgo}д назад`}</span>
-          <span className="kr-notes-slot">
-            {kr.note && <button onClick={() => setShowNote(!showNote)} className="kr-notes-btn">📝</button>}
-          </span>
-          {editMode === 'full' && <>
-            <button onClick={() => setModal('edit')} className="kr-edit-btn">Редактировать</button>
-            <button onClick={() => setConfirmDelete(true)} title="Удалить KR" className="kr-delete-btn">×</button>
-          </>}
-          {editMode === 'progress_only' && (
-            <button onClick={() => setModal('progress')}
-              style={{ padding: '5px 10px', border: `1px solid ${accent}`, borderRadius: 6, background: `${accent}10`, color: accent, fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
-              Обновить прогресс
-            </button>
-          )}
-        </div>
-        {showNote && kr.note && (
-          <div className="kr-notes">
-            <div className="kr-note">
-              <div className="kr-note__content">
-                <div className="kr-note__header">
-                  <UserInfo name={kr.note.author} udid={kr.note.authorUdid} size={22} />
-                  <span className="kr-note__date">{kr.note.date}</span>
+          <div className="kr-measure">
+            <div className="kr-target-col"><KRTarget kr={kr} /></div>
+            <div className="kr-progress-col">
+              <div className="kr-progress-col__body kr-progress-col__body--row" title={progressTitle}>
+                <div className="kr-progress-col__bar">
+                  <ProgressBar value={progress} forecast={forecast} h={5} color={krBarC} />
                 </div>
-                <Markdown text={kr.note.text} className="kr-note__text" />
+                <span className="kr-pct" style={{ color: krBarC }}>{progress}%</span>
               </div>
             </div>
           </div>
-        )}
+          <div className="kr-row__actions" data-no-drag>
+            <span className="icon-btn-slot" />
+            <div className="kr-update-stack">
+              {editMode === 'progress_only' && (
+                <button type="button" className="kr-row-btn kr-row-btn--accent" onClick={() => setModal('progress')}>
+                  <span>↻</span>Обновить
+                </button>
+              )}
+              {canEditText && (
+                <button type="button" className="kr-row-btn" onClick={openEdit}>
+                  <span>✎</span>Редактировать
+                </button>
+              )}
+              {!canEditText && (
+                <span className={`kr-updated kr-updated--${staleLevel}`} title="Последнее обновление прогресса">
+                  {kr.updatedDaysAgo === 0 ? 'обн. сегодня' : `обн. ${kr.updatedDaysAgo}д назад`}
+                </span>
+              )}
+            </div>
+            <RowMenu items={[
+              { icon: '✎', label: 'Редактировать', onClick: openEdit, reason: editLockReason(editMode, 'KR') },
+              kr.note && { icon: '📝', label: showNote ? 'Скрыть заметку' : 'Показать заметку', onClick: () => setShowNote(!showNote) },
+              { sep: true },
+              { icon: '×', label: 'Удалить', danger: true, onClick: () => setConfirmDelete(true),
+                reason: deleteLockReason(editMode, 'KR') },
+            ]} />
+          </div>
+        </div>
+        {showNote && <KRNote note={kr.note} updatedDaysAgo={kr.updatedDaysAgo} open onToggle={() => setShowNote(false)} />}
       </div>
-      {modal === 'progress' && <KRProgressModal kr={kr} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
+      {modal === 'progress' && <KRProgressModal kr={kr} goalTitle={goalTitle} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
       {modal === 'edit' && <KREditModal kr={kr} goalId={goalId} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
       {confirmDelete && <ConfirmModal title="Удалить Key Result?" message={`«${kr.name}» будет удалён без возможности восстановления.`}
         onConfirm={async () => { await apiDelete(`/api/v1/krs/${kr.id}`); setConfirmDelete(false); onReload(); }}
@@ -1318,6 +1566,24 @@ function CommentsPanel({ comments, onAdd, onResolve, onUnresolve, onReply, onDel
 // Copy a shareable deep-link to this goal. URL shape and open behavior match the
 // activity-log "↗ к цели" link (shared buildTargetURL from ui.js). For a shared goal
 // the link points at the currently-open team, so it resolves back to the same board.
+// Копирование ссылки на цель: используется и кнопкой, и пунктом меню строки.
+async function copyGoalURL(teamId, periodId, goalId) {
+  const path = buildTargetURL({ team_id: teamId, period_id: periodId, goal_id: goalId });
+  if (!path) return false;
+  const url = location.origin + path;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = url; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    return true;
+  } catch { return false; }
+}
+
 function CopyLinkButton({ teamId, periodId, goalId }) {
   const [copied, setCopied] = useState(false);
   const copy = async e => {
@@ -1584,47 +1850,11 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone }
   );
 }
 
-// ExportMenu is the "···" affordance on a goal card that opens the export modal.
-function ExportMenu({ goal, teamId, periodId, info, allTeams, onReloadBoard }) {
-  const [open, setOpen] = useState(false);
-  const [modal, setModal] = useState(false);
-  const [transfer, setTransfer] = useState(false);
-  const wrapRef = useRef();
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = e => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-  return (
-    <div className="export-menu" ref={wrapRef}>
-      <button type="button" className="export-menu__btn" title="Ещё" aria-label="Ещё" onClick={() => setOpen(o => !o)}>···</button>
-      {open && (
-        <div className="export-menu__dropdown">
-          <button type="button" className="export-menu__item" onClick={() => { setOpen(false); setModal(true); }}>
-            <span className="export-menu__item-title">↓ Экспорт в Markdown</span>
-            <span className="export-menu__item-sub">только эта цель — или шире</span>
-          </button>
-          <button type="button" className="export-menu__item" onClick={() => { setOpen(false); setTransfer(true); }}>
-            <span className="export-menu__item-title">➡ Перенести или скопировать</span>
-            <span className="export-menu__item-sub">в другую команду или период</span>
-          </button>
-        </div>
-      )}
-      {modal && <ExportModal goal={goal} teamId={teamId} periodId={periodId} info={info} onClose={() => setModal(false)} />}
-      {transfer && <TransferGoalModal goal={goal} teamId={teamId} periodId={periodId} allTeams={allTeams}
-        onClose={() => setTransfer(false)} onDone={onReloadBoard} />}
-    </div>
-  );
-}
-
-// ── GOAL CARD ─────────────────────────────────────────────────────────────────
-function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null, exportInfo = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
-  // Goals without key results start expanded so the author's attention is drawn
-  // to filling them in; goals that already have KRs start collapsed.
-  const [showKR, setShowKR] = useState((goal.krs || []).length === 0 || !!(isDeepTarget && deepLink.kr));
+  // Ключевые результаты видны всегда, поэтому раскрывать по глубокой ссылке нечего:
+  // остаётся только автораскрытие обсуждения по ссылке на комментарий.
   const [showCom, setShowCom] = useState(!!(isDeepTarget && deepLink.comment));
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
@@ -1634,6 +1864,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   const krPressNoDrag = React.useRef(false);
   const [goalDraggable, setGoalDraggable] = useState(false);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
+  const [transfer, setTransfer] = useState(false);
   const prog = goal.progress || 0;
   // "N дней без обновления" is an execution-phase signal: it applies only while
   // the team is in_progress ("в работе"). Drafts, goals awaiting validation and
@@ -1645,6 +1876,13 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   const hC = HEALTH_COLOR[healthOf(prog, isStale, forecast, greenThreshold)];
   const health = healthOf(prog, isStale, forecast, greenThreshold);
   const canEdit = editMode === 'full';
+  // Правка текстовых полей цели открыта только там же, где полное редактирование:
+  // в «в работе» и «закрыт» заголовок перестаёт быть элементом управления.
+  const canEditText = canEdit;
+  // Недоступное по статусу действие не исчезает: остаётся на месте и называет причину.
+  const goalEditLock = lockReason(editMode, 'goal_edit');
+  const goalDeleteLock = lockReason(editMode, 'goal_delete');
+  const krCreateLock = lockReason(editMode, 'kr_create');
   const canReorderGoal = canEdit && !!dragProps;
   const { isDragging, ...rootDrag } = dragProps || {};
   const otherTeams = (goal.shareTeams || []).filter(t => t.id !== currentTeamId);
@@ -1676,125 +1914,119 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, me, isAdmin = false, a
   return (
     <div {...rootDrag} id={`goal-${goal.id}`} draggable={!!(canReorderGoal && goalDraggable)}
       onDragEnd={e => { setGoalDraggable(false); rootDrag.onDragEnd && rootDrag.onDragEnd(e); }}
+      style={{ '--health': hC, '--health-soft': `${hC}18` }}
       className={cardClass}>
       {canReorderGoal && (
         <div className="drag-handle" title="Перетащите для изменения порядка"
           onMouseDown={() => setGoalDraggable(true)} onMouseUp={() => setGoalDraggable(false)} onMouseLeave={() => setGoalDraggable(false)}>⋮⋮</div>
       )}
-      <div className="goal-card__body">
-        <div className="goal-card__meta">
-          <PriBadge p={goal.priority} />
-          <span className="goal-card__weight">вес {goal.weight}%</span>
-          {otherTeams.length > 0 && <Badge label={`⇄ Общая · ${otherTeams.length + 1} команд`} color="#0891b2" />}
-          <GoalLinksPopover dir="up" items={goal.parents} />
-          <GoalLinksPopover dir="down" items={goal.children} />
-          <div className="goal-card__spacer" />
-          {isStale && <Badge label={`⚠ ${goal.updatedDaysAgo}д без обновлений`} color="#d97706" bg="#fffbeb" />}
+      {/* Шапка цели — одна строка: вес · приоритет · заголовок со связями · лейблы ·
+          драйвер · полоса прогресса · процент · меню. Заголовок и есть элемент
+          редактирования, ✎ рядом — только признак того, что по нему можно нажать. */}
+      <div className="goal-card__body gc2">
+        <div className="gc2__head">
+          <span className="gc2__weight has-tip" tabIndex={0}
+            data-tip-title={`Вес цели · ${goal.weight}%`}
+            data-tip="Доля цели в общем прогрессе команды за период. Сумма весов всех целей — 100%.">{goal.weight}%</span>
+          <span className="has-tip" tabIndex={0}
+            data-tip-title={`Приоритет · ${goal.priority}`}
+            data-tip={PRI_HINT[goal.priority] || ''}><PriBadge p={goal.priority} /></span>
+          <div className="gc2__title-wrap">
+            <div className={`goal-card__title-row${canEditText ? ' title-editable' : ''}`}
+              {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать цель',
+                onClick: () => onEditGoal(goal),
+                onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditGoal(goal); } } } : {})}>
+              <div className="goal-card__title goal-card__title--readonly">{goal.title}</div>
+              {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
+            </div>
+            <GoalLinksPopover dir="up" items={goal.parents} />
+            <GoalLinksPopover dir="down" items={goal.children} />
+          </div>
+          <div className="gc2__labels">
+            <Badge label={goal.type === 'delivery' ? 'Delivery' : 'Discovery'} color={goal.type === 'delivery' ? '#374151' : '#7c3aed'} />
+            {goal.focus && <Badge label={focusLabel(goal.focus)} color={FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT} />}
+          </div>
           {goal.owners.length > 0 && (
-            <div className="goal-card__owner">
-              <span className="goal-card__owner-label">Драйвер цели</span>
-              {goal.owners.map(u => (
-                <UserInfo key={u.udid || u.display_name} userRef={u} size={18} />
-              ))}
+            <div className="goal-card__owner gc2__owner" title="Драйвер цели">
+              {goal.owners.map(u => <UserInfo key={u.udid || u.display_name} userRef={u} size={18} />)}
             </div>
           )}
-          <CopyLinkButton teamId={currentTeamId} periodId={periodId} goalId={goal.id} />
-          {exportInfo && <ExportMenu goal={goal} teamId={currentTeamId} periodId={periodId} info={exportInfo}
-            allTeams={allTeams} onReloadBoard={onReload} />}
-        </div>
-        <div className="goal-card__title-row">
-          <div onClick={canEdit ? () => onEditGoal(goal) : undefined}
-            className={`goal-card__title${canEdit ? '' : ' goal-card__title--readonly'}`}>
-            {goal.title}
-            {canEdit && <span className="goal-card__edit-hint">✎</span>}
+          <div className="gc2__bar" title={`Прогресс ${prog}%${forecast != null ? ` · прогноз ${forecast}%` : ''}`}>
+            <ProgressBar value={prog} forecast={forecast} h={5} color="var(--health)" />
           </div>
-          {canEdit && <button onClick={() => setConfirmDeleteGoal(true)} title="Удалить цель" className="goal-card__delete-btn">×</button>}
+          <span className="goal-card__progress-pct">{prog}%</span>
+          <RowMenu items={[
+            { icon: '✎', label: 'Редактировать', onClick: () => onEditGoal(goal), reason: editLockReason(editMode, 'цель') },
+            { icon: '🔗', label: 'Копировать ссылку', onClick: () => copyGoalURL(currentTeamId, periodId, goal.id) },
+            { icon: '➡', label: 'Перенести или скопировать', onClick: () => setTransfer(true) },
+            { sep: true },
+            { icon: '×', label: isShared ? 'Открепить от команды' : 'Удалить', danger: true,
+              onClick: () => setConfirmDeleteGoal(true), reason: deleteLockReason(editMode, 'цель') },
+          ]} />
         </div>
         {goal.desc && <CollapsibleMarkdown text={goal.desc} className="goal-card__desc" />}
-        {otherTeams.length > 0 && (
-          <div className="shared-banner">
-            <span className="shared-banner__label">⇄ Общая с:</span>
-            {[...(goal.shareTeams || []).filter(t => t.id === currentTeamId).map(t => ({ ...t, isSelf: true })), ...otherTeams].map(t => {
-              const isOwner = t.id === goal.teamId;
-              return (
-                <span key={t.id} className={`shared-pill${t.isSelf ? ' shared-pill--self' : ''}${isOwner ? ' shared-pill--owner' : ''}`}
-                  title={isOwner ? 'Владелец цели' : undefined}>
-                  {isOwner && <span className="shared-pill__owner-star" aria-label="Владелец цели">★</span>}
-                  {t.name}
-                </span>
-              );
-            })}
-          </div>
-        )}
-        <div className="goal-card__progress">
-          <div className="goal-card__progress-header">
-            <div className="goal-card__progress-left">
-              <span className="goal-card__progress-pct" style={{ color: hC }}>{prog}%</span>
-              <span className="goal-card__health-badge" style={{ color: hC, background: `${hC}15` }}>
-                {health === 'ahead' ? '▲ опережает' : health === 'on_track' ? '✓ в плане' : health === 'stale' ? '⚠ нет обновлений' : '▼ отстаёт'}
-              </span>
-            </div>
-            <span className="goal-card__updated" style={{ color: isStale ? '#dc2626' : '#16a34a' }}>
-              {'Обновлено: '}{goal.updatedDaysAgo === 0 ? 'сегодня' : `${goal.updatedDaysAgo}д назад`}
-            </span>
-          </div>
-          {goal.progressMeta && (
-            <>
-              <ProgressBar value={prog} forecast={goal.progressMeta.forecast} h={9} color={hC} />
-              <div className="goal-card__forecast-label">прогноз {goal.progressMeta.forecast}%</div>
-            </>
-          )}
-        </div>
-        <div className="goal-card__tags">
-          <Badge label={goal.type === 'delivery' ? 'Delivery' : 'Discovery'} color={goal.type === 'delivery' ? '#374151' : '#7c3aed'} />
-          {goal.focus && <Badge label={focusLabel(goal.focus)} color={FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT} />}
-        </div>
       </div>
-      <div className="goal-card__footer">
-        <button onClick={() => setShowKR(!showKR)} className="goal-card__footer-btn">
-          <span style={{ fontSize: 9 }}>{showKR ? '▲' : '▼'}</span>
-          {showKR ? 'Скрыть KR' : `KR (${(goal.krs || []).length})`}
-          {krWeightOff && <span className="kr-weight-badge" title="Сумма весов KR не равна 100%">⚠ {krWeightSum} %</span>}
-        </button>
-        <div className="goal-card__footer-divider" />
-        <button onClick={() => setShowCom(!showCom)}
-          className={`goal-card__footer-btn${(goal.comments || []).length > 0 ? ' goal-card__footer-btn--has-comments' : ''}`}>
-          {(goal.comments || []).length > 0 ? `💬 ${goal.comments.length}` : '💬 Комментарии'}
-          {unresolvedCount > 0 && <span className="comment-unresolved-badge" title={`${unresolvedCount} нерешённых`}>{unresolvedCount}</span>}
-        </button>
-      </div>
-      {showKR && (
-        <div className="kr-section">
-          {krWeightOff && (
-            <div className="kr-weight-warn">
-              <span className="kr-weight-warn__icon">⚠</span>
-              <span>
-                Сумма весов KR = {krWeightSum}%, ожидается 100%
-                {' · '}
-                {krWeightDelta > 0 ? `не распределено ${krWeightDelta}%` : `превышено на ${-krWeightDelta}%`}
-              </span>
-            </div>
-          )}
-          {(goal.krs || []).map(kr => {
-            const canReorderKR = canEdit && !!onReorderKR;
-            const isKrDrag = krDrag === kr.id;
+      {otherTeams.length > 0 && (
+        <div className="gc-share-strip" aria-label="Общая цель">
+          <span className="gc-share-strip__label">⇄ Общая цель</span>
+          {[...(goal.shareTeams || []).filter(t => t.id === currentTeamId).map(t => ({ ...t, isSelf: true })), ...otherTeams].map(t => {
+            const isOwner = t.id === goal.teamId;
             return (
-              <div key={kr.id} id={`kr-${kr.id}`}
-                draggable={!!canReorderKR}
-                onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag]')); } : undefined}
-                onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
-                onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
-                onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
-                onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
-                className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
-                {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
-                <KRRow kr={kr} goalId={goal.id} editMode={editMode} onReload={onReload} accent={accent} staleDays={staleDays} periodStatus={periodStatus} />
-              </div>
+              <span key={t.id} className={`gc-share-strip__team${isOwner ? ' gc-share-strip__team--owner' : ''}`}
+                title={isOwner ? 'Команда-владелец цели' : undefined}>
+                {t.name}
+                {isOwner && <span className="gc-share-strip__role">владелец</span>}
+              </span>
             );
           })}
-          {editMode === 'full' && <button onClick={() => setNewKR(true)} className="kr-add-btn">+ Добавить KR</button>}
         </div>
       )}
+      <div className="kr-section">
+        {krWeightOff && (
+          <div className="kr-weight-warn">
+            <span className="kr-weight-warn__icon">⚠</span>
+            <span>
+              Сумма весов KR = {krWeightSum}%, ожидается 100%
+              {' · '}
+              {krWeightDelta > 0 ? `не распределено ${krWeightDelta}%` : `превышено на ${-krWeightDelta}%`}
+            </span>
+          </div>
+        )}
+        {(goal.krs || []).length === 0 && (
+          <div className="kr-section__empty">Ключевых результатов пока нет</div>
+        )}
+        {(goal.krs || []).map(kr => {
+          const canReorderKR = canEdit && !!onReorderKR;
+          const isKrDrag = krDrag === kr.id;
+          return (
+            <div key={kr.id} id={`kr-${kr.id}`}
+              draggable={!!canReorderKR}
+              onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag]')); } : undefined}
+              onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
+              onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
+              onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
+              onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
+              className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
+              {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
+              <KRRow kr={kr} goalId={goal.id} goalTitle={goal.title} editMode={editMode} onReload={onReload}
+                accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast} />
+            </div>
+          );
+        })}
+        {/* Как в прототипе: кнопка добавления при блокировке скрывается. Объяснять
+            причину — задача пунктов меню, которые остаются на месте и говорят её. */}
+        {!krCreateLock && <button onClick={() => setNewKR(true)} className="kr-add-btn">+ Добавить KR</button>}
+      </div>
+      <button type="button" aria-expanded={showCom}
+        className={`gc-comments-toggle${showCom ? ' gc-comments-toggle--open' : ''}${unresolvedCount > 0 ? ' gc-comments-toggle--warn' : ''}`}
+        onClick={() => setShowCom(!showCom)}>
+        <span className="gc-comments-toggle__caret">▶</span>
+        <span className="gc-comments-toggle__label">Комментарии</span>
+        {(goal.comments || []).length > 0 && <span className="gc-comments-toggle__count">· {goal.comments.length}</span>}
+        {unresolvedCount > 0 && <span className="gc-comments-toggle__pill">не решено {unresolvedCount}</span>}
+      </button>
+      {transfer && <TransferGoalModal goal={goal} teamId={currentTeamId} periodId={periodId} allTeams={allTeams}
+        onClose={() => setTransfer(false)} onDone={onReload} />}
       {newKR && <KREditModal kr={null} goalId={goal.id} onSave={() => { setNewKR(false); onReload(); }} onClose={() => setNewKR(false)} accent={accent} />}
       {confirmDeleteGoal && <ConfirmModal
         title={isShared ? 'Открепить цель от команды?' : 'Удалить цель?'}
@@ -2334,31 +2566,16 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           <button onClick={requestClose} className="modal-close modal-close--lg">×</button>
         </div>
         <div className="modal-body modal-body--goal">
-          <div className="form-group">
-            <FieldLabel required hint="Objective — качественное описание того, чего команда хочет достичь. Без цифр (они в KR).">Название</FieldLabel>
-            <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Чего хотим достичь?" className="form-input form-input--goal" />
-          </div>
-          <div className="form-group">
-            <FieldLabel hint="Контекст, почему эта цель важна. Не дублируйте название.">Описание</FieldLabel>
-            <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={3} placeholder="Дополнительный контекст…" textareaClassName="form-textarea" />
-          </div>
-          <div className="form-row">
+          {/* Название и вес — одной строкой: вес читается вместе с названием, а не
+              отдельным блоком ниже. */}
+          <div className="form-row goal-name-row">
             <div className="form-col">
-              <FieldLabel hint="Относительная важность: P0 — must-have, P1 — высокий приоритет, P2 — важная, P3 — желательная.">Приоритет</FieldLabel>
-              <div className="seg-group">
-                {['P0', 'P1', 'P2', 'P3'].map(p => {
-                  const c = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' }[p];
-                  const sel = form.priority === p;
-                  return (
-                    <button key={p} onClick={() => set('priority', p)} className="seg-btn"
-                      style={{ borderColor: sel ? c : '#e5e7eb', background: sel ? `${c}12` : 'white', color: sel ? c : '#6b7280' }}>{p}</button>
-                  );
-                })}
-              </div>
+              <FieldLabel required hint="Objective — качественное описание того, чего команда хочет достичь. Без цифр (они в KR).">Название</FieldLabel>
+              <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Чего хотим достичь?" className="form-input form-input--goal" />
             </div>
             <div className="form-col--w140">
               <FieldLabel hint="Доля цели в общем результате команды. Сумма весов = 100%.">
-                <span>Вес <span style={{ fontWeight: 400, color: overWeight ? '#d97706' : '#9ca3af', fontSize: 12 }}>({totalAfter}/100)</span></span>
+                <span>Вес <span style={{ fontWeight: 400, color: overWeight ? '#d97706' : '#9ca3af', fontSize: 13 }}>({totalAfter}/100)</span></span>
               </FieldLabel>
               <div className="form-weight-wrap">
                 <input type="number" min={0} max={100} value={form.weight}
@@ -2369,7 +2586,16 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
               {overWeight && <div className="form-error-msg" style={{ color: '#d97706' }}>Сумма весов больше 100% — сохранить можно</div>}
             </div>
           </div>
-          <div className="form-row">
+          <div className="form-group">
+            <FieldLabel hint="Контекст, почему эта цель важна. Не дублируйте название.">Описание</FieldLabel>
+            <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={3} placeholder="Дополнительный контекст…" textareaClassName="form-textarea" />
+          </div>
+          {/* Приоритет, тип работы и фокус — одной строкой. */}
+          <div className="form-row goal-meta-row">
+            <div className="form-col">
+              <FieldLabel hint={PRIORITY_HINT}>Приоритет</FieldLabel>
+              <PrioritySelect value={form.priority} onChange={p => set('priority', p)} />
+            </div>
             <div className="form-col">
               <FieldLabel hint="Delivery — известный результат. Discovery — исследование гипотезы.">Тип работы</FieldLabel>
               <div className="seg-group">
@@ -2383,14 +2609,14 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
               </div>
             </div>
             <div className="form-col">
-              <FieldLabel>Фокус</FieldLabel>
+              <FieldLabel hint={FOCUS_HINT_BLOCK}>Фокус</FieldLabel>
               <select value={form.focus} onChange={e => set('focus', e.target.value)} className="form-select">
                 {FOCUS_OPTIONS.map(f => <option key={f} value={f}>{focusLabel(f)}</option>)}
               </select>
             </div>
           </div>
           <div className="form-group">
-            <FieldLabel>Драйвер цели</FieldLabel>
+            <FieldLabel hint={'Ответственный за достижение цели.\nСледит за прогрессом KR, обновляет статус и эскалирует блокеры.\nМожно указать несколько человек.'}>Драйвер цели</FieldLabel>
             <UserSelector multiple
               value={form.ownerUDIDs}
               onChange={arr => set('ownerUDIDs', arr)}
@@ -2433,9 +2659,9 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
           </div>
         </div>
         <div className="modal-footer modal-footer--goal">
-          <button onClick={onClose} className="btn btn--secondary" style={{ padding: '10px 20px', fontSize: 14 }}>Отмена</button>
+          <button onClick={onClose} className="btn btn--secondary" style={{ padding: '10px 20px', fontSize: 15 }}>Отмена</button>
           <button onClick={save} disabled={!canSave} className="btn btn--primary"
-            style={{ padding: '10px 28px', fontSize: 14, background: canSave ? accent : '#e5e7eb', color: canSave ? 'white' : '#9ca3af', cursor: canSave ? 'pointer' : 'default' }}>
+            style={{ padding: '10px 28px', fontSize: 15, background: canSave ? accent : '#e5e7eb', color: canSave ? 'white' : '#9ca3af', cursor: canSave ? 'pointer' : 'default' }}>
             {saving ? 'Сохраняем…' : isEdit ? 'Сохранить' : 'Создать цель'}
           </button>
         </div>
@@ -2782,7 +3008,12 @@ function App() {
   };
 
   const [dragState, setDragState] = useState({ srcId: null });
-  const goals = (teamOKR?.goals || []).map(mapGoal);
+  const [priFilter, setPriFilter] = useState({});
+  const [exportOpen, setExportOpen] = useState(false);
+  const allGoals = (teamOKR?.goals || []).map(mapGoal);
+  // Фильтр по приоритету сужает только показ, данные остаются прежними.
+  const activePri = PRI_LEVELS.filter(p => priFilter[p]);
+  const goals = activePri.length ? allGoals.filter(g => activePri.includes(g.priority)) : allGoals;
 
   const handleReorderGoals = useCallback(async (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
@@ -2812,6 +3043,7 @@ function App() {
   const status = teamOKR?.period_status || 'no_goals';
   const hasGoals = (teamOKR?.goals_count || 0) > 0;
   const editMode = status === 'forming' || status === 'ready' || status === 'no_goals' ? 'full' : status === 'in_progress' ? 'progress_only' : 'comments_only';
+  const goalCreateLock = lockReason(editMode, 'goal_create');
 
   // A team's goal weights are expected to sum to 100%. When they don't, surface a
   // warning so the author can redistribute weight or add a goal.
@@ -2891,22 +3123,36 @@ function App() {
             <span className="topbar__title">{teamOKR?.team?.name || 'Выберите команду'}</span>
             {teamOKR?.team?.type && <Badge label={TEAM_TYPE_LABEL[teamOKR.team.type] || teamOKR.team.type} color={TEAM_TYPE_COLOR[teamOKR.team.type] || '#6b7280'} />}
             {teamOKR?.team?.lead && (
-              <div className="topbar__lead">
+              <div className="tb-lead">
                 <UserInfo userRef={teamOKR.team.lead} size={22} />
-                <span className="topbar__lead-role">лид</span>
+                <span className="tb-lead__role">· лид</span>
               </div>
             )}
+            <PriorityFilter goals={allGoals} value={priFilter} onChange={setPriFilter} />
             <div className="topbar__spacer" />
             {hasGoals && teamOKR?.progress_meta && (
               <div className="topbar__progress">
-                <div style={{ width: 140 }}>
+                <span className="tb-cap">Цели узла</span>
+                <div className="topbar__progress-bar">
                   <ProgressBar value={teamOKR.period_progress || 0} forecast={teamOKR.progress_meta.forecast} h={6}
                     color={HEALTH_COLOR[(teamOKR.period_progress || 0) >= greenThreshold ? 'ahead' : teamOKR.progress_meta.status === 'above' ? 'ahead' : teamOKR.progress_meta.status === 'below' ? 'below' : 'on_track']} />
                 </div>
                 <span className="topbar__progress-pct">{teamOKR.period_progress || 0}%</span>
               </div>
             )}
-            {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>}
+            {selId && (goalCreateLock
+              ? <LockedAction reason={goalCreateLock}>
+                  <button type="button" aria-disabled="true" className="topbar__add-btn topbar__add-btn--locked">+ Добавить цель 🔒</button>
+                </LockedAction>
+              : <button onClick={() => setGoalModal('new')} className="topbar__add-btn">+ Добавить цель</button>)}
+            {/* Экспорт переехал из меню цели в меню команды: выгрузка всё равно умеет
+                расширять охват до команды, а по цели она якорится первой из списка. */}
+            <div className="tb-menu">
+              <RowMenu items={[
+                { icon: '⇩', label: 'Экспорт в Markdown', onClick: () => setExportOpen(true),
+                  reason: allGoals.length ? null : 'В этом периоде у команды нет целей — выгружать нечего.' },
+              ]} />
+            </div>
           </div>
           {(() => {
             const ov = readDescOverrides(me?.id);
@@ -2915,7 +3161,8 @@ function App() {
           })()}
         </div>
 
-        <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent} statusChangedAt={teamOKR?.status_changed_at} />
+        <StatusStepper status={status} hasGoals={hasGoals} onChange={handleChangeStatus} accent={accent}
+          statusChangedAt={teamOKR?.status_changed_at} editMode={editMode} />
 
         <div className="content">
           {!hasChildren && goalWeightWarn}
@@ -2932,12 +3179,12 @@ function App() {
               <div className="empty-state__icon">📋</div>
               <div className="empty-state__title">Цели не добавлены</div>
               <div className="empty-state__text">Начните период с постановки OKR</div>
-              {editMode === 'full' && selId && <button onClick={() => setGoalModal('new')} className="empty-state__btn">+ Создать первую цель</button>}
+              {!goalCreateLock && selId && <button onClick={() => setGoalModal('new')} className="empty-state__btn">+ Создать первую цель</button>}
             </div>
           )}
           {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current} exportInfo={exportInfo}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
             dragProps={editMode === 'full' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
@@ -2950,6 +3197,10 @@ function App() {
         </div>
       </div>
 
+      {exportOpen && allGoals.length > 0 && (
+        <ExportModal goal={allGoals[0]} teamId={selId} periodId={periodId} info={exportInfo}
+          onClose={() => setExportOpen(false)} />
+      )}
       {goalModal && <GoalModal
         goal={goalModal === 'new' ? null : goalModal}
         teamId={selId} periodId={periodId}

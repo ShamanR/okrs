@@ -1,8 +1,21 @@
 <!-- @dsCard group="Goals" -->
 <!-- @dsName Баннеры и предупреждения -->
-<!-- @dsSubtitle Веса, совместный доступ, ошибки, лид команды -->
+<!-- @dsSubtitle Режим редактирования, веса, совместный доступ, ошибки, лид команды -->
 <!-- @dsCss tokens.css shell.css tracker.css settings.css -->
-<!-- @dsViewport 900x620 -->
+<!-- @dsViewport 900x760 -->
+<section class="ds-section">
+  <div class="ds-section__title">Режим редактирования — .mode-banner</div>
+  <div class="mode-banner mode-banner--progress">
+    <span class="mode-banner__icon">🔒</span>
+    <span class="mode-banner__text"><span class="mode-banner__status">В работе</span> — состав целей зафиксирован. Доступны обновление прогресса и комментарии.</span>
+  </div>
+  <div class="mode-banner mode-banner--closed">
+    <span class="mode-banner__icon">🔒</span>
+    <span class="mode-banner__text"><span class="mode-banner__status">Период закрыт</span> — доступны только комментарии.</span>
+  </div>
+  <div class="ds-section__note">Идёт сразу под степпером статусов, во всю ширину доски. Объясняет режим целиком: какой статус, что доступно, что закрыто. В полном редактировании не рендерится — объяснять нечего, а постоянный баннер на самом частом экране был бы шумом.</div>
+</section>
+
 <section class="ds-section">
   <div class="ds-section__title">Предупреждения о весах</div>
   <div class="ds-surface">

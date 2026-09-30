@@ -34,7 +34,7 @@ body { background: var(--canvas); overflow: hidden; }
     display: inline-flex; align-items: center; justify-content: center;
     width: 32px; height: 32px; flex-shrink: 0;
     border: 1px solid var(--border); border-radius: var(--radius-md);
-    background: #fff; color: var(--text-body); font-size: 15px; cursor: pointer;
+    background: #fff; color: var(--text-body); font-size: 16px; cursor: pointer;
   }
   .topbar { padding: 10px 16px; }
   .content { padding: 16px; }
@@ -51,7 +51,7 @@ body { background: var(--canvas); overflow: hidden; }
   display: flex; align-items: center; gap: 8px;
   padding: 7px 12px; border-radius: var(--radius-pill);
   background: rgba(17, 24, 39, 0.86); color: #e5e7eb;
-  font-size: 11.5px; line-height: 1; letter-spacing: 0.01em;
+  font-size: 12.5px; line-height: 1; letter-spacing: 0.01em;
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
 }
 .pt-banner__dot {
@@ -59,8 +59,8 @@ body { background: var(--canvas); overflow: hidden; }
   background: #fbbf24; flex-shrink: 0;
 }
 .pt-banner__close {
-  border: none; background: none; color: #9ca3af;
-  font-size: 13px; line-height: 1; cursor: pointer; padding: 0 0 0 2px;
+  border: none; background: none; color: #6b7280;
+  font-size: 14px; line-height: 1; cursor: pointer; padding: 0 0 0 2px;
 }
 .pt-banner__close:hover { color: #fff; }
 
@@ -95,10 +95,10 @@ select:focus-visible, textarea:focus-visible {
   margin-bottom: 16px; padding: 10px 14px;
   background: var(--accent-10); border: 1px solid var(--accent-25);
   border-radius: var(--radius-lg);
-  font-size: 12.5px; color: var(--accent-deep);
+  font-size: 13.5px; color: var(--accent-deep);
 }
 .pt-hint__key {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px; background: #fff; border: 1px solid var(--accent-25);
+  font-size: 12px; background: #fff; border: 1px solid var(--accent-25);
   border-radius: 5px; padding: 1px 6px;
 }

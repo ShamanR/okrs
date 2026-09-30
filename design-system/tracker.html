@@ -1,3 +1,2034 @@
+<!-- @dsCard group="Прототип" -->
+<title>Прототип трекера OKR</title>
+<style>
+/* --- web/static/tokens.css --- */
+/* Общие дизайн-токены. Подключается первым во всех SPA-shell (до app-специфичных
+   стилей), поэтому var(--*) доступны в tracker.css / settings.css / components.css.
+   Единый источник правды для акцента, палитры текста/границ и радиусов. */
+:root {
+  /* Акцент (фиолетовый). Альфы используются в tracker.css / settings.css. */
+  --accent: #7c3aed;
+  --accent-10: rgba(124, 58, 237, 0.06);
+  --accent-15: rgba(124, 58, 237, 0.09);
+  --accent-25: rgba(124, 58, 237, 0.15);
+  --accent-soft: #f5f3ff;   /* фон-плашка акцента */
+  --accent-strong: #6d28d9; /* акцент hover */
+  --accent-deep: #4c1d95;   /* текст на плашке акцента */
+
+  /* Текст / границы / поверхности. */
+  --text: #111827;
+  --text-body: #374151;
+  --text-muted: #6b7280;
+  --text-faint: #9ca3af;
+  --border: #e5e7eb;
+  --surface: #ffffff;
+  --surface-subtle: #f3f4f6;
+  --canvas: #edf0f4;        /* фон рабочей области */
+  --link: #2563eb;
+
+  /* Скроллбар. */
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
+
+  /* Радиусы. */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+}
+
+/* --- web/static/shell.css --- */
+/* Базовый каркас SPA-страниц: reset, типографика, скроллбар, экран загрузки.
+   Подключается во всех SPA-shell после tokens.css. Ранее эти правила дублировались
+   инлайн в каждом shell (6 копий с расхождениями). Специфичные для страницы правила
+   остаются в её собственном CSS (tracker.css, settings.css, sidebar.css). */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--canvas);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  line-height: 1.45;
+  text-rendering: optimizeLegibility;
+}
+
+a { color: var(--link); text-decoration: none; }
+button { font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+textarea { resize: vertical; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* Экран загрузки до маунта React (был инлайн-дивом с повторяющимися стилями). */
+.loading-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+/* --- web/static/components.css --- */
+/* Общие UI-компоненты, переиспользуемые в нескольких SPA (tracker, admin):
+   выбор пользователя (UserSelector), чип выбранного пользователя и аватар-заглушка.
+   Ранее эти классы дублировались в tracker.css, admin_shell.html и base.html с
+   расхождениями (border 1px↔1.5px, radius 8↔9, input 13↔14px). Здесь — единая версия. */
+.user-avatar__fallback { display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; flex-shrink: 0; }
+
+.user-selector { position: relative; }
+.user-selector__field { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; min-height: 40px; padding: 5px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: #fff; cursor: text; }
+.user-selector__field--open { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.12); }
+.user-selector__input { border: none; outline: none; font-size: 14px; color: var(--text); min-width: 80px; flex: 1; background: transparent; padding: 2px 0; }
+.user-selector__input::placeholder { color: var(--text-faint); }
+.user-selector__dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 200; background: #fff; border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1); max-height: 220px; overflow-y: auto; }
+.user-selector__option { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; }
+.user-selector__option--hi { background: var(--accent-soft); }
+.user-selector__option-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.user-selector__option-name { font-size: 14px; color: var(--text); font-weight: 500; }
+.user-selector__option-team { font-size: 12px; color: var(--accent); }
+.user-selector__empty { padding: 12px; text-align: center; font-size: 14px; color: var(--text-faint); }
+
+.user-chip { display: inline-flex; align-items: center; gap: 4px; background: var(--accent-soft); border: 1px solid rgba(124, 58, 237, 0.25); border-radius: 20px; padding: 2px 8px 2px 4px; font-size: 13px; flex-shrink: 0; }
+.user-chip__name { color: var(--accent-deep); font-weight: 500; }
+.user-chip__remove { background: none; border: none; cursor: pointer; color: var(--accent); font-size: 15px; padding: 0; line-height: 1; margin-left: 1px; }
+
+/* Окно-подтверждение несохранённых изменений (useModalClose / ui.js).
+   Общее для tracker и admin; z-index выше любых модалок приложения.
+   --accent = #7c3aed (fallback на случай отсутствия tokens.css). */
+.modal-confirm-overlay { position: fixed; inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(15, 23, 42, 0.45); }
+.modal-confirm-box { width: min(520px, 94vw); background: #fff; border-radius: 20px; box-shadow: 0 24px 70px rgba(15, 23, 42, 0.3); padding: 26px 28px 22px; animation: modalConfirmIn .14s ease-out; }
+@keyframes modalConfirmIn { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: none; } }
+.modal-confirm-title { font-size: 19px; font-weight: 800; color: var(--text, #0f172a); letter-spacing: -.2px; }
+.modal-confirm-message { font-size: 15px; color: var(--text-faint, #6b7280); line-height: 1.5; margin-top: 10px; }
+.modal-confirm-hint { font-size: 14px; color: #6b7280; line-height: 1.5; margin-top: 6px; }
+.modal-confirm-key { font-weight: 700; color: var(--text-faint, #6b7280); }
+.modal-confirm-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; margin-top: 22px; }
+.modal-confirm-btn { padding: 9px 18px; border-radius: 10px; border: 1px solid var(--border, #e5e7eb); background: #fff; color: var(--text, #374151); font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer; }
+.modal-confirm-btn:hover { background: #f8fafc; }
+.modal-confirm-btn--danger { border-color: #fecaca; background: #fef2f2; color: #dc2626; }
+.modal-confirm-btn--danger:hover { background: #fee2e2; }
+.modal-confirm-btn--primary { border-color: transparent; background: var(--accent, #7c3aed); color: #fff; }
+.modal-confirm-btn--primary:hover { background: #6d28d9; }
+.modal-confirm-btn--primary:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
+
+/* --- web/static/sidebar.css --- */
+/* Общий тёмный сайдбар навигации. Подключается во всех SPA-shell (tracker,
+   stub, settings, admin) вместе с sidebar.js. Самодостаточен: не зависит от
+   переменных app-специфичного CSS. Тёмная палитра совпадает с трекером. */
+
+.sidebar { width: 252px; background: #0c1220; display: flex; flex-direction: column; flex-shrink: 0; height: 100%; overflow: hidden; }
+
+/* ── Шапка тенанта ── */
+.sidebar__tenant { position: relative; display: flex; align-items: center; gap: 10px; padding: 12px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.sidebar__tenant-avatar { width: 34px; height: 34px; border-radius: 8px; background: #16a34a; color: #fff; font-weight: 800; font-size: 14px; letter-spacing: -0.3px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.sidebar__tenant-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; background: none; border: none; color: #fff; cursor: pointer; font-family: inherit; padding: 0; text-align: left; }
+.sidebar__tenant-main:disabled { cursor: default; }
+.sidebar__tenant-name { flex: 1; min-width: 0; font-size: 16px; font-weight: 800; letter-spacing: -0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__tenant-chevron { color: #64748b; font-size: 12px; flex-shrink: 0; }
+.sidebar__tenant-menu { position: absolute; top: calc(100% - 2px); left: 12px; right: 12px; z-index: 50; background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 6px; }
+.sidebar__tenant-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; }
+.sidebar__tenant-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.sidebar__tenant-item--active { color: #fff; }
+.sidebar__tenant-item-icon { width: 18px; text-align: center; flex-shrink: 0; }
+
+/* ── Колокольчик ── */
+.sidebar__bell { position: relative; background: rgba(255,255,255,0.06); border: none; color: #cbd5e1; width: 34px; height: 34px; border-radius: 9px; cursor: pointer; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 16px; }
+.sidebar__bell:hover { background: rgba(255,255,255,0.14); color: #fff; }
+.sidebar__bell-icon { line-height: 1; }
+.sidebar__bell-badge { position: absolute; top: -4px; right: -4px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.sidebar__bell-badge--zero { background: rgba(255,255,255,0.14); color: #94a3b8; }
+
+/* ── Глобальные разделы ── */
+.sidebar__sections { padding: 6px 8px 2px; }
+.sidebar__section-label { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; padding: 4px 8px 3px; }
+.sidebar__navlink { display: flex; align-items: center; gap: 9px; padding: 6px 8px; text-decoration: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 7px; cursor: pointer; background: none; border: none; width: 100%; text-align: left; font-family: inherit; }
+.sidebar__navlink:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.sidebar__navlink--active { background: rgba(124,58,237,0.18); color: #fff; }
+.sidebar__navlink--active .sidebar__navlink-icon { color: #a78bfa; }
+.sidebar__navlink-icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
+
+/* ── Контекстная навигация (settings/admin) ── */
+.sidebar__context { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 8px; border-top: 1px solid rgba(255,255,255,0.06); }
+
+/* ── Футер ── */
+.sidebar__footer { margin-top: auto; border-top: 1px solid rgba(255,255,255,0.06); padding: 6px 8px 10px; }
+.sidebar__footer-link { display: flex; align-items: center; gap: 9px; padding: 6px 8px; text-decoration: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 7px; }
+.sidebar__footer-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.sidebar__footer-icon { width: 16px; text-align: center; font-size: 14px; flex-shrink: 0; }
+.sidebar__user { position: relative; display: flex; align-items: center; gap: 10px; padding: 10px; margin-top: 4px; }
+.sidebar__user-info { flex: 1; min-width: 0; }
+.sidebar__user-name { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__user-sub { font-size: 13px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sidebar__user-more { background: none; border: none; color: #94a3b8; font-size: 19px; line-height: 1; cursor: pointer; padding: 4px 6px; border-radius: 8px; flex-shrink: 0; letter-spacing: 1px; }
+.sidebar__user-more:hover { background: rgba(255,255,255,0.1); color: #fff; }
+.sidebar__user-menu { position: absolute; bottom: calc(100% - 2px); left: 10px; right: 10px; z-index: 50; background: #131b2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 6px; }
+.sidebar__user-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; background: none; border: none; color: #cbd5e1; font-size: 14px; font-weight: 500; border-radius: 8px; cursor: pointer; font-family: inherit; text-align: left; text-decoration: none; }
+.sidebar__user-menu-item:hover { background: rgba(255,255,255,0.05); color: #fff; }
+.sidebar__user-menu-item--danger, .sidebar__user-menu-item--danger:hover { color: #f87171; }
+.sidebar__user-menu-icon { width: 18px; text-align: center; flex-shrink: 0; }
+
+/* ── FeedbackNudge (перенесено из header.css) ── */
+.fb-nudge__overlay { position: fixed; inset: 0; background: rgba(12,18,32,0.55); z-index: 2100; display: flex; align-items: center; justify-content: center; padding: 16px; }
+.fb-nudge__card { position: relative; width: 380px; max-width: 92vw; background: #fff; border-radius: 16px; padding: 28px 26px 26px; box-shadow: 0 20px 50px rgba(15,23,42,0.35); text-align: center; animation: fbNudgeIn 0.18s ease; }
+@keyframes fbNudgeIn { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+.fb-nudge__close { position: absolute; top: 12px; right: 12px; background: #f1f5f9; border: none; color: #64748b; font-size: 14px; cursor: pointer; width: 30px; height: 30px; border-radius: 8px; }
+.fb-nudge__close:hover { background: #e2e8f0; color: #0f172a; }
+.fb-nudge__icon { font-size: 36px; line-height: 1; margin-bottom: 12px; }
+.fb-nudge__title { font-size: 19px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; margin-bottom: 8px; }
+.fb-nudge__text { font-size: 15px; color: #475569; line-height: 1.55; margin-bottom: 20px; }
+.fb-nudge__btn { display: inline-block; width: 100%; box-sizing: border-box; padding: 11px 16px; border-radius: 10px; background: #7c3aed; color: #fff; font-size: 15px; font-weight: 700; text-decoration: none; }
+.fb-nudge__btn:hover { background: #6d28d9; }
+
+/* ── NotificationsBell / NotificationsPanel ── */
+.notif__backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 200; animation: notifFadeIn 0.18s ease; }
+@keyframes notifFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.notif__panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 420px;
+  max-width: 100vw;
+  height: 100vh;
+  background: #0c1220;
+  box-shadow: -4px 0 32px rgba(0, 0, 0, 0.5);
+  z-index: 201;
+  display: flex;
+  flex-direction: column;
+}
+.notif__panel-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
+.notif__panel-title { font-size: 17px; font-weight: 700; color: #f1f5f9; margin-right: auto;}
+.notif__mark-all { background: none; border: none; color: #a78bfa; font-size: 13px; font-weight: 600; cursor: pointer; padding: 4px 0; font-family: inherit; }
+.notif__mark-all:hover { color: #c4b5fd; text-decoration: underline; }
+.notif__gear { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; text-decoration: none; }
+.notif__gear:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
+.notif__close { width: 28px; height: 28px; border: none; background: rgba(255,255,255,0.08); color: #94a3b8; border-radius: 6px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.notif__close:hover { background: rgba(255,255,255,0.14); color: #f1f5f9; }
+
+.notif__list { flex: 1; overflow-y: auto; padding: 6px 0 16px; }
+.notif__list::-webkit-scrollbar { width: 4px; }
+.notif__list::-webkit-scrollbar-track { background: transparent; }
+.notif__list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+
+.notif__item {
+  display: block;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.notif__item:hover { background: rgba(255,255,255,0.04); }
+.notif__item--unread { background: rgba(124, 58, 237, 0.08); }
+.notif__item--unread:hover { background: rgba(124, 58, 237, 0.14); }
+.notif__item-row { display: flex; align-items: flex-start; gap: 10px; }
+.notif__item-main { flex: 1; min-width: 0; }
+.notif__item-head { display: flex; align-items: baseline; gap: 8px; }
+.notif__item-title { font-size: 14px; font-weight: 700; color: #f1f5f9; flex: 1; min-width: 0; }
+.notif__item-time { font-size: 12px; color: #64748b; flex-shrink: 0; white-space: nowrap; }
+.notif__item-body { font-size: 13px; color: #94a3b8; line-height: 1.45; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+
+.notif__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 24px; text-align: center; color: #475569; font-size: 15px; gap: 8px; }
+.notif__empty-icon { font-size: 34px; }
+
+/* Запись списка уведомлений: обёртка нужна, чтобы кнопка удаления была СОСЕДОМ
+   кликабельной части, а не потомком — <button> внутри <a> невалиден. */
+.notif__entry { position: relative; }
+/* Место справа под кнопку: без этого время в шапке уезжает под неё. */
+.notif__entry .notif__item { padding-right: 40px; }
+.notif__item-context {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.notif__item-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  /* Видима всегда, а не только по наведению: на тач-устройствах наведения нет,
+     и скрытая кнопка была бы недоступна вовсе. Приглушена, чтобы не спорить
+     с текстом уведомления. */
+  opacity: 0.55;
+}
+.notif__item-delete:hover { opacity: 1; color: #f87171; background: rgba(248,113,113,0.12); }
+.notif__item-delete:focus-visible { opacity: 1; outline: 2px solid #c4b5fd; outline-offset: 1px; }
+
+/* --- web/static/markdown.css --- */
+/* Rendered markdown content.
+   IMPORTANT: do NOT set font-size / color / line-height here — the host element
+   (.kr-desc, .goal-card__desc, .topbar__desc, .kr-note__text, ...) controls
+   typography so rendered text looks exactly like the original plain text. */
+.md-content { white-space: normal; word-break: break-word; }
+.md-content > :first-child { margin-top: 0; }
+.md-content > :last-child { margin-bottom: 0; }
+.md-content p { margin: 0; }
+.md-content p + p { margin-top: 0.5em; }
+.md-content ul, .md-content ol { margin: 0.3em 0; padding-left: 1.4em; }
+.md-content li { margin: 0.1em 0; }
+.md-content h1, .md-content h2, .md-content h3 { margin: 0.4em 0 0.2em; font-weight: 700; line-height: 1.3; }
+.md-content h1 { font-size: 1.15em; }
+.md-content h2 { font-size: 1.07em; }
+.md-content h3 { font-size: 1em; }
+.md-content blockquote { margin: 0.4em 0; padding-left: 0.7em; border-left: 2px solid #e5e7eb; }
+.md-content code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; background: rgba(0, 0, 0, 0.06); padding: 0.1em 0.3em; border-radius: 4px; }
+.md-content pre { margin: 0.4em 0; padding: 0.5em 0.7em; background: rgba(0, 0, 0, 0.05); border-radius: 6px; overflow: auto; }
+.md-content pre code { background: none; padding: 0; }
+.md-content a { color: var(--accent, #6d28d9); text-decoration: none; }
+.md-content a:hover { text-decoration: underline; }
+.md-content strong { font-weight: 700; }
+
+/* Collapsed markdown (long goal / KR descriptions on the board).
+   IMPORTANT: same rule as .md-content — do NOT set font-size / color /
+   line-height here. The host class sits on .md-collapsible__body, keeps owning
+   typography, and supplies the height cap as --md-collapse-max in em, so the cap
+   reads as a number of text lines. Without that variable nothing is clipped. */
+.md-collapsible__body { position: relative; max-height: var(--md-collapse-max, none); overflow: hidden; }
+.md-collapsible--expanded .md-collapsible__body { max-height: none; }
+/* The toggle sits directly under the text, so the outer spacing moves from the
+   host class to the wrapper (see tracker.css). */
+.md-collapsible > .md-collapsible__body { margin-bottom: 0; }
+.md-collapsible--clipped .md-collapsible__body::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1.9em;
+  pointer-events: none; background: linear-gradient(to bottom, transparent, var(--md-fade-bg, #fff));
+}
+.md-collapsible__toggle { display: flex; width: fit-content; align-items: center; gap: 5px; margin: 3px 0 2px; padding: 0; border: none; background: none; font-family: inherit; font-size: 12px; font-weight: 500; line-height: 1.4; color: #6b7280; cursor: pointer; }
+.md-collapsible__toggle:hover { color: #374151; }
+/* Underline the words only — an underline under the caret reads as a stray tick. */
+.md-collapsible__toggle:hover .md-collapsible__label { text-decoration: underline; }
+.md-collapsible__caret { font-size: 11px; line-height: 1; }
+.md-collapsible--expanded .md-collapsible__body::after { display: none; }
+
+/* On paper the point of collapsing disappears: print the whole description. */
+@media print {
+  .md-collapsible__body { max-height: none; }
+  .md-collapsible--clipped .md-collapsible__body::after { display: none; }
+  .md-collapsible__toggle { display: none; }
+}
+
+/* Markdown editor */
+/* The editor is one framed box: a toolbar header with a divider below, a borderless
+   textarea/preview body, and the Markdown hint as an in-frame footer. Hosts should not
+   add their own border/frame around it (see settings/admin overrides). */
+.md-editor { display: flex; flex-direction: column; gap: 0; border: 1.5px solid #e5e7eb; border-radius: 10px; background: #fff; overflow: hidden; }
+.md-editor:focus-within { border-color: var(--accent); }
+.md-editor__bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 5px 8px; border-bottom: 1px solid #eef0f2; }
+.md-editor textarea { border: none; border-radius: 0; outline: none; }
+.md-editor textarea:focus { box-shadow: none; }
+.md-editor__tools { display: flex; align-items: center; gap: 1px; }
+.md-editor__btn { display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; padding: 0 6px; border: none; background: none; border-radius: 6px; font-size: 14px; color: #4b5563; cursor: pointer; line-height: 1; }
+.md-editor__btn:hover:not(:disabled) { background: #f1f3f5; color: #111827; }
+.md-editor__btn:disabled { opacity: 0.4; cursor: default; }
+.md-editor__btn svg { display: block; }
+.md-editor__divider { width: 1px; height: 18px; background: #e5e7eb; margin: 0 6px; }
+.md-editor__tabs { display: inline-flex; padding: 2px; background: #f1f3f5; border-radius: 8px; gap: 2px; }
+.md-editor__tab { padding: 4px 12px; border: none; background: none; border-radius: 6px; font-size: 13px; font-weight: 600; color: #6b7280; cursor: pointer; }
+.md-editor__tab--active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); }
+.md-editor__preview { min-height: 64px; padding: 10px 12px; background: #fafafa; }
+.md-editor__empty { color: #6b7280; font-size: 14px; }
+.md-editor__hint { font-size: 12px; color: #6b7280; line-height: 1.4; padding: 6px 10px; border-top: 1px solid #eef0f2; background: #fcfcfd; }
+.md-editor__hint strong { color: #6b7280; font-weight: 700; }
+
+/* --- web/static/tracker.css --- */
+/* Токены (--accent, палитра, радиусы) вынесены в tokens.css — общий источник для
+   всех SPA. .sidebar / .user-selector* определены в sidebar.css / components.css. */
+
+/* ── LAYOUT ─────────────────────────────────────────────────────────────────── */
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+/* ── SIDEBAR ─────────────────────────────────────────────────────────────────── */
+.sidebar__header { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; align-items: center; gap: 10px; }
+.sidebar__logo { font-size: 15px; font-weight: 800; color: white; letter-spacing: -0.3px; flex: 1; }
+.sidebar__period { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.sidebar__period-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 4px; }
+.sidebar__period-select { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1); color: #e5e7eb; border-radius: 6px; padding: 6px 8px; font-size: 14px; outline: none; cursor: pointer; }
+.sidebar__tree { flex: 1; overflow: auto; padding: 6px 0; }
+.sidebar__subsection-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 14px 2px; display: flex; align-items: center; gap: 5px; }
+.sidebar__subsection-star { color: #fbbf24; font-size: 12px; }
+
+/* ── PERIOD SELECT ──────────────────────────────────────────────────────────── */
+.period-select__trigger { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: 8px; background: #111827; color: #e5e7eb; border: 1px solid #374151; cursor: pointer; font-size: 15px; }
+.period-select__dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.period-select__name { flex: 1; text-align: left; font-weight: 600; }
+.period-select__chev { color: #6b7280; }
+.period-select__backdrop { position: fixed; inset: 0; z-index: 199; }
+.period-select__menu { position: fixed; z-index: 200; width: 430px; max-width: calc(100vw - 20px); background: #0b1220; border: 1px solid #374151; border-radius: 9px; padding: 6px; max-height: min(460px, calc(100vh - 80px)); overflow-y: auto; overflow-x: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
+.period-select__group { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #94a3b8; padding: 6px 8px 4px; }
+.period-select__item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px; border: none; background: transparent; color: #e5e7eb; cursor: pointer; border-radius: 6px; text-align: left; }
+.period-select__item:hover { background: #1f2937; }
+.period-select__item.is-selected { background: var(--accent-25); }
+.period-select__indent { flex: 0 0 auto; }
+.period-select__item-name { flex: 1 1 0%; min-width: 0; font-size: 13.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.period-select__item.is-selected .period-select__item-name { font-weight: 700; }
+.period-select__range { flex: 0 0 auto; width: 150px; text-align: right; color: #94a3b8; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.period-select__badge-wrap { flex: 0 0 auto; width: 88px; display: flex; justify-content: flex-end; }
+.period-select__badge { flex: 0 0 auto; padding: 1px 6px; border-radius: 5px; font-size: 11px; white-space: nowrap; }
+/* Light theme (opt-in via variant="light"); sidebar uses the dark default above. */
+.period-select--light .period-select__trigger { background: #fff; color: #111827; border-color: #e5e7eb; }
+.period-select--light .period-select__chev { color: #6b7280; }
+.period-select--light .period-select__menu { background: #fff; border-color: #e5e7eb; box-shadow: 0 12px 32px rgba(0,0,0,0.14); }
+.period-select--light .period-select__group { color: #6b7280; }
+.period-select--light .period-select__item { color: #111827; }
+.period-select--light .period-select__item:hover { background: #f3f4f6; }
+.period-select--light .period-select__item.is-selected { background: #f5f3ff; }
+.period-select--light .period-select__range { color: #6b7280; }
+.no-access { padding: 24px 16px; text-align: center; color: #6b7280; }
+.no-access__icon { font-size: 29px; margin-bottom: 8px; }
+.no-access__text { font-size: 14px; font-weight: 600; color: #6b7280; margin-bottom: 4px; }
+.no-access__hint { font-size: 13px; color: #6b7280; line-height: 1.4; }
+
+.sidebar-node__row { display: flex; align-items: center; gap: 5px; cursor: pointer; border-left: 2px solid transparent; transition: background 0.1s; }
+.sidebar-node__row:hover { background: rgba(255,255,255,0.06); }
+.sidebar-node__row--selected:hover { background: var(--accent-25); }
+.sidebar-node__row--selected { border-left-color: var(--accent); background: var(--accent-25); }
+.sidebar-node__toggle { font-size: 11px; width: 11px; text-align: center; flex-shrink: 0; color: #4b5563; }
+.sidebar-node__spacer { width: 11px; }
+.sidebar-node__dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.sidebar-node__name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
+.sidebar-node__name--d0 { font-size: 14px; font-weight: 700; color: #f1f5f9; }
+.sidebar-node__name--d1 { font-size: 13px; font-weight: 500; color: #cbd5e1; }
+.sidebar-node__name--dx { font-size: 13px; font-weight: 400; color: #94a3b8; }
+.sidebar-node__name--selected { color: #c4b5fd; }
+.sidebar-node__progress { font-size: 11px; flex-shrink: 0; font-weight: 600; }
+.sidebar-node__star { flex-shrink: 0; font-size: 14px; line-height: 1; color: #475569; cursor: pointer; padding: 0 2px; }
+.sidebar-node__row:hover .sidebar-node__star { color: #64748b; }
+.sidebar-node__star:hover { color: #fbbf24; }
+.sidebar-node__star--on { color: #fbbf24; }
+
+/* ── TOPBAR ─────────────────────────────────────────────────────────────────── */
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #edf0f4; }
+.topbar { padding: 10px 24px; background: white; border-bottom: 1px solid #e5e7eb; display: flex; flex-direction: column; justify-content: center; gap: 4px; flex-shrink: 0; min-height: 54px; }
+.topbar__main { display: flex; align-items: center; gap: 8px 14px; flex-wrap: wrap; }
+.topbar__desc { font-size: 14px; color: #6b7280; line-height: 1.4; }
+.topbar__title { font-size: 18px; font-weight: 800; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto; max-width: 100%; min-width: 0; }
+.topbar__lead { display: flex; align-items: center; gap: 6px; padding: 3px 8px 3px 4px; background: #f3f4f6; border-radius: 20px; flex-shrink: 0; }
+.topbar__lead-name { font-size: 13px; color: #374151; font-weight: 500; }
+.topbar__lead-role { font-size: 12px; color: #6b7280; }
+.topbar__spacer { flex: 1 1 0; min-width: 0; }
+.topbar__progress { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-width: 0; }
+
+.tb-cap { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; white-space: nowrap; }
+.tb-lead { display: inline-flex; align-items: center; gap: 7px; padding: 3px 12px 3px 3px; background: #f3f4f6; border-radius: 999px; flex-shrink: 0; }
+.tb-lead__name { font-size: 14px; font-weight: 500; color: #111827; white-space: nowrap; }
+.tb-lead__role { font-size: 13px; color: #6b7280; white-space: nowrap; }
+.tb-pri { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: 6px; }
+.tb-pri__seg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid #e5e7eb; border-radius: 9px; background: #fff; height: 32px; box-sizing: border-box; }
+.tb-pri__btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 26px; padding: 0 9px; border: none; border-radius: 6px; background: transparent; color: var(--pc); font: inherit; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; }
+.tb-pri__btn:hover:not(:disabled) { background: color-mix(in srgb, var(--pc) 10%, #fff); }
+.tb-pri__btn:disabled { color: #c4c8cf; cursor: default; }
+.tb-pri__btn--on { background: var(--pc) !important; color: #fff; }
+.tb-pri__n { font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; line-height: 1; }
+.tb-pri__btn > *, .tb-pri__btn { vertical-align: middle; }
+.tb-pri__btn--on .tb-pri__n { opacity: .9; }
+.tb-pri__clear { width: 26px; height: 26px; border: none; background: transparent; border-radius: 6px; color: #6b7280; font-size: 20px; line-height: 1; cursor: pointer; }
+.tb-pri__clear:hover { background: #f3f4f6; color: #111827; }
+.topbar__progress-bar { flex: 0 0 140px; }
+.tb-menu { position: relative; flex-shrink: 0; }
+.tb-menu__btn { width: 36px; height: 36px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; font-size: 16px; font-weight: 700; letter-spacing: 1px; cursor: pointer; }
+.tb-menu__btn:hover { background: #f9fafb; border-color: #d1d5db; }
+.tb-menu__dropdown { right: 0; left: auto; top: calc(100% + 4px); }
+.topbar__progress-pct { font-size: 14px; font-weight: 700; color: #374151; flex-shrink: 0; }
+.topbar__add-btn { padding: 7px 14px; border-radius: 8px; background: var(--accent); color: white; border: none; font-size: 14px; font-weight: 600; cursor: pointer; flex-shrink: 0; }
+
+/* ── STATUS STEPPER ──────────────────────────────────────────────────────────── */
+.status-stepper { background: white; border-bottom: 1px solid #e5e7eb; padding: 10px 24px; display: flex; align-items: center; flex-wrap: wrap; }
+.status-stepper__no-goals { font-size: 13px; font-weight: 600; color: #6b7280; background: #f3f4f6; padding: 5px 12px; border-radius: 20px; margin-right: 8px; }
+.status-stepper__connector { width: 20px; height: 1px; background: #e5e7eb; flex-shrink: 0; }
+.status-stepper__btn { padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; border: none; transition: all 0.15s; background: transparent; color: #6b7280; }
+.status-stepper__btn:not(:disabled) { cursor: pointer; }
+.status-stepper__meta { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.status-stepper__changed { font-size: 12px; color: #6b7280; }
+/* ── MODE BANNER ─────────────────────────────────────────────────────────────── */
+/* Объясняет режим редактирования под степпером статусов: какой статус, что
+   доступно и что заблокировано. В режиме полного редактирования не рендерится. */
+.mode-banner { display: flex; align-items: flex-start; gap: 10px; padding: 9px 24px; border-bottom: 1px solid #e5e7eb; font-size: 13.5px; line-height: 1.5; }
+.mode-banner--progress { background: #fffbeb; color: #92400e; border-bottom-color: #fde68a; }
+.mode-banner--closed { background: #f3f4f6; color: #4b5563; border-bottom-color: #e5e7eb; }
+.mode-banner__icon { flex-shrink: 0; font-size: 14px; line-height: 1.45; }
+.mode-banner__text { flex: 1; min-width: 0; }
+.mode-banner__status { font-weight: 700; }
+.status-stepper { row-gap: 8px; flex-wrap: wrap; container-type: inline-size; }
+.status-stepper > :not(.mode-banner) { flex-shrink: 0; }
+.status-stepper > .mode-banner { flex: 1 1 auto; min-width: 0; max-width: 460px; margin-left: 24px; padding: 5px 12px; border: 1px solid; border-radius: 8px; font-size: 13px; line-height: 1.4; align-items: center; }
+.status-stepper > .mode-banner .mode-banner__text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@container (max-width: 1000px) { .status-stepper > .mode-banner { flex: 0 0 auto; cursor: help; } .status-stepper > .mode-banner .mode-banner__rest { display: none; } }
+@container (max-width: 600px) { .status-stepper { flex-wrap: wrap; } .status-stepper > .mode-banner { flex-basis: 100%; max-width: none; margin-left: 0; order: 99; } }
+.status-stepper > .mode-banner--progress { border-color: #fde68a; }
+.status-stepper > .mode-banner--closed { border-color: #e5e7eb; }
+.mode-banner--info { background: var(--accent-10, #f5f3ff); color: var(--accent-deep, #5b21b6); }
+.status-stepper > .mode-banner--info { border-color: var(--accent-25, #ddd6fe); flex: 1 1 320px; max-width: 680px; }
+.status-stepper > .mode-banner--info .mode-banner__text { white-space: normal; overflow: visible; text-wrap: pretty; }
+@container (max-width: 1000px) { .status-stepper > .mode-banner--info { flex: 1 1 100%; max-width: none; margin-left: 0; order: 99; cursor: default; } .status-stepper > .mode-banner--info .mode-banner__rest { display: inline; } }
+.status-stepper > .mode-banner .mode-banner__icon { font-size: 12px; line-height: 1; }
+
+/* ── CONTENT ─────────────────────────────────────────────────────────────────── */
+.content { flex: 1; overflow: auto; padding: 20px 24px; }
+.loading-screen { height: 100vh; display: flex; align-items: center; justify-content: center; color: #6b7280; }
+.empty-state { text-align: center; padding: 80px 0; color: #6b7280; }
+.empty-state__icon { font-size: 38px; margin-bottom: 12px; }
+.empty-state__title { font-size: 16px; font-weight: 600; color: #6b7280; margin-bottom: 6px; }
+.empty-state__text { font-size: 14px; margin-bottom: 20px; }
+.empty-state__btn { padding: 10px 22px; border-radius: 10px; background: var(--accent); color: white; border: none; font-size: 15px; font-weight: 700; cursor: pointer; }
+.section-label { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.6px; margin-top: 24px; margin-bottom: 12px; }
+
+/* ── MICRO: PROGRESS BAR ─────────────────────────────────────────────────────── */
+.progress-bar { position: relative; background: #e5e7eb; overflow: visible; }
+.progress-bar__fill { height: 100%; transition: width 0.4s ease; }
+.progress-bar__forecast { position: absolute; top: -3px; width: 2px; background: rgba(0,0,0,0.18); border-radius: 1px; transform: translateX(-50%); }
+
+/* ── MICRO: BADGE ────────────────────────────────────────────────────────────── */
+.badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 4px; font-size: 12px; font-weight: 600; letter-spacing: 0.3px; }
+
+/* ── MICRO: AVATAR ───────────────────────────────────────────────────────────── */
+.avatar { display: inline-flex; align-items: center; gap: 6px; }
+.avatar__img { border-radius: 50%; object-fit: cover; display: block; }
+.avatar__initials { border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0; }
+.avatar__name { font-size: 14px; color: #374151; font-weight: 500; }
+
+/* ── MICRO: INFO HINT ────────────────────────────────────────────────────────── */
+.info-hint { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; background: #f3f4f6; color: #6b7280; font-size: 11px; font-weight: 700; cursor: help; margin-left: 5px; user-select: none; outline: none; }
+.info-hint:hover, .info-hint:focus { background: #dbeafe; color: #2563eb; }
+.info-hint__tooltip { position: fixed; background: #111827; color: #f3f4f6; font-size: 11.5px; line-height: 1.45; padding: 10px 13px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); z-index: 2000; pointer-events: none; transform: translateX(-50%); white-space: pre-line; }
+
+/* ── MICRO: FIELD LABEL ──────────────────────────────────────────────────────── */
+.field-label { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 6px; display: flex; align-items: center; }
+.field-label__required { color: #ef4444; margin-left: 4px; }
+
+/* ── USER MENU ───────────────────────────────────────────────────────────────── */
+/* Moved to sidebar.css (.sidebar__user*) — shared by all SPA shells. */
+
+/* ── TEAM COMBOBOX ───────────────────────────────────────────────────────────── */
+.team-combobox { position: relative; }
+.team-combobox__input-area { min-height: 42px; padding: 5px 7px; border: 1px solid #e5e7eb; border-radius: 9px; background: white; display: flex; flex-wrap: wrap; gap: 5px; align-items: center; cursor: text; }
+.team-combobox__input-area--open { border-color: var(--accent); }
+.team-combobox__tag { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px; border-radius: 16px; }
+.team-combobox__tag-type { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.team-combobox__tag-name { font-size: 13px; font-weight: 600; color: #111827; }
+.team-combobox__tag-remove { background: none; border: none; cursor: pointer; color: #6b7280; font-size: 15px; line-height: 1; padding: 0 4px; }
+.team-combobox__input { flex: 1; min-width: 140px; border: none; outline: none; font-size: 14px; padding: 6px 4px; background: transparent; }
+.team-combobox__dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: white; border-radius: 9px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid #e5e7eb; max-height: 280px; overflow: auto; z-index: 50; }
+.team-combobox__empty { padding: 14px 16px; font-size: 13px; color: #6b7280; text-align: center; }
+.team-combobox__option { display: flex; align-items: center; gap: 8px; cursor: pointer; background: white; }
+.team-combobox__option--hi { background: #f3f4f6; }
+.team-combobox__option-stripe { width: 3px; height: 18px; border-radius: 2px; flex-shrink: 0; }
+.team-combobox__option-type { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; padding: 1px 4px; border-radius: 3px; }
+.team-combobox__option-name { font-size: 14px; color: #111827; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-combobox__option-lead { font-size: 12px; color: #6b7280; flex-shrink: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.team-combobox__option-locked { font-size: 12px; flex-shrink: 0; opacity: 0.6; }
+.team-combobox__option--blocked { cursor: not-allowed; opacity: 0.5; }
+.team-combobox__option--blocked .team-combobox__option-name { color: #9ca3af; }
+
+/* ── MODAL SHARED ────────────────────────────────────────────────────────────── */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-overlay--z300 { z-index: 300; }
+.modal-overlay--z400 { z-index: 400; }
+.modal-overlay--z600 { z-index: 600; background: rgba(0,0,0,0.45); }
+.modal-box { background: white; border-radius: 14px; box-shadow: 0 20px 60px rgba(0,0,0,0.25); overflow: hidden; }
+.modal-box--w380 { width: min(440px, 94vw); }
+.modal-box--w480 { width: min(780px, 94vw); max-height: 92vh; display: flex; flex-direction: column; }
+.modal-box--w480 .modal-body { overflow: auto; }
+.modal-box--w560 { width: min(820px, 94vw); max-height: 92vh; overflow: auto; }
+.modal-box--w600 { width: min(960px, 95vw); max-height: 92vh; overflow: auto; border-radius: 16px; box-shadow: 0 24px 80px rgba(0,0,0,0.3); }
+.modal-header { padding: 18px 22px 14px; border-bottom: 1px solid #f3f4f6; display: flex; justify-content: space-between; align-items: center; }
+.modal-header--sticky { position: sticky; top: 0; background: white; z-index: 1; padding: 20px 24px 14px; }
+.modal-header--goal { padding: 22px 28px 16px; }
+.modal-title { font-size: 16px; font-weight: 700; color: #111827; }
+.modal-title--lg { font-size: 17px; }
+.modal-title--goal { font-size: 19px; font-weight: 700; color: #111827; }
+.modal-subtitle { font-size: 13px; color: #6b7280; margin-top: 2px; }
+/* Метка над значением в шапке и теле модалки: говорит, что за текст ниже —
+   название цели или название ключевого результата. */
+.modal-cap { display: block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #9ca3af; margin-bottom: 2px; }
+/* Перечисление в подсказке: каждый пункт отдельной строкой, его код — своим цветом
+   (тем же, что у бейджа на карточке). Используется приоритетом и фокусом. */
+.hint-row { display: block; margin-top: 6px; }
+.hint-code { font-weight: 700; }
+.modal-close { background: none; border: none; cursor: pointer; color: #6b7280; padding: 4px; font-size: 21px; }
+.modal-close--lg { font-size: 23px; }
+.modal-body { padding: 18px 22px; }
+.modal-body--goal { padding: 22px 28px; }
+.modal-footer { padding: 0 22px 18px; display: flex; gap: 8px; justify-content: flex-end; }
+.modal-footer--sticky { position: sticky; bottom: 0; background: white; border-top: 1px solid #f3f4f6; padding: 14px 24px 18px; }
+.modal-footer--goal { padding: 14px 28px 22px; border-top: 1px solid #f3f4f6; display: flex; gap: 10px; justify-content: flex-end; position: sticky; bottom: 0; background: white; }
+
+/* ── CONFIRM MODAL ───────────────────────────────────────────────────────────── */
+.confirm-body { padding: 22px 24px 16px; }
+.confirm-title { font-size: 17px; font-weight: 700; color: #111827; margin-bottom: 8px; }
+.confirm-message { font-size: 14px; color: #6b7280; line-height: 1.5; }
+.confirm-footer { padding: 12px 24px 20px; display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ── BUTTONS ─────────────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; justify-content: center; border: none; cursor: pointer; border-radius: 8px; font-size: 14px; padding: 9px 18px; }
+.btn--secondary { border: 1px solid #e5e7eb; background: white; color: #374151; }
+.btn--secondary:disabled { cursor: default; }
+.btn--danger { background: #dc2626; color: white; font-weight: 700; }
+.btn--danger:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
+.btn--primary { background: var(--accent); color: white; font-weight: 600; }
+.btn--primary:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
+/* ── ICON ACTION BUTTON ──────────────────────────────────────────────────────── */
+/* Единый элемент действия доски: редактирование цели и KR, обновление прогресса,
+   удаление, заметка. Размер и рамка совпадают с .goal-card__copy-link, поэтому
+   все действия карточки читаются как один ряд.
+   Заблокированный вариант намеренно не использует disabled: кнопка обязана
+   получать фокус с клавиатуры, чтобы объяснить причину блокировки. Само действие
+   гасится в обработчике. */
+.action-lock { position: relative; display: inline-flex; flex-shrink: 0; }
+.icon-btn { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+.icon-btn:hover { background: #f9fafb; border-color: #d1d5db; color: #374151; }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.icon-btn--accent { border-color: var(--accent); background: var(--accent-10); color: var(--accent); }
+.icon-btn--accent:hover { background: var(--accent-15); border-color: var(--accent-strong); color: var(--accent-strong); }
+.icon-btn--danger { border-color: #fca5a5; background: #fff1f1; color: #dc2626; }
+.icon-btn--danger:hover { background: #fee2e2; border-color: #f87171; color: #b91c1c; }
+.icon-btn--locked, .icon-btn--locked:hover { cursor: default; border-color: #f0f1f3; background: #fafafa; color: #c9cdd3; }
+.icon-btn__lock { position: absolute; right: -3px; bottom: -4px; font-size: 11px; line-height: 1; color: #6b7280; pointer-events: none; }
+.action-lock__tip { position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 60; display: none; width: max-content; max-width: 260px; padding: 7px 10px; border-radius: 8px; background: #111827; color: #f3f4f6; font-size: 11.5px; font-weight: 500; line-height: 1.45; box-shadow: 0 8px 24px rgba(0,0,0,0.25); pointer-events: none; }
+.action-lock:hover .action-lock__tip, .action-lock:focus-within .action-lock__tip { display: block; }
+.topbar .action-lock__tip { bottom: auto; top: calc(100% + 6px); right: 0; }
+/* Текстовые кнопки доски в заблокированном виде — «+ Добавить цель», «+ Добавить KR». */
+.kr-add-btn--locked, .kr-add-btn--locked:hover { cursor: default; border-style: solid; border-color: #f0f1f3; background: #fafafa; color: #c9cdd3; }
+.topbar__add-btn--locked, .topbar__add-btn--locked:hover { cursor: default; background: #e5e7eb; color: #9ca3af; }
+.icon-btn-slot { width: 26px; flex-shrink: 0; }
+
+/* ── FORM ELEMENTS ───────────────────────────────────────────────────────────── */
+.form-group { margin-bottom: 16px; }
+.form-group--sm { margin-bottom: 12px; }
+.form-row { display: flex; gap: 14px; margin-bottom: 16px; }
+.form-col { flex: 1; }
+.form-col--w140 { width: 140px; flex: none; }
+.goal-meta-row { flex-wrap: wrap; row-gap: 12px; }
+.goal-meta-row > .form-col { flex: 1 1 150px; min-width: 0; }
+.goal-meta-row .seg-group { flex-wrap: nowrap; }
+.goal-meta-row .form-select { width: 100%; }
+.pri-select { position: relative; width: 100%; max-width: 100%; }
+.pri-select__btn { display: flex; align-items: center; gap: 8px; width: 100%; height: 40px; padding: 0 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; font: inherit; font-size: 14px; color: #111827; cursor: pointer; text-align: left; }
+.pri-select__btn:hover, .pri-select__btn[aria-expanded="true"] { border-color: #c4b5fd; }
+.pri-select__txt { flex: 1; font-weight: 500; }
+.pri-select__caret { color: #9ca3af; font-size: 11px; }
+.pri-select__menu { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: 340px; max-width: 80vw; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.14); display: flex; flex-direction: column; gap: 2px; }
+.pri-select__opt { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: none; border-radius: 7px; background: transparent; font: inherit; text-align: left; cursor: pointer; color: #111827; }
+.pri-select__opt:hover { background: #f5f3ff; }
+.pri-select__opt--on { background: #f9fafb; }
+.pri-select__opt > .badge { flex-shrink: 0; margin-top: 1px; }
+.pri-select__opt-txt { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pri-select__opt-txt b { font-size: 14px; font-weight: 600; }
+.pri-select__opt-txt span { font-size: 12px; color: #6b7280; line-height: 1.4; }
+.pri-select__check { color: var(--accent); font-weight: 700; }
+.seg-btn--pri { border-color: #e5e7eb !important; background: #fff !important; color: #6b7280 !important; font-weight: 700; }
+.seg-btn--pri:hover { border-color: var(--pc) !important; color: var(--pc) !important; }
+.seg-btn--pri-on { background: color-mix(in srgb, var(--pc) 10%, #fff) !important; border-color: var(--pc) !important; color: var(--pc) !important; }
+.goal-name-row { align-items: flex-start; }
+.goal-name-row .form-col--w140 .form-input--weight { height: auto; }
+
+.form-input { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #e5e7eb; font-size: 15px; outline: none; color: #111827; background: white; }
+.form-input--goal { padding: 11px 13px; border-radius: 9px; border-width: 1.5px; }
+.form-input--sm { padding: 7px 10px; font-size: 14px; }
+.form-input--center { text-align: center; }
+.form-input--error { border-color: #ef4444 !important; }
+.form-input--weight { padding: 10px 30px 10px 13px; border-radius: 9px; border-width: 1.5px; }
+.form-weight-wrap { position: relative; }
+.form-weight-pct { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #6b7280; pointer-events: none; }
+.form-error-msg { font-size: 12px; color: #ef4444; margin-top: 3px; }
+
+.form-textarea { width: 100%; padding: 12px 14px; border-radius: 9px; border: 1.5px solid #e5e7eb; font-size: 15px; outline: none; color: #111827; line-height: 1.55; min-height: 160px; resize: vertical; }
+.form-textarea--sm { padding: 10px 12px; border-radius: 8px; border-width: 1px; font-size: 14px; min-height: 110px; resize: vertical; }
+
+.form-select { width: 100%; padding: 10px 13px; border-radius: 9px; border: 1.5px solid #e5e7eb; font-size: 14px; outline: none; color: #111827; background: white; cursor: pointer; }
+.form-select--sm { padding: 7px 10px; border-radius: 8px; border-width: 1px; }
+
+.seg-group { display: flex; gap: 6px; }
+.seg-btn { flex: 1; padding: 9px 0; border-radius: 8px; border: 2px solid #e5e7eb; background: white; color: #6b7280; font-size: 14px; font-weight: 700; cursor: pointer; text-transform: capitalize; }
+.seg-btn--active { border-color: var(--accent); color: var(--accent); background: #f5f3ff; }
+
+/* ── TRANSFER (copy/move) MODAL ───────────────────────────────────────────────── */
+.transfer-modal { width: min(560px, 94vw); max-height: 92vh; overflow: auto; }
+.transfer-modal__title { font-weight: 700; font-size: 19px; }
+.transfer-modal__subtitle { color: #6b7280; font-size: 14px; margin-top: 2px; }
+.transfer-modal__mode { margin-bottom: 16px; }
+.transfer-modal__field { margin-bottom: 16px; }
+.transfer-modal__label { font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.transfer-modal__hint { color: #6b7280; font-size: 13px; margin-top: 4px; }
+.transfer-modal__check { display: flex; align-items: center; gap: 8px; padding: 6px 0; font-size: 15px; cursor: pointer; }
+.transfer-modal__error { color: #dc2626; background: #fef2f2; border-radius: 8px; padding: 8px 10px; font-size: 14px; margin-top: 8px; }
+/* .team-combobox__option-lead / --blocked defined above (shared with the share flow). */
+.team-combobox__option--selected { background: rgba(99,102,241,0.08); }
+.team-combobox__option-blocked-tag { margin-left: auto; font-size: 12px; color: #9ca3af; text-transform: lowercase; }
+
+/* ── TOGGLE ──────────────────────────────────────────────────────────────────── */
+.toggle-box { padding: 12px 14px; background: #f9fafb; border-radius: 10px; border: 1px solid #f0f1f3; }
+.toggle-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.toggle-track { width: 38px; height: 22px; border-radius: 11px; background: #d1d5db; position: relative; flex-shrink: 0; cursor: pointer; transition: background 0.15s; }
+.toggle-track--on { background: var(--accent); }
+.toggle-knob { position: absolute; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: white; transition: left 0.15s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); left: 3px; }
+.toggle-knob--on { left: 18px; }
+.toggle-text { flex: 1; }
+.toggle-title { font-size: 14px; font-weight: 600; color: #374151; }
+.toggle-subtitle { font-size: 12px; color: #6b7280; }
+.toggle-content { margin-top: 12px; padding-top: 12px; border-top: 1px dashed #e5e7eb; }
+.toggle-content__label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.toggle-content__required { color: #ef4444; }
+
+/* ── KR EDIT MODAL ───────────────────────────────────────────────────────────── */
+.kr-num-section { background: #f9fafb; border-radius: 10px; padding: 14px; margin-bottom: 14px; border: 1px solid #f0f1f3; }
+.kr-num-section__title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; margin-bottom: 12px; }
+.kr-num-fields { display: flex; gap: 12px; margin-bottom: 12px; }
+.kr-num-section--compact { padding: 12px 14px 10px; }
+.kr-num-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kr-num-line__lbl { font-size: 13px; font-weight: 600; color: #374151; }
+.kr-num-input-suffix--compact { width: 130px; flex: 0 0 auto; }
+.kr-num-line__range { font-size: 13px; color: #6b7280; font-variant-numeric: tabular-nums; }
+.kr-num-line__pct { margin-left: auto; font-size: 18px; }
+.kr-scale { position: relative; height: 14px; margin: 14px 6px 0; }
+.kr-scale__track { position: absolute; left: 0; right: 0; top: 4px; height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+.kr-scale__fill { height: 100%; border-radius: 3px; }
+.kr-scale__cp { position: absolute; top: 1px; width: 2px; height: 12px; margin-left: -1px; background: #9ca3af; border-radius: 1px; cursor: help; }
+.kr-scale__cp--hit { background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+.kr-scale__cur { position: absolute; top: 0; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #fff; border: 3px solid; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
+.kr-scale__labels { position: relative; height: 30px; margin: 4px 6px 0; }
+.kr-scale__lbl { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
+.kr-scale__lbl:first-child { transform: none; align-items: flex-start; }
+.kr-scale__lbl:last-child { transform: translateX(-100%); align-items: flex-end; }
+.kr-scale__lbl--cp b { font-weight: 600; color: #374151; font-size: 10px; }
+.kr-scale__note { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.kr-num-field { flex: 1; }
+.kr-measure-pick { margin-bottom: 14px; }
+.kre-metric-row { display: flex; align-items: flex-end; gap: 10px; }
+.kre-metric-row__unit { flex: 0 0 110px; }
+.kre-metric-row__val { flex: 1 1 0; min-width: 0; }
+.kre-metric-row__arrow { flex-shrink: 0; padding-bottom: 7px; color: #9ca3af; font-size: 16px; }
+.kre-metric-note { margin-top: 8px; font-size: 12px; color: #6b7280; line-height: 1.4; }
+.kre-name-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+.kre-name-row__name { flex: 1; min-width: 0; }
+.kre-name-row__weight { flex: 0 0 96px; }
+.kre-name-row__weight .kr-num-input-suffix { width: 100%; }
+.kre-tip { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 5px; border-radius: 50%; border: 1px solid #d1d5db; color: #6b7280; font-size: 10px; font-weight: 700; vertical-align: 1px; text-transform: none; letter-spacing: 0; }
+.kre-name-row__weight .has-tip::after { left: auto; right: -8px; }
+.kre-name-row__weight .has-tip::before { left: auto; right: 2px; }
+.kr-measure-pick__hint { font-size: 12px; color: #6b7280; line-height: 1.45; margin: 2px 0 8px; }
+.kr-measure-pick__opts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.kr-measure-opt { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; text-align: left; font: inherit; color: #374151; cursor: pointer; transition: border-color .12s, background .12s; }
+.kr-measure-opt:hover { border-color: #c4b5fd; }
+.kr-measure-opt--on { border-color: var(--accent); background: #f5f3ff; box-shadow: 0 0 0 1px var(--accent) inset; }
+.kr-measure-opt__head { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: #111827; }
+.kr-measure-opt__ic { flex-shrink: 0; min-width: 24px; height: 22px; padding: 0 4px; border-radius: 6px; background: #f3f4f6; color: #4b5563; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.kr-measure-opt--on .kr-measure-opt__ic { background: var(--accent); color: #fff; }
+.kr-measure-opt__desc { font-size: 12px; line-height: 1.45; color: #4b5563; }
+.kr-measure-opt__ex { font-size: 11.5px; line-height: 1.4; color: #6b7280; font-style: italic; }
+@media (max-width: 640px) { .kr-measure-pick__opts { grid-template-columns: 1fr; } }
+.kr-modal-desc { margin: 0 0 14px; padding: 10px 12px; background: #f9fafb; border: 1px solid #f0f1f3; border-radius: 8px; font-size: 13px; line-height: 1.5; color: #4b5563; --md-collapse-max: calc(4.5em + 20px); }
+.modal-body > .field-label:first-child { font-size: 16px; font-weight: 700; color: #111827; line-height: 1.35; margin-bottom: 10px; text-transform: none; letter-spacing: 0; }
+.modal-body .md-collapsible { --md-fade-bg: #f9fafb; margin-bottom: 14px; }
+.modal-body .md-collapsible > .kr-modal-desc { margin-bottom: 0; }
+.kr-num-static { height: 34px; display: flex; align-items: center; padding: 0 2px; font-size: 15px; font-weight: 600; color: #374151; font-variant-numeric: tabular-nums; cursor: default; }
+.kr-num-field__label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+.kr-num-input-suffix { position: relative; display: block; }
+.kr-num-input-suffix .form-input { width: 100%; padding-right: 40px; }
+.kr-num-input-suffix__unit { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 13px; color: #6b7280; white-space: nowrap; pointer-events: none; }
+.kr-progress-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+.kr-progress-row__label { font-size: 13px; color: #6b7280; }
+.kr-guide { margin-top: 12px; padding: 12px 14px; background: #eef6fa; border: 1px solid #cfe6ee; border-radius: 10px; }
+.kr-guide__title { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #2b7a99; margin-bottom: 10px; }
+.kr-guide__steps { display: flex; flex-wrap: wrap; gap: 10px; }
+.kr-guide__step { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 60px; padding: 7px 14px; border: 1.5px dashed #9ec7d6; border-radius: 9px; background: #fff; line-height: 1.2; }
+.kr-guide__step--reached { border-style: solid; border-color: #2b6f86; background: #2b6f86; }
+.kr-guide__step-val { font-size: 12px; font-weight: 700; color: #2b7a99; }
+.kr-guide__step-pct { font-size: 13px; font-weight: 600; color: #6aa3b6; margin-top: 2px; }
+.kr-guide__step--reached .kr-guide__step-val { color: #fff; }
+.kr-guide__step--reached .kr-guide__step-pct { color: #cfe6ee; }
+.kr-guide__hint { margin-top: 10px; font-size: 13px; color: #2b7a99; }
+.kr-steps-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+.kr-steps-title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; }
+.kr-steps-sum { font-size: 12px; font-weight: 600; }
+.kr-steps-sum--ok { color: #16a34a; }
+.kr-steps-sum--bad { color: #ef4444; }
+.kr-step-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.kr-steps-cols { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.kr-steps-cols span { font-size: 12px; font-weight: 600; color: #6b7280; }
+.kr-steps-cols__check { width: 16px; flex-shrink: 0; text-align: center; }
+.kr-steps-cols__name { flex: 1; text-transform: uppercase; letter-spacing: 0.02em; }
+.kr-steps-cols__weight { width: 60px; flex-shrink: 0; text-align: center; }
+.kr-steps-cols__del { width: 18px; flex-shrink: 0; }
+.kr-cp-head, .kr-cp-row { display: grid; grid-template-columns: 1fr 110px 20px; gap: 8px; align-items: center; }
+.kr-cp-head { margin-bottom: 4px; }
+.kr-cp-row { margin-bottom: 8px; }
+.kr-cp-head__label { font-size: 12px; font-weight: 600; color: #6b7280; }
+.kr-cp-row .form-input { width: 100%; }
+.kr-step-delete { background: none; border: none; cursor: pointer; color: #ef4444; font-size: 19px; flex-shrink: 0; }
+.kr-step-add { width: 100%; padding: 7px; border: 1px dashed #d1d5db; border-radius: 7px; background: transparent; color: #6b7280; font-size: 13px; cursor: pointer; }
+.kr-section-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.kr-section-head__title { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.02em; }
+.kr-section-head__opt { font-size: 12px; color: #6b7280; }
+.kr-dashed-btn { width: 100%; padding: 10px; border: 1px dashed #d1d5db; border-radius: 8px; background: transparent; color: #6b7280; font-size: 14px; cursor: pointer; transition: border-color .12s, color .12s; }
+.kr-dashed-btn:hover { border-color: #9ca3af; color: #4b5563; }
+.kr-section-sep { height: 1px; background: #ececf0; margin: 14px 0; }
+.kr-zeroing-btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border: 1px dashed #d1d5db; border-radius: 8px; background: transparent; color: #4b5563; font-size: 14px; font-weight: 600; cursor: pointer; transition: border-color .12s; }
+.kr-zeroing-btn:hover { border-color: #9ca3af; }
+.kr-zeroing-btn__icon { font-size: 16px; color: #6b7280; line-height: 1; }
+.kr-note-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+.kr-note-optional { color: #6b7280; font-weight: 400; }
+
+/* ── KR PROGRESS MODAL ───────────────────────────────────────────────────────── */
+.kr-progress-desc { padding: 14px 22px; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }
+.kr-progress-desc__label { font-size: 12px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase; color: #6b7280; margin-bottom: 5px; }
+.kr-progress-desc__text { font-size: 14.5px; color: #374151; line-height: 1.5; white-space: pre-wrap; }
+.kr-progress-field { margin-bottom: 14px; }
+.kr-progress-field__label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 5px; }
+.kr-progress-field__hint { color: #6b7280; font-weight: 400; }
+.kr-boolean-label { display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 14px; padding: 12px; background: #f9fafb; border-radius: 8px; }
+.kr-boolean-text { font-size: 15px; font-weight: 500; color: #111827; }
+.kr-boolean-pct { margin-left: auto; font-size: 14px; font-weight: 700; }
+.kr-stage-label { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px; cursor: pointer; margin-bottom: 4px; }
+.kr-stage-name { flex: 1; font-size: 14px; color: #374151; }
+.kr-stage-weight { font-size: 12px; color: #6b7280; }
+
+/* ── KR ROW ──────────────────────────────────────────────────────────────────── */
+.kr-row { padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+.kr-row__main { display: flex; align-items: flex-start; gap: 10px; }
+.kr-weight-chip { width: 26px; height: 26px; border-radius: 6px; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #6b7280; flex-shrink: 0; }
+.kr-info { flex: 1; min-width: 0; }
+.kr-name { font-size: 14px; font-weight: 500; color: #111827; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kr-desc { font-size: 12px; color: #6b7280; white-space: pre-wrap; word-break: break-word; margin-top: 2px; line-height: 1.4; --md-collapse-max: 4.2em; }
+.kr-row .md-collapsible { --md-fade-bg: #fff; }
+.kr-detail-row { display: flex; align-items: center; gap: 10px; }
+.kr-bar-wrap { flex: 1; max-width: 160px; }
+.kr-pct { font-size: 12px; font-weight: 700; flex-shrink: 0; color: var(--accent); }
+.kr-detail { font-size: 13px; color: #6b7280; font-variant-numeric: tabular-nums; }
+.kr-detail--done { color: #16a34a; font-weight: 600; }
+.kr-detail--todo { color: #6b7280; font-weight: 600; }
+.kr-zeroing-note { margin-top: 4px; font-size: 12px; line-height: 1.4; color: #c2410c; word-break: break-word; }
+.kr-zeroing-note--clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.kr-zeroing-note--md { font-size: 14px; margin-top: 8px; }
+.kr-zeroing-note__icon { margin-right: 3px; }
+.kr-updated { font-size: 12px; flex-shrink: 0; min-width: 72px; text-align: right; }
+/* Давность обновления KR: тот же порог, что и в разметке — fresh → warn → stale. */
+.kr-updated--fresh { color: #10b981; }
+.kr-updated--warn { color: #d97706; }
+.kr-updated--stale { color: #dc2626; }
+/* Единый блок действий строки KR: редактирование или обновление прогресса,
+   заметка, удаление. Позиция справа та же, что у действий цели. */
+.kr-row__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ── KR NOTES ────────────────────────────────────────────────────────────────── */
+.kr-notes { margin-top: 10px; margin-left: 36px; border-left: 2px solid #f0f1f3; padding-left: 12px; }
+.kr-note { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-start; }
+.kr-note__content { flex: 1; }
+.kr-note__header { display: flex; gap: 6px; align-items: center; margin-bottom: 2px; }
+.kr-note__author { font-size: 12px; font-weight: 600; color: #374151; }
+.kr-note__date { font-size: 11px; color: #6b7280; }
+.kr-note__text { font-size: 13px; color: #374151; background: #f9fafb; padding: 6px 9px; border-radius: 6px; }
+
+/* ── COMMENTS PANEL ──────────────────────────────────────────────────────────── */
+.comments-section { padding: 0 18px 16px; border-top: 1px solid #f3f4f6; }
+.comments-panel { padding-top: 14px; }
+.comments-panel__title { display: flex; align-items: center; gap: 10px; font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
+.comments-panel__unresolved { text-transform: none; letter-spacing: 0; font-size: 12px; font-weight: 700; color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 999px; }
+.comments-panel__resolved-head { font-size: 12px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.6px; margin: 6px 0 12px; }
+.comment { display: flex; gap: 10px; margin-bottom: 14px; align-items: flex-start; }
+.comment--resolved { opacity: 0.65; }
+/* Background highlight applies to the task's own text only (direct child), not to
+   replies nested inside its content — replies must not be highlighted. */
+.comment--resolved > .comment__content > .comment__text { background: #f3f4f6; }
+.comment--task-open > .comment__content > .comment__text { background: #fffbeb; border-color: #fcd34d; }
+.comment__resolved-badge { font-size: 12px; font-weight: 700; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; padding: 1px 7px; border-radius: 999px; }
+.comment__actions { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.comment__resolve-btn { font-size: 13px; font-weight: 600; color: #047857; background: #fff; border: 1px solid #a7f3d0; border-radius: 7px; padding: 5px 12px; cursor: pointer; }
+.comment__resolve-btn:hover:not(:disabled) { background: #ecfdf5; }
+.comment__resolve-btn:disabled { opacity: 0.5; cursor: default; }
+.comment__resolved-meta { margin-top: 6px; font-size: 12px; color: #6b7280; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.comment__resolved-info { color: #6b7280; }
+.comment__actions-inline { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.comment__sep { color: #d1d5db; user-select: none; }
+.comment__link-ic { margin-right: 3px; font-size: 12px; opacity: 0.85; }
+.comment__link-btn { display: inline-flex; align-items: center; font-size: 12px; color: #6b7280; background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline; }
+.comment__link-btn:hover:not(:disabled) { color: #374151; }
+.comment__link-btn--danger:hover:not(:disabled) { color: #b91c1c; }
+.comment__link-btn:disabled { opacity: 0.5; cursor: default; }
+.comment__content { flex: 1; }
+.comment__header { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+.comment__author { font-size: 13px; font-weight: 600; color: #374151; }
+.comment__date { font-size: 12px; color: #6b7280; }
+.comment__text { font-size: 14px; color: #374151; line-height: 1.55; background: #f9fafb; padding: 9px 12px; border-radius: 8px; border: 1px solid #f3f4f6; }
+.comment-compose { display: flex; gap: 8px; align-items: flex-start; }
+.comment-compose__right { flex: 1; }
+.comment-submit-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 5px; }
+.comment-submit { padding: 6px 14px; border-radius: 7px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+.comment-submit--active { background: var(--accent); color: white; }
+.comment-submit--disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
+.comment-cancel { padding: 6px 14px; border-radius: 7px; border: 1px solid #e5e7eb; background: #fff; color: #6b7280; font-size: 14px; font-weight: 600; cursor: pointer; }
+.comment-cancel:hover:not(:disabled) { background: #f9fafb; color: #374151; }
+.comment-cancel:disabled { opacity: 0.5; cursor: default; }
+.comment__replies { margin-top: 8px; padding-left: 16px; border-left: 2px solid #e5e7eb; display: flex; flex-direction: column; gap: 10px; }
+.comment--reply { display: flex; gap: 8px; align-items: flex-start; }
+.comment-compose--reply { margin-top: 8px; flex-direction: column; align-items: stretch; gap: 6px; }
+.comment__confirm { font-size: 13px; color: #b91c1c; }
+
+/* ── GOAL CARD ───────────────────────────────────────────────────────────────── */
+.goal-card { background: white; border-radius: 12px; margin-bottom: 12px; border: 1px solid #f0f1f3; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: box-shadow 0.15s, opacity 0.15s; position: relative; }
+.goal-card--dragging { box-shadow: 0 8px 24px rgba(0,0,0,0.15); opacity: 0.5; }
+/* The drag handle is absolutely positioned inside the content's left padding, so
+   reorderable cards keep the same left offset as read-only statuses — content
+   alignment stays identical whether or not the handle is shown. */
+.goal-card--shared { border-left: 3px solid #0891b2; }
+.goal-card--stale { border-color: #fde68a; }
+.goal-card--stale.goal-card--shared { border-left: 3px solid #0891b2; }
+
+.drag-handle { position: absolute; left: -20px; top: 50%; transform: translateY(-50%); width: 16px; height: 42px; display: flex; align-items: center; justify-content: center; cursor: grab; color: #6b7280; font-size: 18px; font-weight: 700; user-select: none; border-radius: 4px; }
+.drag-handle:hover { color: #4b5563; }
+.drag-handle, .kr-item__drag-handle { color: #6b7280 !important; font-weight: 700; border-radius: 5px; transition: color .12s, background .12s; }
+.drag-handle { font-size: 15px !important; }
+.kr-item__drag-handle { font-size: 14px !important; height: 26px; }
+.drag-handle:hover, .kr-item__drag-handle:hover { color: var(--accent) !important; background: var(--accent-10); }
+.goal-card:hover > .drag-handle, .kr-item:hover > .kr-item__drag-handle { color: #374151 !important; }
+
+.goal-card__body { padding: 16px 18px; }
+.goal-card__meta { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.goal-card__weight { font-size: 12px; color: #6b7280; font-weight: 500; }
+.goal-card__spacer { flex: 1; }
+.goal-card__owner { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #6b7280; }
+.goal-card__owner-label { color: #6b7280; font-weight: 500; }
+.goal-card__copy-link { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+.goal-card__copy-link:hover { background: #f9fafb; border-color: #d1d5db; color: #374151; }
+.goal-card__copy-link--copied { border-color: #86efac; background: #f0fdf4; color: #16a34a; }
+.goal-card__title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.goal-card__title { font-size: 16px; font-weight: 700; color: #111827; line-height: 1.35; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; }
+.title-edit { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: none; border-radius: 6px; background: transparent; color: #6b7280; font-size: 14px; line-height: 1; cursor: pointer; }
+.title-editable { cursor: pointer; width: fit-content; max-width: 100%; }
+.title-editable .goal-card__title, .title-editable .kr-name { cursor: pointer; }
+.title-editable:hover .goal-card__title, .title-editable:hover .kr-name { color: var(--accent); }
+.title-editable:hover .title-edit { background: #f1f5f9; color: #374151; }
+.title-edit { pointer-events: none; }
+.kr-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; margin-bottom: 3px; }
+.kr-name-row .kr-name { margin-bottom: 0; min-width: 0; }
+.kr-name-row .title-edit { width: 20px; height: 20px; font-size: 13px; }
+.kr-row-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #374151; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; }
+.kr-row-btn:hover { background: #f9fafb; border-color: #d1d5db; }
+.kr-row-btn--accent { border-color: var(--accent); background: var(--accent-10); color: var(--accent); }
+.kr-row-btn--accent:hover { background: var(--accent-15); border-color: var(--accent-strong); color: var(--accent-strong); }
+.act-menu__item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: transparent; cursor: pointer; border-radius: 8px; padding: 7px 10px; font-size: 14px; font-weight: 500; color: #111827; white-space: nowrap; }
+.act-menu__item:hover { background: #f8fafc; }
+.act-menu__ic { width: 16px; text-align: center; color: #6b7280; }
+.act-menu__item--danger, .act-menu__item--danger .act-menu__ic { color: #dc2626; }
+.act-menu__item--danger:hover { background: #fff1f1; }
+.act-menu__item--disabled, .act-menu__item--disabled:hover { cursor: default; background: transparent; color: #c9cdd3; }
+.act-menu__item--disabled .act-menu__ic { color: #c9cdd3; }
+.act-menu__item--why { position: relative; cursor: help !important; }
+.act-menu__lock { margin-left: auto; width: 16px; height: 16px; border-radius: 50%; border: 1px solid #d1d5db; color: #9ca3af; font-size: 10px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.act-menu__why { display: none; position: absolute; z-index: 60; right: calc(100% + 8px); top: 50%; transform: translateY(-50%); width: 240px; padding: 8px 10px; background: #111827; color: #e5e7eb; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: 11.5px; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; pointer-events: none; }
+.act-menu__why::after { content: ''; position: absolute; left: 100%; top: 50%; margin-top: -5px; border: 5px solid transparent; border-left-color: #111827; }
+.act-menu__item--why:hover .act-menu__why, .act-menu__item--why:focus .act-menu__why { display: block; }
+.act-menu__sep { height: 1px; background: #f1f5f9; margin: 4px 2px; }
+.goal-card__title--readonly { cursor: default; }
+.goal-card__desc { font-size: 14px; color: #6b7280; margin-bottom: 12px; line-height: 1.5; --md-collapse-max: 6em; }
+/* Collapsed height caps are written as lines x line-height so they read as a
+   number of text lines: goal 4 x 1.5 = 6em, KR 3 x 1.4 = 4.2em. The fade is
+   painted in the card background; every card state (stale, shared, dragging)
+   keeps .goal-card's white fill, and dragging fades the card as a whole, so a
+   single value covers them all. */
+.goal-card__body > .md-collapsible { margin-bottom: 12px; --md-fade-bg: #fff; }
+
+.shared-banner { margin-bottom: 12px; padding: 8px 10px; background: #ecfeff; border-radius: 8px; border: 1px solid #a5f3fc; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.shared-banner__label { font-size: 12px; color: #0e7490; font-weight: 600; flex-shrink: 0; }
+.shared-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: white; border: 1px solid rgba(8,145,178,0.38); font-size: 12px; font-weight: 500; color: #164e63; }
+.shared-pill--self { background: #e0f2fe; border-color: #38bdf8; color: #0369a1; }
+.shared-pill--owner { font-weight: 600; }
+.shared-pill__owner-star { color: #f59e0b; font-size: 13px; line-height: 1; }
+
+.goal-card__progress { margin-bottom: 10px; }
+.goal-card__progress-pct { font-size: 21px; font-weight: 800; letter-spacing: -0.5px; }
+.goal-card__health-badge { font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
+.goal-card__updated { font-size: 12px; font-weight: 500; }
+/* ── GOAL CARD: плотность ────────────────────────────────────────────────────── */
+/* Метаданные цели идут одной строкой: приоритет, вес, тип, фокус, связи, драйверы,
+   ссылка и экспорт. Блок драйверов сжимается первым, остальное не переносится. */
+.goal-card__meta--row { flex-wrap: nowrap; }
+.goal-card__meta--row .goal-card__owner { min-width: 0; overflow: hidden; }
+.goal-card__meta--row .goal-card__owner .uinfo__name { overflow: hidden; text-overflow: ellipsis; }
+.goal-card__actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+/* Цвет здоровья задаётся один раз на карточке и переиспользуется процентом,
+   индикатором и полосой прогресса — в разметке цветов не остаётся. */
+.goal-card { --health: var(--text-muted); --health-soft: var(--surface-subtle); }
+.goal-card__progress-pct { color: var(--health); }
+.goal-card__health-badge { color: var(--health); background: var(--health-soft); }
+/* Строка прогресса: процент, индикатор здоровья, прогноз, давность обновления. */
+.goal-card__progress-line { display: flex; align-items: center; gap: 10px; margin-bottom: 5px; }
+.goal-card__updated { color: var(--text-muted); }
+.goal-card__forecast { font-size: 12px; color: #6b7280; white-space: nowrap; }
+.goal-card__updated--warn { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; padding: 1px 8px; border-radius: 999px; font-weight: 600; }
+/* Ключевые результаты видны всегда — переключателя блока нет. */
+.kr-section__empty { padding: 8px 0 2px; font-size: 13px; color: #6b7280; }
+
+.goal-card__footer { display: flex; border-top: 1px solid #f3f4f6; background: #fafafa; }
+.gc-comments-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 14px; border: none; border-top: 1px solid #f3f4f6; background: transparent; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; color: #4b5563; text-align: left; border-radius: 0 0 10px 10px; }
+.gc-comments-toggle:hover { background: #fafafa; }
+.gc-comments-toggle__caret { font-size: 10px; color: #9ca3af; transition: transform .15s; width: 12px; }
+.gc-comments-toggle--open .gc-comments-toggle__caret { transform: rotate(90deg); }
+.gc-comments-toggle--open { border-radius: 0; }
+.gc-comments-toggle__count { font-weight: 600; }
+.gc-comments-toggle--warn { color: #b45309; }
+.gc-comments-toggle__pill { font-size: 13px; font-weight: 600; color: #b45309; background: #fef3c7; padding: 2px 10px; border-radius: 999px; }
+.gc-comments-toggle + .comments-section { border-top: none; }
+.kr-note { display: flex; align-items: baseline; gap: 10px; margin: 6px 0 2px 40px; padding: 5px 10px; background: #f6f7f9; border-radius: 6px; font-size: 13px; line-height: 1.45; color: #374151; min-width: 0; }
+.kr-note--long { cursor: pointer; }
+.kr-note--long:hover { background: #eef0f3; }
+.kr-note__label { flex-shrink: 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #6b7280; }
+.kr-note__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kr-note__toggle { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--accent); }
+.kr-note--open { flex-wrap: wrap; padding: 8px 10px; }
+.kr-note--open .kr-note__text { white-space: pre-wrap; word-break: break-word; flex-basis: calc(100% - 160px); }
+.kr-note__meta { flex-basis: 100%; padding-left: 0; font-size: 12px; color: #6b7280; }
+@container (max-width: 720px) { .kr-note { margin-left: 0; } }
+.goal-card__footer-btn { flex: 1; padding: 8px 0; border: none; background: transparent; cursor: pointer; font-size: 13px; font-weight: 500; color: #6b7280; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.goal-card__footer-btn--has-comments { color: #374151; }
+.comment-unresolved-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; background: #dc2626; }
+.kr-weight-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
+
+/* ── KR SECTION ──────────────────────────────────────────────────────────────── */
+.kr-section { padding: 4px 18px 14px; border-top: 1px solid #f3f4f6; }
+.kr-weight-warn { display: flex; align-items: center; gap: 8px; margin: 6px 0 12px; padding: 9px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #dc2626; background: #fef2f2; border: 1px solid #fecaca; }
+.kr-weight-warn__icon { flex-shrink: 0; font-size: 14px; }
+.goal-weight-warn { display: flex; align-items: flex-start; gap: 12px; margin: 0 0 16px; padding: 14px 20px; border-radius: 10px; background: #fffbeb; border: 1px solid #fde68a; }
+.goal-weight-warn__icon { flex-shrink: 0; font-size: 19px; line-height: 1.35; color: #b45309; }
+.goal-weight-warn__body { display: flex; flex-direction: column; gap: 4px; }
+.goal-weight-warn__title { font-size: 16px; font-weight: 700; color: #b45309; }
+.goal-weight-warn__hint { font-size: 14px; color: #b98a3e; }
+.kr-item { position: relative; transition: opacity 0.15s; }
+.kr-item--dragging { opacity: 0.45; }
+.kr-item--reorderable { margin-left: 24px; }
+.kr-item--reorderable > .kr-item__drag-handle { left: -24px !important; width: 18px; }
+.kr-item__drag-handle { position: absolute; left: -14px; top: 50%; transform: translateY(-50%); width: 14px; font-size: 12px; color: #d1d5db; cursor: grab; user-select: none; display: flex; align-items: center; justify-content: center; }
+.kr-add-btn { margin-top: 10px; padding: 7px 14px; border: 1px dashed #d1d5db; border-radius: 7px; background: transparent; color: #6b7280; font-size: 13px; cursor: pointer; }
+
+/* ── КОМПАКТНАЯ ПЛОТНОСТЬ ЦЕЛЕЙ ────────────────────────────────────────────── */
+.goal-card { margin-bottom: 8px; border-radius: 10px; }
+.goal-card__body { padding: 10px 14px 8px; }
+.goal-card__meta { margin-bottom: 4px; gap: 6px; }
+.goal-card__title-row { margin-bottom: 2px; }
+.goal-card__title { font-size: 15px; line-height: 1.3; }
+.goal-card__desc { font-size: 13px; line-height: 1.45; margin-bottom: 6px; --md-collapse-max: 2.9em; }
+.goal-card__body > .md-collapsible { margin-bottom: 6px; }
+.goal-card__progress { margin-bottom: 2px; }
+.goal-card__progress-line { gap: 8px; margin-bottom: 3px; }
+.goal-card__progress-pct { font-size: 17px; }
+.shared-banner { margin-bottom: 6px; padding: 5px 8px; }
+.kr-section { padding: 0 14px 8px; }
+.kr-row { padding: 6px 0; }
+.kr-row__main { gap: 8px; align-items: center; }
+.kr-weight-chip { width: auto; min-width: 34px; height: 22px; padding: 0 5px; font-size: 12px; color: #4b5563; font-variant-numeric: tabular-nums; }
+.kr-name-row { margin-bottom: 1px; }
+.kr-desc { margin-top: 1px; --md-collapse-max: 2.8em; }
+.kr-item:last-child .kr-row { border-bottom: none; }
+.kr-weight-warn { margin: 4px 0 6px; padding: 6px 10px; }
+.kr-add-btn { margin-top: 6px; padding: 4px 10px; }
+.kr-row { container-type: inline-size; }
+.kr-row__main { display: grid; grid-template-columns: auto auto minmax(180px,1fr) minmax(96px,160px) minmax(130px,190px) auto; column-gap: 14px; align-items: center; }
+.kr-info { align-self: center; }
+.kr-status-col { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.kr-status-col .kr-updated { min-width: 0; text-align: left; font-size: 12px; font-variant-numeric: tabular-nums; }
+.kr-progress-col { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; }
+.kr-progress-col__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kr-hdot { position: relative; flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--hc); color: #fff; font-size: 9px; font-weight: 700; line-height: 1; cursor: help; outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--hc) 18%, #fff); }
+.kr-row__main > .kr-hdot { margin-right: -6px; }
+.kr-hdot:focus-visible { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--hc); }
+.kr-hdot--not_started { background: #9ca3af; }
+.kr-hdot--at_risk .kr-hdot__mark { font-size: 8px; transform: translateY(-0.5px); }
+.kr-hdot__pop { display: none; position: absolute; z-index: 30; bottom: calc(100% + 8px); left: -6px; width: max-content; max-width: 240px; padding: 8px 10px; background: #111827; color: #f9fafb; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); flex-direction: column; gap: 2px; text-align: left; pointer-events: none; }
+.kr-hdot__pop::after { content: ''; position: absolute; top: 100%; left: 14px; margin-left: -5px; border: 5px solid transparent; border-top-color: #111827; }
+.has-tip { position: relative; cursor: help; outline: none; }
+.has-tip:focus-visible { box-shadow: 0 0 0 2px var(--accent-25, #ddd6fe); border-radius: 6px; }
+.has-tip::after { content: attr(data-tip-title) "\A" attr(data-tip); white-space: pre-line; display: none; position: absolute; z-index: 40; top: calc(100% + 8px); left: 0; width: max-content; max-width: 260px; padding: 8px 10px; background: #111827; color: #e5e7eb; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); font-size: 11.5px; font-weight: 400; line-height: 1.45; text-align: left; letter-spacing: 0; text-transform: none; pointer-events: none; }
+.has-tip::before { content: ''; display: none; position: absolute; z-index: 41; top: calc(100% + 3px); left: 12px; border: 5px solid transparent; border-top: 0; border-bottom-color: #111827; }
+.has-tip:hover::after, .has-tip:focus::after, .has-tip:hover::before, .has-tip:focus::before { display: block; }
+.kr-hdot:hover .kr-hdot__pop, .kr-hdot:focus .kr-hdot__pop { display: flex; }
+.kr-hdot__title { font-size: 12px; font-weight: 700; color: color-mix(in srgb, var(--hc) 45%, #fff); }
+.kr-hdot__hint { font-size: 11.5px; line-height: 1.4; color: #e5e7eb; white-space: normal; }
+.kr-progress-col__top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+.kr-progress-col__top .kr-pct { font-size: 14px; }
+.kr-progress-col__top .kr-detail { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.kr-measure { display: contents; }
+.kr-target-col { display: flex; align-items: baseline; gap: 5px; min-width: 0; font-size: 13px; color: #374151; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kr-target__lbl { color: #6b7280; font-size: 12px; flex-shrink: 0; }
+.kr-target__val { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.kr-target__dir { font-weight: 700; margin-right: 3px; }
+.kr-target__dir--up { color: #16a34a; }
+.kr-target__dir--down { color: #2563eb; }
+.kr-progress-col__body--row { flex-direction: row; align-items: center; gap: 8px; }
+.kr-progress-col__bar { flex: 1; min-width: 0; }
+.kr-progress-col__body--row .kr-pct { font-size: 14px; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+.kr-progress-col__type { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: .04em; }
+.kr-row__actions { display: flex; align-items: center; gap: 6px; }
+.kr-update-stack { display: flex; flex-direction: column-reverse; align-items: stretch; gap: 3px; width: 148px; flex: 0 0 148px; }
+.kr-update-stack .kr-row-btn { justify-content: center; width: 100%; box-sizing: border-box; }
+.kr-update-stack .kr-updated { min-width: 0; text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@container (max-width: 720px) {
+  .kr-row__main { grid-template-columns: auto auto minmax(0,1fr) auto; row-gap: 6px; }
+  .kr-info { grid-column: 3; }
+  .kr-status-col { grid-column: 2; grid-row: 2; flex-direction: row; align-items: center; gap: 8px; }
+  .kr-measure { display: flex; align-items: center; gap: 12px; grid-column: 3; grid-row: 2; min-width: 0; }
+  .kr-target-col { flex: 0 1 auto; }
+  .kr-target-col:empty { display: none; }
+  .kr-progress-col { flex: 1 1 140px; max-width: 260px; }
+  .kr-row__actions { grid-column: 4; grid-row: 1; }
+  .kr-row-btn { padding: 0 8px; font-size: 12px; gap: 4px; }
+  .kr-update-stack { width: 132px; flex-basis: 132px; }
+  .kr-row-btn span { font-size: 13px; }
+}
+.kr-section__empty { padding: 4px 0 0; }
+.goal-card__footer-btn { padding: 5px 0; }
+.goal-weight-warn { margin-bottom: 10px; padding: 10px 14px; }
+
+/* ── Компактная раскладка карточки цели (gc2) ── */
+.gc2 { padding: 10px 14px 8px; }
+.gc2__head { display: flex; align-items: flex-start; gap: 10px; }
+.gc2__title-wrap { flex: 1; min-width: 0; }
+.gc2 .goal-card__title-row { margin: 0; }
+.gc2 .goal-card__title { font-size: 15.5px; line-height: 1.35; text-wrap: pretty; }
+.gc2__stats { display: flex; align-items: baseline; gap: 6px; flex-shrink: 0; padding-top: 1px; }
+.gc2 .goal-card__progress-pct { font-size: 16px; font-weight: 800; color: var(--health); line-height: 1.2; }
+.gc2__icon-btn { position: relative; flex-shrink: 0; height: 26px; min-width: 26px; padding: 0 6px; border: none; background: transparent; border-radius: 6px; font-size: 13px; color: #6b7280; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; }
+.gc2__icon-btn:hover { background: #f1f5f9; color: #374151; }
+.gc2__icon-btn--on { color: #374151; font-weight: 600; }
+.gc2__icon-btn .comment-unresolved-badge { margin-left: 3px; }
+.gc2__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-top: 4px; font-size: 12.5px; color: #6b7280; }
+.gc2__meta .goal-card__owner { gap: 4px; }
+.gc2__meta .goal-card__forecast, .gc2__meta .goal-card__updated { font-size: 12.5px; }
+.gc2__dot { color: #d1d5db; }
+.gc2__shared { font-size: 12px; font-weight: 600; color: #0891b2; background: #0891b214; border-radius: 4px; padding: 1px 6px; cursor: default; }
+.gc2__bar { margin-top: 6px; }
+.gc2 .goal-card__desc { margin: 6px 0 0; }
+.goal-card__desc.md-content, .kr-desc.md-content { white-space: normal; }
+.gc2__head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gc2__weight { flex-shrink: 0; min-width: 34px; height: 22px; padding: 0 5px; border-radius: 6px; background: #f3f4f6; color: #4b5563; font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-variant-numeric: tabular-nums; }
+.gc2__head > :nth-child(2) { flex-shrink: 0; }
+.gc2__title-wrap { flex: 1 1 200px; min-width: 120px; display: flex; align-items: center; gap: 6px; }
+.gc2__title-wrap > .goal-card__title-row { flex: 0 1 auto; min-width: 0; }
+.gc2__title-wrap > .goal-link-label { flex-shrink: 0; white-space: nowrap; }
+.gc2 .goal-card__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gc2__labels { display: flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; overflow: hidden; flex-wrap: nowrap; }
+.gc2__labels > * { flex-shrink: 0; white-space: nowrap; }
+.gc2__owner { flex-shrink: 0; }
+.gc2__head .gc2__bar { flex: 0 0 120px; margin: 0; }
+.gc2__head .goal-card__progress-pct { flex-shrink: 0; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+.gc2 > .md-collapsible, .gc2 > .goal-card__desc { margin-top: 6px; padding-left: 44px; }
+.gc-share-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 4px 14px; background: #ecfeff; border-top: 1px solid #cffafe; font-size: 12px; line-height: 1.3; }
+.gc-share-strip__label { font-weight: 700; color: #0e7490; margin-right: 4px; white-space: nowrap; }
+.gc-share-strip__team { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid #a5f3fc; color: #155e75; font-weight: 500; white-space: nowrap; }
+.gc-share-strip__team--owner { background: #0e7490; border-color: #0e7490; color: #fff; font-weight: 600; }
+.gc-share-strip__role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .85; }
+.gc-share-strip + .kr-section { border-top: none; }
+.gc2 { container-type: inline-size; background: #f8f9fb; border-radius: 10px 10px 0 0; }
+.gc2 .md-collapsible { --md-fade-bg: #f8f9fb !important; }
+@container (max-width: 760px) {
+  .gc2__head { flex-wrap: wrap; row-gap: 6px; }
+  .gc2__title-wrap { flex-basis: calc(100% - 140px); }
+  .gc2__head .gc2__bar { flex: 1 1 120px; }
+  .gc2 > .md-collapsible, .gc2 > .goal-card__desc { padding-left: 0; }
+}
+.goal-card .kr-section { border-top: 1px solid #f3f4f6; }
+/* ── CHILD CARD ──────────────────────────────────────────────────────────────── */
+.child-card { background: white; border-radius: 10px; padding: 14px 16px; cursor: pointer; border: 1px solid #f0f1f3; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: all 0.14s; }
+.child-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.1); transform: translateY(-1px); }
+.child-card__header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px; }
+.child-card__info { flex: 1; min-width: 0; }
+.child-card__name { font-size: 14px; font-weight: 600; color: #111827; line-height: 1.3; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; }
+.child-card__lead { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
+.child-card__health { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
+.child-card__goals-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+.child-card__goals-label { font-size: 12px; color: #6b7280; }
+.child-card__goals-status { color: #6b7280; }
+.child-card__goals-pct { font-size: 15px; font-weight: 800; }
+.child-card__priority { margin-top: 6px; font-size: 12px; color: #d97706; font-weight: 500; }
+.child-card__empty { font-size: 13px; color: #6b7280; font-style: italic; }
+
+/* ── CLUSTER VIEW ────────────────────────────────────────────────────────────── */
+.cluster-overview { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #f0f1f3; display: flex; align-items: center; gap: 24px; }
+.cluster-overview__left { min-width: 80px; }
+.cluster-overview__label { font-size: 12px; color: #6b7280; font-weight: 500; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+.cluster-overview__pct { font-size: 36px; font-weight: 800; letter-spacing: -1px; }
+.cluster-overview__right { flex: 1; }
+.cluster-overview__bar-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
+.cluster-overview__teams-label { font-size: 13px; color: #6b7280; }
+.cluster-overview__health-label { font-size: 13px; font-weight: 700; }
+.cluster-overview__forecast { font-size: 11px; color: #6b7280; margin-top: 4px; }
+.cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.cluster-loading { text-align: center; padding: 60px 0; color: #6b7280; }
+
+/* .user-avatar__fallback, .user-selector*, .user-chip* → components.css (общие). */
+
+/* ── USER INFO ────────────────────────────────────────────────────────────────── */
+.uinfo { display: inline-flex; align-items: center; gap: 5px; cursor: default; position: relative; }
+.uinfo__img { border-radius: 50%; object-fit: cover; display: block; flex-shrink: 0; }
+.uinfo__initials { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0; }
+.uinfo__name { font-size: 13px; color: #374151; font-weight: 500; white-space: nowrap; }
+.uinfo__popup { position: fixed; background: white; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.16); border: 1px solid #e5e7eb; padding: 12px 14px; display: inline-flex; align-items: center; gap: 12px; z-index: 2000; min-width: 160px; pointer-events: auto; }
+.uinfo__popup-avatar { border-radius: 50%; object-fit: cover; flex-shrink: 0; }
+.uinfo__popup-initials { border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: white; flex-shrink: 0; }
+.uinfo__popup { max-width: 300px; }
+.uinfo__popup-body { display: inline-flex; flex-direction: column; gap: 2px; min-width: 0; }
+.uinfo__popup-name { font-size: 15px; font-weight: 700; color: #111827; }
+.uinfo__popup-email { font-size: 12.5px; color: #6b7280; word-break: break-all; }
+.uinfo__popup-team { font-size: 13px; color: #6b7280; }
+
+/* ── Goal links (parent/child) ─────────────────────────────────────────── */
+.goal-link-label { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; cursor: default; border: 1px solid transparent; }
+.goal-link-label--up { color: #6d28d9; background: rgba(124,58,237,0.10); border-color: rgba(124,58,237,0.30); }
+.goal-link-label--down { color: #1d4ed8; background: rgba(37,99,235,0.10); border-color: rgba(37,99,235,0.30); }
+.goal-links-popup { position: fixed; background: white; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.16); border: 1px solid #e5e7eb; padding: 6px; display: flex; flex-direction: column; gap: 2px; z-index: 2000; min-width: 260px; max-width: 320px; pointer-events: auto; }
+.goal-links-popup__head { font-size: 12px; font-weight: 700; letter-spacing: 0.03em; color: #6b7280; padding: 4px 8px 6px; text-transform: uppercase; }
+.goal-links-popup__row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "title progress" "meta progress"; gap: 0 8px; align-items: center; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 6px 8px; cursor: pointer; font-family: inherit; }
+.goal-links-popup__row:hover { background: #f3f4f6; }
+.goal-links-popup__row-title { grid-area: title; font-size: 14px; font-weight: 600; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-links-popup__row-meta { grid-area: meta; font-size: 12.5px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-links-popup__row-progress { grid-area: progress; font-size: 13px; font-weight: 700; color: #059669; }
+
+/* Секция «Связанные цели» в GoalModal */
+.goal-links-section { margin-top: 12px; padding: 12px 14px; background: #f9fafb; border-radius: 10px; border: 1px solid #f0f1f3; }
+.goal-links-section__head { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 700; color: #111827; }
+.goal-links-section__hint { font-size: 13px; color: #6b7280; margin: 2px 0 10px; }
+.goal-link-card { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 10px; margin-bottom: 8px; background: #fafafa; }
+.goal-link-card__arrow { color: #6d28d9; font-weight: 700; }
+.goal-link-card__title { font-size: 14px; font-weight: 600; color: #111827; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.goal-link-card__meta { font-size: 13px; color: #6b7280; white-space: nowrap; }
+.goal-link-card__remove { margin-left: auto; border: none; background: none; color: #dc2626; font-size: 17px; cursor: pointer; line-height: 1; padding: 2px 4px; }
+.goal-link-add { border: 1px dashed #c4b5fd; background: rgba(124,58,237,0.06); color: #6d28d9; border-radius: 10px; padding: 9px 14px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+.goal-link-add:hover { background: rgba(124,58,237,0.12); }
+
+/* Пикер родительской цели */
+.goal-parent-picker { width: 640px; max-width: 94vw; display: flex; flex-direction: column; max-height: 82vh; }
+.goal-parent-picker__title { font-size: 16px; font-weight: 700; color: #111827; }
+.goal-parent-picker__filters { display: flex; gap: 8px; padding: 8px 14px; border-bottom: 1px solid #eef0f3; }
+/* Триггер фиксированной ширины; меню PeriodSelect остаётся широким (дефолт 430px),
+   т.к. проп width не передаём — иначе меню сузилось бы под триггер и даты не влезают. */
+.goal-parent-picker__filters .period-select { width: 200px; flex: 0 0 auto; }
+.goal-parent-picker__search { flex: 1; border: 1px solid #e5e7eb; border-radius: 8px; padding: 7px 10px; font-size: 14px; font-family: inherit; }
+.goal-parent-picker__search:focus { outline: none; border-color: #a78bfa; }
+.goal-parent-picker__list { overflow-y: auto; padding: 2px 10px 8px; }
+.goal-parent-picker__empty { padding: 24px; text-align: center; color: #6b7280; font-size: 14px; }
+.goal-parent-picker__group { margin-top: 2px; }
+.goal-parent-picker__group-head { display: flex; align-items: center; gap: 7px; padding: 3px 8px; font-size: 12.5px; font-weight: 700; color: #111827; }
+.goal-parent-picker__group-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.goal-parent-picker__group-type { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: #6b7280; }
+.goal-parent-picker__row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 0 10px; width: 100%; text-align: left; background: none; border: none; border-radius: 6px; padding: 3px 12px 3px 22px; cursor: pointer; font-family: inherit; }
+.goal-parent-picker__row:hover { background: #f3f4f6; }
+.goal-parent-picker__row--selected { opacity: 0.55; cursor: default; }
+.goal-parent-picker__row-title { grid-row: 1; grid-column: 1; font-size: 13px; line-height: 1.2; font-weight: 600; color: #111827; }
+.goal-parent-picker__row-meta { grid-row: 2; grid-column: 1; font-size: 11px; line-height: 1.15; color: #6b7280; }
+.goal-parent-picker__row-check { grid-row: 1 / span 2; grid-column: 3; color: #059669; font-weight: 700; }
+
+/* Deep-link target highlight (?goal/kr/comment) */
+.deep-link-flash { animation: deepLinkFlash 1.6s ease-out; }
+@keyframes deepLinkFlash {
+  0% { box-shadow: 0 0 0 3px #7c3aed; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+/* ── Markdown export ─────────────────────────────────────────────────────── */
+.modal-box--w720 { width: min(760px, 95vw); max-height: 92vh; display: flex; flex-direction: column; }
+.export-modal { padding: 0; }
+.export-modal__header { padding: 18px 20px 12px; border-bottom: 1px solid #f1f5f9; }
+.export-modal__scopes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 16px 20px 4px; align-items: stretch; }
+.export-modal__scope-card { display: flex; flex-direction: column; min-width: 0; text-align: left; border: 1.5px solid #e5e7eb; background: #fff; border-radius: 12px; padding: 12px 14px; cursor: pointer; transition: border-color .12s, background .12s; }
+.export-modal__scope-card:hover { border-color: #cbd5e1; }
+.export-modal__scope-card--active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, white); }
+.export-modal__scope-title { font-size: 14px; font-weight: 700; color: #111827; line-height: 1.3; }
+.export-modal__scope-card--active .export-modal__scope-title { color: var(--accent); }
+.export-modal__scope-sub { font-size: 12px; color: #6b7280; margin-top: auto; padding-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.export-modal__options { display: flex; gap: 20px; padding: 10px 20px 12px; }
+.export-modal__check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: #374151; cursor: pointer; }
+.export-modal__preview-wrap { flex: 1; min-height: 220px; margin: 0 20px; border: 1px solid #e5e7eb; border-radius: 10px; background: #f9fafb; overflow: auto; display: flex; }
+.export-modal__preview { flex: 1; margin: 0; padding: 14px 16px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.6; color: #1f2937; white-space: pre; }
+.export-modal__state { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #6b7280; font-size: 14px; }
+.export-modal__retry { padding: 6px 14px; }
+.export-modal__footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px 18px; }
+.export-modal__filename { font-size: 13px; color: #6b7280; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.export-modal__actions { display: flex; gap: 8px; flex-shrink: 0; }
+.export-menu { position: relative; display: inline-flex; }
+.export-menu__btn { border: none; background: transparent; color: #6b7280; cursor: pointer; font-size: 17px; line-height: 1; padding: 2px 6px; border-radius: 6px; }
+.export-menu__btn:hover { background: #f1f5f9; color: #374151; }
+.export-menu__dropdown { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.14); padding: 6px; z-index: 50; min-width: 240px; }
+.export-menu__item { display: block; width: 100%; text-align: left; border: none; background: transparent; cursor: pointer; border-radius: 8px; padding: 8px 10px; }
+.export-menu__item:hover { background: #f8fafc; }
+.export-menu__item-title { display: block; font-size: 14px; font-weight: 700; color: #111827; }
+.export-menu__item-sub { display: block; font-size: 12px; color: #6b7280; margin-top: 2px; }
+
+/* KR health status — list badge spacing + modal selector cards */
+.kr-health-badge-row { margin-bottom: 4px; }
+.kr-health-section { margin-top: 14px; }
+.kr-health-section__label { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.kr-health-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.kr-health-card { display: flex; flex-direction: column; gap: 4px; align-items: flex-start;
+  padding: 10px 12px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff;
+  cursor: pointer; text-align: left; }
+.kr-health-card:hover { border-color: #d1d5db; }
+.kr-health-card--active { box-shadow: 0 0 0 1px currentColor inset; }
+.kr-health-card__title { font-size: 14px; font-weight: 700; }
+.kr-health-card__hint { font-size: 12px; color: #6b7280; line-height: 1.3; }
+
+/* --- web/static/goal_tree.css --- */
+.gt-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg, #f8fafc); position: relative; }
+.gt-main__body { flex: 1; overflow: hidden; position: relative; }
+
+/* Zoom-область: единственный скроллер, контролы поверх в углу */
+.gt-canvas-wrap { position: absolute; inset: 0; }
+.gt-viewport { position: absolute; inset: 0; overflow: auto; cursor: grab; }
+.gt-viewport--panning { cursor: grabbing; }
+.gt-viewport--panning .gt-card { cursor: grabbing; }
+.gt-zoom { position: relative; }
+.gt-zoom-ctrl { position: absolute; right: 16px; bottom: 16px; display: flex; gap: 4px; padding: 4px; background: var(--surface, #fff); border: 1px solid var(--border, #e5e7eb); border-radius: 10px; box-shadow: 0 4px 14px rgba(15,23,42,.12); z-index: 15; }
+.gt-zoom-ctrl button { min-width: 30px; height: 30px; padding: 0 6px; border: none; background: transparent; color: #334155; font-size: 16px; font-weight: 700; border-radius: 7px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.gt-zoom-ctrl button:hover { background: var(--surface-subtle, #f1f5f9); }
+.gt-zoom-ctrl__num { font-size: 13px; min-width: 46px; color: #64748b; }
+.gt-state { display: flex; gap: 12px; align-items: center; justify-content: center; height: 100%; color: #6b7280; font-size: 16px; }
+.gt-state button { padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; background: #fff; cursor: pointer; }
+.gt-controls { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.gt-sidebar-period { padding: 12px 12px 4px; display: flex; flex-direction: column; gap: 6px; }
+.gt-toggle { display: flex; gap: 8px; align-items: center; font-size: 14px; color: #cbd5e1; cursor: pointer; }
+
+/* ── Верхний топбар графа («Показать только корневые цели») ── */
+.gt-topbar { flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 10px 16px; background: var(--surface, #fff); border-bottom: 1px solid var(--border, #e5e7eb); }
+.gt-topbar__toggle { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--text-body, #374151); cursor: pointer; user-select: none; }
+
+/* ── Выпадающий список корневых целей (сайдбар) ── */
+.gt-controls__root { display: flex; flex-direction: column; gap: 6px; margin-top: 2px; }
+.gt-controls__label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+.gt-rootpick { position: relative; width: 100%; }
+.gt-rootpick__trigger { display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 13.5px; font-family: inherit; cursor: pointer; text-align: left; }
+.gt-rootpick__trigger:hover { background: rgba(255,255,255,.1); }
+.gt-rootpick--open .gt-rootpick__trigger { border-color: var(--accent, #7c3aed); }
+.gt-rootpick__value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-rootpick__chev { flex-shrink: 0; color: #94a3b8; font-size: 11px; }
+.gt-rootpick__panel { position: fixed; width: 360px; max-height: 72vh; z-index: 50; background: #0f172a; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; padding: 10px; box-shadow: 0 16px 44px rgba(0,0,0,.55); }
+.gt-rootpick__search { width: 100%; box-sizing: border-box; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); color: #e2e8f0; border-radius: 6px; padding: 7px 9px; font-size: 13px; font-family: inherit; margin-bottom: 6px; }
+.gt-rootpick__search::placeholder { color: #64748b; }
+.gt-rootpick__search:focus { outline: none; border-color: var(--accent, #7c3aed); }
+.gt-rootpick__list { max-height: 60vh; overflow: auto; }
+.gt-rootpick__all { display: block; width: 100%; text-align: left; background: transparent; border: none; color: #cbd5e1; padding: 7px 8px; font-size: 13.5px; font-weight: 600; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.gt-rootpick__all:hover { background: rgba(255,255,255,.06); }
+.gt-rootpick__all--on { color: #fff; background: rgba(124,58,237,.35); }
+.gt-rootpick__group { margin-top: 4px; }
+.gt-rootpick__group-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; }
+.gt-rootpick__group-dot { width: 8px; height: 8px; border-radius: 3px; flex-shrink: 0; }
+.gt-rootpick__group-name { font-size: 13px; font-weight: 700; color: #e2e8f0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-rootpick__group-type { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #64748b; margin-left: auto; flex-shrink: 0; }
+.gt-rootpick__row { position: relative; display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; background: transparent; border: none; color: #cbd5e1; padding: 6px 8px 6px 20px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.gt-rootpick__row:hover { background: rgba(255,255,255,.06); }
+.gt-rootpick__row--on { background: rgba(124,58,237,.3); }
+.gt-rootpick__row-title { font-size: 13.5px; font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-rootpick__row-meta { font-size: 12px; color: #94a3b8; }
+.gt-rootpick__row-check { position: absolute; right: 8px; top: 8px; color: #a78bfa; font-weight: 800; }
+.gt-rootpick__empty { padding: 10px 8px; font-size: 13px; color: #64748b; text-align: center; }
+/* Селектор периода в сайдбаре */
+.gt-psel { position: relative; width: 100%; }
+.gt-psel__trigger { display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); color: #e2e8f0; border-radius: 8px; padding: 8px 10px; font-size: 13.5px; font-family: inherit; cursor: pointer; text-align: left; }
+.gt-psel__trigger:hover { background: rgba(255,255,255,.1); }
+.gt-psel--open .gt-psel__trigger { border-color: var(--accent, #7c3aed); }
+.gt-psel__value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-psel__chev { flex-shrink: 0; color: #94a3b8; font-size: 11px; }
+.gt-psel__dot { width: 8px; height: 8px; border-radius: 999px; flex-shrink: 0; }
+.gt-psel__panel { position: fixed; z-index: 50; max-height: 60vh; overflow: auto; background: #0f172a; border: 1px solid rgba(255,255,255,.16); border-radius: 10px; padding: 6px; box-shadow: 0 16px 44px rgba(0,0,0,.55); }
+.gt-psel__item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: transparent; border: none; color: #cbd5e1; padding: 7px 8px; font-size: 13.5px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+.gt-psel__item:hover { background: rgba(255,255,255,.06); }
+.gt-psel__item--on { background: rgba(124,58,237,.3); color: #fff; }
+.gt-psel__item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Кнопка collapse на карточке ── */
+.gt-collapse-btn { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; padding: 0; border: none; border-radius: 4px; background: rgba(15,23,42,.06); color: #64748b; font-size: 11px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.gt-collapse-btn:hover { background: rgba(15,23,42,.14); color: #0f172a; }
+
+.gt-canvas { position: relative; }
+.gt-band { position: absolute; left: 6px; right: 6px; border-radius: 18px; background: var(--gt-band-bg, rgba(148,163,184,.06)); border: 1.5px solid var(--gt-band-line, rgba(148,163,184,.35)); }
+.gt-band__label { display: inline-flex; align-items: center; gap: 8px; margin: 14px 0 0 14px; padding: 6px 14px; font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--gt-band-text, #475569); background: var(--gt-band-pill, rgba(148,163,184,.16)); border-radius: 999px; }
+.gt-band__marker { color: var(--gt-band-accent, #94a3b8); font-size: 11px; line-height: 1; }
+.gt-band__count { color: var(--gt-band-accent, #94a3b8); font-weight: 800; opacity: .8; }
+/* Цвета слоёв: bg — подложка, line — рамка, accent — ромб/счётчик, pill/text — подпись */
+.gt-band--d0 { --gt-band-bg: rgba(99,102,241,.06);  --gt-band-line: rgba(99,102,241,.35);  --gt-band-accent: #6366f1; --gt-band-pill: rgba(99,102,241,.14);  --gt-band-text: #4338ca; }  /* годовые */
+.gt-band--d1 { --gt-band-bg: rgba(20,184,166,.06);  --gt-band-line: rgba(20,184,166,.35);  --gt-band-accent: #14b8a6; --gt-band-pill: rgba(20,184,166,.15);  --gt-band-text: #0f766e; }  /* квартальные */
+.gt-band--d2 { --gt-band-bg: rgba(245,158,11,.07);  --gt-band-line: rgba(245,158,11,.4);   --gt-band-accent: #f59e0b; --gt-band-pill: rgba(245,158,11,.18);  --gt-band-text: #b45309; }  /* глубже */
+.gt-band--d3 { --gt-band-bg: rgba(236,72,153,.06);  --gt-band-line: rgba(236,72,153,.35);  --gt-band-accent: #ec4899; --gt-band-pill: rgba(236,72,153,.15);  --gt-band-text: #be185d; }
+.gt-band--u  { --gt-band-bg: rgba(148,163,184,.07); --gt-band-line: rgba(148,163,184,.4);   --gt-band-accent: #94a3b8; --gt-band-pill: rgba(148,163,184,.18); --gt-band-text: #475569; }  /* без связей */
+.gt-edges { position: absolute; left: 0; top: 0; pointer-events: none; }
+.gt-edge { stroke: #cbd5e1; stroke-width: 2; }
+.gt-edge--dim { stroke: #eef2f7; }
+.gt-group { position: absolute; border: 1.5px dashed rgba(124,58,237,.5); border-radius: 14px; background: rgba(124,58,237,.07); }
+.gt-group__label { position: absolute; top: 4px; left: 12px; display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; color: #7c3aed; overflow: hidden; }
+.gt-group__label-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-group__dot { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
+.gt-card { position: absolute; box-sizing: border-box; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px 12px 18px; cursor: pointer; box-shadow: 0 1px 2px rgba(15,23,42,.06); transition: box-shadow .12s, opacity .12s; display: flex; flex-direction: column; overflow: hidden; }
+.gt-card__strip { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; border-radius: 12px 0 0 12px; }
+.gt-card__dot { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; background: var(--gt-accent, #94a3b8); }
+.gt-card__teamname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-card__period { flex-shrink: 0; font-size: 12px; font-weight: 700; color: #475569; background: #eef2f7; border-radius: 999px; padding: 2px 8px; }
+.gt-card--root { background: linear-gradient(180deg, #fdecc8 0%, #fffaf0 100%); border-color: #e0952b; border-width: 2px; box-shadow: 0 6px 18px rgba(224,149,43,.28); }
+.gt-card--root .gt-card__title { color: #7c4a03; }
+.gt-card--hl { outline: 2px solid var(--accent,#4f46e5); }
+.gt-card--dim { opacity: .35; }
+.gt-card__title { font-size: 14px; font-weight: 700; color: #0f172a; line-height: 1.3; max-height: 2.6em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.gt-card__meta { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #64748b; margin-top: auto; padding-top: 8px; }
+.gt-card__team { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.gt-card__pr { flex-shrink: 0; font-weight: 800; }
+.gt-card__bar { margin-top: 6px; height: 4px; background: #eef2f7; border-radius: 2px; overflow: hidden; }
+.gt-card__barfill { height: 100%; background: var(--accent,#4f46e5); }
+
+/* ── Расширенная карточка (панель деталей выбранной цели) ── */
+.gt-panel { position: absolute; top: 0; right: 0; bottom: 0; width: 320px; max-width: 90vw; background: var(--surface, #fff); border-left: 1px solid var(--border, #e5e7eb); box-shadow: -8px 0 24px rgba(15,23,42,.10); display: flex; flex-direction: column; z-index: 20; }
+.gt-panel__header { display: flex; align-items: flex-start; gap: 8px; padding: 16px 16px 12px; border-bottom: 1px solid var(--border, #e5e7eb); }
+.gt-panel__title { flex: 1; font-size: 16px; font-weight: 700; color: var(--text, #111827); line-height: 1.35; }
+.gt-panel__close { flex-shrink: 0; width: 26px; height: 26px; padding: 0; border: none; background: var(--surface-subtle, #f3f4f6); color: #64748b; border-radius: var(--radius-sm, 6px); cursor: pointer; font-size: 15px; line-height: 1; }
+.gt-panel__close:hover { background: #e2e8f0; color: #0f172a; }
+.gt-panel__body { flex: 1; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.gt-panel__row { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.gt-panel__label { color: var(--text-muted, #6b7280); }
+.gt-panel__value { color: var(--text, #111827); font-weight: 600; text-align: right; }
+.gt-panel__bar { height: 6px; background: var(--surface-subtle, #f3f4f6); border-radius: var(--radius-pill, 999px); overflow: hidden; }
+.gt-panel__barfill { height: 100%; background: var(--accent, #7c3aed); }
+.gt-panel__badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gt-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-pill, 999px); font-size: 12px; font-weight: 700; }
+.gt-panel__weight { font-size: 12px; color: var(--text-muted, #6b7280); }
+.gt-panel__hidebtn { margin: 0 16px 16px; padding: 9px 12px; border: none; border-radius: var(--radius-md, 8px); background: var(--accent, #7c3aed); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
+.gt-panel__hidebtn:hover { background: var(--accent-strong, #6d28d9); }
+/* Обогащённая панель деталей */
+.gt-panel__path { font-size: 13.5px; color: var(--text-muted, #6b7280); }
+.gt-panel__path-link { color: var(--text-muted, #6b7280); text-decoration: none; }
+.gt-panel__path-link:hover { color: var(--accent, #7c3aed); text-decoration: underline; }
+.gt-panel__path-sep { color: #cbd5e1; }
+.gt-panel__pill { padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #4338ca; background: rgba(99,102,241,.12); }
+.gt-panel__muted { font-size: 13px; color: var(--text-muted, #6b7280); }
+.gt-panel__barwrap { display: flex; align-items: center; gap: 10px; }
+.gt-panel__barwrap .gt-panel__bar { flex: 1; }
+.gt-panel__pct { font-size: 17px; font-weight: 800; color: var(--accent, #7c3aed); }
+.gt-panel__links { display: flex; align-items: center; gap: 14px; font-size: 13.5px; color: var(--text-muted, #6b7280); }
+.gt-panel__updown b { color: var(--text, #111827); }
+.gt-panel__focus { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius-md, 8px); background: var(--surface, #fff); font-size: 13.5px; font-weight: 600; color: #334155; cursor: pointer; }
+.gt-panel__focus:hover { background: var(--surface-subtle, #f1f5f9); }
+.gt-panel__section { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border, #e5e7eb); }
+.gt-panel__section-title { font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted, #94a3b8); margin-bottom: 8px; }
+.gt-panel__parent { padding: 8px 10px; border: 1px solid rgba(124,58,237,.25); border-radius: var(--radius-md, 8px); background: rgba(124,58,237,.05); margin-bottom: 6px; }
+.gt-panel__parent-title { font-size: 13.5px; font-weight: 700; color: var(--text, #111827); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-panel__parent-meta { font-size: 12.5px; color: var(--text-muted, #6b7280); margin-top: 2px; }
+.gt-panel__footer { display: flex; gap: 8px; padding: 4px 16px 16px; }
+.gt-panel__toggle { flex: 1; padding: 11px 10px; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius-md, 8px); background: var(--surface, #fff); font-size: 14px; font-weight: 700; color: #334155; cursor: pointer; }
+.gt-panel__toggle:hover { background: var(--surface-subtle, #f1f5f9); }
+.gt-panel__toggle--on { background: #f5f3ff; border-color: #c4b5fd; color: #6d28d9; }
+.gt-panel__open { flex: 1; padding: 11px 10px; border-radius: var(--radius-md, 8px); background: var(--accent, #7c3aed); color: #fff; font-size: 14px; font-weight: 700; text-align: center; text-decoration: none; }
+.gt-panel__open:hover { background: var(--accent-strong, #6d28d9); }
+.gt-topbar__reset { padding: 6px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 999px; background: var(--surface-subtle, #f1f5f9); font-size: 13.5px; font-weight: 600; color: #334155; cursor: pointer; }
+.gt-topbar__reset:hover { background: #e2e8f0; }
+
+/* --- web/static/activity.css --- */
+/* ── Activity log page ─────────────────────────────────────────────────────── */
+.act-main { display: flex; flex-direction: column; height: 100%; min-width: 0; }
+
+/* Top bar: category tabs + filter row */
+.act-topbar {
+  background: #fff;
+  border-bottom: 1px solid #e3e8ef;
+  padding: 14px 24px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.act-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.act-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 999px;
+  border: 1px solid #e3e8ef; background: #fff; color: #475569;
+  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.act-tab:hover { background: #f8fafc; }
+.act-tab--on { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+.act-tab__n {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+  background: rgba(15,23,42,0.08); color: inherit; font-size: 12px; font-weight: 700;
+}
+.act-tab--on .act-tab__n { background: rgba(255,255,255,0.25); }
+
+.act-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.act-select, .act-search {
+  padding: 7px 11px; border: 1px solid #d7dde7; border-radius: 9px;
+  background: #fff; color: #1e293b; font-size: 14px; font-family: inherit;
+}
+.act-search { flex: 1; min-width: 180px; }
+.act-select { cursor: pointer; }
+.act-author { min-width: 190px; }
+.act-author .user-selector__field { min-height: 36px; }
+.act-chip {
+  padding: 7px 13px; border-radius: 999px; border: 1px solid #d7dde7;
+  background: #fff; color: #475569; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.act-chip--on { background: #fff7ed; border-color: #fdba74; color: #c2410c; }
+.act-range { display: inline-flex; border: 1px solid #d7dde7; border-radius: 9px; overflow: hidden; }
+.act-range__btn {
+  padding: 7px 12px; border: none; background: #fff; color: #475569;
+  font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+  border-right: 1px solid #e3e8ef;
+}
+.act-range__btn:last-child { border-right: none; }
+.act-range__btn--on { background: #ede9fe; color: #6d28d9; }
+
+/* Selected-chip hover must stay readable: a bare :hover has higher specificity than the
+   `--on` class and would otherwise wash the background to near-white under white text. */
+.act-tab--on:hover { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+.act-chip:hover { background: #f8fafc; }
+.act-chip--on:hover { background: #ffedd5; color: #c2410c; }
+.act-range__btn:hover { background: #f8fafc; }
+.act-range__btn--on:hover { background: #ddd6fe; color: #6d28d9; }
+
+/* Feed */
+.act-feed { flex: 1; overflow-y: auto; padding: 16px 24px 40px; }
+.act-empty { color: #94a3b8; font-size: 15px; padding: 40px 0; text-align: center; }
+.act-group { margin-bottom: 8px; }
+.act-group__label {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.6px; color: #94a3b8;
+  padding: 14px 2px 8px;
+}
+
+.act-row { display: flex; gap: 12px; padding: 12px 14px; border-radius: 12px; }
+.act-row:hover { background: #fff; }
+.act-row__icon {
+  flex-shrink: 0; width: 34px; height: 34px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center; font-size: 16px;
+  background: #eef2f7; border: 1px solid #e3e8ef;
+}
+.act-row__icon--progress { background: #eff6ff; border-color: #bfdbfe; }
+.act-row__icon--composition { background: #f5f3ff; border-color: #ddd6fe; }
+.act-row__icon--status { background: #fff7ed; border-color: #fed7aa; }
+.act-row__icon--discussion { background: #ecfeff; border-color: #a5f3fc; }
+
+.act-row__body { flex: 1; min-width: 0; }
+.act-row__text { font-size: 15px; color: #1e293b; line-height: 1.5; }
+.act-row__avatar {
+  width: 20px; height: 20px; border-radius: 50%; object-fit: cover;
+  vertical-align: -4px; margin-right: 4px;
+}
+.act-row__avatar--fallback {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #cbd5e1; color: #fff; font-size: 11px; font-weight: 700;
+}
+.act-row__actor { font-weight: 700; color: #0f172a; }
+.act-was { color: #94a3b8; }
+/* Markdown body for comments / KR notes, rendered via the shared Markdown component. */
+.act-row__md {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border-left: 3px solid #e3e8ef;
+  background: #f8fafc;
+  border-radius: 0 8px 8px 0;
+  font-size: 14px;
+  color: #334155;
+}
+.act-row__md > :first-child { margin-top: 0; }
+.act-row__md > :last-child { margin-bottom: 0; }
+.act-row__md p { margin: 4px 0; }
+.act-row__md ul, .act-row__md ol { margin: 4px 0; padding-left: 20px; }
+.act-row__md code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+.act-row__md pre { background: #eef2f7; padding: 8px 10px; border-radius: 6px; overflow-x: auto; }
+.act-row__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.act-badge {
+  display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 6px;
+  background: #eef2f7; color: #475569; font-size: 13px; font-weight: 600;
+}
+.act-badge--period { background: #f1f5f9; color: #64748b; }
+.act-row__link {
+  color: #7c3aed; font-size: 13px; font-weight: 600; text-decoration: none;
+}
+.act-row__link:hover { text-decoration: underline; }
+.act-row__time { margin-left: auto; color: #94a3b8; font-size: 13px; cursor: default; }
+
+.act-sentinel { height: 1px; }
+.act-more {
+  margin: 14px auto 0; display: block; padding: 8px 18px;
+  border: 1px solid #d7dde7; border-radius: 9px; background: #fff;
+  color: #475569; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+}
+.act-more:hover { background: #f8fafc; }
+
+/* --- design-system/prototype/overlay.css --- */
+/* Обвязка прототипа. Всё, что не является продуктовым стилем, живёт здесь и
+   помечено префиксом .pt- — кроме трёх переопределений ниже, которые нужны,
+   чтобы приложение, рассчитанное на целую вкладку, жило внутри артефакта. */
+
+/* 1. Приложение верстается от 100vh; внутри артефакта высоту задаёт контейнер,
+      иначе страница уезжает за safe-area телефона. */
+html, body { height: 100%; }
+body { background: var(--canvas); overflow: hidden; }
+.app { height: 100%; }
+
+/* 2. Прототип светлый всегда: он показывает продукт, а не подстраивается под
+      тему зрителя. Фон задан явно, чтобы не просвечивал хост. */
+
+/* 3. Узкий экран: сайдбар уезжает за край и вызывается кнопкой. В продукте
+      такого поведения нет — это компромисс прототипа, чтобы его можно было
+      открыть с телефона. */
+.pt-burger { display: none; }
+.pt-scrim { display: none; }
+
+@media (max-width: 860px) {
+  .sidebar {
+    position: absolute; top: 0; bottom: 0; left: 0;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+    z-index: 320;
+  }
+  .app--nav-open .sidebar { transform: none; }
+  .pt-scrim {
+    display: block; position: absolute; inset: 0;
+    background: rgba(12, 18, 32, 0.45); z-index: 310;
+  }
+  .app:not(.app--nav-open) .pt-scrim { display: none; }
+  .pt-burger {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; flex-shrink: 0;
+    border: 1px solid var(--border); border-radius: var(--radius-md);
+    background: #fff; color: var(--text-body); font-size: 16px; cursor: pointer;
+  }
+  .topbar { padding: 10px 16px; }
+  .content { padding: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+}
+
+/* Плашка «это прототип». Приглушена, чтобы не спорить с интерфейсом, но видна
+   всегда — иначе тестовые числа можно принять за настоящие. */
+.pt-banner {
+  position: absolute; right: 14px; bottom: 14px; z-index: 400;
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; border-radius: var(--radius-pill);
+  background: rgba(17, 24, 39, 0.86); color: #e5e7eb;
+  font-size: 12.5px; line-height: 1; letter-spacing: 0.01em;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.25);
+}
+.pt-banner__dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: #fbbf24; flex-shrink: 0;
+}
+.pt-banner__close {
+  border: none; background: none; color: #6b7280;
+  font-size: 14px; line-height: 1; cursor: pointer; padding: 0 0 0 2px;
+}
+.pt-banner__close:hover { color: #fff; }
+
+/* Фокус виден везде: у продуктовых кнопок своего состояния фокуса нет. */
+button:focus-visible, a:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Артефактный скелет при публикации даёт [hidden]{display:none!important}. Локально
+   его нет, а .pt-banner{display:flex} перебивает браузерный дефолт — дублируем,
+   иначе кнопка «скрыть плашку» работает только на опубликованной странице. */
+[hidden] { display: none !important; }
+
+/* Обзор периода рисует собственный внутренний отступ (как PeriodOverviewContent),
+   поэтому у .content его снимаем — иначе отступ удваивается. */
+.content--flush { padding: 0; }
+
+/* Раздел «Дерево целей» занимает всю рабочую область без внутренних отступов,
+   как .gt-main в продукте; здесь ему нужна явная высота внутри .content. */
+.content--flush .gt-main { height: 100%; }
+.gt-main__body { flex: 1; overflow: hidden; position: relative; display: flex; }
+.gt-main__body .gt-canvas-wrap { flex: 1; position: relative; }
+
+/* Лента активностей занимает всю рабочую область, как .act-main в продукте. */
+.content--flush .act-main { height: 100%; }
+
+/* Ряд «что можно потыкать» — подсказка на первом экране, не часть продукта. */
+.pt-hint {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  margin-bottom: 16px; padding: 10px 14px;
+  background: var(--accent-10); border: 1px solid var(--accent-25);
+  border-radius: var(--radius-lg);
+  font-size: 13.5px; color: var(--accent-deep);
+}
+.pt-hint__key {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; background: #fff; border: 1px solid var(--accent-25);
+  border-radius: 5px; padding: 1px 6px;
+}
+
+</style>
+
+<div class="app" id="app">
+  <div class="pt-scrim" id="scrim" aria-hidden="true"></div>
+  <div class="sidebar" id="sidebar"></div>
+  <div class="main">
+    <div id="topbar"></div>
+    <div id="stepper"></div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+<div id="overlays"></div>
+<div id="popovers"></div>
+<div class="pt-banner" id="banner">
+  <span class="pt-banner__dot"></span>
+  Прототип · данные вымышленные
+  <button class="pt-banner__close" id="banner-close" aria-label="Скрыть">×</button>
+</div>
+
+<script>
+// Тестовые данные прототипа. Вымышленные: команды, люди и числа не соответствуют
+// ничему реальному. Имена полей намеренно совпадают с теми, что приходят в
+// компоненты трекера (kr.krType, kr.healthStatus, kr.updatedDaysAgo, goal.type,
+// goal.focus, goal.priority), чтобы разметка переносилась в код дословно.
+
+// ── Константы из web/static/ui.js и tracker.js ───────────────────────────────
+const ACCENT = '#7c3aed';
+const TEAM_TYPE_COLOR = { department: '#4338ca', cluster: '#7c3aed', unit: '#2563eb', group: '#0891b2', team: '#059669', squad: '#d97706', employee: '#64748b' };
+const TEAM_TYPE_LABEL = { department: 'Департамент', cluster: 'Кластер', unit: 'Юнит', group: 'Группа', team: 'Команда', squad: 'Сквад', employee: 'Сотрудник' };
+
+const HEALTH_COLOR = { ahead: '#16a34a', on_track: '#2563eb', below: '#ef4444', stale: '#d97706', no_goals: '#d1d5db' };
+const HEALTH_LABEL = { ahead: 'опережает', on_track: 'в плане', below: 'отстаёт', stale: 'нет обновлений', no_goals: 'нет целей' };
+// Подписи на карточке цели — со значком, как в GoalCard.
+const HEALTH_CARD_LABEL = { ahead: '▲ опережает', on_track: '✓ в плане', stale: '⚠ нет обновлений', below: '▼ отстаёт' };
+
+const PRI_SHORT = { P0: 'Критичный', P1: 'Высокий', P2: 'Средний', P3: 'Низкий' };
+const PRI_HINT = {
+  P0: 'Критично: без этой цели период провален. Ресурсы — в первую очередь.',
+  P1: 'Высокий: ключевая цель периода, делаем обязательно.',
+  P2: 'Средний: важно, но можно сдвинуть при нехватке ресурсов.',
+  P3: 'Низкий: делаем, если останется время.',
+};
+const PRI_COLOR = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' };
+const FOCUS_COLORS = { EFFICIENCY: '#0891b2', QUALITY: '#7c3aed', RELIABILITY: '#059669', GROWTH: '#d97706', PROFITABILITY: '#dc2626', STABILITY: '#6366f1', SPEED_EFFICIENCY: '#0891b2', TECH_INDEPENDENCE: '#be185d', DEFAULT: '#6b7280' };
+const FOCUS_LABEL = { PROFITABILITY: 'Profitability', STABILITY: 'Stability', SPEED_EFFICIENCY: 'Speed Efficiency', TECH_INDEPENDENCE: 'Tech Independency' };
+
+const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706' };
+const KR_MEASURE_INFO = {
+  NUMERICAL: { icon: '123', title: 'Метрика', desc: 'Старт → цель, вводите текущее значение', ex: 'p95 latency 800 → 300 мс' },
+  BOOLEAN:   { icon: '✓', title: 'True / False', desc: 'Достигнут или нет: 0% или 100%', ex: 'сервис переведён на k8s' },
+  PROJECT:   { icon: '☰', title: 'Шаги проекта', desc: 'Сумма весов выполненных шагов', ex: 'RFC → миграция БД → отключение legacy' },
+};
+const KR_TYPE_LABEL = { BOOLEAN: 'Бинарный', PROJECT: 'Проектный', NUMERICAL: 'Числовой' };
+
+const KR_HEALTH_COLOR = { not_started: '#6b7280', on_track: '#16a34a', at_risk: '#d97706', done: '#15803d' };
+const KR_HEALTH_LABEL = { not_started: 'Not Started', on_track: 'On Track', at_risk: 'At Risk', done: 'Closed' };
+const KR_HEALTH_ICON = { not_started: '○', on_track: '●', at_risk: '▲', done: '✓' };
+const KR_HEALTH_OPTIONS = ['not_started', 'on_track', 'at_risk', 'done'];
+const KR_HEALTH_HINT = {
+  not_started: 'Работа ещё не началась',
+  on_track: 'Идём по плану',
+  at_risk: 'Есть риск не достичь',
+  done: 'Работы по цели завершены, прогресс больше не изменится',
+};
+
+const STATUS_STEPS = [
+  { k: 'forming', l: 'Черновик' },
+  { k: 'ready', l: 'К валидации' },
+  { k: 'in_progress', l: 'В работе' },
+  { k: 'closed', l: 'Закрыты' },
+];
+
+const STALE_DAYS = 7;
+
+const KR_TYPE_OPTIONS = ['BOOLEAN', 'PROJECT', 'NUMERICAL'];
+const KR_UNITS = ['%', 'RPS', 'мс', 'сек', 'мин', 'час', 'дней', 'шт', '₽', 'запросов', 'ошибок', 'пользователей', 'заказов', 'рублей'];
+
+// depth — уровень периода (0 годовой, 1 квартальный): по нему граф раскладывает бэнды.
+// rank — хронология: раньше → левее.
+const PERIODS = [
+  { id: 10, name: 'Y27',   range: '01.01.27 — 31.12.27', state: 'планирование', color: '#6366f1', elapsed: 0, depth: 0, rank: 0, status: 'planned' },
+  { id: 11, name: 'Q1Y27', range: '01.01.27 — 31.03.27', state: '', color: '#94a3b8', elapsed: 0, depth: 1, rank: 1, status: 'planned' },
+  { id: 12, name: 'Q2Y27', range: '01.04.27 — 30.06.27', state: '', color: '#94a3b8', elapsed: 0, depth: 1, rank: 1, status: 'planned' },
+  { id: 13, name: 'Q3Y27', range: '01.07.27 — 30.09.27', state: '', color: '#94a3b8', elapsed: 0, depth: 1, rank: 1, status: 'planned' },
+  { id: 14, name: 'Q4Y27', range: '01.10.27 — 31.12.27', state: '', color: '#94a3b8', elapsed: 0, depth: 1, rank: 1, status: 'planned' },
+  { id: 1,  name: 'Y26',   range: '01.01.26 — 31.12.26', state: 'активный', color: '#6366f1', elapsed: 0.74, depth: 0, rank: 0, status: 'active' },
+  { id: 4,  name: 'Q1Y26', range: '01.01.26 — 31.03.26', state: 'закрыт', color: '#94a3b8', elapsed: 1, depth: 1, rank: 1, status: 'closed' },
+  { id: 2,  name: 'Q2Y26', range: '01.04.26 — 30.06.26', state: 'закрыт', color: '#94a3b8', elapsed: 1, depth: 1, rank: 1, status: 'closed' },
+  { id: 3,  name: 'Q3Y26', range: '01.07.26 — 30.09.26', state: 'активный', color: '#16a34a', elapsed: 0.98, depth: 1, rank: 2, status: 'active' },
+  { id: 5,  name: 'Q4Y26', range: '01.10.26 — 31.12.26', state: 'планирование', color: '#d97706', elapsed: 0, depth: 1, rank: 1, status: 'planned' },
+];
+
+// isAdmin / isSystemAdmin приходят из /api/v1/config и решают, какие пункты
+// показывать в меню пользователя.
+const ME = { name: 'Анна Петрова', initials: 'АП', email: 'a.petrova@example.com', isAdmin: true, isSystemAdmin: true };
+// Пространства (тенанты). Переключатель в шапке сайдбара появляется только
+// когда их больше одного — как в SidebarTenant.
+const TENANTS = [
+  { id: 1, name: 'Департамент медиа', active: true },
+  { id: 2, name: 'Test', active: false },
+];
+
+// Инициалы тенанта: два слова → первые буквы, одно слово → первые две буквы.
+function tenantInitials(name) {
+  const words = (name || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  return (words[0] || 'OK').slice(0, 2).toUpperCase();
+}
+
+const TREE = [
+  {
+    id: 10, name: 'Департамент разработки', type: 'department', lead: 'Сергей Иванов', leadInitials: 'СИ',
+    desc: 'Платформа, мобильные продукты и аналитика',
+    children: [
+      { id: 11, name: 'Платформенная команда', type: 'team', lead: 'Сергей Иванов', leadInitials: 'СИ',
+        desc: 'Команда отвечает за платформенные сервисы\nКанал поддержки ~platform\nСервисы команды', children: [] },
+      { id: 12, name: 'Мобильная разработка', type: 'team', lead: 'Иван Петров', leadInitials: 'ИП',
+        desc: 'iOS и Android приложения', children: [
+          { id: 14, name: 'Мобильный сквад', type: 'squad', lead: 'Дмитрий Смирнов', leadInitials: 'ДС', desc: 'Кроссплатформенные эксперименты', children: [] },
+        ] },
+      { id: 15, name: 'Инфраструктура', type: 'unit', lead: 'Дмитрий Смирнов', leadInitials: 'ДС', desc: 'Сети, железо, дежурства', children: [] },
+      { id: 13, name: 'Аналитика', type: 'team', lead: 'Мария Ковалёва', leadInitials: 'МК', desc: 'Витрины данных и продуктовая аналитика', children: [] },
+    ],
+  },
+];
+
+const BOARDS = {
+  10: { status: 'no_goals', changedAt: '—', goals: [] },
+  11: {
+    status: 'ready', changedAt: '15 июн.',
+    goals: [
+      {
+        id: 101, priority: 'P1', weight: 35, type: 'delivery', focus: 'SPEED_EFFICIENCY',
+        title: 'Отказ от Маркетинговой Админки', desc: 'Переводим все сценарии заведения рекламы из **Маркетинговой Админки** в Self Service, чтобы у агентств и внутренних команд остался один инструмент.\n\n**Зачем**\n- Админка не развивается с 2023 года\n- на её поддержку уходит ~20% времени команды\n- ошибки ручного заведения дают до 15 инцидентов в месяц\n\n**Критерий успеха:** Админка в режиме *только для чтения*, новых заведений нет 4 недели подряд.\n\n**Вне скоупа:** миграция исторических кампаний — остаются в архиве. Подробности — [RFC-214](#).', updatedDaysAgo: 114,
+        owners: [{ name: 'Сергей Иванов', initials: 'СИ' }], periodId: 3, parentIds: [103], childIds: [],
+        parents: [{ id: 103, title: 'Единый онбординг сервисов', periodName: 'Y26', teamName: 'Платформенная команда' }], shareTeams: null,
+        krs: [
+          { id: 1011, weight: 10, name: 'Заведение TV и ООН баннеров в Self Service', desc: 'Пейсменты TV и ООН доступны в SS: менеджер может выбрать формат, загрузить креатив, пройти модерацию и запустить размещение без участия команды поддержки. Считаем долю размещений TV и ООН, заведённых через SS, от общего числа за месяц.',
+            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 80, checkpoints: [{ value: 30, progress_percent: 50 }, { value: 70, progress_percent: 85 }], healthStatus: 'not_started', updatedDaysAgo: 116, note: true },
+          { id: 1012, weight: 30, name: 'Доступна настройка лимитов для РА', desc: 'В кабинете реализован функционал настройки лимитов: дневные и общие бюджеты на уровне агентства и отдельного клиента, уведомления при достижении 80% и 100% лимита.',
+            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 100, healthStatus: 'done', updatedDaysAgo: 114, note: true },
+          { id: 1013, weight: 30, name: 'Запуск click-in РК через РА', desc: 'РА могут запускать click-in РК в SS самостоятельно — от создания кампании до выгрузки отчёта. Метрика: доля click-in кампаний, запущенных агентствами без обращения в поддержку.',
+            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 70, healthStatus: 'not_started', updatedDaysAgo: 116, note: true },
+          { id: 1014, weight: 30, name: 'Маркетинговые баннеры заводятся в SS', desc: 'Маркетинговые баннеры заводятся в SS',
+            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 100, healthStatus: 'done', updatedDaysAgo: 114, note: true },
+        ],
+        comments: [
+          { id: 9001, author: 'Анна Петрова', initials: 'АП', date: '2 дня назад', text: 'Нужно пересчитать базу: методику поменяли в середине квартала.', resolved: false,
+            replies: [{ id: 9002, author: 'Сергей Иванов', initials: 'СИ', date: 'вчера', text: 'Пересчитал, расхождение 0,4 п.п. — обновил значение.' }] },
+          { id: 9003, author: 'Иван Петров', initials: 'ИП', date: 'неделю назад', text: 'Добавьте ссылку на дашборд в описание.', resolved: false, replies: [] },
+        ],
+      },
+      {
+        id: 102, priority: 'P1', weight: 10, type: 'delivery', focus: 'SPEED_EFFICIENCY',
+        title: 'Отказ от старого кабинета Медиа', desc: 'Закрываем старый кабинет Медиа: медиапланирование и отчётность переезжают в новый кабинет. После переезда отключаем старые API и освобождаем 3 сервера.', updatedDaysAgo: 114,
+        owners: [{ name: 'Анна Петрова', initials: 'АП' }, { name: 'Иван Петров', initials: 'ИП' }], periodId: 3, parentIds: [103], childIds: [202],
+        parents: [{ id: 103, title: 'Единый онбординг сервисов', periodName: 'Y26', teamName: 'Платформенная команда' }],
+        children: [{ id: 202, title: 'Запуск офлайн-режима', periodName: 'Q3Y26', teamName: 'Мобильная разработка' }],
+        shareTeams: { ownerTeam: 'Платформенная команда', teams: ['Мобильная разработка'] },
+        krs: [
+          { id: 1021, weight: 50, name: 'Медиапланирование в новом кабинете', desc: 'Медиапланы создаются, согласуются и экспортируются в новом кабинете; шаблоны старого кабинета перенесены автоматически. Проверяем на 5 крупнейших агентствах.', krType: 'PROJECT', healthStatus: 'at_risk', updatedDaysAgo: 114,
+            stages: [{ title: 'Пилот', weight: 40, done: true }, { title: 'Раскатка', weight: 60, done: false }] },
+          { id: 1022, weight: 50, name: 'Отчётность перенесена', desc: 'Все **14 регулярных отчётов** доступны в новом кабинете:\n- те же цифры, расхождение со старым — не более `0,5%`\n- выгрузка в XLSX и CSV\n- рассылка по расписанию', krType: 'BOOLEAN', done: false, healthStatus: 'not_started', updatedDaysAgo: 120 },
+        ],
+        comments: [],
+      },
+      {
+        id: 103, priority: 'P2', weight: 20, type: 'discovery', focus: 'TECH_INDEPENDENCE',
+        title: 'Единый онбординг сервисов', desc: 'Общая цель с мобильной разработкой и аналитикой. Новый сервис подключается к платформе **за один день** по общему шаблону.\n\nИз коробки:\n1. CI/CD и `deploy.yaml`\n2. логирование и метрики\n3. алёрты и дашборд\n\n> Сейчас на это уходит 1–2 недели, и у каждой команды свой набор инструментов.', updatedDaysAgo: 5,
+        owners: [{ name: 'Сергей Иванов', initials: 'СИ' }, { name: 'Мария Ковалёва', initials: 'МК' }], periodId: 1, parentIds: [], childIds: [101, 102, 301],
+        children: [
+          { id: 101, title: 'Отказ от Маркетинговой Админки', periodName: 'Q3Y26', teamName: 'Платформенная команда' },
+          { id: 102, title: 'Отказ от старого кабинета Медиа', periodName: 'Q3Y26', teamName: 'Платформенная команда' },
+          { id: 301, title: 'Витрина удержания в проде', periodName: 'Q3Y26', teamName: 'Аналитика' }],
+        shareTeams: { ownerTeam: 'Платформенная команда', teams: ['Мобильная разработка', 'Аналитика'] },
+        krs: [
+          { id: 1031, weight: 100, name: 'Сервисов на общем шаблоне', desc: 'Количество продовых сервисов, развёрнутых из общего шаблона и прошедших чек-лист готовности.', krType: 'NUMERICAL', unit: 'шт', start: 2, target: 12, current: 11, healthStatus: 'on_track', updatedDaysAgo: 5 },
+        ],
+        comments: [],
+      },
+    ],
+  },
+  12: {
+    status: 'in_progress', changedAt: '2 июл.',
+    goals: [
+      {
+        id: 201, priority: 'P0', weight: 50, type: 'delivery', focus: 'STABILITY',
+        title: 'Оценка приложения в сторах не ниже 4,6', desc: 'Средневзвешенная по App Store и Google Play.', updatedDaysAgo: 6,
+        owners: [{ name: 'Иван Петров', initials: 'ИП' }], periodId: 3, parentIds: [401], childIds: [], shareTeams: null,
+        krs: [
+          { id: 2011, weight: 70, name: 'Средняя оценка', desc: '', krType: 'NUMERICAL', unit: '', start: 4.1, target: 4.6, current: 4.22, healthStatus: 'at_risk', updatedDaysAgo: 6 },
+          { id: 2012, weight: 30, name: 'Доля падений ниже 0,3%', desc: '', krType: 'NUMERICAL', unit: '%', start: 1.4, target: 0.3, current: 0.9, healthStatus: 'on_track', updatedDaysAgo: 4 },
+        ],
+        comments: [
+          { id: 9101, author: 'Мария Ковалёва', initials: 'МК', date: '3 дня назад', text: 'Оценка в Google Play просела после релиза 4.12 — стоит посмотреть отзывы.', resolved: false, replies: [] },
+        ],
+      },
+      {
+        id: 202, priority: 'P1', weight: 40, type: 'discovery', focus: 'PROFITABILITY',
+        title: 'Запуск офлайн-режима', desc: '', updatedDaysAgo: 15,
+        owners: [], periodId: 3, parentIds: [401, 102], childIds: [], shareTeams: null,
+        krs: [
+          { id: 2021, weight: 100, name: 'Офлайн-режим в проде', desc: '', krType: 'PROJECT', healthStatus: 'at_risk', updatedDaysAgo: 15,
+            stages: [{ title: 'Хранилище', weight: 30, done: true }, { title: 'Синхронизация', weight: 40, done: false }, { title: 'Раскатка 100%', weight: 30, done: false }] },
+        ],
+        comments: [],
+      },
+    ],
+  },
+  13: {
+    status: 'forming', changedAt: 'сегодня',
+    goals: [
+      {
+        id: 301, priority: 'P2', weight: 100, type: 'discovery', focus: 'TECH_INDEPENDENCE',
+        title: 'Витрина удержания в проде', desc: 'Единый источник для всех продуктовых команд.', updatedDaysAgo: 0,
+        owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [103], childIds: [], shareTeams: null,
+        krs: [
+          { id: 3011, weight: 100, name: 'Витрина dm_retention доступна', desc: '', krType: 'BOOLEAN', done: true, healthStatus: 'done', updatedDaysAgo: 0 },
+        ],
+        comments: [],
+      },
+    ],
+  },
+  14: { status: 'no_goals', changedAt: '—', goals: [] },
+  15: {
+    status: 'closed', changedAt: '3 дня назад',
+    goals: [
+      {
+        id: 401, priority: 'P1', weight: 60, type: 'delivery', focus: 'STABILITY',
+        title: 'Аптайм дежурного контура 99,95%', desc: '', updatedDaysAgo: 3,
+        owners: [{ name: 'Дмитрий Смирнов', initials: 'ДС' }], periodId: 1, parentIds: [], childIds: [201, 202], shareTeams: null,
+        krs: [
+          { id: 4011, weight: 100, name: 'Аптайм за квартал', desc: '', krType: 'NUMERICAL', unit: '%', start: 99.5, target: 99.95, current: 99.94, healthStatus: 'done', updatedDaysAgo: 3 },
+        ],
+        comments: [],
+      },
+      {
+        id: 402, priority: 'P3', weight: 30, type: 'delivery', focus: 'SPEED_EFFICIENCY',
+        title: 'Замена сетевого оборудования в DC2', desc: '', updatedDaysAgo: 10,
+        owners: [], periodId: 3, parentIds: [], childIds: [], shareTeams: null,
+        krs: [
+          { id: 4021, weight: 100, name: 'Стойки переведены', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 8, current: 8, healthStatus: 'done', updatedDaysAgo: 10 },
+        ],
+        comments: [],
+      },
+    ],
+  },
+};
+
+const NOTIFICATIONS = [
+  { id: 1, title: 'Анна Петрова отметилась по KR', body: '● On Track → ▲ At Risk. «Интеграция откладывается до следующего спринта»', time: '12 мин', context: 'Платформенная команда · Q3-Y26', unread: true },
+  { id: 2, title: 'Запрос доступа к пространству', body: 'Иван Петров просит доступ к пространству «Платформа»', time: '2 ч', context: 'Администрирование', unread: true },
+  { id: 3, title: 'Новый комментарий к цели', body: '«Давайте поднимем цель на уровень департамента»', time: 'вчера', context: 'Единый онбординг сервисов', unread: false },
+];
+
+// ── Обзор периода ────────────────────────────────────────────────────────────
+// Константы и структура повторяют web/static/period_overview_view.js.
+const PO = { cardBorder: '#e5e7eb', hairline: '#f1f5f9', headingFg: '#0f172a', mutedFg: '#6b7280', dimFg: '#9ca3af', accent: ACCENT, danger: '#b91c1c' };
+
+const PO_STATUS_TILES = [
+  { key: 'no_goals',    label: 'Нет целей',   dot: '#cbd5e1', color: '#64748b' },
+  { key: 'forming',     label: 'Черновик',    dot: '#f59e0b', color: '#92400e' },
+  { key: 'ready',       label: 'К валидации', dot: '#3b82f6', color: '#1e40af' },
+  { key: 'in_progress', label: 'В работе',    dot: '#22c55e', color: '#166534' },
+  { key: 'closed',      label: 'Закрыто',     dot: '#9ca3af', color: '#4b5563' },
+];
+
+const PO_DD_LABELS = { delivery: 'Delivery', discovery: 'Discovery' };
+const PO_DD_COLORS = { delivery: '#475569', discovery: '#7c6cf0' };
+const PO_FOCUS_LABELS = FOCUS_LABEL;
+const PO_FOCUS_COLORS = { PROFITABILITY: '#ef4444', STABILITY: '#22c55e', SPEED_EFFICIENCY: '#f59e0b', TECH_INDEPENDENCE: '#7c6cf0' };
+const PO_PRIO_LABELS = { P0: 'P0 · критично', P1: 'P1 · высокий', P2: 'P2 · средний', P3: 'P3 · низкий' };
+const PO_PRIO_COLORS = { P0: '#dc2626', P1: '#f59e0b', P2: '#3b82f6', P3: '#94a3b8' };
+const PO_HEALTH_LABELS = KR_HEALTH_LABEL;
+const PO_HEALTH_COLORS = KR_HEALTH_COLOR;
+
+const PROGRESS_SERIES = {
+  period_start: '2026-07-01',
+  period_end: '2026-09-30',
+  points: [
+    { date: '2026-06-24', progress: 4 },
+    { date: '2026-07-14', progress: 12 },
+    { date: '2026-07-29', progress: 21 },
+    { date: '2026-08-12', progress: 33 },
+    { date: '2026-08-26', progress: 44 },
+    { date: '2026-09-09', progress: 52 },
+    { date: '2026-09-23', progress: 58 },
+  ],
+};
+
+// Пользователи для выбора драйвера цели (UserSelector). led_team — команда,
+// которой человек руководит; в выпадающем списке она показана под именем.
+const USERS = [
+  { udid: 'u1', name: 'Анна Петрова', initials: 'АП', led_team: 'Платформенная команда' },
+  { udid: 'u2', name: 'Сергей Иванов', initials: 'СИ', led_team: 'Платформенная команда' },
+  { udid: 'u3', name: 'Иван Петров', initials: 'ИП', led_team: 'Мобильная разработка' },
+  { udid: 'u4', name: 'Мария Ковалёва', initials: 'МК', led_team: 'Аналитика' },
+  { udid: 'u5', name: 'Дмитрий Смирнов', initials: 'ДС', led_team: 'Инфраструктура' },
+  { udid: 'u6', name: 'Ольга Никитина', initials: 'ОН', led_team: '' },
+  { udid: 'u7', name: 'Артём Волков', initials: 'АВ', led_team: '' },
+  { udid: 'u8', name: 'Екатерина Соболева', initials: 'ЕС', led_team: '' },
+];
+
+// ── Лог активностей ──────────────────────────────────────────────────────────
+// События в том виде, в каком их отдаёт GET /api/v1/activity. Даты задаются
+// сдвигом от текущего момента, чтобы группировка «сегодня / вчера / ранее»
+// работала при любом открытии прототипа.
+const CATEGORY_ICON = { progress: '📈', composition: '🧩', status: '🚦', discussion: '💬' };
+const CATEGORY_LABEL = { progress: 'Прогресс', composition: 'Состав целей', status: 'Статусы и риски', discussion: 'Обсуждения' };
+const STATUS_RU = { no_goals: 'Нет целей', forming: 'Черновик', ready: 'К валидации', in_progress: 'В работе', validated: 'Валидировано', closed: 'Закрыто' };
+
+const _ago = (days, hours = 0) => new Date(Date.now() - days * 864e5 - hours * 36e5).toISOString();
+
+const ACTIVITY = [
+  { id: 1, category: 'progress', action: 'kr_progress', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3,
+    entity_title: 'Доля активных пользователей в неделю', created_at: _ago(0, 1),
+    payload: { before: { progress: 64 }, after: { progress: 78 }, goal_title: 'Отказ от Маркетинговой Админки' } },
+  { id: 2, category: 'discussion', action: 'comment_added', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 3,
+    entity_title: 'Отказ от Маркетинговой Админки', created_at: _ago(0, 3),
+    payload: { text: 'Пересчитал по новой методике — расхождение `0,4 п.п.`\n\n- витрина обновлена\n- дашборд перепривязан' } },
+  { id: 3, category: 'status', action: 'status_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+    entity_title: 'Мобильная разработка', created_at: _ago(0, 5),
+    payload: { before: { status: 'forming' }, after: { status: 'in_progress' } } },
+  { id: 4, category: 'composition', action: 'kr_created', actor: { display_name: 'Мария Ковалёва' }, team_id: 13, period_id: 3,
+    entity_title: 'Витрина dm_retention доступна', created_at: _ago(1, 2), payload: {} },
+  { id: 5, category: 'progress', action: 'kr_progress', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 3,
+    entity_title: 'Стойки переведены', created_at: _ago(1, 6),
+    payload: { before: { progress: 75 }, after: { progress: 100 }, goal_title: 'Замена сетевого оборудования в DC2' } },
+  { id: 6, category: 'composition', action: 'goal_shared', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 1,
+    entity_title: 'Единый онбординг сервисов', created_at: _ago(1, 9),
+    payload: { shared_with_team_ids: [12, 13] } },
+  { id: 7, category: 'discussion', action: 'reply_added', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3,
+    entity_title: 'Отказ от Маркетинговой Админки', created_at: _ago(2, 1),
+    payload: { text: 'Согласна, оставляем как есть до конца квартала.' } },
+  { id: 8, category: 'composition', action: 'goal_fields_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+    entity_title: 'Оценка приложения в сторах не ниже 4,6', created_at: _ago(2, 4),
+    payload: { changed: ['weight', 'priority'] } },
+  { id: 9, category: 'discussion', action: 'comment_resolved', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 3,
+    entity_title: 'Отказ от старого кабинета Медиа', created_at: _ago(3, 2), payload: {} },
+  { id: 10, category: 'progress', action: 'kr_progress', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+    entity_title: 'Средняя оценка', created_at: _ago(3, 7),
+    payload: { before: { progress: 18 }, after: { progress: 24 }, goal_title: 'Оценка приложения в сторах не ниже 4,6' } },
+  { id: 11, category: 'composition', action: 'goal_created', actor: { display_name: 'Мария Ковалёва' }, team_id: 13, period_id: 3,
+    entity_title: 'Витрина удержания в проде', created_at: _ago(4, 3), payload: {} },
+  { id: 12, category: 'status', action: 'status_changed', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 3,
+    entity_title: 'Инфраструктура', created_at: _ago(5, 1),
+    payload: { before: { status: 'in_progress' }, after: { status: 'closed' } } },
+  { id: 13, category: 'composition', action: 'kr_deleted', actor: { display_name: 'Анна Петрова', removed: true }, team_id: 11, period_id: 3,
+    entity_title: 'Старый счётчик конверсии', created_at: _ago(6, 5), payload: {} },
+  { id: 14, category: 'discussion', action: 'comment_added', actor: { display_name: 'Мария Ковалёва' }, team_id: 12, period_id: 3,
+    entity_title: 'Запуск офлайн-режима', created_at: _ago(9, 2),
+    payload: { text: 'Синхронизация упирается в лимиты API — нужен разговор с платформой.' } },
+  { id: 15, category: 'composition', action: 'goal_unshared', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 1,
+    entity_title: 'Единый онбординг сервисов', created_at: _ago(12, 4),
+    payload: { unshared_team_ids: [13] } },
+  { id: 16, category: 'progress', action: 'kr_note_updated', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 1,
+    entity_title: 'Аптайм за квартал', created_at: _ago(14, 6), payload: {} },
+  { id: 17, category: 'composition', action: 'goal_owner_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+    entity_title: 'Запуск офлайн-режима', created_at: _ago(18, 1), payload: {} },
+  { id: 18, category: 'status', action: 'status_changed', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3,
+    entity_title: 'Платформенная команда', created_at: _ago(21, 3),
+    payload: { before: { status: 'no_goals' }, after: { status: 'forming' } } },
+];
+
 // Прототип трекера OKR: рендер и поведение поверх продуктового CSS.
 // Разметка повторяет компоненты из web/static/tracker.js и sidebar.js — порядок
 // блоков, классы и подписи, — чтобы утверждённый вид переносился в код дословно.
@@ -3499,3 +5530,5 @@ function enhanceDescs() {
 }
 enhanceDescs();
 new MutationObserver(() => enhanceDescs()).observe(document.body, { childList: true, subtree: true });
+
+</script>

@@ -2,93 +2,129 @@
 <!-- @dsName Карточка цели -->
 <!-- @dsSubtitle Обычная, общая, устаревшая, перетаскиваемая -->
 <!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
-<!-- @dsViewport 900x820 -->
+<!-- @dsViewport 900x860 -->
 <section class="ds-section">
   <div class="ds-section__title">Полная карточка</div>
-  <div class="goal-card">
+  <div class="goal-card" style="--health: #2563eb; --health-soft: #2563eb18">
     <div class="goal-card__body">
-      <div class="goal-card__meta">
-        <span class="badge" style="color: #2563eb; background: #2563eb15">в плане</span>
+      <div class="goal-card__meta goal-card__meta--row">
+        <span class="badge" style="color: #dc2626; background: #dc262618">P1</span>
         <span class="goal-card__weight">вес 40%</span>
+        <span class="badge" style="color: #374151; background: #37415118">Delivery</span>
+        <span class="badge" style="color: #0ea5e9; background: #0ea5e918">Growth</span>
         <span class="goal-link-label goal-link-label--up">↑ 1</span>
         <span class="goal-link-label goal-link-label--down">↓ 3</span>
         <span class="goal-card__spacer"></span>
-        <span class="goal-card__owner"><span class="goal-card__owner-label">владелец</span><span class="uinfo"><span class="uinfo__initials" style="width: 18px; height: 18px; font-size: 8px; background: #7c3aed">СИ</span><span class="uinfo__name">Сергей Иванов</span></span></span>
+        <span class="goal-card__owner"><span class="goal-card__owner-label">Драйвер цели</span><span class="uinfo"><span class="uinfo__initials" style="width: 18px; height: 18px; font-size: 8px; background: #7c3aed">СИ</span><span class="uinfo__name">Сергей Иванов</span></span></span>
         <button class="goal-card__copy-link">🔗</button>
       </div>
       <div class="goal-card__title-row">
-        <span class="goal-card__title">Вывести retention 30d на 42%</span>
-        <span class="goal-card__edit-hint">нажмите, чтобы изменить</span>
-        <button class="goal-card__delete-btn">×</button>
+        <span class="goal-card__title goal-card__title--readonly">Вывести retention 30d на 42%</span>
+        <span class="goal-card__actions">
+          <button class="icon-btn" aria-label="Редактировать цель">✎</button>
+          <button class="icon-btn icon-btn--danger" aria-label="Удалить цель">×</button>
+        </span>
       </div>
       <div class="goal-card__desc md-content">Удержание считаем по когорте зарегистрировавшихся в первый месяц квартала. Источник — витрина <code>dm_retention</code>.</div>
       <div class="goal-card__progress">
-        <div class="goal-card__progress-header">
-          <div class="goal-card__progress-left">
-            <span class="goal-card__progress-pct" style="color: #2563eb">64%</span>
-            <span class="goal-card__health-badge" style="color: #2563eb; background: #2563eb15">в плане</span>
-          </div>
-          <span class="goal-card__updated" style="color: #9ca3af">обновлено 2 дня назад</span>
+        <div class="goal-card__progress-line">
+          <span class="goal-card__progress-pct">64%</span>
+          <span class="goal-card__health-badge">✓ в плане</span>
+          <span class="goal-card__forecast">прогноз 70%</span>
+          <span class="goal-card__spacer"></span>
+          <span class="goal-card__updated">Обновлено: 2д назад</span>
         </div>
-        <div class="progress-bar" style="height: 8px; border-radius: 4px">
-          <div class="progress-bar__fill" style="width: 64%; background: #2563eb; border-radius: 4px"></div>
-          <div class="progress-bar__forecast" style="left: 70%; height: 14px"></div>
+        <div class="progress-bar" style="height: 9px; border-radius: 4.5px">
+          <div class="progress-bar__fill" style="width: 64%; background: var(--health); border-radius: 4.5px"></div>
+          <div class="progress-bar__forecast" style="left: 70%; height: 15px"></div>
         </div>
-        <div class="goal-card__forecast-label">план на сегодня 70%</div>
       </div>
-      <div class="goal-card__tags">
-        <span class="kr-weight-badge">Σ весов KR 120%</span>
-      </div>
+    </div>
+    <div class="kr-section">
+      <div class="kr-section__empty">Ключевых результатов пока нет</div>
+      <button class="kr-add-btn">+ Добавить KR</button>
     </div>
     <div class="goal-card__footer">
-      <button class="goal-card__footer-btn goal-card__footer-btn--has-comments">💬 Комментарии <span class="comment-unresolved-badge">2</span></button>
-      <span class="goal-card__footer-divider"></span>
-      <button class="goal-card__footer-btn">📈 История</button>
+      <button class="goal-card__footer-btn goal-card__footer-btn--has-comments">💬 3 <span class="comment-unresolved-badge">2</span></button>
     </div>
   </div>
+  <div class="ds-section__note">Метаданные — одной строкой (.goal-card__meta--row). Прогресс — одной строкой (.goal-card__progress-line): процент, здоровье, прогноз, давность. Цвет здоровья берётся из переменной --health на .goal-card, в разметке цветов нет. Ключевые результаты видны всегда; раскрывается только обсуждение.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Действия цели</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item">
+        <span class="goal-card__actions">
+          <button class="icon-btn" aria-label="Редактировать цель">✎</button>
+          <button class="icon-btn icon-btn--danger" aria-label="Удалить цель">×</button>
+        </span>
+        <div class="ds-item__label">полное редактирование</div>
+      </div>
+      <div class="ds-item">
+        <span class="goal-card__actions">
+          <span class="action-lock">
+            <button class="icon-btn icon-btn--locked" aria-disabled="true" aria-label="Редактировать цель">✎<span class="icon-btn__lock">🔒</span></button>
+            <span class="action-lock__tip" role="tooltip">Состав целей зафиксирован: команда в статусе «В работе»</span>
+          </span>
+          <span class="action-lock">
+            <button class="icon-btn icon-btn--locked" aria-disabled="true" aria-label="Удалить цель">×<span class="icon-btn__lock">🔒</span></button>
+            <span class="action-lock__tip" role="tooltip">Состав целей зафиксирован: команда в статусе «В работе»</span>
+          </span>
+        </span>
+        <div class="ds-item__label">заблокировано статусом</div>
+      </div>
+    </div>
+  </div>
+  <div class="ds-section__note">Заголовок цели не кликабелен: правка живёт в иконочной кнопке — той же, что у ключевого результата. Заблокированное действие остаётся на месте и называет причину по наведению и по фокусу с клавиатуры.</div>
 </section>
 
 <section class="ds-section">
   <div class="ds-section__title">Варианты состояния</div>
-  <div class="goal-card goal-card--shared">
+  <div class="goal-card goal-card--shared" style="--health: #16a34a; --health-soft: #16a34a18">
     <div class="goal-card__body">
       <div class="shared-banner">
-        <span class="shared-banner__label">общая цель</span>
+        <span class="shared-banner__label">⇄ Общая с:</span>
         <span class="shared-pill shared-pill--owner"><span class="shared-pill__owner-star">★</span> Платформенная</span>
         <span class="shared-pill shared-pill--self">Моя команда</span>
         <span class="shared-pill">Мобильная разработка</span>
       </div>
-      <div class="goal-card__title-row"><span class="goal-card__title">Единый онбординг сервисов</span></div>
+      <div class="goal-card__title-row"><span class="goal-card__title goal-card__title--readonly">Единый онбординг сервисов</span></div>
       <div class="goal-card__progress">
-        <div class="goal-card__progress-header">
-          <div class="goal-card__progress-left"><span class="goal-card__progress-pct" style="color: #16a34a">91%</span></div>
+        <div class="goal-card__progress-line">
+          <span class="goal-card__progress-pct">91%</span>
+          <span class="goal-card__health-badge">▲ опережает</span>
+          <span class="goal-card__spacer"></span>
+          <span class="goal-card__updated">Обновлено: сегодня</span>
         </div>
-        <div class="progress-bar" style="height: 8px; border-radius: 4px"><div class="progress-bar__fill" style="width: 91%; background: #16a34a; border-radius: 4px"></div></div>
+        <div class="progress-bar" style="height: 9px; border-radius: 4.5px"><div class="progress-bar__fill" style="width: 91%; background: var(--health); border-radius: 4.5px"></div></div>
       </div>
     </div>
   </div>
   <div class="ds-item__label">.goal-card--shared — левая граница #0891b2 + .shared-banner</div>
 
-  <div class="goal-card goal-card--stale" style="margin-top: 12px">
+  <div class="goal-card goal-card--stale" style="--health: #d97706; --health-soft: #d9770618; margin-top: 12px">
     <div class="goal-card__body">
-      <div class="goal-card__meta"><span class="badge" style="color: #d97706; background: #d9770615">нет обновлений</span></div>
-      <div class="goal-card__title-row"><span class="goal-card__title">Сократить время сборки до 6 минут</span></div>
+      <div class="goal-card__title-row"><span class="goal-card__title goal-card__title--readonly">Сократить время сборки до 6 минут</span></div>
       <div class="goal-card__progress">
-        <div class="goal-card__progress-header">
-          <div class="goal-card__progress-left"><span class="goal-card__progress-pct" style="color: #d97706">35%</span></div>
-          <span class="goal-card__updated" style="color: #d97706">без обновлений 21 день</span>
+        <div class="goal-card__progress-line">
+          <span class="goal-card__progress-pct">35%</span>
+          <span class="goal-card__health-badge">⚠ нет обновлений</span>
+          <span class="goal-card__spacer"></span>
+          <span class="goal-card__updated goal-card__updated--warn">⚠ 21д без обновлений</span>
         </div>
-        <div class="progress-bar" style="height: 8px; border-radius: 4px"><div class="progress-bar__fill" style="width: 35%; background: #d97706; border-radius: 4px"></div></div>
+        <div class="progress-bar" style="height: 9px; border-radius: 4.5px"><div class="progress-bar__fill" style="width: 35%; background: var(--health); border-radius: 4.5px"></div></div>
       </div>
     </div>
   </div>
-  <div class="ds-item__label">.goal-card--stale — граница #fde68a</div>
+  <div class="ds-item__label">.goal-card--stale — граница #fde68a. Давность обновления — единственный элемент свежести: в устаревшей цели он же и есть предупреждение (.goal-card__updated--warn)</div>
 
   <div style="position: relative; margin: 12px 0 0 24px">
     <div class="goal-card goal-card--dragging" style="margin-bottom: 0">
       <span class="drag-handle">⋮⋮</span>
       <div class="goal-card__body">
-        <div class="goal-card__title-row"><span class="goal-card__title">Перетаскиваемая цель</span></div>
+        <div class="goal-card__title-row"><span class="goal-card__title goal-card__title--readonly">Перетаскиваемая цель</span></div>
       </div>
     </div>
   </div>
