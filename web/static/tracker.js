@@ -1549,7 +1549,11 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
               { icon: '✎', label: 'Редактировать', onClick: openEdit, reason: editLockReason(editMode, 'KR') },
               { icon: '🔗', label: 'Копировать ссылку', confirmLabel: 'Скопировано',
                 onClick: () => copyGoalURL(teamId, periodId, goalId, kr.id) },
-              kr.note && { icon: '📝', label: showNote ? 'Скрыть заметку' : 'Показать заметку', onClick: () => setNoteVisOverride(!showNote) },
+              // Признак — текст заметки, а не сама запись: удалить запись через API нельзя,
+              // поэтому у KR с очищенной заметкой note остаётся объектом с пустым text
+              // (контракт key_results[].note). По записи пункт предлагал бы показать то,
+              // чего нет: KRNote на пустом тексте не рисует ничего.
+              kr.note?.text && { icon: '📝', label: showNote ? 'Скрыть заметку' : 'Показать заметку', onClick: () => setNoteVisOverride(!showNote) },
               { sep: true },
               { icon: '×', label: 'Удалить', danger: true, onClick: () => setConfirmDelete(true),
                 reason: deleteLockReason(editMode, 'KR') },
