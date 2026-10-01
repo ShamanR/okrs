@@ -240,8 +240,28 @@ const KR_HEALTH_HINT = {
   not_started: 'Команда не приступила к этому KR',
   on_track: 'Началась работа, идёт планово',
   at_risk: 'Фиксируем существенный риск для достижения результата',
-  done: 'Работа над KR завершена',
+  // Статус говорит только о прекращении работ, не о достижении результата:
+  // достигнут он или нет, говорит прогресс — см. KR_CLOSED_VIEW ниже.
+  done: 'Работы по KR прекращены — прогресс больше не предполагается менять',
 };
+
+// Вид закрытого KR. Статус «закрыт» сообщает, что работ больше не будет, а чем они
+// закончились — прогресс. Ключи совпадают с модификаторами .kr-hdot--* в tracker.css.
+const KR_CLOSED_VIEW = {
+  done: { icon: '✓', flag: '', note: '', hint: () => 'Работы прекращены, результат достигнут' },
+  done_near: { icon: '✓', flag: '!', note: 'результат не достигнут',
+    hint: p => `Закрыт на ${p}% — работы прекращены, результат не достигнут` },
+  done_short: { icon: '✕', flag: '', note: 'результат не достигнут',
+    hint: p => `Закрыт на ${p}% — работы прекращены, результат не достигнут` },
+};
+
+// Граница между done_near и done_short — порог «в плане» из настроек пространства,
+// тот же, по которому «в плане» считаются цель и команда (healthOf). Включительна,
+// как и там: прогресс, равный порогу, даёт done_near.
+function closedViewOf(progress, greenThreshold = 80) {
+  if (progress >= 100) return 'done';
+  return progress >= greenThreshold ? 'done_near' : 'done_short';
+}
 
 // fmtNum formats a number with space thousands separators, keeping existing fractional digits.
 function fmtNum(n) {
@@ -389,15 +409,25 @@ const KR_BEHIND_PP = 20;
 
 // Здоровье KR — цветная точка с поповером. Поповер и подсказки has-tip рисует
 // только CSS (::after + attr, :hover/:focus), поэтому обработчиков здесь нет.
-function KRHealthDot({ status }) {
+function KRHealthDot({ status, progress = 0, greenThreshold = 80 }) {
   const s = KR_HEALTH_LABEL[status] ? status : 'not_started';
+  // Вид выводится здесь, а не в строке KR: правило «как выглядит состояние»
+  // принадлежит тому, кто его рисует, иначе каждое место с точкой повторит его заново.
+  // Прогресс по умолчанию 0, а не 100: если его не передали, точка не должна
+  // утверждать достижение результата — именно это и исправляет разделение видов.
+  const view = s === 'done' ? closedViewOf(progress, greenThreshold) : s;
+  const closed = KR_CLOSED_VIEW[view];
+  const icon = closed ? closed.icon : KR_HEALTH_ICON[s];
+  const hint = closed ? closed.hint(progress) : (KR_HEALTH_HINT[s] || '');
+  const label = KR_HEALTH_LABEL[s];
   return (
-    <span className={`kr-hdot kr-hdot--${s}`} tabIndex={0}
-      aria-label={`Статус KR: ${KR_HEALTH_LABEL[s]}`} data-no-drag>
-      <span className="kr-hdot__mark">{KR_HEALTH_ICON[s]}</span>
+    <span className={`kr-hdot kr-hdot--${view}`} tabIndex={0}
+      aria-label={`Статус KR: ${label}${closed && closed.note ? `, ${closed.note}` : ''}`} data-no-drag>
+      <span className="kr-hdot__mark">{icon}</span>
+      {closed && closed.flag && <span className="kr-hdot__flag" aria-hidden="true">{closed.flag}</span>}
       <span className="kr-hdot__pop" role="tooltip">
-        <span className="kr-hdot__title">{KR_HEALTH_ICON[s]} {KR_HEALTH_LABEL[s]}</span>
-        <span className="kr-hdot__hint">{KR_HEALTH_HINT[s] || ''}</span>
+        <span className="kr-hdot__title">{icon} {label}</span>
+        <span className="kr-hdot__hint">{hint}</span>
       </span>
     </span>
   );
@@ -1334,7 +1364,7 @@ function KRNote({ note, open, onToggle }) {
   );
 }
 
-function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null }) {
+function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null, greenThreshold = 80 }) {
   // Closed period is shown as fully done — purely visual (stored health_status is untouched),
   // so reopening the period restores each KR's original status.
   const displayHealth = periodStatus === 'closed' ? 'done' : kr.healthStatus;
@@ -1364,7 +1394,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
     <>
       <div className="kr-row">
         <div className="kr-row__main">
-          <KRHealthDot status={displayHealth} />
+          <KRHealthDot status={displayHealth} progress={progress} greenThreshold={greenThreshold} />
           <div className="kr-weight-chip has-tip" tabIndex={0}
             data-tip-title={`Вес KR · ${kr.weight}%`}
             data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели — 100%.">{kr.weight}%</div>
@@ -2049,7 +2079,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
               {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
               <KRRow kr={kr} goalId={goal.id} goalTitle={goal.title} editMode={editMode} onReload={onReload}
                 accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast}
-                teamId={currentTeamId} periodId={periodId} />
+                teamId={currentTeamId} periodId={periodId} greenThreshold={greenThreshold} />
             </div>
           );
         })}

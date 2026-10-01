@@ -237,6 +237,12 @@ A check-in is a single operation: value, health status and note are saved togeth
 previous values are kept. The health status (Not Started / On Track / At Risk / Closed) is a
 judgement call by a human and deliberately does not feed into any calculation.
 
+`Closed` says only that no further work is planned — not that the result was reached. Whether it
+was is a matter of progress, so the board draws a closed KR in one of three ways: reached at
+100%, closed close to target at or above the tenant's "in plan" threshold, and closed far from
+target below it. The last two carry a mark and name the progress they stopped at, so a closed
+period no longer reads as a period where everything landed.
+
 ### Progress and forecast
 
 Everything rolls up by weight, with one rule used everywhere:
