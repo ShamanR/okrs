@@ -39,3 +39,31 @@
 .modal-confirm-btn--primary { border-color: transparent; background: var(--accent, #7c3aed); color: #fff; }
 .modal-confirm-btn--primary:hover { background: #6d28d9; }
 .modal-confirm-btn--primary:disabled { background: #e5e7eb; color: #9ca3af; cursor: default; }
+
+/* Ряд управления показом списка: порядок, фильтры, признаки показа и сброс.
+   Блок общий, а не локальный для доски команды: такой же ряд с чекбоксом и
+   сбросом уже есть на странице графа целей (.gt-topbar в goal_tree.css) — он на
+   этот блок пока не переведён. Компактный по высоте: это управление показом, а не
+   основное действие экрана, поэтому сегмент здесь 32px, а не как .seg-btn в модалке. */
+.filter-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 14px; padding: 8px 14px; background: #fff; border: 1px solid var(--border, #e5e7eb); border-radius: 10px; }
+.filter-bar__group { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.filter-bar__cap { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint, #6b7280); white-space: nowrap; }
+.filter-bar__seg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border, #e5e7eb); border-radius: 9px; background: #fff; height: 32px; box-sizing: border-box; }
+.filter-bar__btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 26px; padding: 0 10px; border: none; border-radius: 6px; background: transparent; color: var(--text-faint, #6b7280); font: inherit; font-size: 14px; font-weight: 600; line-height: 1; white-space: nowrap; cursor: pointer; }
+.filter-bar__btn:hover:not(:disabled) { background: #f3f4f6; }
+.filter-bar__btn--on { background: var(--accent, #7c3aed); color: #fff; }
+.filter-bar__btn--on:hover:not(:disabled) { background: var(--accent, #7c3aed); }
+/* Кнопка уровня приоритета красится цветом уровня через --pc — тем же, что у бейджа
+   приоритета на карточке цели, поэтому фильтр и доска читаются одним кодом. */
+.filter-bar__btn--pri { color: var(--pc); font-weight: 700; }
+.filter-bar__btn--pri:hover:not(:disabled) { background: color-mix(in srgb, var(--pc) 10%, #fff); }
+.filter-bar__btn--pri:disabled { color: #c4c8cf; cursor: default; }
+.filter-bar__btn--pri.filter-bar__btn--on, .filter-bar__btn--pri.filter-bar__btn--on:hover { background: var(--pc); color: #fff; }
+.filter-bar__n { font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; line-height: 1; }
+.filter-bar__btn--on .filter-bar__n { opacity: .9; }
+.filter-bar__clear { width: 26px; height: 26px; border: none; background: transparent; border-radius: 6px; color: #6b7280; font-size: 20px; line-height: 1; cursor: pointer; }
+.filter-bar__clear:hover { background: #f3f4f6; color: #111827; }
+.filter-bar__check { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; color: var(--text-body, #374151); white-space: nowrap; cursor: pointer; user-select: none; }
+.filter-bar__spacer { flex: 1 1 0; min-width: 0; }
+.filter-bar__reset { padding: 6px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 999px; background: var(--surface-subtle, #f1f5f9); font: inherit; font-size: 13.5px; font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap; }
+.filter-bar__reset:hover { background: #e2e8f0; }

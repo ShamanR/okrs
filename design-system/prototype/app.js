@@ -15,10 +15,12 @@ const state = {
   periodId: 3,
   expanded: { 10: true, 12: true },
   favorites: { 11: true, 12: true, 15: true },
-  priFilter: {},      // P0..P3 → включён в фильтр
+  // Настройки показа целей на доске — один объект, как BOARD_VIEW в tracker.js.
+  boardView: { sort: 'custom', pri: {}, notes: false, hideZeroWeight: false },
   topMenu: false,
   showCom: {},        // goalId → развёрнуты комментарии
-  noteOpen: {},       // krId → заметка к KR развёрнута
+  noteVis: {},        // krId → перекрытие птички «Заметки к KR» (undefined — следовать ей)
+  noteCollapsed: {},  // krId → длинная заметка свёрнута до одной строки
   navOpen: false,
   notifOpen: false,
   periodMenu: false,
@@ -398,22 +400,6 @@ function renderTopbar() {
       <button class="pt-burger" id="burger" aria-label="Меню">☰</button>
       <div class="topbar__title">${esc(team.name)}</div>
       ${team.lead ? `<span class="tb-lead">${avatar(team.leadInitials || '', 22)}<span class="tb-lead__name">${esc(team.lead)}</span><span class="tb-lead__role">· лид</span></span>` : ''}
-      ${(() => {
-        const gs = goalsOf(state.teamId);
-        if (!gs.length) return '';
-        const any = ['P0','P1','P2','P3'].some(p => state.priFilter[p]);
-        return `<div class="tb-pri">
-          <span class="tb-cap">Приоритет</span>
-          <div class="tb-pri__seg" role="group" aria-label="Фильтр по приоритету">
-            ${['P0','P1','P2','P3'].map(p => {
-              const n = gs.filter(g => g.priority === p).length;
-              const on = !!state.priFilter[p];
-              return `<button type="button" class="tb-pri__btn${on ? ' tb-pri__btn--on' : ''}" style="--pc:${PRI_COLOR[p]}" data-pri-filter="${p}" aria-pressed="${on}"${n ? '' : ' disabled'}>${p}<span class="tb-pri__n">${n}</span></button>`;
-            }).join('')}
-          </div>
-          ${any ? '<button type="button" class="tb-pri__clear" data-pri-clear="1" title="Сбросить фильтр" aria-label="Сбросить фильтр">×</button>' : ''}
-        </div>`;
-      })()}
       <div class="topbar__spacer"></div>
       <div class="topbar__progress">
         <span class="tb-cap">Цели узла</span>
@@ -499,6 +485,7 @@ function krMenu(goalId, krId, teamId) {
     ${open ? `<div class="export-menu__dropdown">
       ${menuItem('✎', 'Редактировать', `data-kr-edit="${key}"`, { disabled: !canEditText(teamId), reason: editLockReason(teamId, 'KR') })}
       ${menuItem('🔗', 'Копировать ссылку', '')}
+      ${krNoteText(krOf(goalId, krId)) ? menuItem('📝', krNoteVisible(krId) ? 'Скрыть заметку' : 'Показать заметку', `data-kr-note-vis="${krId}"`) : ''}
       <div class="act-menu__sep"></div>
       ${menuItem('×', 'Удалить', '', { danger: true, disabled: !!structLock, reason: deleteLockReason(teamId, 'KR') })}
     </div>` : ''}
@@ -516,10 +503,25 @@ const KR_NOTE_SAMPLES = [
   '70% — click-in запущен в пилоте с тремя агентствами. Осталось закрыть биллинг и отчётность; риск — зависимость от команды Биллинга.',
 ];
 
+// Заметка видна, если включена птичка «Заметки к KR» или её показали у этого KR из
+// меню. Перекрытие per-KR сбрасывается при переключении птички — как в KRRow.
+function krNoteVisible(krId) {
+  const ov = state.noteVis[krId];
+  return ov === undefined ? state.boardView.notes : ov;
+}
+
+function krOf(goalId, krId) {
+  const g = goalsOf(state.teamId).find(x => x.id === +goalId);
+  return (g && g.krs.find(k => k.id === +krId)) || {};
+}
+
 function krNote(kr) {
   const text = krNoteText(kr);
   if (!text) return '';
-  const open = !!state.noteOpen[kr.id];
+  if (!krNoteVisible(kr.id)) return '';
+  // Показанная заметка развёрнута: иначе её пришлось бы раскрывать по одному клику на KR —
+  // ровно та проблема, из-за которой птичка и появилась. Клик сворачивает до одной строки.
+  const open = !state.noteCollapsed[kr.id];
   const long = text.length > 90 || text.includes('\n');
   const ago = kr.updatedDaysAgo === 0 ? 'сегодня' : kr.updatedDaysAgo + 'д назад';
   return `<div class="kr-note${open ? ' kr-note--open' : ''}${long ? ' kr-note--long' : ''}"${long ? ` role="button" tabindex="0" aria-expanded="${open}" data-kr-note="${kr.id}"` : ''} data-no-drag>
@@ -603,6 +605,7 @@ function krRow(goal, kr, teamId) {
           ${krMenu(goal.id, kr.id, teamId)}
         </div>
       </div>
+      ${krNote(kr)}
     </div>
   </div>`;
 }
@@ -669,7 +672,10 @@ function goalCard(goal, teamId) {
   const health = healthOf(prog, isStale, forecast);
   const hC = HEALTH_COLOR[health];
   const mode = editModeOf(teamId);
-  const canEdit = mode === 'full';
+  // Перетаскивание меняет пользовательский порядок, поэтому при сортировке по
+  // приоритету ручка не рисуется: бросок делался бы по одному порядку, а применялся
+  // к другому. Перетаскивание KR внутри цели это не затрагивает.
+  const canEdit = mode === 'full' && state.boardView.sort === 'custom';
   const structLock = lockFor(mode, 'structure');
   const krWeightSum = goal.krs.reduce((s, k) => s + k.weight, 0);
   const krWeightOff = krWeightSum !== 100;
@@ -756,10 +762,59 @@ function childCard(node) {
   </div>`;
 }
 
+// ── Ряд управления показом целей ─────────────────────────────────────────────
+// Повторяет BoardFilterBar из tracker.js: порядок, фильтр приоритета, две птички,
+// сброс. Классы — общие .filter-bar* из components.css.
+const PRI_LEVELS = ['P0', 'P1', 'P2', 'P3'];
+const BOARD_SORTS = [['custom', 'Мой порядок'], ['priority', 'По приоритету']];
+
+const boardViewDirty = () => {
+  const v = state.boardView;
+  return v.sort !== 'custom' || PRI_LEVELS.some(p => v.pri[p]) || v.notes || v.hideZeroWeight;
+};
+
+function boardFilters(goals) {
+  const v = state.boardView;
+  const anyPri = PRI_LEVELS.some(p => v.pri[p]);
+  return `<div class="filter-bar">
+    <div class="filter-bar__group">
+      <span class="filter-bar__cap">Порядок</span>
+      <div class="filter-bar__seg" role="group" aria-label="Порядок целей">
+        ${BOARD_SORTS.map(([k, l]) => `<button type="button" class="filter-bar__btn${v.sort === k ? ' filter-bar__btn--on' : ''}" data-flt-sort="${k}" aria-pressed="${v.sort === k}">${l}</button>`).join('')}
+      </div>
+    </div>
+    <div class="filter-bar__group">
+      <span class="filter-bar__cap">Приоритет</span>
+      <div class="filter-bar__seg" role="group" aria-label="Фильтр по приоритету">
+        ${PRI_LEVELS.map(p => {
+          const n = goals.filter(g => g.priority === p).length;
+          const on = !!v.pri[p];
+          return `<button type="button" class="filter-bar__btn filter-bar__btn--pri${on ? ' filter-bar__btn--on' : ''}" style="--pc:${PRI_COLOR[p]}" data-pri-filter="${p}" aria-pressed="${on}"${n ? '' : ' disabled'}>${p}<span class="filter-bar__n">${n}</span></button>`;
+        }).join('')}
+      </div>
+      ${anyPri ? '<button type="button" class="filter-bar__clear" data-pri-clear="1" title="Сбросить фильтр по приоритету" aria-label="Сбросить фильтр по приоритету">×</button>' : ''}
+    </div>
+    <label class="filter-bar__check"><input type="checkbox" data-flt-notes="1"${v.notes ? ' checked' : ''}> Заметки к KR</label>
+    <label class="filter-bar__check"><input type="checkbox" data-flt-zero="1"${v.hideZeroWeight ? ' checked' : ''}> Скрыть цели с весом 0</label>
+    <span class="filter-bar__spacer"></span>
+    ${boardViewDirty() ? '<button type="button" class="filter-bar__reset" data-flt-reset="1">Сбросить</button>' : ''}
+  </div>`;
+}
+
+// Фильтры сужают показ, сортировка упорядочивает то, что осталось. Порядок шагов
+// фиксирован: приоритет → нулевой вес → сортировка. Сортировка стабильная, поэтому
+// цели одного приоритета сохраняют пользовательский порядок.
+function shownGoals(goals) {
+  const v = state.boardView;
+  const sel = PRI_LEVELS.filter(p => v.pri[p]);
+  let out = sel.length ? goals.filter(g => sel.includes(g.priority)) : goals.slice();
+  if (v.hideZeroWeight) out = out.filter(g => (g.weight || 0) !== 0);
+  if (v.sort === 'priority') out = out.slice().sort((a, b) => PRI_LEVELS.indexOf(a.priority) - PRI_LEVELS.indexOf(b.priority));
+  return out;
+}
+
 function renderTracker() {
   const goals = goalsOf(state.teamId);
-  const team = findTeam(state.teamId);
-  const kids = team.children;
   if (!goals.length) {
     return `<div class="empty-state">
       <div class="empty-state__icon">🎯</div>
@@ -768,14 +823,16 @@ function renderTracker() {
       <button class="empty-state__btn" data-modal="goal-new">Создать цель</button>
     </div>`;
   }
-  const sel = Object.keys(state.priFilter).filter(k => state.priFilter[k]);
-  const shown = sel.length ? goals.filter(g => state.priFilter[g.priority]) : goals;
-  if (!shown.length) return `<div class="empty-state">
-      <div class="empty-state__title">Нет целей с приоритетом ${sel.join(', ')}</div>
-      <button class="empty-state__btn" data-pri-clear="1">Сбросить фильтр</button>
-    </div>`;
-  return `
-    ${shown.map(g => goalCard(g, state.teamId)).join('')}`;
+  const shown = shownGoals(goals);
+  return `${boardFilters(goals)}
+    ${shown.length
+      ? shown.map(g => goalCard(g, state.teamId)).join('')
+      : `<div class="empty-state">
+          <div class="empty-state__icon">🔍</div>
+          <div class="empty-state__title">Под настройки показа не подходит ни одна цель</div>
+          <div class="empty-state__text">Цели у команды есть, но все они скрыты настройками показа</div>
+          <button class="empty-state__btn" data-flt-reset="1">Сбросить настройки</button>
+        </div>`}`;
 }
 
 // ── Лог активностей ──────────────────────────────────────────────────────────
@@ -2652,8 +2709,19 @@ document.addEventListener('click', e => {
   }
   if (state.krMenu && !hit('[data-menu-wrap]')) { state.krMenu = null; redrawContent(); }
   const pri = hit('[data-pri-filter]');
-  if (pri) { const p = pri.dataset.priFilter; state.priFilter[p] = !state.priFilter[p]; render(); return; }
-  if (hit('[data-pri-clear]')) { state.priFilter = {}; render(); return; }
+  if (pri) { const p = pri.dataset.priFilter; state.boardView.pri[p] = !state.boardView.pri[p]; render(); return; }
+  if (hit('[data-pri-clear]')) { state.boardView.pri = {}; render(); return; }
+  const fltSort = hit('[data-flt-sort]');
+  if (fltSort) { state.boardView.sort = fltSort.dataset.fltSort; render(); return; }
+  // Переключение птички сбрасывает перекрытия показа заметок у отдельных KR — после него
+  // доска однородна. Та же механика, что у notesOpen в KRRow.
+  if (hit('[data-flt-notes]')) { state.boardView.notes = !state.boardView.notes; state.noteVis = {}; state.noteCollapsed = {}; render(); return; }
+  if (hit('[data-flt-zero]')) { state.boardView.hideZeroWeight = !state.boardView.hideZeroWeight; render(); return; }
+  if (hit('[data-flt-reset]')) {
+    state.boardView = { sort: 'custom', pri: {}, notes: false, hideZeroWeight: false };
+    state.noteVis = {}; state.noteCollapsed = {};
+    render(); return;
+  }
   if (hit('[data-topmenu]')) { state.topMenu = !state.topMenu; render(); return; }
   if (hit('[data-open-team-export]')) {
     state.topMenu = false;
@@ -2814,10 +2882,17 @@ document.addEventListener('click', e => {
   }
 
   const comments = hit('[data-comments]');
+  const noteVis = hit('[data-kr-note-vis]');
+  if (noteVis) {
+    const id = +noteVis.dataset.krNoteVis;
+    state.noteVis[id] = !krNoteVisible(id);
+    state.krMenu = null;
+    redrawContent(); return;
+  }
   const noteEl = hit('[data-kr-note]');
   if (noteEl) {
     const id = +noteEl.dataset.krNote;
-    state.noteOpen[id] = !state.noteOpen[id];
+    state.noteCollapsed[id] = !state.noteCollapsed[id];
     redrawContent(); return;
   }
   if (comments) {
