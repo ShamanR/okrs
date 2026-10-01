@@ -7,7 +7,6 @@ const esc = s => String(s == null ? '' : s)
 
 const GREEN_THRESHOLD = 80;   // настройка пространства, дефолт 80
 const KR_BEHIND_PP = 20;    // KR краснеет, если отстаёт от плана больше чем на 20 п.п.
-const GREEN_THRESHOLD = 80; // порог «в плане»: в приложении приезжает из настроек пространства
 const BEHIND_MARGIN = 10;     // отставание от прогноза, при котором процент краснеет
 
 const state = {
