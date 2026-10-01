@@ -3,12 +3,14 @@
 <!-- @dsSubtitle Статус, измерение, действия строки, меню -->
 <!-- @dsCss tokens.css shell.css components.css tracker.css markdown.css -->
 <!-- @dsViewport 1000x900 -->
-<section class="ds-section"><div class="ds-section__title">Статус KR · .kr-hdot (16px, подсказка по наведению)</div>
+<section class="ds-section"><div class="ds-section__title">Статус KR · .kr-hdot (16px, подсказка по наведению). У закрытого — три вида по прогрессу</div>
 <div class="ds-surface ds-row" style="padding-top:60px">
 <div class="ds-item"><span class="kr-hdot kr-hdot--not_started" tabindex="0"><span class="kr-hdot__mark">○</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">○ Not Started</span><span class="kr-hdot__hint">Работа ещё не началась</span></span></span><span class="ds-item__label">Not Started</span></div>
 <div class="ds-item"><span class="kr-hdot kr-hdot--on_track" tabindex="0"><span class="kr-hdot__mark">●</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">● On Track</span><span class="kr-hdot__hint">Идём по плану</span></span></span><span class="ds-item__label">On Track</span></div>
 <div class="ds-item"><span class="kr-hdot kr-hdot--at_risk" tabindex="0"><span class="kr-hdot__mark">▲</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">▲ At Risk</span><span class="kr-hdot__hint">Есть риск не достичь</span></span></span><span class="ds-item__label">At Risk</span></div>
-<div class="ds-item"><span class="kr-hdot kr-hdot--done" tabindex="0"><span class="kr-hdot__mark">✓</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">✓ Closed</span><span class="kr-hdot__hint">Работы по цели завершены, прогресс больше не изменится</span></span></span><span class="ds-item__label">Closed</span></div>
+<div class="ds-item"><span class="kr-hdot kr-hdot--done" tabindex="0"><span class="kr-hdot__mark">✓</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">✓ Closed</span><span class="kr-hdot__hint">Работы прекращены, результат достигнут</span></span></span><span class="ds-item__label">Closed<br>100%</span></div>
+<div class="ds-item"><span class="kr-hdot kr-hdot--done_near" tabindex="0"><span class="kr-hdot__mark">✓</span><span class="kr-hdot__flag" aria-hidden="true">!</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">✓ Closed</span><span class="kr-hdot__hint">Закрыт на 92% — работы прекращены, результат не достигнут</span></span></span><span class="ds-item__label">Closed<br>≥ порога «в плане»</span></div>
+<div class="ds-item"><span class="kr-hdot kr-hdot--done_short" tabindex="0"><span class="kr-hdot__mark">✕</span><span class="kr-hdot__pop" role="tooltip"><span class="kr-hdot__title">✕ Closed</span><span class="kr-hdot__hint">Закрыт на 45% — работы прекращены, результат не достигнут</span></span></span><span class="ds-item__label">Closed<br>&lt; порога «в плане»</span></div>
 </div></section>
 <section class="ds-section"><div class="ds-section__title">Колонка измерения · .kr-measure</div>
 <div class="ds-surface" style="display:grid;grid-template-columns:auto minmax(150px,210px);gap:10px 16px;align-items:center;max-width:460px">

@@ -40,8 +40,22 @@ const KR_HEALTH_HINT = {
   not_started: 'Работа ещё не началась',
   on_track: 'Идём по плану',
   at_risk: 'Есть риск не достичь',
-  done: 'Работы по цели завершены, прогресс больше не изменится',
+  done: 'Работы по KR прекращены — прогресс больше не предполагается менять',
 };
+
+// Вид закрытого KR — тот же набор, что в tracker.js. Статус сообщает, что работ больше
+// не будет, а чем они закончились — прогресс.
+const KR_CLOSED_VIEW = {
+  done: { icon: '✓', flag: '', note: '', hint: () => 'Работы прекращены, результат достигнут' },
+  done_near: { icon: '✓', flag: '!', note: 'результат не достигнут',
+    hint: p => `Закрыт на ${p}% — работы прекращены, результат не достигнут` },
+  done_short: { icon: '✕', flag: '', note: 'результат не достигнут',
+    hint: p => `Закрыт на ${p}% — работы прекращены, результат не достигнут` },
+};
+function closedViewOf(progress, greenThreshold) {
+  if (progress >= 100) return 'done';
+  return progress >= greenThreshold ? 'done_near' : 'done_short';
+}
 
 const STATUS_STEPS = [
   { k: 'forming', l: 'Черновик' },
@@ -116,11 +130,11 @@ const BOARDS = {
         parents: [{ id: 103, title: 'Единый онбординг сервисов', periodName: 'Y26', teamName: 'Платформенная команда' }], shareTeams: null,
         krs: [
           { id: 1011, weight: 10, name: 'Заведение TV и ООН баннеров в Self Service', desc: 'Пейсменты TV и ООН доступны в SS: менеджер может выбрать формат, загрузить креатив, пройти модерацию и запустить размещение без участия команды поддержки. Считаем долю размещений TV и ООН, заведённых через SS, от общего числа за месяц.',
-            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 80, checkpoints: [{ value: 30, progress_percent: 50 }, { value: 70, progress_percent: 85 }], healthStatus: 'not_started', updatedDaysAgo: 116, note: true },
+            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 80, checkpoints: [{ value: 30, progress_percent: 50 }, { value: 70, progress_percent: 85 }], healthStatus: 'done', updatedDaysAgo: 116, note: true },
           { id: 1012, weight: 30, name: 'Доступна настройка лимитов для РА', desc: 'В кабинете реализован функционал настройки лимитов: дневные и общие бюджеты на уровне агентства и отдельного клиента, уведомления при достижении 80% и 100% лимита.',
             krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 100, healthStatus: 'done', updatedDaysAgo: 114, note: true },
           { id: 1013, weight: 30, name: 'Запуск click-in РК через РА', desc: 'РА могут запускать click-in РК в SS самостоятельно — от создания кампании до выгрузки отчёта. Метрика: доля click-in кампаний, запущенных агентствами без обращения в поддержку.',
-            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 70, healthStatus: 'not_started', updatedDaysAgo: 116, note: true },
+            krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 70, healthStatus: 'done', updatedDaysAgo: 116, note: true },
           { id: 1014, weight: 30, name: 'Маркетинговые баннеры заводятся в SS', desc: 'Маркетинговые баннеры заводятся в SS',
             krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 100, healthStatus: 'done', updatedDaysAgo: 114, note: true },
         ],

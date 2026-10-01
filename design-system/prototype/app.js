@@ -143,14 +143,20 @@ function badge(label, color = '#6b7280', bg) {
   return `<span class="badge" style="color:${color};background:${bg || color + '18'}">${label}</span>`;
 }
 const priBadge = p => badge(p, PRI_COLOR[p] || '#6b7280');
-function krHealthDot(status) {
+// Цвет приезжает из модификатора .kr-hdot--* в tracker.css, как в приложении: у закрытого
+// состояния три вида по прогрессу, и инлайновый --hc их бы перекрыл.
+function krHealthDot(status, progress = 0) {
   const s = KR_HEALTH_LABEL[status] ? status : 'not_started';
-  const c = KR_HEALTH_COLOR[s];
-  return `<span class="kr-hdot kr-hdot--${s}" tabindex="0" style="--hc:${c}" aria-label="Статус KR: ${KR_HEALTH_LABEL[s]}" data-no-drag>
-    <span class="kr-hdot__mark">${KR_HEALTH_ICON[s]}</span>
+  const view = s === 'done' ? closedViewOf(progress, GREEN_THRESHOLD) : s;
+  const closed = KR_CLOSED_VIEW[view];
+  const icon = closed ? closed.icon : KR_HEALTH_ICON[s];
+  const hint = closed ? closed.hint(progress) : (KR_HEALTH_HINT[s] || '');
+  return `<span class="kr-hdot kr-hdot--${view}" tabindex="0" aria-label="Статус KR: ${KR_HEALTH_LABEL[s]}${closed && closed.note ? ', ' + closed.note : ''}" data-no-drag>
+    <span class="kr-hdot__mark">${icon}</span>
+    ${closed && closed.flag ? `<span class="kr-hdot__flag" aria-hidden="true">${closed.flag}</span>` : ''}
     <span class="kr-hdot__pop" role="tooltip">
-      <span class="kr-hdot__title">${KR_HEALTH_ICON[s]} ${KR_HEALTH_LABEL[s]}</span>
-      <span class="kr-hdot__hint">${esc(KR_HEALTH_HINT[s] || '')}</span>
+      <span class="kr-hdot__title">${icon} ${KR_HEALTH_LABEL[s]}</span>
+      <span class="kr-hdot__hint">${esc(hint)}</span>
     </span>
   </span>`;
 }
@@ -565,7 +571,7 @@ function krRow(goal, kr, teamId) {
     ${mode === 'full' ? '<div class="kr-item__drag-handle">⋮⋮</div>' : ''}
     <div class="kr-row">
       <div class="kr-row__main">
-        ${krHealthDot(displayHealth)}
+        ${krHealthDot(displayHealth, progress)}
         <div class="kr-weight-chip has-tip" tabindex="0" data-tip-title="Вес KR · ${kr.weight}%" data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели — 100%.">${kr.weight}%</div>
         <div class="kr-info">
           <div class="kr-name-row${canEditText(teamId) ? ' title-editable' : ''}"${canEditText(teamId) ? ` role="button" tabindex="0" title="Редактировать KR" data-kr-edit="${goal.id}:${kr.id}"` : ''}>

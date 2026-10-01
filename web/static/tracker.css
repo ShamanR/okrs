@@ -642,12 +642,20 @@
 /* Здоровье KR — фиксированный перечень из четырёх состояний, поэтому его цвета
    живут в CSS, а не приезжают инлайном: --hc задаётся модификатором и дальше
    читается фоном, подсветкой и заголовком поповера. У not_started фон намеренно
-   светлее своего --hc — подсветка и заголовок остаются на тёмном. */
+   светлее своего --hc — подсветка и заголовок остаются на тёмном.
+   У закрытого состояния три вида по прогрессу: done — результат достигнут,
+   done_near — закрыт не ниже порога «в плане», done_short — ниже порога. */
 .kr-hdot--not_started { --hc: #6b7280; background: #9ca3af; }
 .kr-hdot--on_track { --hc: #16a34a; }
 .kr-hdot--at_risk { --hc: #d97706; }
 .kr-hdot--done { --hc: #15803d; }
+.kr-hdot--done_near { --hc: #15803d; }
+.kr-hdot--done_short { --hc: #b91c1c; }
 .kr-hdot--at_risk .kr-hdot__mark { font-size: 8px; transform: translateY(-0.5px); }
+/* Пометка «результат не достигнут» на закрытой точке. Вынесена наружу: внутри
+   круга 16px место под знак одно. Белый кант отделяет её от halo-обводки точки,
+   а сдвиг вправо укладывается в скруглённый угол соседнего чипа веса. */
+.kr-hdot__flag { position: absolute; top: -4px; right: -4px; width: 10px; height: 10px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #b91c1c; color: #fff; font-size: 8px; font-weight: 700; line-height: 1; box-shadow: 0 0 0 1.5px #fff; }
 .kr-hdot__pop { display: none; position: absolute; z-index: 30; bottom: calc(100% + 8px); left: -6px; width: max-content; max-width: 240px; padding: 8px 10px; background: #111827; color: #f9fafb; border-radius: 8px; box-shadow: 0 6px 20px rgba(0,0,0,.18); flex-direction: column; gap: 2px; text-align: left; pointer-events: none; }
 .kr-hdot__pop::after { content: ''; position: absolute; top: 100%; left: 14px; margin-left: -5px; border: 5px solid transparent; border-top-color: #111827; }
 .has-tip { position: relative; cursor: help; outline: none; }
