@@ -86,6 +86,12 @@ const writeBoardView = v => writeJSON(STORAGE_KEYS.boardView, v);
 const boardViewDefault = () => ({ ...BOARD_VIEW_DEFAULT, pri: {} });
 const boardViewIsDefault = v =>
   v.sort === BOARD_VIEW_DEFAULT.sort && !PRI_LEVELS.some(p => v.pri[p]) && !v.notes && !v.hideZeroWeight;
+// Нажатие на уже выбранный порядок приходит как onChange с теми же настройками. Такое
+// обращение не должно считаться изменением: оно снимало бы закрепление цели по прямой
+// ссылке, и цель исчезала бы с доски, хотя пользователь ничего не менял.
+const boardViewEquals = (a, b) =>
+  a.sort === b.sort && !!a.notes === !!b.notes && !!a.hideZeroWeight === !!b.hideZeroWeight
+  && PRI_LEVELS.every(p => !!a.pri[p] === !!b.pri[p]);
 
 // Фильтры сужают показ, сортировка упорядочивает то, что осталось. Порядок шагов
 // фиксирован: приоритет → нулевой вес → сортировка. Сортировка стабильная, поэтому
@@ -2012,7 +2018,21 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   // "Показать полностью") would otherwise start a reorder. A ref, not state: it is read
   // synchronously in onDragStart, with no re-render in between to make it stale.
   const krPressNoDrag = React.useRef(false);
+  // Карточка становится перетаскиваемой только на время жеста от ручки: будь она
+  // draggable всегда, в описании цели нельзя было бы выделить текст.
   const [goalDraggable, setGoalDraggable] = useState(false);
+  // Признак НЕЛЬЗЯ снимать по mouseleave ручки. Ручка 16×42px, а чтобы потащить карточку,
+  // указатель обязан её покинуть — mouseleave успевал снять draggable раньше, чем браузер
+  // решал, что это перетаскивание, и dragstart не наступал вовсе: порядок целей не менялся.
+  // Снимаем по dragend карточки, а этим эффектом — по отпусканию кнопки где угодно (ручку
+  // нажали, но не потащили). Во время перетаскивания mouseup не приходит, вместо него
+  // приходит dragend, поэтому эффект начатый жест не прерывает.
+  useEffect(() => {
+    if (!goalDraggable) return;
+    const release = () => setGoalDraggable(false);
+    window.addEventListener('mouseup', release);
+    return () => window.removeEventListener('mouseup', release);
+  }, [goalDraggable]);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const [transfer, setTransfer] = useState(false);
   const prog = goal.progress || 0;
@@ -2075,7 +2095,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
       className={cardClass}>
       {canReorderGoal && (
         <div className="drag-handle" title="Перетащите для изменения порядка"
-          onMouseDown={() => setGoalDraggable(true)} onMouseUp={() => setGoalDraggable(false)} onMouseLeave={() => setGoalDraggable(false)}>⋮⋮</div>
+          onMouseDown={() => setGoalDraggable(true)}>⋮⋮</div>
       )}
       {/* Шапка цели — одна строка: вес · приоритет · заголовок со связями · лейблы ·
           драйвер · полоса прогресса · процент · меню. Заголовок и есть элемент
@@ -3182,7 +3202,12 @@ function App() {
   // он, а не ссылка. deepLinkRef для этого не годится — он обнуляется после прокрутки, и
   // цель исчезла бы из-под курсора.
   const [pinnedGoalId, setPinnedGoalId] = useState(() => readURLNav().goal || null);
-  const changeBoardView = useCallback(v => { setPinnedGoalId(null); setBoardView(v); }, []);
+  // Закрепление снимается только при фактическом изменении настроек — см. boardViewEquals.
+  const changeBoardView = useCallback(v => {
+    if (boardViewEquals(boardView, v)) return;
+    setPinnedGoalId(null);
+    setBoardView(v);
+  }, [boardView]);
   const [exportOpen, setExportOpen] = useState(false);
   // Экспорт открывается из двух мест: меню команды (охват «цели команды») и меню
   // цели (охват «одна цель»). Окно живёт здесь, потому что здесь лежит exportInfo.
