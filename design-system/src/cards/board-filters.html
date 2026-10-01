@@ -1,0 +1,111 @@
+<!-- @dsCard group="Navigation" -->
+<!-- @dsName Ряд фильтров -->
+<!-- @dsSubtitle Порядок, фильтр приоритета, птички показа, сброс -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css goal_tree.css -->
+<!-- @dsViewport 1100x620 -->
+<section class="ds-section">
+  <div class="ds-section__title">Состояние по умолчанию</div>
+  <div class="ds-frame" style="background:#edf0f4;padding:16px">
+    <div class="filter-bar">
+      <div class="filter-bar__group">
+        <span class="filter-bar__cap">Порядок</span>
+        <div class="filter-bar__seg" role="group" aria-label="Порядок целей">
+          <button type="button" class="filter-bar__btn filter-bar__btn--on" aria-pressed="true">Мой порядок</button>
+          <button type="button" class="filter-bar__btn" aria-pressed="false">По приоритету</button>
+        </div>
+      </div>
+      <div class="filter-bar__group">
+        <span class="filter-bar__cap">Приоритет</span>
+        <div class="filter-bar__seg" role="group" aria-label="Фильтр по приоритету">
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#dc2626" disabled>P0<span class="filter-bar__n">0</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#d97706">P1<span class="filter-bar__n">2</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#2563eb">P2<span class="filter-bar__n">1</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#6b7280">P3<span class="filter-bar__n">1</span></button>
+        </div>
+      </div>
+      <label class="filter-bar__check"><input type="checkbox"> Заметки к KR</label>
+      <label class="filter-bar__check"><input type="checkbox"> Скрыть цели с весом 0</label>
+      <span class="filter-bar__spacer"></span>
+    </div>
+  </div>
+  <div class="ds-item__label">.filter-bar — стоит над списком целей, на фоне контента. Сброса нет: все настройки в значениях по умолчанию.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Настройки изменены · сброс и × у приоритета</div>
+  <div class="ds-frame" style="background:#edf0f4;padding:16px">
+    <div class="filter-bar">
+      <div class="filter-bar__group">
+        <span class="filter-bar__cap">Порядок</span>
+        <div class="filter-bar__seg" role="group" aria-label="Порядок целей">
+          <button type="button" class="filter-bar__btn" aria-pressed="false">Мой порядок</button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--on" aria-pressed="true">По приоритету</button>
+        </div>
+      </div>
+      <div class="filter-bar__group">
+        <span class="filter-bar__cap">Приоритет</span>
+        <div class="filter-bar__seg" role="group" aria-label="Фильтр по приоритету">
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#dc2626" disabled>P0<span class="filter-bar__n">0</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri filter-bar__btn--on" style="--pc:#d97706" aria-pressed="true">P1<span class="filter-bar__n">2</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#2563eb">P2<span class="filter-bar__n">1</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#6b7280">P3<span class="filter-bar__n">1</span></button>
+        </div>
+        <button type="button" class="filter-bar__clear" aria-label="Сбросить фильтр по приоритету">×</button>
+      </div>
+      <label class="filter-bar__check"><input type="checkbox" checked> Заметки к KR</label>
+      <label class="filter-bar__check"><input type="checkbox" checked> Скрыть цели с весом 0</label>
+      <span class="filter-bar__spacer"></span>
+      <button type="button" class="filter-bar__reset">Сбросить</button>
+    </div>
+  </div>
+  <div class="ds-section__note">Два сброса с разным охватом: <code>×</code> внутри группы снимает только фильтр приоритета, <code>.filter-bar__reset</code> возвращает к значениям по умолчанию весь ряд. Сброс появляется, когда хоть одна настройка отличается от дефолта.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Элементы по отдельности</div>
+  <div class="ds-surface">
+    <div class="ds-row">
+      <div class="ds-item">
+        <div class="filter-bar__seg"><button type="button" class="filter-bar__btn filter-bar__btn--on">Выбран</button><button type="button" class="filter-bar__btn">Не выбран</button></div>
+        <div class="ds-item__label">.filter-bar__seg — сплошной акцент у выбранного</div>
+      </div>
+      <div class="ds-item">
+        <div class="filter-bar__seg"><button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#2563eb">P2<span class="filter-bar__n">4</span></button><button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#6b7280" disabled>P3<span class="filter-bar__n">0</span></button></div>
+        <div class="ds-item__label">--pri — цвет уровня из <code>--pc</code>, пустой уровень неактивен</div>
+      </div>
+      <div class="ds-item">
+        <label class="filter-bar__check"><input type="checkbox" checked> Признак показа</label>
+        <div class="ds-item__label">.filter-bar__check — нативный чекбокс</div>
+      </div>
+      <div class="ds-item">
+        <button type="button" class="filter-bar__reset">Сбросить</button>
+        <div class="ds-item__label">.filter-bar__reset</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Расхождение: та же панель на графе целей</div>
+  <div class="ds-surface">
+    <div class="gt-topbar" style="width:460px;border-radius:10px;border:1px solid var(--border)">
+      <label class="gt-topbar__toggle"><input type="checkbox"> Показать только корневые цели</label>
+      <button class="gt-topbar__reset">Сбросить фильтры</button>
+    </div>
+    <div class="ds-item__label" style="margin-top:8px">.gt-topbar — тот же ряд «признаки показа + сброс», свои классы в goal_tree.css</div>
+  </div>
+  <div class="ds-section__note">Страница графа целей рисует такой же ряд своими классами <code>.gt-topbar*</code> и на общий <code>.filter-bar</code> ещё не переведена. Расхождение осознанное: перевод графа ничего не меняет в поведении, но уводит change от его задачи. Новые ряды фильтров заводить на <code>.filter-bar</code>.</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Под настройки показа не подходит ни одна цель</div>
+  <div class="ds-frame" style="background:#edf0f4;padding:16px">
+    <div class="empty-state">
+      <div class="empty-state__icon">🔍</div>
+      <div class="empty-state__title">Под настройки показа не подходит ни одна цель</div>
+      <div class="empty-state__text">Цели у команды есть, но все они скрыты настройками показа</div>
+      <button type="button" class="empty-state__btn">Сбросить настройки</button>
+    </div>
+  </div>
+  <div class="ds-section__note">Отличается от «Цели не добавлены»: предложения создать первую цель здесь нет — цели у команды есть, их скрыли настройки показа.</div>
+</section>

@@ -78,17 +78,6 @@
    design-system/prototype, который инлайнит этот же файл. Не мёртвые. */
 .tb-lead__name { font-size: 14px; font-weight: 500; color: #111827; white-space: nowrap; }
 .tb-lead__role { font-size: 13px; color: #6b7280; white-space: nowrap; }
-.tb-pri { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: 6px; }
-.tb-pri__seg { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid #e5e7eb; border-radius: 9px; background: #fff; height: 32px; box-sizing: border-box; }
-.tb-pri__btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 26px; padding: 0 9px; border: none; border-radius: 6px; background: transparent; color: var(--pc); font: inherit; font-size: 14px; font-weight: 700; line-height: 1; cursor: pointer; }
-.tb-pri__btn:hover:not(:disabled) { background: color-mix(in srgb, var(--pc) 10%, #fff); }
-.tb-pri__btn:disabled { color: #c4c8cf; cursor: default; }
-.tb-pri__btn--on { background: var(--pc) !important; color: #fff; }
-.tb-pri__n { font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; line-height: 1; }
-.tb-pri__btn > *, .tb-pri__btn { vertical-align: middle; }
-.tb-pri__btn--on .tb-pri__n { opacity: .9; }
-.tb-pri__clear { width: 26px; height: 26px; border: none; background: transparent; border-radius: 6px; color: #6b7280; font-size: 20px; line-height: 1; cursor: pointer; }
-.tb-pri__clear:hover { background: #f3f4f6; color: #111827; }
 .topbar__progress-bar { flex: 0 0 140px; }
 .tb-menu { position: relative; flex-shrink: 0; }
 .tb-menu__btn { width: 36px; height: 36px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; font-size: 16px; font-weight: 700; letter-spacing: 1px; cursor: pointer; }

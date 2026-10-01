@@ -58,6 +58,51 @@ function writeTreeExpanded(expanded) {
   try { localStorage.setItem(TREE_EXPANDED_KEY, JSON.stringify(expanded)); } catch { }
 }
 
+// ── BOARD VIEW PERSISTENCE ────────────────────────────────────────────────────
+// Настройки показа целей на доске: порядок, фильтр по приоритету, показ заметок к KR,
+// скрытие целей с нулевым весом. Один объект под одним ключом, не привязанным ни к
+// команде, ни к периоду — поэтому смена команды и смена периода их не сбрасывают, а
+// перезагрузка восстанавливает. Настройки влияют только на показ: прогресс, сумма
+// весов, охват выгрузки и занятый вес в окне цели считаются по всем целям периода.
+const BOARD_SORTS = ['custom', 'priority'];
+const BOARD_VIEW_DEFAULT = { sort: 'custom', pri: {}, notes: false, hideZeroWeight: false };
+
+// Прочитанное значение не принимается на веру: неизвестный порядок, лишние уровни
+// приоритета и нечитаемый JSON дают дефолты, а не ошибку рендера — как в
+// readTreeExpanded и readFavorites.
+function normalizeBoardView(raw) {
+  const v = raw && typeof raw === 'object' ? raw : {};
+  const pri = {};
+  if (v.pri && typeof v.pri === 'object') PRI_LEVELS.forEach(p => { if (v.pri[p]) pri[p] = true; });
+  return {
+    sort: BOARD_SORTS.includes(v.sort) ? v.sort : BOARD_VIEW_DEFAULT.sort,
+    pri,
+    notes: !!v.notes,
+    hideZeroWeight: !!v.hideZeroWeight,
+  };
+}
+const readBoardView = () => normalizeBoardView(readJSON(STORAGE_KEYS.boardView, null));
+const writeBoardView = v => writeJSON(STORAGE_KEYS.boardView, v);
+const boardViewDefault = () => ({ ...BOARD_VIEW_DEFAULT, pri: {} });
+const boardViewIsDefault = v =>
+  v.sort === BOARD_VIEW_DEFAULT.sort && !PRI_LEVELS.some(p => v.pri[p]) && !v.notes && !v.hideZeroWeight;
+
+// Фильтры сужают показ, сортировка упорядочивает то, что осталось. Порядок шагов
+// фиксирован: приоритет → нулевой вес → сортировка. Сортировка стабильная, поэтому
+// цели одного приоритета сохраняют пользовательский порядок. Неизвестный приоритет
+// уходит в конец, а не в начало (indexOf дал бы -1).
+// keepId — цель, открытая по прямой ссылке: фильтры её не скрывают, иначе общая ссылка
+// молча не срабатывала бы у получателя, у которого с прошлого раза остался фильтр.
+const priRank = p => { const i = PRI_LEVELS.indexOf(p); return i < 0 ? PRI_LEVELS.length : i; };
+function visibleGoals(allGoals, view, keepId = null) {
+  const pinned = g => keepId != null && g.id === keepId;
+  const activePri = PRI_LEVELS.filter(p => view.pri[p]);
+  let out = activePri.length ? allGoals.filter(g => pinned(g) || activePri.includes(g.priority)) : allGoals.slice();
+  if (view.hideZeroWeight) out = out.filter(g => pinned(g) || (g.weight || 0) !== 0);
+  if (view.sort === 'priority') out.sort((a, b) => priRank(a.priority) - priRank(b.priority));
+  return out;
+}
+
 // Personal settings persisted by the /settings page (per-user localStorage).
 // Ключи — из общего storage.js (STORAGE_KEYS), единый контракт с settings.js.
 const SETTINGS_DESC_KEY = STORAGE_KEYS.desc;
@@ -804,29 +849,70 @@ function StatusStepper({ status, hasGoals, onChange, accent, statusChangedAt, ed
 // Фильтр доски по приоритету. Счётчик у кнопки показывает, сколько целей этого
 // приоритета есть в периоде; приоритет без целей нажать нельзя. Фильтр не сужает
 // данные — только то, что показано, поэтому сброс возвращает полный список.
+// Живёт в ряду управления показом (BoardFilterBar), а не в шапке доски: классы
+// поэтому общие .filter-bar*, а не tb-* — tb- означает top-bar.
 function PriorityFilter({ goals, value, onChange }) {
-  if (!goals.length) return null;
   const any = PRI_LEVELS.some(p => value[p]);
   return (
-    <div className="tb-pri">
-      <span className="tb-cap">Приоритет</span>
-      <div className="tb-pri__seg" role="group" aria-label="Фильтр по приоритету">
+    <div className="filter-bar__group">
+      <span className="filter-bar__cap">Приоритет</span>
+      <div className="filter-bar__seg" role="group" aria-label="Фильтр по приоритету">
         {PRI_LEVELS.map(p => {
           const n = goals.filter(g => g.priority === p).length;
           const on = !!value[p];
           return (
             <button key={p} type="button" aria-pressed={on} disabled={!n}
-              className={`tb-pri__btn${on ? ' tb-pri__btn--on' : ''}`}
+              className={`filter-bar__btn filter-bar__btn--pri${on ? ' filter-bar__btn--on' : ''}`}
               style={{ '--pc': PRI_COLOR[p] }}
               onClick={() => onChange({ ...value, [p]: !on })}>
-              {p}<span className="tb-pri__n">{n}</span>
+              {p}<span className="filter-bar__n">{n}</span>
             </button>
           );
         })}
       </div>
       {any && (
-        <button type="button" className="tb-pri__clear" title="Сбросить фильтр"
-          aria-label="Сбросить фильтр" onClick={() => onChange({})}>×</button>
+        <button type="button" className="filter-bar__clear" title="Сбросить фильтр по приоритету"
+          aria-label="Сбросить фильтр по приоритету" onClick={() => onChange({})}>×</button>
+      )}
+    </div>
+  );
+}
+
+// ── BOARD FILTER BAR ──────────────────────────────────────────────────────────
+// Ряд управления показом целей: порядок, фильтр по приоритету, показ заметок к KR,
+// скрытие целей с нулевым весом, сброс. Стоит над списком целей, а не в шапке доски:
+// шапка описывает команду, а это управление списком, который начинается ниже.
+// У команды без целей управлять показом нечем — ряд не рендерится.
+const BOARD_SORT_LABEL = { custom: 'Мой порядок', priority: 'По приоритету' };
+
+function BoardFilterBar({ goals, value, onChange }) {
+  if (!goals.length) return null;
+  const set = patch => onChange({ ...value, ...patch });
+  return (
+    <div className="filter-bar">
+      <div className="filter-bar__group">
+        <span className="filter-bar__cap">Порядок</span>
+        <div className="filter-bar__seg" role="group" aria-label="Порядок целей">
+          {BOARD_SORTS.map(k => (
+            <button key={k} type="button" aria-pressed={value.sort === k}
+              className={`filter-bar__btn${value.sort === k ? ' filter-bar__btn--on' : ''}`}
+              onClick={() => set({ sort: k })}>{BOARD_SORT_LABEL[k]}</button>
+          ))}
+        </div>
+      </div>
+      <PriorityFilter goals={goals} value={value.pri} onChange={pri => set({ pri })} />
+      <label className="filter-bar__check">
+        <input type="checkbox" checked={value.notes} onChange={e => set({ notes: e.target.checked })} />
+        Заметки к KR
+      </label>
+      <label className="filter-bar__check">
+        <input type="checkbox" checked={value.hideZeroWeight} onChange={e => set({ hideZeroWeight: e.target.checked })} />
+        Скрыть цели с весом 0
+      </label>
+      <span className="filter-bar__spacer" />
+      {!boardViewIsDefault(value) && (
+        <button type="button" className="filter-bar__reset"
+          onClick={() => onChange(boardViewDefault())}>Сбросить</button>
       )}
     </div>
   );
@@ -1364,12 +1450,20 @@ function KRNote({ note, open, onToggle }) {
   );
 }
 
-function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null, greenThreshold = 80 }) {
+function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null, greenThreshold = 80, notesOpen = false }) {
   // Closed period is shown as fully done — purely visual (stored health_status is untouched),
   // so reopening the period restores each KR's original status.
   const displayHealth = periodStatus === 'closed' ? 'done' : kr.healthStatus;
   const [modal, setModal] = useState(null);
-  const [showNote, setShowNote] = useState(false);
+  // Показ заметки по умолчанию следует птичке доски (notesOpen). Пункт меню перекрывает
+  // её для этого KR; переключение птички сбрасывает перекрытие, и доска снова однородна.
+  // noteExpanded — не «видна ли заметка», а «развёрнута ли длинная»: нажатие на саму
+  // заметку сворачивает её до одной строки, как и обещает подпись «Свернуть», а скрывает
+  // заметку только пункт меню.
+  const [noteVisOverride, setNoteVisOverride] = useState(null);
+  const [noteExpanded, setNoteExpanded] = useState(true);
+  const showNote = noteVisOverride === null ? notesOpen : noteVisOverride;
+  useEffect(() => { setNoteVisOverride(null); setNoteExpanded(true); }, [notesOpen]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const progress = kr.progress;
   // Цвет давности задаётся классом: fresh → warn → stale по тому же порогу.
@@ -1449,14 +1543,14 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
               { icon: '✎', label: 'Редактировать', onClick: openEdit, reason: editLockReason(editMode, 'KR') },
               { icon: '🔗', label: 'Копировать ссылку', confirmLabel: 'Скопировано',
                 onClick: () => copyGoalURL(teamId, periodId, goalId, kr.id) },
-              kr.note && { icon: '📝', label: showNote ? 'Скрыть заметку' : 'Показать заметку', onClick: () => setShowNote(!showNote) },
+              kr.note && { icon: '📝', label: showNote ? 'Скрыть заметку' : 'Показать заметку', onClick: () => setNoteVisOverride(!showNote) },
               { sep: true },
               { icon: '×', label: 'Удалить', danger: true, onClick: () => setConfirmDelete(true),
                 reason: deleteLockReason(editMode, 'KR') },
             ]} />
           </div>
         </div>
-        {showNote && <KRNote note={kr.note} open onToggle={() => setShowNote(false)} />}
+        {showNote && <KRNote note={kr.note} open={noteExpanded} onToggle={() => setNoteExpanded(v => !v)} />}
       </div>
       {modal === 'progress' && <KRProgressModal kr={kr} goalTitle={goalTitle} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
       {modal === 'edit' && <KREditModal kr={kr} goalId={goalId} onSave={onSaved} onClose={() => setModal(null)} accent={accent} />}
@@ -1906,7 +2000,7 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone, 
   );
 }
 
-function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => { }, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null }) {
+function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => { }, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null, notesOpen = false }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
   // Ключевые результаты видны всегда, поэтому раскрывать по глубокой ссылке нечего:
@@ -2079,7 +2173,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
               {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
               <KRRow kr={kr} goalId={goal.id} goalTitle={goal.title} editMode={editMode} onReload={onReload}
                 accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast}
-                teamId={currentTeamId} periodId={periodId} greenThreshold={greenThreshold} />
+                teamId={currentTeamId} periodId={periodId} greenThreshold={greenThreshold} notesOpen={notesOpen} />
             </div>
           );
         })}
@@ -3078,15 +3172,26 @@ function App() {
   };
 
   const [dragState, setDragState] = useState({ srcId: null });
-  const [priFilter, setPriFilter] = useState({});
+  // Настройки показа целей: читаются из localStorage один раз и пишутся обратно при
+  // каждом изменении. Ключ не зависит от команды и периода, поэтому переключение
+  // команды и периода их не сбрасывает.
+  const [boardView, setBoardView] = useState(readBoardView);
+  useEffect(() => { writeBoardView(boardView); }, [boardView]);
+  // Цель, открытая по прямой ссылке, не прячется сохранёнными настройками показа.
+  // Закрепление снимается при первом же изменении настроек пользователем: дальше решает
+  // он, а не ссылка. deepLinkRef для этого не годится — он обнуляется после прокрутки, и
+  // цель исчезла бы из-под курсора.
+  const [pinnedGoalId, setPinnedGoalId] = useState(() => readURLNav().goal || null);
+  const changeBoardView = useCallback(v => { setPinnedGoalId(null); setBoardView(v); }, []);
   const [exportOpen, setExportOpen] = useState(false);
   // Экспорт открывается из двух мест: меню команды (охват «цели команды») и меню
   // цели (охват «одна цель»). Окно живёт здесь, потому что здесь лежит exportInfo.
   const [exportGoal, setExportGoal] = useState(null);
   const allGoals = (teamOKR?.goals || []).map(mapGoal);
-  // Фильтр по приоритету сужает только показ, данные остаются прежними.
-  const activePri = PRI_LEVELS.filter(p => priFilter[p]);
-  const goals = activePri.length ? allGoals.filter(g => activePri.includes(g.priority)) : allGoals;
+  // Настройки показа сужают и переупорядочивают только показ, данные остаются прежними:
+  // всё, что считается ниже (прогресс, сумма весов, охват выгрузки, занятый вес в окне
+  // цели), считается по allGoals.
+  const goals = visibleGoals(allGoals, boardView, pinnedGoalId);
 
   const handleReorderGoals = useCallback(async (fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
@@ -3203,7 +3308,6 @@ function App() {
                 <span className="tb-lead__role">· лид</span>
               </div>
             )}
-            <PriorityFilter goals={allGoals} value={priFilter} onChange={setPriFilter} />
             <div className="topbar__spacer" />
             {hasGoals && teamOKR?.progress_meta && (
               <div className="topbar__progress">
@@ -3257,10 +3361,25 @@ function App() {
               {!goalCreateLock && selId && <button onClick={() => setGoalModal('new')} className="empty-state__btn">+ Создать первую цель</button>}
             </div>
           )}
-          {hasChildren && goals.length > 0 && <div className="section-label">Цели этого узла</div>}
+          {hasChildren && allGoals.length > 0 && <div className="section-label">Цели этого узла</div>}
           {hasChildren && goalWeightWarn}
-          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} onExportGoal={setExportGoal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current}
-            dragProps={!lockReason(editMode, 'reorder') ? {
+          <BoardFilterBar goals={allGoals} value={boardView} onChange={changeBoardView} />
+          {/* Цели у команды есть, но под настройки показа не подошла ни одна. Своё
+              состояние, а не пустая страница: иначе доска выглядит как команда без
+              целей — и предлагать «создать первую цель» здесь нечего. */}
+          {allGoals.length > 0 && goals.length === 0 && (
+            <div className="empty-state">
+              <div className="empty-state__icon">🔍</div>
+              <div className="empty-state__title">Под настройки показа не подходит ни одна цель</div>
+              <div className="empty-state__text">Цели у команды есть, но все они скрыты настройками показа</div>
+              <button type="button" className="empty-state__btn" onClick={() => changeBoardView(boardViewDefault())}>Сбросить настройки</button>
+            </div>
+          )}
+          {goals.map(g => <GoalCard key={g.id} goal={g} editMode={editMode} onReload={reload} onEditGoal={setGoalModal} onExportGoal={setExportGoal} me={me} isAdmin={isAdmin} accent={accent} currentTeamId={selId} periodId={periodId} allTeams={hierarchy} staleDays={staleDays} periodStatus={status} greenThreshold={greenThreshold} deepLink={deepLinkRef.current} notesOpen={boardView.notes}
+            /* Перетаскивание меняет пользовательский порядок, а бросок делается по
+               видимому: при сортировке по приоритету это разные порядки, и результат
+               был бы непредсказуем. Без dragProps GoalCard не рисует ручку. */
+            dragProps={!lockReason(editMode, 'reorder') && boardView.sort === 'custom' ? {
               isDragging: dragState.srcId === g.id,
               onDragStart: (e) => { e.dataTransfer.effectAllowed = 'move'; setDragState({ srcId: g.id }); },
               onDragOver: (e) => { if (dragState.srcId && dragState.srcId !== g.id) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; } },

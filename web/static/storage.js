@@ -6,6 +6,10 @@
 const STORAGE_KEYS = {
   desc: uid => `okr_team_desc_overrides:${uid}`,
   sidebar: uid => `okr_sidebar_nodes:${uid}`,
+  // Единственный ключ без uid: это настройка вида доски, а не данные пользователя,
+  // и она нужна на первом рендере — раньше, чем приедет /api/v1/me. Тот же контракт,
+  // что у okr_tree_expanded (раскрытость дерева в сайдбаре).
+  boardView: 'okr_board_view',
 };
 
 function readJSON(key, fallback) {

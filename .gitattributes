@@ -1,0 +1,5 @@
+# core.autocrlf=true отдаёт рабочей копии CRLF. Для shell-скриптов это ломает
+# запуск: шебанг становится «#!/usr/bin/env bash\r», и ядро ищет интерпретатор
+# «bash\r» — `env: bash\r: No such file or directory`. В git они и так лежат с LF,
+# здесь фиксируется, что и в рабочей копии тоже.
+*.sh text eol=lf

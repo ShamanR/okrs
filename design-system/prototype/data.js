@@ -172,6 +172,17 @@ const BOARDS = {
         ],
         comments: [],
       },
+      {
+        // Вес 0: цель в периоде есть, но в прогресс команды не входит. Нужна, чтобы на
+        // прототипе было видно работу птички «Скрыть цели с весом 0».
+        id: 104, priority: 'P3', weight: 0, type: 'discovery', focus: 'TECH_INDEPENDENCE',
+        title: 'Разобрать технический долг по логам', desc: 'Цель вынесена из расчёта прогресса: берём её, если останется время после P0–P2.', updatedDaysAgo: 21,
+        owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [], childIds: [],
+        krs: [
+          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 1, healthStatus: 'not_started', updatedDaysAgo: 21, note: true },
+        ],
+        comments: [],
+      },
     ],
   },
   12: {
