@@ -88,17 +88,32 @@
   `./design-system/build.sh && ./design-system/prototype/build.sh`. Проверка: в `dist/` нет
   `components/child-cluster-cards.html` (32 карточки вместо 33), скрипт прототипа проходит
   `vm.Script`, ни одного вхождения удалённых классов в `design-system/src` и `design-system/dist`.
-- [ ] 6.2 Залить обновлённые карточки и прототип в проект Claude Design (id в
-  `design-system/README.md`). Проверка: в проекте нет карточки «Карточки команд», остальные
-  карточки на месте.
+- [ ] 6.2 Залить обновлённые карточки и прототип в проект Claude Design
+  (`12e552f0-1aaf-4d84-9013-9cef887d4dd2`). **Только вручную:** `/design-sync` зарезервирован за
+  явным вызовом пользователя и не может быть запущен агентом, обходить его через DesignSync нельзя.
+  Залить нужно пять изменённых карточек (`progress`, `foundations-surfaces`,
+  `foundations-typography`, `empty-states`, `prototype`) и удалить `child-cluster-cards`. Проверка:
+  в проекте нет карточки «Карточки команд», остальные карточки на месте.
 
 ## 7. Документация
 
 - [x] 7.1 Убрать из `docs/interface.md` пункт про cluster overview и ссылку на скриншот, удалить
   строку `cluster-overview.png` из `docs/images/README.md` и сам файл
-  `docs/images/cluster-overview.png`. Поправить в `README.md` описание доски родительского узла.
-  Проверка: `cluster overview|cluster-overview|roll-up` в `README.md` и `docs` (без
+  `docs/images/cluster-overview.png`. Проверка: `cluster overview|cluster-overview` в `docs` (без
   `docs/old_specs` и `docs/superpowers`) не встречается, ссылки на изображения не битые.
+- [x] 7.2 `README.md` описывал удалённый блок в шести местах, а не в одном (найдено на ревью).
+  Поправлены: вводный абзац, пункт списка возможностей, подпись к скриншоту доски, раздел «Team
+  board», перечисление в Quick start и правило роллапа прогресса. Последнее — отдельная находка:
+  «a parent node's progress = the average across child teams that actually have goals» описывало
+  `AverageProgress` из удалённой сводки, и после change такого правила в продукте нет нигде
+  (прогресс в дереве — только по собственным целям узла, см. requirement «Показатели узла в дереве
+  навигации»). Проверка: `roll-up|child team` в `README.md` не встречается, текст про subtree
+  остался только там, где он верен (экспорт, область видимости уведомлений).
+- [x] 7.3 Перегенерировать `docs/screenshots/tracker-board.png`: старый показывал плашку, сетку
+  карточек и заголовок «Цели этого узла». Снят тот же экран (Платформа, Y2026, 23 %) на
+  `seed_demo.sql` в изолированной БД, 1600×950 как у остальных скриншотов. Проверка: на новом
+  скриншоте блока нет, прогресс дочерних команд виден в дереве, ошибок в консоли нет. Остальные 12
+  скриншотов удалённый блок не показывают.
 
 ## 8. Итоговая проверка
 

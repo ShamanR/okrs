@@ -2,9 +2,9 @@
 
 OKR Tracker is a self-hosted web application for running OKRs in an organisation that plans as a
 tree — department, cluster, unit, group, team, squad. You pick a team and a period in the sidebar,
-and the right side shows that team's objectives, their key results, the discussion around them, and
-how the whole subtree underneath is doing. Climb one level up and the same screen becomes a roll-up
-of everything below it.
+and the right side shows that team's objectives, their key results and the discussion around them.
+The sidebar carries each node's progress, so the tree itself tells you how the teams below are
+doing; a board always belongs to one node and shows that node's own goals.
 
 It is a finished application rather than a kit to assemble: planning, check-ins, discussion,
 decomposition, notifications, export and administration are all part of it. What you deploy is one
@@ -17,7 +17,7 @@ there is no build step, no Node runtime and no separate API service to operate.
 
 ## Features
 
-- **[Team board](#team-board)** — a team in a period: status stepper, weighted objectives, forecast, and a roll-up card per child team.
+- **[Team board](#team-board)** — a team in a period: status stepper, weighted objectives and forecast.
 - **[Key results](#key-results)** — three kinds (numerical, boolean, project), each with its own check-in form, note and zeroing criteria.
 - **[Progress and forecast](#progress-and-forecast)** — goal progress is the weighted average of its KRs, team progress the weighted average of its goals, and a pace line says whether you are ahead or behind.
 - **[Shared goals](#shared-goals)** — one goal visible in several teams, each with its own weight and ordering. No copies to keep in sync.
@@ -116,7 +116,7 @@ Open <http://localhost:8080> and work through the quarter in the order it actual
    server-side and the board switches to check-ins and comments.
 6. **Keep it current.** *Обновить прогресс* on a KR opens the right form for its kind and records
    the new value, a health status and an optional note in one operation. Everything else — the
-   goal's percentage, the team's, the subtree's, the forecast marker — follows from that.
+   goal's percentage, the team's, the forecast marker — follows from that.
 7. **Close the quarter.** *Закрыты* leaves comments available and nothing else.
 
 Two places are worth a visit once you have data: **Обзор периода** shows a whole period across many
@@ -124,8 +124,8 @@ teams at once, and **Лог активностей** shows what changed and who 
 
 ## Screenshots
 
-**A unit's board** — its own goals, plus one card per child team with progress, status and the
-count of P0–P1 objectives.
+**A unit's board** — the status stepper and the unit's own weighted objectives. Child teams and
+their progress live in the sidebar tree, not on the board.
 
 ![Team board](docs/screenshots/tracker-board.png)
 
@@ -200,8 +200,10 @@ closes the pool.
 ### Team board
 
 The board is the main screen. Its header carries the team name, its type badge, the description its
-lead wrote, and the aggregate progress for the period. Below that is the status stepper, then —
-for a node with children — a roll-up card per child team, then the node's own goals.
+lead wrote, and its progress for the period. Below that is the status stepper, then the node's own
+goals. A node with children is no different: its board carries its goals and nothing about the
+teams beneath it — those are one click away in the sidebar, which shows each of them with its own
+progress.
 
 Each goal card shows priority (P0–P3), weight, work type (Delivery or Discovery), strategic focus,
 the driver, a progress bar with a forecast marker, and how recently it was touched. A goal shared
@@ -246,11 +248,14 @@ period no longer reads as a period where everything landed.
 
 ### Progress and forecast
 
-Everything rolls up by weight, with one rule used everywhere:
+Inside a team everything rolls up by weight:
 
 - goal progress = weighted average of its key results;
-- team progress in a period = weighted average of its goals;
-- a parent node's progress = the average across child teams that actually have goals.
+- team progress in a period = weighted average of its goals.
+
+Progress belongs to the node that owns the goals: a parent node shows its own goals' progress, not
+an average of the teams below it. To see how a subtree is doing, read the sidebar tree, which gives
+a percentage per node, or open **Обзор периода** for the whole period at once.
 
 Alongside the bar sits the **expected pace** — where you would be today if the period filled evenly
 — and progress is labelled against it: *ahead*, *on track* (within the tolerance), *below*, or
