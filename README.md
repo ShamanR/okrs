@@ -98,10 +98,11 @@ database gives you the goals twice. `seed_demo.sql` truncates first and is safe 
 
 Open <http://localhost:8080> and work through the quarter in the order it actually happens.
 
-1. **Find your team.** The sidebar is the org tree. Click a team to open its board; click a unit or
-   cluster to see the same board plus a roll-up of everything below it. The team and period you are
-   looking at are always in the URL (`/?team=102&period=2`), so you can paste a link into a chat and
-   your colleague lands on exactly the same screen.
+1. **Find your team.** The sidebar is the org tree, and it carries each node's progress, so a unit or
+   cluster shows how the teams below it are doing right there. Click a team to open its board; a
+   board always shows that node's own goals and nothing else. The team and period you are looking at
+   are always in the URL (`/?team=102&period=2`), so you can paste a link into a chat and your
+   colleague lands on exactly the same screen.
 2. **Pick the period.** Top of the sidebar. Periods nest: a quarter sits inside its year, and the
    goal tree uses that nesting to place annual goals above quarterly ones.
 3. **Write the objectives.** While the team is in *Черновик* (draft), the board is fully editable.

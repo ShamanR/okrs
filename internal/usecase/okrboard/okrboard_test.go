@@ -156,42 +156,4 @@ func TestGetTeamOKRAllowsDeletedTeamInCurrentPeriodWhenGoalsExist(t *testing.T) 
 	}
 }
 
-func TestGetTeamOverview(t *testing.T) {
-	store := servicetest.NewStore()
-	store.Teams = []domain.Team{
-		{ID: 1, Name: "Parent", Type: domain.TeamTypeUnit},
-		{ID: 2, Name: "Child", Type: domain.TeamTypeTeam, ParentID: ptr(1)},
-	}
-	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
-	store.GoalsByTeam[2] = map[int64][]domain.Goal{
-		10: {{
-			ID:        200,
-			TeamID:    2,
-			PeriodID:  10,
-			Title:     "Ship feature",
-			Priority:  domain.PriorityP1,
-			WorkType:  domain.WorkTypeDelivery,
-			UpdatedAt: now,
-		}},
-	}
-	store.Statuses[[2]int64{2, 10}] = domain.TeamPeriodStatusInProgress
-	svc := newBoard(store)
-	overview, err := svc.TeamOverviewFor(context.Background(), domain.TenantScope{TenantID: 1}, 1, 10)
-	if err != nil {
-		t.Fatalf("get team overview: %v", err)
-	}
-	if overview.TeamsWithGoals != 1 {
-		t.Fatalf("expected teams_with_goals=1, got %d", overview.TeamsWithGoals)
-	}
-	if overview.AverageProgress != 0 {
-		t.Fatalf("expected average progress=0 for zero-progress goal, got %d", overview.AverageProgress)
-	}
-	if len(overview.ChildrenSummary) != 1 {
-		t.Fatalf("expected one direct child summary row, got %d", len(overview.ChildrenSummary))
-	}
-	if !overview.ChildrenSummary[0].HasGoals {
-		t.Fatalf("expected child has_goals=true")
-	}
-}
-
 func ptr(id int64) *int64 { return &id }

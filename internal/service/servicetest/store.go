@@ -201,22 +201,6 @@ func (f *Store) ListTeamPeriodStatuses(_ context.Context, _ domain.TenantScope, 
 	}
 	return result, nil
 }
-func (f *Store) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
-	result := make(map[int64]time.Time)
-	for _, teamID := range teamIDs {
-		goals := f.GoalsByTeam[teamID][periodID]
-		var max time.Time
-		for _, goal := range goals {
-			if goal.UpdatedAt.After(max) {
-				max = goal.UpdatedAt
-			}
-		}
-		if !max.IsZero() {
-			result[teamID] = max
-		}
-	}
-	return result, nil
-}
 func (f *Store) TeamHasGoals(_ context.Context, _ domain.TenantScope, id int64) (bool, error) {
 	for _, goals := range f.GoalsByTeam[id] {
 		if len(goals) > 0 {

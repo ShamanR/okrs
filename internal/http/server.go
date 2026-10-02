@@ -101,7 +101,6 @@ import (
 	teamsexport "okrs/internal/http/handlers/api/v1/teams/export"
 	teamsgoals "okrs/internal/http/handlers/api/v1/teams/goals"
 	teamsokrs "okrs/internal/http/handlers/api/v1/teams/okrs"
-	teamsoverview "okrs/internal/http/handlers/api/v1/teams/overview"
 	teamsstatus "okrs/internal/http/handlers/api/v1/teams/status"
 	apiusers "okrs/internal/http/handlers/api/v1/users"
 	webauthcallback "okrs/internal/http/handlers/web/auth/callback"
@@ -641,7 +640,6 @@ func (s *Server) registerApiRoutes(r chi.Router) {
 	apiperiods.RegisterRoutes(r, apiperiods.New(d.Periods))
 	apiteams.RegisterRoutes(r, apiteams.New(d.Teams))
 	teamsokrs.RegisterRoutes(r, teamsokrs.New(d.Board, d.Periods, d.Users))
-	teamsoverview.RegisterRoutes(r, teamsoverview.New(d.Board, d.Periods, d.Users))
 	teamsexport.RegisterRoutes(r, teamsexport.New(d.ExportUC))
 	teamsstatus.RegisterRoutes(r, teamsstatus.New(d.PeriodUC))
 	teamsgoals.RegisterRoutes(r, teamsgoals.New(d.GoalUC, d.Users))

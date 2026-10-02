@@ -4,7 +4,6 @@ package goal
 
 import (
 	"context"
-	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/progress"
@@ -38,7 +37,6 @@ type Repo interface {
 	ListGoalCommentsByGoals(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]domain.GoalComment, error)
 	ListGoalOwnerTeamIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64]int64, error)
 	ListGoalsByIDs(ctx context.Context, scope domain.TenantScope, ids []int64) ([]domain.Goal, error)
-	ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error)
 	ListGoalsForPeriods(ctx context.Context, scope domain.TenantScope, periodIDs []int64, allowedTeamIDs []int64, adminAll bool) ([]domain.Goal, error)
 }
 
@@ -123,11 +121,6 @@ func (s *Service) ListForPeriods(ctx context.Context, scope domain.TenantScope, 
 // Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
 func (s *Service) ListOwnerTeamIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64]int64, error) {
 	return s.repo.ListGoalOwnerTeamIDs(ctx, scope, goalIDs)
-}
-
-// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
-func (s *Service) ListTeamLastUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
-	return s.repo.ListTeamLastGoalUpdateInPeriod(ctx, scope, periodID, teamIDs)
 }
 
 func (s *Service) SetCommentResolved(ctx context.Context, scope domain.TenantScope, goalID, commentID int64, resolved bool, userID int64) (bool, error) {

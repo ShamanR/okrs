@@ -2917,79 +2917,6 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
   );
 }
 
-// ── CHILD CARD ────────────────────────────────────────────────────────────────
-function ChildCard({ item, onSelect, greenThreshold = 80 }) {
-  const prog = item.progress_meta ? item.progress_meta.actual : null;
-  const forecast = item.progress_meta ? item.progress_meta.forecast : null;
-  const health = healthOf(prog, false, forecast, greenThreshold);
-  const hC = HEALTH_COLOR[health];
-  const goalsCount = item.goals_count || 0;
-  const highPri = item.high_priority_count || 0;
-  return (
-    <div onClick={() => onSelect(item.team.id)} className="child-card">
-      <div className="child-card__header">
-        <div className="child-card__info">
-          <div className="child-card__name">{item.team.name}</div>
-          {item.team.lead && (
-            <div className="child-card__lead">
-              <UserInfo userRef={item.team.lead} size={16} />
-            </div>
-          )}
-        </div>
-        <span className="child-card__health" style={{ color: hC, background: `${hC}15` }}>{HEALTH_LABEL[health]}</span>
-      </div>
-      {goalsCount > 0 ? (
-        <>
-          <div className="child-card__goals-row">
-            <span className="child-card__goals-label">
-              {goalsCount} {goalsCount === 1 ? 'цель' : goalsCount < 5 ? 'цели' : 'целей'} · <span className="child-card__goals-status">{item.status_label}</span>
-            </span>
-            <span className="child-card__goals-pct" style={{ color: hC }}>{prog ?? 0}%</span>
-          </div>
-          <ProgressBar value={prog || 0} forecast={forecast} h={5} color={hC} />
-          {highPri > 0 && <div className="child-card__priority">● {highPri} приоритетных P0–P1</div>}
-        </>
-      ) : (
-        <div className="child-card__empty">Цели не добавлены</div>
-      )}
-    </div>
-  );
-}
-
-// ── CLUSTER VIEW ──────────────────────────────────────────────────────────────
-function ClusterView({ overview, onSelect, greenThreshold = 80 }) {
-  if (!overview) return <div className="cluster-loading">Загрузка…</div>;
-  const avg = overview.average_progress || 0;
-  const avgForecast = overview.progress_meta?.forecast ?? null;
-  const hC = HEALTH_COLOR[healthOf(avg, false, avgForecast, greenThreshold)];
-  const items = overview.children_summary?.items || [];
-  return (
-    <div>
-      <div className="cluster-overview">
-        <div className="cluster-overview__left">
-          <div className="cluster-overview__label">Прогресс</div>
-          <div className="cluster-overview__pct" style={{ color: hC }}>{avg}%</div>
-        </div>
-        <div className="cluster-overview__right">
-          <div className="cluster-overview__bar-header">
-            <span className="cluster-overview__teams-label">{overview.teams_with_goals} из {items.length} с целями</span>
-            <span className="cluster-overview__health-label" style={{ color: hC }}>{HEALTH_LABEL[healthOf(avg, false, avgForecast, greenThreshold)]}</span>
-          </div>
-          {overview.progress_meta && (
-            <>
-              <ProgressBar value={avg} forecast={overview.progress_meta.forecast} h={10} color={hC} />
-              <div className="cluster-overview__forecast">прогноз {overview.progress_meta.forecast}%</div>
-            </>
-          )}
-        </div>
-      </div>
-      <div className="cluster-grid">
-        {items.map(item => <ChildCard key={item.team.id} item={item} onSelect={onSelect} greenThreshold={greenThreshold} />)}
-      </div>
-    </div>
-  );
-}
-
 // ── APP ───────────────────────────────────────────────────────────────────────
 function App() {
   const [me, setMe] = useState(null);
@@ -2999,7 +2926,6 @@ function App() {
   const [hierarchy, setHierarchy] = useState([]);
   const [selId, setSelId] = useState(null);
   const [teamOKR, setTeamOKR] = useState(null);
-  const [overview, setOverview] = useState(null);
   const [expanded, setExpanded] = useState(readTreeExpanded);
   const [favorites, setFavorites] = useState(null); // null = not loaded from storage yet
   const [goalModal, setGoalModal] = useState(null);
@@ -3092,12 +3018,8 @@ function App() {
 
   useEffect(() => {
     if (!periodId || !selId) return;
-    setTeamOKR(null); setOverview(null);
+    setTeamOKR(null);
     apiGet(`/api/v1/teams/${selId}/okrs?period_id=${periodId}`).then(data => { if (data) { _cacheUserRefsFromOKR(data); setTeamOKR(data); } }).catch(() => setTeamOKR(null));
-    const node = findNodeById(hierarchy, selId);
-    if (node && (node.children || []).length > 0) {
-      apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(data => { if (data) setOverview(data); }).catch(() => { });
-    }
   }, [periodId, selId]);
 
   // Keep URL and cookie in sync with current navigation state.
@@ -3181,12 +3103,6 @@ function App() {
       if (!data) return;
       _cacheUserRefsFromHierarchyNodes(data.items || []);
       setHierarchy(data.items || []);
-      const node = findNodeById(data.items || [], selId);
-      if (node && (node.children || []).length > 0) {
-        apiGet(`/api/v1/teams/${selId}/overview?period_id=${periodId}`).then(d => { if (d) setOverview(d); }).catch(() => { });
-      } else {
-        setOverview(null);
-      }
     });
   }, [periodId, selId]);
 
@@ -3259,7 +3175,6 @@ function App() {
   const goalWeightSum = allGoals.reduce((s, g) => s + (g.weight || 0), 0);
   const goalWeightOff = allGoals.length > 0 && goalWeightSum !== 100;
   const goalWeightDelta = 100 - goalWeightSum;
-  const hasChildren = overview && (overview.children_summary?.items?.length > 0);
   // Context passed to the per-goal export menu: period label, team hierarchy path and the
   // scope-card counts (subtree team count comes from the already-loaded hierarchy).
   const exportInfo = selId ? {
@@ -3373,16 +3288,14 @@ function App() {
           statusChangedAt={teamOKR?.status_changed_at} editMode={editMode} />
 
         <div className="content">
-          {!hasChildren && goalWeightWarn}
-          {hasChildren && <ClusterView overview={overview} onSelect={selectTeam} greenThreshold={greenThreshold} />}
-          {allGoals.length === 0 && !overview && hierarchy.length === 0 && !loading && (
+          {allGoals.length === 0 && hierarchy.length === 0 && !loading && (
             <div className="empty-state">
               <div className="empty-state__icon">🔒</div>
               <div className="empty-state__title">Нет доступа</div>
               <div className="empty-state__text">За доступом обратитесь к администратору</div>
             </div>
           )}
-          {allGoals.length === 0 && !overview && hierarchy.length > 0 && (
+          {allGoals.length === 0 && hierarchy.length > 0 && (
             <div className="empty-state">
               <div className="empty-state__icon">📋</div>
               <div className="empty-state__title">Цели не добавлены</div>
@@ -3390,8 +3303,7 @@ function App() {
               {!goalCreateLock && selId && <button onClick={() => setGoalModal('new')} className="empty-state__btn">+ Создать первую цель</button>}
             </div>
           )}
-          {hasChildren && allGoals.length > 0 && <div className="section-label">Цели этого узла</div>}
-          {hasChildren && goalWeightWarn}
+          {goalWeightWarn}
           <BoardFilterBar goals={allGoals} value={boardView} onChange={changeBoardView} />
           {/* Цели у команды есть, но под настройки показа не подошла ни одна. Своё
               состояние, а не пустая страница: иначе доска выглядит как команда без

@@ -740,28 +740,6 @@ function goalCard(goal, teamId) {
   </div>`;
 }
 
-function childCard(node) {
-  const prog = teamProgress(node.id);
-  const board = boardOf(node.id);
-  const health = healthOf(prog, false, forecastNow());
-  const c = HEALTH_COLOR[health];
-  return `<div class="child-card" data-team="${node.id}">
-    <div class="child-card__header">
-      <div class="child-card__info">
-        <div class="child-card__name">${esc(node.name)}</div>
-        <div class="child-card__lead">${avatar(node.leadInitials, 16)}${esc(node.lead)}</div>
-      </div>
-      <span class="child-card__health" style="color:${c};background:${c}15">${HEALTH_LABEL[health]}</span>
-    </div>
-    ${prog == null ? '<div class="child-card__empty">Целей на период нет</div>' : `
-      <div class="child-card__goals-row">
-        <span class="child-card__goals-label">${goalsOf(node.id).length} целей <span class="child-card__goals-status">· ${(STATUS_STEPS.find(s => s.k === board.status) || {}).l || ''}</span></span>
-        <span class="child-card__goals-pct" style="color:${c}">${prog}%</span>
-      </div>
-      ${progressBar(prog, null, 6, c)}`}
-  </div>`;
-}
-
 // ── Ряд управления показом целей ─────────────────────────────────────────────
 // Повторяет BoardFilterBar из tracker.js: порядок, фильтр приоритета, две птички,
 // сброс. Классы — общие .filter-bar* из components.css.

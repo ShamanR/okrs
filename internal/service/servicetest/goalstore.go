@@ -298,9 +298,6 @@ func (f *GoalStore) GetTeamPeriodStatusWithTime(_ context.Context, _ domain.Tena
 func (f *GoalStore) ListTeamPeriodStatuses(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64]domain.TeamPeriodStatus, error) {
 	return nil, nil
 }
-func (f *GoalStore) ListTeamLastGoalUpdateInPeriod(_ context.Context, _ domain.TenantScope, _ int64, _ []int64) (map[int64]time.Time, error) {
-	return nil, nil
-}
 func (f *GoalStore) ListGoalsForPeriods(_ context.Context, _ domain.TenantScope, _ []int64, _ []int64, _ bool) ([]domain.Goal, error) {
 	return nil, nil
 }
