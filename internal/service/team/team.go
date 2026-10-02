@@ -1,8 +1,7 @@
-// BuildHierarchy, BuildNode, FindDirectChildren, CollectDescendantIDs и
-// HierarchyFromTeams экспортированы не «для фасада»: после его удаления у каждой
-// остался внешний потребитель — usecase/okrboard строит по ним дерево команд для
-// доски. Сузить
-// видимость нельзя, не затащив построение иерархии обратно в один пакет.
+// BuildHierarchy, BuildNode и HierarchyFromTeams экспортированы не «для фасада»:
+// после его удаления у каждой остался внешний потребитель — usecase/okrboard строит
+// по ним дерево команд для доски. Сузить видимость нельзя, не затащив построение
+// иерархии обратно в один пакет.
 package team
 
 import (
@@ -157,42 +156,6 @@ func BuildNode(team domain.Team, childrenMap map[int64][]domain.Team) Node {
 	}
 	return node
 }
-func FindDirectChildren(targetID int64, nodes []Node) []Node {
-	var children []Node
-	var walk func(items []Node) bool
-	walk = func(items []Node) bool {
-		for _, node := range items {
-			if node.Team.ID == targetID {
-				children = node.Children
-				return true
-			}
-			if walk(node.Children) {
-				return true
-			}
-		}
-		return false
-	}
-	_ = walk(nodes)
-	return children
-}
-func CollectDescendantIDs(targetID int64, nodes []Node) []int64 {
-	var descendants []int64
-	var walk func(items []Node, collect bool)
-	walk = func(items []Node, collect bool) {
-		for _, node := range items {
-			nextCollect := collect || node.Team.ID == targetID
-			if collect {
-				descendants = append(descendants, node.Team.ID)
-			}
-			if len(node.Children) > 0 {
-				walk(node.Children, nextCollect)
-			}
-		}
-	}
-	walk(nodes, false)
-	return descendants
-}
-
 // Батчевая операция: один запрос на весь период. Не превращать в цикл — это N+1.
 func (s *Service) ListTeamIDsWithGoalsInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64) (map[int64]struct{}, error) {
 	return s.repo.ListTeamIDsWithGoalsInPeriod(ctx, scope, periodID)

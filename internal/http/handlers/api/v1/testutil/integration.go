@@ -48,7 +48,6 @@ import (
 	teamsexport "okrs/internal/http/handlers/api/v1/teams/export"
 	teamsgoals "okrs/internal/http/handlers/api/v1/teams/goals"
 	teamsokrs "okrs/internal/http/handlers/api/v1/teams/okrs"
-	teamsoverview "okrs/internal/http/handlers/api/v1/teams/overview"
 	teamsstatus "okrs/internal/http/handlers/api/v1/teams/status"
 	"okrs/internal/http/httpdeps"
 	"okrs/internal/platform/eventbus"
@@ -102,7 +101,6 @@ func NewAPIV1RouterWithScope(t testing.TB, st *store.Store, grantsCache *grants.
 	apiperiods.RegisterRoutes(router, apiperiods.New(d.Periods))
 	apiteams.RegisterRoutes(router, apiteams.New(d.Teams))
 	teamsokrs.RegisterRoutes(router, teamsokrs.New(d.Board, d.Periods, d.Users))
-	teamsoverview.RegisterRoutes(router, teamsoverview.New(d.Board, d.Periods, d.Users))
 	teamsexport.RegisterRoutes(router, teamsexport.New(d.ExportUC))
 	teamsstatus.RegisterRoutes(router, teamsstatus.New(d.PeriodUC))
 	teamsgoals.RegisterRoutes(router, teamsgoals.New(d.GoalUC, d.Users))

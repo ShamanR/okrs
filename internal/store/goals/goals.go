@@ -863,55 +863,6 @@ func (r *GoalRepository) DeleteGoal(ctx context.Context, scope domain.TenantScop
 	return err
 }
 
-func (r *GoalRepository) ListTeamLastGoalUpdateInPeriod(ctx context.Context, scope domain.TenantScope, periodID int64, teamIDs []int64) (map[int64]time.Time, error) {
-	updates := make(map[int64]time.Time, len(teamIDs))
-	if len(teamIDs) == 0 {
-		return updates, nil
-	}
-	rows, err := r.db.Query(ctx, `
-		WITH team_goals AS (
-			SELECT g.id AS goal_id, g.team_id AS team_id
-			FROM goals g
-			WHERE g.period_id = $1 AND g.team_id = ANY($2) AND g.tenant_id = $3
-			UNION
-			SELECT g.id AS goal_id, gs.team_id AS team_id
-			FROM goals g
-			JOIN goal_shares gs ON gs.goal_id = g.id AND gs.tenant_id = $3
-			WHERE g.period_id = $1 AND gs.team_id = ANY($2) AND g.tenant_id = $3
-		),
-			goal_updates AS (
-				SELECT
-					kr.goal_id,
-					CASE
-						WHEN MAX(kr.progress_updated_at) IS NULL THEN MAX(krn.updated_at)
-						WHEN MAX(krn.updated_at) IS NULL THEN MAX(kr.progress_updated_at)
-						ELSE GREATEST(MAX(kr.progress_updated_at), MAX(krn.updated_at))
-					END AS last_update_at
-					FROM key_results kr
-				LEFT JOIN key_result_notes krn ON krn.key_result_id = kr.id
-				WHERE kr.goal_id IN (SELECT DISTINCT goal_id FROM team_goals)
-				GROUP BY kr.goal_id
-				HAVING MAX(kr.progress_updated_at) IS NOT NULL OR MAX(krn.updated_at) IS NOT NULL
-			)
-		SELECT tg.team_id, MAX(gu.last_update_at) AS last_update_at
-		FROM team_goals tg
-		JOIN goal_updates gu ON gu.goal_id = tg.goal_id
-		GROUP BY tg.team_id`, periodID, teamIDs, scope.TenantID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var teamID int64
-		var updatedAt time.Time
-		if err := rows.Scan(&teamID, &updatedAt); err != nil {
-			return nil, err
-		}
-		updates[teamID] = updatedAt
-	}
-	return updates, rows.Err()
-}
-
 func (r *GoalRepository) UpdateGoal(ctx context.Context, scope domain.TenantScope, input GoalUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE goals

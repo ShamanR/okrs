@@ -4,7 +4,6 @@
 package teamscommon
 
 import (
-	"okrs/internal/core/domain"
 	"okrs/internal/http/dto"
 	v1 "okrs/internal/http/handlers/api/v1"
 	"okrs/internal/http/handlers/web/common"
@@ -36,43 +35,6 @@ func TeamOKRResponse(data okrboarduc.TeamOKR, userRefs map[string]*dto.UserRef) 
 	}
 }
 
-func TeamOverviewResponse(period domain.Period, overview okrboarduc.TeamOverview, userRefs map[string]*dto.UserRef) dto.TeamOverviewResponse {
-	return dto.TeamOverviewResponse{
-		AverageProgress: overview.AverageProgress,
-		TeamsWithGoals:  overview.TeamsWithGoals,
-		ProgressMeta:    v1.BuildProgressBarInfo(overview.AverageProgress, period),
-		ChildrenSummary: ChildrenSummaryResponse(period, overview.ChildrenSummary, userRefs),
-	}
-}
-
-func ChildrenSummaryResponse(period domain.Period, items []okrboarduc.TeamChildSummary, userRefs map[string]*dto.UserRef) dto.TeamChildrenSummaryResponse {
-	rows := make([]dto.TeamChildSummaryResult, 0, len(items))
-	for _, item := range items {
-		var progressMeta *dto.ProgressBarInfo
-		if item.HasGoals {
-			meta := v1.BuildProgressBarInfo(item.Progress, period)
-			progressMeta = &meta
-		}
-		rows = append(rows, dto.TeamChildSummaryResult{
-			Team: dto.TeamInfo{
-				ID: item.Team.ID, Name: item.Team.Name,
-				Type: string(item.Team.Type), TypeLabel: common.TeamTypeLabel(item.Team.Type),
-				Description: item.Team.Description,
-				Lead:        v1.ResolveLeadByUDID(item.Team.LeadUDID, userRefs),
-				ParentID:    item.Team.ParentID,
-			},
-			Status:            string(item.Status),
-			StatusLabel:       common.TeamPeriodStatusLabel(item.Status),
-			HasGoals:          item.HasGoals,
-			GoalsCount:        item.GoalsCount,
-			HighPriorityCount: item.HighPriorityCount,
-			ProgressMeta:      progressMeta,
-			LastUpdated:       item.LastUpdateAt,
-		})
-	}
-	return dto.TeamChildrenSummaryResponse{Period: v1.MapPeriodInfo(period), Items: rows}
-}
-
 func CollectOKRUserUDIDs(okr okrboarduc.TeamOKR) []string {
 	seen := make(map[string]struct{})
 	if okr.Team.LeadUDID != nil {
@@ -89,17 +51,4 @@ func CollectOKRUserUDIDs(okr okrboarduc.TeamOKR) []string {
 	}
 	return udids
 }
-
-func CollectOverviewUserUDIDs(overview okrboarduc.TeamOverview) []string {
-	seen := make(map[string]struct{})
-	for _, item := range overview.ChildrenSummary {
-		if item.Team.LeadUDID != nil {
-			seen[*item.Team.LeadUDID] = struct{}{}
-		}
-	}
-	udids := make([]string, 0, len(seen))
-	for uid := range seen {
-		udids = append(udids, uid)
-	}
-	return udids
-}
+

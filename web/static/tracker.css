@@ -721,34 +721,6 @@
   .gc2 > .md-collapsible, .gc2 > .goal-card__desc { padding-left: 0; }
 }
 .goal-card .kr-section { border-top: 1px solid #f3f4f6; }
-/* ── CHILD CARD ──────────────────────────────────────────────────────────────── */
-.child-card { background: white; border-radius: 10px; padding: 14px 16px; cursor: pointer; border: 1px solid #f0f1f3; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: all 0.14s; }
-.child-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.1); transform: translateY(-1px); }
-.child-card__header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; gap: 8px; }
-.child-card__info { flex: 1; min-width: 0; }
-.child-card__name { font-size: 14px; font-weight: 600; color: #111827; line-height: 1.3; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; }
-.child-card__lead { font-size: 12px; color: #6b7280; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; }
-.child-card__health { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 4px; flex-shrink: 0; }
-.child-card__goals-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
-.child-card__goals-label { font-size: 12px; color: #6b7280; }
-.child-card__goals-status { color: #6b7280; }
-.child-card__goals-pct { font-size: 15px; font-weight: 800; }
-.child-card__priority { margin-top: 6px; font-size: 12px; color: #d97706; font-weight: 500; }
-.child-card__empty { font-size: 13px; color: #6b7280; font-style: italic; }
-
-/* ── CLUSTER VIEW ────────────────────────────────────────────────────────────── */
-.cluster-overview { background: white; border-radius: 12px; padding: 20px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #f0f1f3; display: flex; align-items: center; gap: 24px; }
-.cluster-overview__left { min-width: 80px; }
-.cluster-overview__label { font-size: 12px; color: #6b7280; font-weight: 500; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-.cluster-overview__pct { font-size: 36px; font-weight: 800; letter-spacing: -1px; }
-.cluster-overview__right { flex: 1; }
-.cluster-overview__bar-header { display: flex; justify-content: space-between; margin-bottom: 6px; }
-.cluster-overview__teams-label { font-size: 13px; color: #6b7280; }
-.cluster-overview__health-label { font-size: 13px; font-weight: 700; }
-.cluster-overview__forecast { font-size: 11px; color: #6b7280; margin-top: 4px; }
-.cluster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
-.cluster-loading { text-align: center; padding: 60px 0; color: #6b7280; }
-
 /* .user-avatar__fallback, .user-selector*, .user-chip* → components.css (общие). */
 
 /* ── USER INFO ────────────────────────────────────────────────────────────────── */

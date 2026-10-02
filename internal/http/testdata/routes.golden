@@ -62,7 +62,6 @@ GET /api/v1/system/users
 GET /api/v1/teams/{teamID}
 GET /api/v1/teams/{teamID}/export
 GET /api/v1/teams/{teamID}/okrs
-GET /api/v1/teams/{teamID}/overview
 GET /api/v1/users
 GET /auth/{provider}/callback
 GET /auth/{provider}/start

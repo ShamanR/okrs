@@ -361,7 +361,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 	}
 }
 
-func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
+func TestKRActivityTimestampsUsedForGoalUpdates(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
 		tcpostgres.WithDatabase("okrs"),
@@ -393,12 +393,9 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	defer pool.Close()
 
 	s := New(pool)
-	var ownerID, sharedID, periodID int64
+	var ownerID, periodID int64
 	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Owner last update') RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatalf("insert owner team: %v", err)
-	}
-	if err := pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('Shared last update') RETURNING id`).Scan(&sharedID); err != nil {
-		t.Fatalf("insert shared team: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
 		INSERT INTO periods (name, start_date, end_date)
@@ -420,9 +417,6 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
-	}
-	if _, err := pool.Exec(ctx, `INSERT INTO goal_shares (goal_id, team_id, weight) VALUES ($1, $2, 100)`, goalID, sharedID); err != nil {
-		t.Fatalf("insert goal share: %v", err)
 	}
 	krID, err := s.KRs.CreateKeyResult(ctx, domain.TenantScope{TenantID: 1}, krs.KeyResultInput{
 		GoalID:      goalID,
@@ -458,29 +452,29 @@ func TestKRActivityTimestampsUsedForGoalAndTeamUpdates(t *testing.T) {
 		t.Fatalf("expected goal updated_at from latest KR note %s, got %s", noteTime, goalsList[0].UpdatedAt)
 	}
 
+	// Правка метаданных KR (только updated_at, без progress_updated_at) обновлением
+	// не считается: предупреждение «нет обновлений» на карточке цели не должно
+	// сбрасываться от переименования результата.
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1 WHERE id = $2`, time.Date(2026, 4, 8, 12, 0, 0, 0, time.UTC), krID); err != nil {
 		t.Fatalf("set metadata-only key result updated_at: %v", err)
 	}
-	updatesAfterMetadataEdit, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedID})
+	goalsAfterMetadataEdit, err := s.Goals.ListGoalsByTeamPeriod(ctx, domain.TenantScope{TenantID: 1}, ownerID, periodID)
 	if err != nil {
-		t.Fatalf("list team last update after metadata edit: %v", err)
+		t.Fatalf("list goals after metadata edit: %v", err)
 	}
-	if !updatesAfterMetadataEdit[ownerID].Equal(noteTime) {
-		t.Fatalf("expected owner update to ignore metadata edit and remain %s, got %s", noteTime, updatesAfterMetadataEdit[ownerID])
+	if !goalsAfterMetadataEdit[0].UpdatedAt.Equal(noteTime) {
+		t.Fatalf("expected goal updated_at to ignore metadata edit and remain %s, got %s", noteTime, goalsAfterMetadataEdit[0].UpdatedAt)
 	}
 
 	if _, err := pool.Exec(ctx, `UPDATE key_results SET updated_at = $1, progress_updated_at = $2 WHERE id = $3`, progressTime, progressTime, krID); err != nil {
 		t.Fatalf("set newer key result progress_updated_at: %v", err)
 	}
-	updates, err := s.Goals.ListTeamLastGoalUpdateInPeriod(ctx, domain.TenantScope{TenantID: 1}, periodID, []int64{ownerID, sharedID})
+	goalsAfterProgress, err := s.Goals.ListGoalsByTeamPeriod(ctx, domain.TenantScope{TenantID: 1}, ownerID, periodID)
 	if err != nil {
-		t.Fatalf("list team last update: %v", err)
+		t.Fatalf("list goals after progress update: %v", err)
 	}
-	if !updates[ownerID].Equal(progressTime) {
-		t.Fatalf("expected owner update %s, got %s", progressTime, updates[ownerID])
-	}
-	if !updates[sharedID].Equal(progressTime) {
-		t.Fatalf("expected shared update %s, got %s", progressTime, updates[sharedID])
+	if !goalsAfterProgress[0].UpdatedAt.Equal(progressTime) {
+		t.Fatalf("expected goal updated_at %s, got %s", progressTime, goalsAfterProgress[0].UpdatedAt)
 	}
 }
 
