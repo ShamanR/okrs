@@ -480,9 +480,11 @@ function krMenu(goalId, krId, teamId) {
   const key = goalId + ':' + krId;
   const open = state.krMenu === key;
   const structLock = lockFor(editModeOf(teamId), 'structure');
+  const progressLock = lockFor(editModeOf(teamId), 'progress');
   return `<div class="export-menu" data-menu-wrap="kr-${key}">
     <button type="button" class="export-menu__btn" title="Ещё" aria-label="Ещё" data-kr-menu="${key}">···</button>
     ${open ? `<div class="export-menu__dropdown">
+      ${menuItem('↻', 'Обновить прогресс', `data-kr-progress="${key}"`, { disabled: !!progressLock, reason: 'Период закрыт — прогресс ключевого результата уже нельзя обновить.' })}
       ${menuItem('✎', 'Редактировать', `data-kr-edit="${key}"`, { disabled: !canEditText(teamId), reason: editLockReason(teamId, 'KR') })}
       ${menuItem('🔗', 'Копировать ссылку', '')}
       ${krNoteText(krOf(goalId, krId)) ? menuItem('📝', krNoteVisible(krId) ? 'Скрыть заметку' : 'Показать заметку', `data-kr-note-vis="${krId}"`) : ''}
@@ -576,9 +578,14 @@ function krRow(goal, kr, teamId) {
         ${krHealthDot(displayHealth, progress)}
         <div class="kr-weight-chip has-tip" tabindex="0" data-tip-title="Вес KR · ${kr.weight}%" data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели — 100%.">${kr.weight}%</div>
         <div class="kr-info">
-          <div class="kr-name-row${canEditText(teamId) ? ' title-editable' : ''}"${canEditText(teamId) ? ` role="button" tabindex="0" title="Редактировать KR" data-kr-edit="${goal.id}:${kr.id}"` : ''}>
+          <div class="kr-name-row${mode === 'comments_only' ? '' : ' title-editable'}"${
+            mode === 'full' ? ` role="button" tabindex="0" title="Редактировать KR" data-kr-edit="${goal.id}:${kr.id}"`
+            : mode === 'progress_only' ? ` role="button" tabindex="0" title="Обновить прогресс" data-kr-progress="${goal.id}:${kr.id}"`
+            : ''}>
             <div class="kr-name">${esc(kr.name)}</div>
-            ${canEditText(teamId) ? `<span class="title-edit" aria-hidden="true">✎</span>` : ''}
+            ${mode === 'full' ? `<span class="title-edit" aria-hidden="true">✎</span>`
+              : mode === 'progress_only' ? `<span class="title-edit title-edit--progress" aria-hidden="true">↻</span>`
+              : `<span class="action-lock"><span class="title-edit title-edit--locked" tabindex="0" role="img" aria-label="Период закрыт">🔒</span><span class="action-lock__tip" role="tooltip">Период закрыт: доступны только комментарии</span></span>`}
           </div>
           ${kr.desc ? `<div class="kr-desc md-content" data-desc-key="k${kr.id}">${mdRender(kr.desc)}</div>` : ''}
           ${kr.zeroing ? `<div class="kr-zeroing-note kr-zeroing-note--clamp"><span class="kr-zeroing-note__icon">⊘</span>Критерий обнуления: ${esc(kr.zeroing)}</div>` : ''}
@@ -594,14 +601,7 @@ function krRow(goal, kr, teamId) {
         </div>
         <div class="kr-row__actions" data-no-drag>
           <span class="kr-row__spacer"></span>
-          <div class="kr-update-stack">
-          ${mode === 'progress_only'
-            ? `<button type="button" class="kr-row-btn kr-row-btn--accent" data-kr-progress="${goal.id}:${kr.id}"><span>↻</span>Обновить</button>`
-            : mode === 'full'
-              ? `<button type="button" class="kr-row-btn" data-kr-edit="${goal.id}:${kr.id}"><span>✎</span>Редактировать</button>`
-              : ''}
-            ${mode === 'full' ? '' : `<span class="kr-updated" style="color:${staleC}" title="Последнее обновление прогресса">${kr.updatedDaysAgo === 0 ? 'обн. сегодня' : 'обн. ' + kr.updatedDaysAgo + 'д назад'}</span>`}
-          </div>
+          ${mode === 'full' ? '' : `<span class="kr-updated" style="color:${staleC}" title="Последнее обновление прогресса">${kr.updatedDaysAgo === 0 ? 'обн. сегодня' : 'обн. ' + kr.updatedDaysAgo + 'д назад'}</span>`}
           ${krMenu(goal.id, kr.id, teamId)}
         </div>
       </div>

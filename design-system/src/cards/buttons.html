@@ -125,15 +125,16 @@
 </section>
 
 <section class="ds-section">
-  <div class="ds-section__title">Действие строки KR — .kr-row-btn</div>
+  <div class="ds-section__title">Слоты строки KR и кнопки меню</div>
   <div class="ds-surface">
     <div class="ds-row">
-      <div class="ds-item"><button type="button" class="kr-row-btn"><span>✎</span>Редактировать</button><div class="ds-item__label">.kr-row-btn</div></div>
-      <div class="ds-item"><button type="button" class="kr-row-btn kr-row-btn--accent"><span>↻</span>Обновить</button><div class="ds-item__label">.kr-row-btn--accent</div></div>
+      <div class="ds-item"><span class="title-edit" aria-hidden="true">✎</span><div class="ds-item__label">.title-edit — откроется редактор</div></div>
+      <div class="ds-item"><span class="title-edit title-edit--progress" aria-hidden="true">↻</span><div class="ds-item__label">.title-edit--progress</div></div>
+      <div class="ds-item"><span class="title-edit title-edit--locked" tabindex="0" role="img" aria-label="Период закрыт">🔒</span><div class="ds-item__label">.title-edit--locked</div></div>
       <div class="ds-item"><button type="button" class="tb-menu__btn" aria-label="Ещё">···</button><div class="ds-item__label">.tb-menu__btn</div></div>
       <div class="ds-item"><button type="button" class="export-menu__btn" aria-label="Ещё">···</button><div class="ds-item__label">.export-menu__btn</div></div>
       <div class="ds-item"><span class="kr-row__spacer"></span><div class="ds-item__label">.kr-row__spacer — пустой слот</div></div>
     </div>
   </div>
-  <div class="ds-section__note">Одно действие строки занимает фиксированную колонку: в «Черновике» и «К валидации» это «Редактировать», в «В работе» — «Обновить» акцентом. Остальное убрано в меню ···.</div>
+  <div class="ds-section__note">Отдельной кнопки основного действия у строки KR нет: оно вызывается нажатием на заголовок, а слот .title-edit рядом с заголовком называет, что откроется. Остальное убрано в меню ···.</div>
 </section>

@@ -1530,6 +1530,15 @@ function useOwnersFit(titleClipped, resetKey) {
   return [headRef, compact];
 }
 
+// Признак основного действия строки KR: один слот рядом с заголовком, три вида.
+// Место одно во всех статусах, меняется только вид — по нему читается, что со
+// строкой сейчас можно сделать. Замок сюда не входит: он не действие и, в отличие
+// от двух других, перехватывает указатель, чтобы назвать причину.
+const KR_TITLE_ACTION = {
+  edit: { mark: '✎', hint: 'Редактировать KR', cls: '' },
+  progress: { mark: '↻', hint: 'Обновить прогресс', cls: ' title-edit--progress' },
+};
+
 function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null, greenThreshold = 80, notesOpen = false }) {
   // Closed period is shown as fully done — purely visual (stored health_status is untouched),
   // so reopening the period restores each KR's original status.
@@ -1557,10 +1566,17 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
   // Через actionAvailability, а не через editMode === 'full': знание «что при каком
   // статусе можно» живёт в одном месте (решение 4 в design.md).
   const canEditText = !lockReason(editMode, 'kr_edit');
+  // Основное действие строки вызывается нажатием на заголовок, и какое окно
+  // откроется — следствие того же режима: открыта структура → редактор, иначе
+  // открыт прогресс → чек-ин, иначе ничего. Отдельной кнопки справа нет: место
+  // вызова не должно переезжать при смене статуса.
+  const titleAction = canEditText ? 'edit' : !lockReason(editMode, 'progress_update') ? 'progress' : null;
+  const titleLock = titleAction ? null : lockReason(editMode, 'kr_edit');
   // Полоса KR краснеет, когда отставание от ожидаемого темпа больше порога.
   const krBehind = periodStatus !== 'closed' && forecast != null && forecast - progress > KR_BEHIND_PP;
   const krBarC = krBehind ? '#dc2626' : 'var(--accent)';
   const openEdit = () => setModal('edit');
+  const openTitleAction = () => { if (titleAction) setModal(titleAction === 'edit' ? 'edit' : 'progress'); };
   const onSaved = () => { setModal(null); onReload(); };
   const progressTitle = `Прогресс ${progress}%`
     + (forecast != null ? ` · ожидаемо к сегодня ${forecast}%` : '')
@@ -1574,11 +1590,15 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             data-tip-title={`Вес KR · ${kr.weight}%`}
             data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели — 100%.">{kr.weight}%</div>
           <div className="kr-info">
-            <div className={`kr-name-row${canEditText ? ' title-editable' : ''}`}
-              {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать KR', onClick: openEdit,
-                onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); } } } : {})}>
+            <div className={`kr-name-row${titleAction ? ' title-editable' : ''}`}
+              {...(titleAction ? { role: 'button', tabIndex: 0, title: KR_TITLE_ACTION[titleAction].hint, onClick: openTitleAction,
+                onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTitleAction(); } } } : {})}>
               <div ref={nameRef} title={nameClipped ? kr.name : undefined} className="kr-name">{kr.name}</div>
-              {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
+              {titleAction
+                ? <span className={`title-edit${KR_TITLE_ACTION[titleAction].cls}`} aria-hidden="true">{KR_TITLE_ACTION[titleAction].mark}</span>
+                : <LockedAction reason={titleLock}>
+                  <span className="title-edit title-edit--locked" tabIndex={0} role="img" aria-label="Период закрыт">🔒</span>
+                </LockedAction>}
             </div>
             {kr.desc && <CollapsibleMarkdown text={kr.desc} className="kr-desc" />}
             {kr.zeroing && (
@@ -1600,27 +1620,18 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
           </div>
           <div className="kr-row__actions" data-no-drag>
             {/* Распорка держит колонку действий одной ширины во всех режимах:
-                в «закрыт» кнопки нет, но строка не должна съезжать. */}
+                давность показывается не в каждом, но строка не должна съезжать. */}
             <span className="kr-row__spacer" />
-            <div className="kr-update-stack">
-              {editMode === 'progress_only' && (
-                <button type="button" className="kr-row-btn kr-row-btn--accent" onClick={() => setModal('progress')}>
-                  <span>↻</span>Обновить
-                </button>
-              )}
-              {canEditText && (
-                <button type="button" className="kr-row-btn" onClick={openEdit}>
-                  <span>✎</span>Редактировать
-                </button>
-              )}
-              {!canEditText && (
-                <span className={`kr-updated kr-updated--${staleLevel}`}
-                  title={pAgo == null ? 'Прогресс ещё не обновляли' : 'Последнее обновление прогресса'}>
-                  {pAgo == null ? 'без обновлений' : pAgo === 0 ? 'обн. сегодня' : `обн. ${pAgo}д назад`}
-                </span>
-              )}
-            </div>
+            {/* Основное действие уехало на заголовок строки; здесь осталась только
+                давность обновления прогресса — она не действие, но место у неё то же. */}
+            {!canEditText && (
+              <span className={`kr-updated kr-updated--${staleLevel}`}
+                title={pAgo == null ? 'Прогресс ещё не обновляли' : 'Последнее обновление прогресса'}>
+                {pAgo == null ? 'без обновлений' : pAgo === 0 ? 'обн. сегодня' : `обн. ${pAgo}д назад`}
+              </span>
+            )}
             <RowMenu items={[
+              { icon: '↻', label: 'Обновить прогресс', onClick: () => setModal('progress'), reason: progressLockReason(editMode) },
               { icon: '✎', label: 'Редактировать', onClick: openEdit, reason: editLockReason(editMode, 'KR') },
               { icon: '🔗', label: 'Копировать ссылку', confirmLabel: 'Скопировано',
                 onClick: () => copyGoalURL(teamId, periodId, goalId, kr.id) },
