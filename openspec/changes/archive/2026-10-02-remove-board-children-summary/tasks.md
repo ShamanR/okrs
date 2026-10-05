@@ -88,12 +88,15 @@
   `./design-system/build.sh && ./design-system/prototype/build.sh`. Проверка: в `dist/` нет
   `components/child-cluster-cards.html` (32 карточки вместо 33), скрипт прототипа проходит
   `vm.Script`, ни одного вхождения удалённых классов в `design-system/src` и `design-system/dist`.
-- [ ] 6.2 Залить обновлённые карточки и прототип в проект Claude Design
-  (`12e552f0-1aaf-4d84-9013-9cef887d4dd2`). **Только вручную:** `/design-sync` зарезервирован за
-  явным вызовом пользователя и не может быть запущен агентом, обходить его через DesignSync нельзя.
-  Залить нужно пять изменённых карточек (`progress`, `foundations-surfaces`,
-  `foundations-typography`, `empty-states`, `prototype`) и удалить `child-cluster-cards`. Проверка:
-  в проекте нет карточки «Карточки команд», остальные карточки на месте.
+- [x] 6.2 Залить обновлённые карточки и прототип в проект Claude Design «OKRs — дизайн-система»
+  (`12e552f0-1aaf-4d84-9013-9cef887d4dd2`). Выполнено через `/design-sync` (скилл запускает
+  пользователь). Залито 25 карточек и прототип, удалена `child-cluster-cards.html`. Набор шире
+  четырёх правленных карточек, потому что карточки инлайнят реальный `web/static/*.css`: правка
+  `tracker.css` изменила все 25 карточек, у которых он есть в `@dsCss`. Попутно закрыт дрейф —
+  `board-filters.html` отсутствовал в проекте с прошлого change. Проверка: `list_files` после
+  заливки — 32 карточки, ровно как в `design-system/dist/components/`; карточки «Карточки команд»
+  нет; файлы приложения (`_ds_bundle.js`, `_ds_manifest.json`, `_adherence.oxlintrc.json`,
+  `uploads/`) не тронуты. Находки записаны в `.design-sync/NOTES.md`.
 
 ## 7. Документация
 
@@ -128,7 +131,7 @@
   доска узла с потомками без своих целей, доска листового узла, дерево навигации с прогрессом по
   дочерним командам, степпер статусов, фильтры доски. Ошибок в консоли браузера нет. Окружение
   проверки удалено.
-- [ ] 8.3 Сверить реализацию с delta-спеком: `openspec validate remove-board-children-summary`.
+- [x] 8.3 Сверить реализацию с delta-спеком: `openspec validate remove-board-children-summary`.
   При archive удалить пять requirements сводки из `openspec/specs/team-okr-board/spec.md`,
   добавить «Доска показывает только собственные цели узла» и убрать упоминание сводки по дочерним
   командам из Purpose. Проверка: после archive `openspec/specs/team-okr-board/spec.md` не содержит

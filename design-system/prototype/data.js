@@ -161,7 +161,7 @@ const BOARDS = {
       {
         id: 103, priority: 'P2', weight: 20, type: 'discovery', focus: 'TECH_INDEPENDENCE',
         title: 'Единый онбординг сервисов', desc: 'Общая цель с мобильной разработкой и аналитикой. Новый сервис подключается к платформе **за один день** по общему шаблону.\n\nИз коробки:\n1. CI/CD и `deploy.yaml`\n2. логирование и метрики\n3. алёрты и дашборд\n\n> Сейчас на это уходит 1–2 недели, и у каждой команды свой набор инструментов.', updatedDaysAgo: 5,
-        owners: [{ name: 'Сергей Иванов', initials: 'СИ' }, { name: 'Мария Ковалёва', initials: 'МК' }], periodId: 1, parentIds: [], childIds: [101, 102, 301],
+        owners: [{ name: 'Сергей Иванов', initials: 'СИ' }, { name: 'Мария Ковалёва', initials: 'МК' }, { name: 'Дмитрий Смирнов', initials: 'ДС' }], periodId: 1, parentIds: [], childIds: [101, 102, 301],
         children: [
           { id: 101, title: 'Отказ от Маркетинговой Админки', periodName: 'Q3Y26', teamName: 'Платформенная команда' },
           { id: 102, title: 'Отказ от старого кабинета Медиа', periodName: 'Q3Y26', teamName: 'Платформенная команда' },

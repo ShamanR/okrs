@@ -662,6 +662,20 @@ function commentsPanel(goal) {
   </div></div>`;
 }
 
+// Название команды-участника — переход на её доску, как в GoalCard. Текущая команда
+// переходом не становится: её доска уже открыта. В приложении это <a href>, собранный
+// buildTargetURL; у прототипа адресов нет, поэтому переход идёт через data-team — тот
+// же обработчик, что у дерева команд.
+function shareTeamChip(name, isOwner) {
+  const cls = `gc-share-strip__team${isOwner ? ' gc-share-strip__team--owner' : ''}`;
+  const tip = isOwner ? ' title="Команда-владелец цели"' : '';
+  const body = `${esc(name)}${isOwner ? '<span class="gc-share-strip__role">владелец</span>' : ''}`;
+  const team = flatTeams().find(t => t.name === name);
+  return team && team.id !== state.teamId
+    ? `<a class="${cls}"${tip} data-team="${team.id}">${body}</a>`
+    : `<span class="${cls}"${tip}>${body}</span>`;
+}
+
 // ── Карточка цели ────────────────────────────────────────────────────────────
 // Порядок как в GoalCard: body → footer (переключатели KR и комментариев) →
 // секция KR → секция комментариев. Тулбар стоит НАД списком KR, а не под ним.
@@ -715,8 +729,8 @@ function goalCard(goal, teamId) {
 
     ${shared ? `<div class="gc-share-strip" aria-label="Общая цель">
       <span class="gc-share-strip__label">⇄ Общая цель</span>
-      <span class="gc-share-strip__team gc-share-strip__team--owner" title="Команда-владелец цели">${esc(shared.ownerTeam)}<span class="gc-share-strip__role">владелец</span></span>
-      ${shared.teams.map(t => `<span class="gc-share-strip__team">${esc(t)}</span>`).join('')}
+      ${shareTeamChip(shared.ownerTeam, true)}
+      ${shared.teams.map(t => shareTeamChip(t, false)).join('')}
     </div>` : ''}
     <div class="kr-section">
       ${krWeightOff ? `<div class="kr-weight-warn">
@@ -2637,6 +2651,35 @@ function renderOverlays() {
   el.innerHTML = goalModal(m) + (m.pickerOpen ? goalParentPicker(m) : '');
 }
 
+// Имена драйверов уступают место заголовку цели: показываем их, пока из-за них не обрезается
+// заголовок. То же правило, что у useOwnersFit в tracker.js, но здесь состояния нет, поэтому
+// оно выражено одним проходом: снять модификатор со всех шапок, измерить, вернуть там, где
+// заголовок обрезан. Императивный проход цикла не образует, и отметка «не влезло» ему не нужна.
+function fitGoalCardOwners() {
+  document.querySelectorAll('.gc2__head').forEach(head => {
+    const owner = head.querySelector('.gc2__owner');
+    const title = head.querySelector('.goal-card__title');
+    if (!owner || !title) return;
+    owner.classList.remove('gc2__owner--compact');
+    if (title.scrollWidth - title.clientWidth > 1) owner.classList.add('gc2__owner--compact');
+  });
+}
+
+// Подсказка с полным текстом только у обрезанного заголовка — то же правило, что у useClipped
+// в tracker.js: у влезающего она дублировала бы видимый текст и отняла бы подсказку действия
+// у строки-предка. В приложении это React-хук с ResizeObserver, здесь достаточно прохода
+// после отрисовки и по изменению размера окна.
+function markClippedTitles() {
+  document.querySelectorAll('.goal-card__title, .kr-name').forEach(el => {
+    if (el.scrollWidth - el.clientWidth > 1) el.setAttribute('title', el.textContent);
+    else el.removeAttribute('title');
+  });
+}
+
+// Порядок важен: форма драйверов меняет ширину заголовка, поэтому подсказки считаем после неё.
+function refitBoard() { fitGoalCardOwners(); markClippedTitles(); }
+window.addEventListener('resize', refitBoard);
+
 // ── Рендер целиком ───────────────────────────────────────────────────────────
 function render() {
   document.getElementById('app').className = 'app' + (state.navOpen ? ' app--nav-open' : '');
@@ -2649,12 +2692,14 @@ function render() {
     : state.section === 'activity' ? renderActivity() : renderTracker();
   if (state.section === 'tree') fitGoalTree();
   renderOverlays();
+  refitBoard();
 }
 const redrawContent = () => {
   document.getElementById('content').innerHTML =
     state.section === 'overview' ? renderOverview()
       : state.section === 'tree' ? renderGoalTree()
       : state.section === 'activity' ? renderActivity() : renderTracker();
+  refitBoard();
 };
 
 // ── События ──────────────────────────────────────────────────────────────────

@@ -1456,6 +1456,80 @@ function KRNote({ note, open, onToggle }) {
   );
 }
 
+// Обрезан ли текст в отведённой ему ширине. Обрезку нельзя угадать, её нужно измерить: один
+// и тот же заголовок обрезается или нет в зависимости от числа лейблов, драйверов, связей и
+// ширины окна. Механизм тот же, что у CollapsibleMarkdown в markdown.js — измерение в
+// layout-фазе плюс ResizeObserver, который покрывает и изменение размера окна, и сворачивание
+// боковой панели, и догрузку шрифтов. useLayoutEffect берём через React: деструктуризация в
+// начале файла — глобальные const, делимые со всеми скриптами страницы, и лишнее имя там
+// заводить незачем.
+//
+// На этом признаке держатся две вещи, поэтому заголовок измеряется один раз: подсказка с
+// полным текстом (нужна только обрезанному — у влезающего она дублировала бы видимый текст и
+// отняла бы подсказку действия у строки-предка, которая несёт title «Редактировать цель»;
+// title внутреннего элемента вытесняет title предка на время наведения именно на текст) и
+// выбор формы драйверов в useOwnersFit.
+function useClipped(text) {
+  const ref = useRef(null);
+  const [clipped, setClipped] = useState(false);
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    // 1px запаса гасит субпиксельное округление ширины.
+    const measure = () => setClipped(el.scrollWidth - el.clientWidth > 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text]);
+  return [ref, clipped];
+}
+
+// Насколько шапка должна стать шире, чтобы снова пробовать имена драйверов. Без этой полосы
+// каждый пиксель протягивания границы окна стоил бы цикла «вернули имена → заголовок обрезан →
+// снова убрали» на каждой карточке доски. Цена полосы — имена возвращаются на несколько
+// пикселей позже, чем могли бы.
+const OWNERS_REFIT_PX = 20;
+
+// Имена драйверов стоят в той же строке, что и заголовок цели, и спор за место решается в
+// пользу заголовка: имена показываем, пока из-за них не обрезается заголовок. Порога по
+// количеству драйверов нет — он ошибался бы в обе стороны: один драйвер при длинном заголовке
+// на узком окне уже вытесняет текст, а три коротких имени при коротком заголовке помещаются
+// свободно.
+//
+// Решение меняет ту самую раскладку, которую измеряет: убрали имена — заголовок перестал
+// обрезаться — «место есть» — вернули имена — заголовок снова обрезан. Этот цикл разрывает
+// память о ширине шапки, на которой имена не влезли: пока шапка не стала заметно шире,
+// пробовать снова незачем, получили бы тот же обрезанный заголовок.
+//
+// Наблюдаем шапку, а не окно: её ширину меняет и размер окна, и сворачивание боковой панели,
+// а наше переключение не меняет — меняется состав её детей, — поэтому наблюдатель не
+// реагирует на собственную правку. Переключение идёт в layout-фазе, до отрисовки, так что
+// промежуточное состояние «имена показаны и заголовок обрезан» на экран не попадает.
+function useOwnersFit(titleClipped, resetKey) {
+  const headRef = useRef(null);
+  const [compact, setCompact] = useState(false);
+  const brokeAt = useRef(Infinity);
+  // Другой заголовок или другой состав драйверов — прежняя отметка не про них.
+  React.useLayoutEffect(() => { brokeAt.current = Infinity; setCompact(false); }, [resetKey]);
+  React.useLayoutEffect(() => {
+    const el = headRef.current;
+    if (!el) return undefined;
+    const decide = () => {
+      const w = el.clientWidth;
+      if (!compact && titleClipped) { brokeAt.current = w; setCompact(true); }
+      else if (compact && w > brokeAt.current + OWNERS_REFIT_PX) setCompact(false);
+    };
+    decide();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(decide);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [compact, titleClipped]);
+  return [headRef, compact];
+}
+
 function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDays = 7, periodStatus, forecast = null, teamId = null, periodId = null, greenThreshold = 80, notesOpen = false }) {
   // Closed period is shown as fully done — purely visual (stored health_status is untouched),
   // so reopening the period restores each KR's original status.
@@ -1471,6 +1545,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
   const showNote = noteVisOverride === null ? notesOpen : noteVisOverride;
   useEffect(() => { setNoteVisOverride(null); setNoteExpanded(true); }, [notesOpen]);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [nameRef, nameClipped] = useClipped(kr.name);
   const progress = kr.progress;
   // Цвет давности задаётся классом: fresh → warn → stale по тому же порогу.
   // Цвет давности считаем по прогрессу, а не по kr.updated_at. Если прогресс ещё
@@ -1502,7 +1577,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             <div className={`kr-name-row${canEditText ? ' title-editable' : ''}`}
               {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать KR', onClick: openEdit,
                 onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); } } } : {})}>
-              <div className="kr-name">{kr.name}</div>
+              <div ref={nameRef} title={nameClipped ? kr.name : undefined} className="kr-name">{kr.name}</div>
               {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
             </div>
             {kr.desc && <CollapsibleMarkdown text={kr.desc} className="kr-desc" />}
@@ -2039,6 +2114,26 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   }, [goalDraggable]);
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const [transfer, setTransfer] = useState(false);
+  const [titleRef, titleClipped] = useClipped(goal.title);
+  // Имена драйверов уступают место заголовку: решение измеряется по фактической раскладке,
+  // а не по количеству драйверов.
+  //
+  // Отметка «имена не влезли» верна только для того содержимого шапки, на котором её
+  // получили, поэтому в ключ входит всё, что делит с заголовком место по горизонтали. Одного
+  // количества драйверов мало: пока имена скрыты, замена драйвера на другого с тем же
+  // количеством не меняет ни ширину их блока, ни ширину заголовка, ни ширину шапки — ни один
+  // наблюдатель не сработает, и короткое имя осталось бы скрытым до постороннего изменения
+  // размера окна. По той же причине в ключе лейблы, связи, вес и приоритет.
+  //
+  // Прогресса в ключе нет намеренно: у процента min-width и табличные цифры, его ширина от
+  // значения не зависит, а обновляется он часто — сброс на каждом обновлении был бы впустую.
+  const headFit = [
+    goal.title,
+    goal.owners.map(u => u.display_name || u.udid).join('\u0000'),
+    goal.weight, goal.priority, goal.type, goal.focus,
+    (goal.parents || []).length, (goal.children || []).length,
+  ].join('|');
+  const [headRef, ownersCompact] = useOwnersFit(titleClipped, headFit);
   const prog = goal.progress || 0;
   // "N дней без обновления" is an execution-phase signal: it applies only while
   // the team is in_progress ("в работе"). Drafts, goals awaiting validation and
@@ -2105,7 +2200,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
           драйвер · полоса прогресса · процент · меню. Заголовок и есть элемент
           редактирования, ✎ рядом — только признак того, что по нему можно нажать. */}
       <div className="goal-card__body gc2">
-        <div className="gc2__head">
+        <div ref={headRef} className="gc2__head">
           <span className="gc2__weight has-tip" tabIndex={0}
             data-tip-title={`Вес цели · ${goal.weight}%`}
             data-tip="Доля цели в общем прогрессе команды за период. Сумма весов всех целей — 100%.">{goal.weight}%</span>
@@ -2117,7 +2212,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
               {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать цель',
                 onClick: () => onEditGoal(goal),
                 onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditGoal(goal); } } } : {})}>
-              <div className="goal-card__title goal-card__title--readonly">{goal.title}</div>
+              <div ref={titleRef} title={titleClipped ? goal.title : undefined} className="goal-card__title goal-card__title--readonly">{goal.title}</div>
               {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
             </div>
             <GoalLinksPopover dir="up" items={goal.parents} />
@@ -2128,7 +2223,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
             {goal.focus && <Badge label={focusLabel(goal.focus)} color={FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT} />}
           </div>
           {goal.owners.length > 0 && (
-            <div className="goal-card__owner gc2__owner" title="Драйвер цели">
+            // Когда имена не вмещаются без обрезания заголовка, остаются только аватары.
+            // Список при этом полный: имя отдаёт карточка пользователя по наведению.
+            <div className={`goal-card__owner gc2__owner${ownersCompact ? ' gc2__owner--compact' : ''}`}
+              title="Драйвер цели">
               {goal.owners.map(u => <UserInfo key={u.udid || u.display_name} userRef={u} size={18} />)}
             </div>
           )}
@@ -2156,15 +2254,29 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
       {otherTeams.length > 0 && (
         <div className="gc-share-strip" aria-label="Общая цель">
           <span className="gc-share-strip__label">⇄ Общая цель</span>
-          {[...(goal.shareTeams || []).filter(t => t.id === currentTeamId).map(t => ({ ...t, isSelf: true })), ...otherTeams].map(t => {
+          {/* Текущая команда идёт первой. Отдельной пометки у неё нет: её отличает место в
+              списке и то, что её название не является переходом. */}
+          {[...(goal.shareTeams || []).filter(t => t.id === currentTeamId), ...otherTeams].map(t => {
             const isOwner = t.id === goal.teamId;
-            return (
-              <span key={t.id} className={`gc-share-strip__team${isOwner ? ' gc-share-strip__team--owner' : ''}`}
-                title={isOwner ? 'Команда-владелец цели' : undefined}>
+            const cls = `gc-share-strip__team${isOwner ? ' gc-share-strip__team--owner' : ''}`;
+            const tip = isOwner ? 'Команда-владелец цели' : undefined;
+            const body = (
+              <>
                 {t.name}
                 {isOwner && <span className="gc-share-strip__role">владелец</span>}
-              </span>
+              </>
             );
+            // Переход на доску этой команды в периоде цели: общая цель живёт в одном
+            // периоде, и все команды-участники видят её в нём же. Ссылка, а не кнопка с
+            // location.assign, как в GoalLinksPopover: элемент статичен, и <a> бесплатно
+            // даёт средний щелчок и контекстное меню браузера. Текущая команда переходом
+            // не становится — её доска уже открыта. Доступность команды здесь не
+            // проверяется: состав участников по спецификации полон, а поведение доски для
+            // ссылки на недоступную команду уже определено.
+            const href = t.id === currentTeamId ? null : buildTargetURL({ team_id: t.id, period_id: periodId });
+            return href
+              ? <a key={t.id} className={cls} title={tip} href={href}>{body}</a>
+              : <span key={t.id} className={cls} title={tip}>{body}</span>;
           })}
         </div>
       )}
