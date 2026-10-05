@@ -211,10 +211,11 @@ func ParseNumericalMeta(r *http.Request) (keyresultsvc.MetaInput, error) {
 	if err != nil {
 		return keyresultsvc.MetaInput{}, err
 	}
+	// The current value is NOT read here: it is progress, and progress is set by a
+	// check-in only. Creating or saving a KR definition leaves it alone.
 	return keyresultsvc.MetaInput{
 		NumericalStart:       ParseFloatField(r.FormValue("numerical_start")),
 		NumericalTarget:      ParseFloatField(r.FormValue("numerical_target")),
-		NumericalCurrent:     ParseFloatField(r.FormValue("numerical_current")),
 		NumericalUnit:        unit,
 		NumericalCheckpoints: checkpoints,
 	}, nil

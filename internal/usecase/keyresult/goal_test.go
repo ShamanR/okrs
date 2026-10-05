@@ -53,7 +53,7 @@ func TestCreateKeyResultWithMetaAppliesNumericalMeta(t *testing.T) {
 
 	_, err := svc.CreateWithMeta(context.Background(), domain.TenantScope{TenantID: 1},
 		krs.KeyResultInput{Kind: domain.KRKindNumerical},
-		keyresultsvc.MetaInput{NumericalStart: 0, NumericalTarget: 100, NumericalCurrent: 30, NumericalUnit: "%"},
+		keyresultsvc.MetaInput{NumericalStart: 0, NumericalTarget: 100, NumericalUnit: "%"},
 		1,
 	)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestCreateKeyResultWithMetaAppliesNumericalMeta(t *testing.T) {
 		t.Fatalf("expected UpsertNumericalMeta called once, got %d", len(st.UpsertNumericalCalls))
 	}
 	meta := st.UpsertNumericalCalls[0]
-	if meta.StartValue != 0 || meta.TargetValue != 100 || meta.CurrentValue != 30 || meta.Unit != "%" {
+	if meta.StartValue != 0 || meta.TargetValue != 100 || meta.Unit != "%" {
 		t.Fatalf("unexpected numerical meta values: %+v", meta)
 	}
 }

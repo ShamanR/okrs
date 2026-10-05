@@ -186,20 +186,11 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, scope domai
 		}
 		kr.ZeroingCriteria = derefString(zeroing)
 		if kr.Kind == domain.KRKindNumerical {
-			num, err := krs.ParseCheckpoints(checkpointsRaw)
+			num, err := krs.NumericalFromColumns(startValue, targetValue, currentValue, unit, checkpointsRaw)
 			if err != nil {
 				return nil, err
 			}
-			kr.Numerical = &domain.KRNumerical{Unit: derefString(unit), Checkpoints: num}
-			if startValue != nil {
-				kr.Numerical.StartValue = *startValue
-			}
-			if targetValue != nil {
-				kr.Numerical.TargetValue = *targetValue
-			}
-			if currentValue != nil {
-				kr.Numerical.CurrentValue = *currentValue
-			}
+			kr.Numerical = num
 		}
 		goals, ok := goalsByID[kr.GoalID]
 		if !ok {
@@ -452,20 +443,11 @@ func (r *GoalRepository) loadKRsForGoals(ctx context.Context, scope domain.Tenan
 		}
 		kr.ZeroingCriteria = derefString(zeroing)
 		if kr.Kind == domain.KRKindNumerical {
-			cps, err := krs.ParseCheckpoints(checkpointsRaw)
+			num, err := krs.NumericalFromColumns(startValue, targetValue, currentValue, unit, checkpointsRaw)
 			if err != nil {
 				return err
 			}
-			kr.Numerical = &domain.KRNumerical{Unit: derefString(unit), Checkpoints: cps}
-			if startValue != nil {
-				kr.Numerical.StartValue = *startValue
-			}
-			if targetValue != nil {
-				kr.Numerical.TargetValue = *targetValue
-			}
-			if currentValue != nil {
-				kr.Numerical.CurrentValue = *currentValue
-			}
+			kr.Numerical = num
 		}
 		g, ok := goalByID[kr.GoalID]
 		if !ok {

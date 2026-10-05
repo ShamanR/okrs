@@ -179,7 +179,9 @@ const BOARDS = {
         title: 'Разобрать технический долг по логам', desc: 'Цель вынесена из расчёта прогресса: берём её, если останется время после P0–P2.', updatedDaysAgo: 21,
         owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [], childIds: [],
         krs: [
-          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 1, healthStatus: 'not_started', updatedDaysAgo: 21, note: true },
+          // Прогресс ни разу не обновляли: current равен start, progressDaysAgo === null.
+          // На этом KR проверяется строка подсказки «прогресс ещё не обновляли».
+          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 0, healthStatus: 'not_started', updatedDaysAgo: 21, progressDaysAgo: null, note: true },
         ],
         comments: [],
       },
@@ -206,7 +208,8 @@ const BOARDS = {
         owners: [], periodId: 3, parentIds: [401, 102], childIds: [], shareTeams: null,
         krs: [
           { id: 2021, weight: 100, name: 'Офлайн-режим в проде', desc: '', krType: 'PROJECT', healthStatus: 'at_risk', updatedDaysAgo: 15,
-            stages: [{ title: 'Хранилище', weight: 30, done: true }, { title: 'Синхронизация', weight: 40, done: false }, { title: 'Раскатка 100%', weight: 30, done: false }] },
+            // Двенадцать шагов: на них проверяется предел перечисления в подсказке (8 + счётчик).
+            stages: [{ title: 'Хранилище', weight: 20, done: true }, { title: 'Схема данных', weight: 10, done: true }, { title: 'Очередь изменений', weight: 10, done: false }, { title: 'Синхронизация', weight: 10, done: false }, { title: 'Разрешение конфликтов', weight: 10, done: false }, { title: 'Фоновая догрузка', weight: 5, done: false }, { title: 'Индикатор офлайна', weight: 5, done: false }, { title: 'Экраны без сети', weight: 5, done: false }, { title: 'Телеметрия', weight: 5, done: false }, { title: 'Бета на 5%', weight: 5, done: false }, { title: 'Раскатка 50%', weight: 5, done: false }, { title: 'Раскатка 100%', weight: 10, done: false }] },
         ],
         comments: [],
       },

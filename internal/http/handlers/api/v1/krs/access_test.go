@@ -85,7 +85,7 @@ func buildKRAccessFixture(t *testing.T, pool *pgxpool.Pool, repo *store.Store) (
 		t.Fatalf("create kr: %v", err)
 	}
 	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{
-		KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%",
+		KeyResultID: krID, StartValue: 0, TargetValue: 100, Unit: "%",
 	}); err != nil {
 		t.Fatalf("upsert numerical meta: %v", err)
 	}

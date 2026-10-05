@@ -534,21 +534,75 @@ function krNote(kr) {
   </div>`;
 }
 
-// Колонка «цель» у KR: откуда и куда движемся. Для 0→100% ничего не пишем — хватает полоски.
-function krTargetText(kr) {
-  const lbl = '';
-  if (kr.krType === 'BOOLEAN') return `${lbl}<span class="kr-target__val">false → true</span>`;
+// Предел перечисления в подсказке: .has-tip не прокручивается и шире 260px не становится.
+const TIP_LIST_LIMIT = 8;
+
+function tipList(items) {
+  if (items.length <= TIP_LIST_LIMIT) return items;
+  return [...items.slice(0, TIP_LIST_LIMIT), `…и ещё ${items.length - TIP_LIST_LIMIT}`];
+}
+
+// Детали измерения KR для подсказки. Тело уезжает в data-атрибут и рисуется через
+// content: attr(), поэтому строки разделяются переводами строк, а отметки шагов текстовые.
+function krMeasureTip(kr) {
+  if (kr.krType === 'BOOLEAN') {
+    return {
+      title: 'Достижение · да или нет',
+      body: [`Сейчас: ${kr.done ? 'выполнено' : 'не выполнено'}`, 'Цель: выполнено'].join('\n'),
+    };
+  }
   if (kr.krType === 'PROJECT') {
     const st = kr.stages || [];
-    return `${lbl}<span class="kr-target__val">${st.filter(s => s.done).length} → ${st.length} шагов</span>`;
+    const lines = tipList(st.map(s => `${s.done ? '✓' : '·'} ${s.title || 'без названия'} · ${s.weight}%`));
+    return {
+      title: `Шаги проекта · ${st.filter(s => s.done).length} из ${st.length}`,
+      body: lines.length ? lines.join('\n') : 'Шагов пока нет',
+    };
+  }
+  const start = Number(kr.start) || 0, target = Number(kr.target) || 0, cur = Number(kr.current) || 0;
+  const up = target >= start;
+  const lines = [
+    `Было: ${fmtVal(start, kr.unit)}`,
+    // До первого чек-ина текущее значение равно стартовому — это сказано прямо, иначе
+    // «было 100 · стало 100» читается как потерянная правка.
+    kr.progressDaysAgo === null
+      ? `Стало: ${fmtVal(cur, kr.unit)} — прогресс ещё не обновляли`
+      : `Стало: ${fmtVal(cur, kr.unit)}`,
+    `Цель: ${fmtVal(target, kr.unit)}`,
+  ];
+  const cps = kr.checkpoints || [];
+  if (cps.length) {
+    const ordered = [...cps].sort((a, b) => (up ? a.value - b.value : b.value - a.value));
+    lines.push('', 'Промежуточные значения:');
+    lines.push(...tipList(ordered.map(c => `${fmtVal(c.value, kr.unit)} → ${c.progress_percent}% прогресса`)));
+    lines.push('Прогресс зависит от значения нелинейно.');
+  }
+  return { title: `Метрика · ${up ? 'повысить' : 'снизить'}`, body: lines.join('\n') };
+}
+
+// tipAttr — тело подсказки в атрибут: переводы строк нужны сущностью, иначе разметка
+// карточки развалится на несколько строк в неожиданных местах.
+const tipAttr = s => esc(s).replace(/\n/g, '&#10;');
+
+// Свёрнутая подпись измерения KR: откуда и куда движемся.
+function krTargetLabel(kr) {
+  if (kr.krType === 'BOOLEAN') return `<span class="kr-target__val">false → true</span>`;
+  if (kr.krType === 'PROJECT') {
+    const st = kr.stages || [];
+    return `<span class="kr-target__val">${st.filter(s => s.done).length} → ${st.length} шагов</span>`;
   }
   const start = Number(kr.start) || 0, target = Number(kr.target) || 0, unit = kr.unit || '';
   const up = target >= start;
-  if (false) {
-    return `<span class="kr-target__val"><span class="kr-target__dir kr-target__dir--up">↑</span>${fmtNum(Number(kr.current) || 0)} → ${fmtNum(target)} %</span>`;
-  }
   const cur = Number(kr.current) || 0;
   return `<span class="kr-target__val"><span class="kr-target__dir kr-target__dir--${up ? 'up' : 'down'}">${up ? '↑' : '↓'}</span>${fmtNum(cur)} → ${fmtNum(target)}${unit ? ' ' + esc(unit) : ''}</span>`;
+}
+
+// Колонка «цель» у KR: свёрнутая подпись плюс детали измерения по наведению и по фокусу.
+// .has-tip висит на обёртке, а не на .kr-target__val: у значения overflow:hidden ради
+// многоточия, и подсказка внутри него обрезалась бы.
+function krTargetText(kr) {
+  const tip = krMeasureTip(kr);
+  return `<span class="kr-target has-tip" tabindex="0" data-tip-title="${tipAttr(tip.title)}" data-tip="${tipAttr(tip.body)}">${krTargetLabel(kr)}</span>`;
 }
 
 function krDetail(kr) {

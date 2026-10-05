@@ -17,11 +17,12 @@ type Service struct {
 
 func New(repo Repo) *Service { return &Service{repo: repo} }
 
-// MetaInput carries the per-kind metadata a KR create/update applies.
+// MetaInput carries the per-kind metadata a KR create/update applies. It describes the
+// DEFINITION of the measure; a numerical KR's current value is progress and has no field
+// here — only a check-in writes it.
 type MetaInput struct {
 	NumericalStart       float64
 	NumericalTarget      float64
-	NumericalCurrent     float64
 	NumericalUnit        string
 	NumericalCheckpoints []domain.KRNumericalCheckpoint
 	BooleanDone          bool
@@ -78,12 +79,11 @@ func (s *Service) ApplyMeta(ctx context.Context, scope domain.TenantScope, krID 
 	switch kind {
 	case domain.KRKindNumerical:
 		return s.repo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{
-			KeyResultID:  krID,
-			StartValue:   meta.NumericalStart,
-			TargetValue:  meta.NumericalTarget,
-			CurrentValue: meta.NumericalCurrent,
-			Unit:         meta.NumericalUnit,
-			Checkpoints:  meta.NumericalCheckpoints,
+			KeyResultID: krID,
+			StartValue:  meta.NumericalStart,
+			TargetValue: meta.NumericalTarget,
+			Unit:        meta.NumericalUnit,
+			Checkpoints: meta.NumericalCheckpoints,
 		})
 	case domain.KRKindBoolean:
 		return s.repo.UpsertBooleanMeta(ctx, scope, krID, meta.BooleanDone)

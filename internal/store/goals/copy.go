@@ -94,12 +94,13 @@ func (r *GoalRepository) CopyGoal(ctx context.Context, scope domain.TenantScope,
 
 		switch domain.KRKind(k.kind) {
 		case domain.KRKindNumerical:
-			current := 0.0
-			if k.start != nil {
-				current = *k.start // reset → start
-			}
-			if in.WithProgress && k.current != nil {
-				current = *k.current
+			// Reset → NULL, not → start: the copy has to be indistinguishable from a
+			// freshly created KR, including that editing its start value still moves the
+			// reported current value (see krs.NumericalFromColumns). Carrying progress
+			// copies the value as it is, NULL included.
+			var current *float64
+			if in.WithProgress {
+				current = k.current
 			}
 			if _, err := tx.Exec(ctx, `
 				UPDATE key_results SET start_value=$1, target_value=$2, current_value=$3, unit=$4, checkpoints=$5

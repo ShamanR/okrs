@@ -1208,9 +1208,9 @@ function KREditModal({ kr, goalId, onSave, onClose, accent }) {
         fd.append('numerical_unit', form.unit || '%');
         fd.append('numerical_start', String(Number(form.start) || 0));
         fd.append('numerical_target', String(Number(form.target) || 0));
-        // Редактор не трогает прогресс: у нового KR текущее значение равно стартовому,
-        // дальше оно меняется только через окно обновления прогресса.
-        fd.append('numerical_current', String(Number(isNew ? form.start : form.current) || 0));
+        // Текущее значение не отправляется вовсе: это прогресс, его меняет только окно
+        // обновления прогресса. У нового KR оно пустое, и до первого чек-ина бекенд
+        // отдаёт его равным стартовому — поэтому правка старта сразу видна в строке.
         (form.checkpoints || []).forEach(c => {
           if (c.value === '' || c.value === null || c.value === undefined) return;
           fd.append('checkpoint_value[]', String(Number(c.value) || 0));
@@ -1411,8 +1411,60 @@ function ConfirmModal({ title, message, confirmLabel, onConfirm, onClose }) {
 }
 
 // ── KR ROW ────────────────────────────────────────────────────────────────────
-// Целевое значение KR: направление ↑/↓ выводится из того, растёт метрика или падает.
-function KRTarget({ kr }) {
+// Предел перечисления в подсказке. Подсказка .has-tip не прокручивается и шире 260px
+// не становится: двадцать шагов превратились бы в полосу во весь экран.
+const TIP_LIST_LIMIT = 8;
+
+// tipList оставляет не больше TIP_LIST_LIMIT строк, остаток сворачивает в счётчик.
+function tipList(items) {
+  if (items.length <= TIP_LIST_LIMIT) return items;
+  return [...items.slice(0, TIP_LIST_LIMIT), `…и ещё ${items.length - TIP_LIST_LIMIT}`];
+}
+
+// Детали измерения KR для подсказки: заголовок и тело. Тело уезжает в data-атрибут и
+// рисуется через content: attr(), поэтому строки разделяются переводами строк —
+// разметки внутри подсказки быть не может, и отметки шагов тоже текстовые.
+function krMeasureTip(kr) {
+  if (kr.krType === 'BOOLEAN') {
+    return {
+      title: 'Достижение · да или нет',
+      body: [`Сейчас: ${kr.done ? 'выполнено' : 'не выполнено'}`, 'Цель: выполнено'].join('\n'),
+    };
+  }
+  if (kr.krType === 'PROJECT') {
+    const st = kr.stages || [];
+    const lines = tipList(st.map(s => `${s.done ? '✓' : '·'} ${s.name || 'без названия'} · ${s.weight}%`));
+    return {
+      title: `Шаги проекта · ${st.filter(s => s.done).length} из ${st.length}`,
+      body: lines.length ? lines.join('\n') : 'Шагов пока нет',
+    };
+  }
+  const start = Number(kr.start) || 0;
+  const target = Number(kr.target) || 0;
+  const cur = Number(kr.current) || 0;
+  const up = target >= start;
+  const lines = [
+    `Было: ${fmtVal(start, kr.unit)}`,
+    // До первого чек-ина текущее значение равно стартовому — это сказано прямо, иначе
+    // «было 100 · стало 100» читается как потерянная правка.
+    kr.progressDaysAgo === null
+      ? `Стало: ${fmtVal(cur, kr.unit)} — прогресс ещё не обновляли`
+      : `Стало: ${fmtVal(cur, kr.unit)}`,
+    `Цель: ${fmtVal(target, kr.unit)}`,
+  ];
+  const cps = kr.checkpoints || [];
+  if (cps.length) {
+    // По направлению метрики: подсказка читается как путь от старта к цели.
+    const ordered = [...cps].sort((a, b) => (up ? a.value - b.value : b.value - a.value));
+    lines.push('', 'Промежуточные значения:');
+    lines.push(...tipList(ordered.map(c => `${fmtVal(c.value, kr.unit)} → ${c.progress_percent}% прогресса`)));
+    lines.push('Прогресс зависит от значения нелинейно.');
+  }
+  return { title: `Метрика · ${up ? 'повысить' : 'снизить'}`, body: lines.join('\n') };
+}
+
+// Свёрнутая подпись измерения: направление ↑/↓ выводится из того, растёт метрика или падает.
+function KRTargetLabel({ kr }) {
   if (kr.krType === 'BOOLEAN') return <span className="kr-target__val">false → true</span>;
   if (kr.krType === 'PROJECT') {
     const st = kr.stages || [];
@@ -1426,6 +1478,18 @@ function KRTarget({ kr }) {
     <span className="kr-target__val">
       <span className={`kr-target__dir kr-target__dir--${up ? 'up' : 'down'}`}>{up ? '↑' : '↓'}</span>
       {fmtNum(cur)} → {fmtNum(target)}{kr.unit ? ` ${kr.unit}` : ''}
+    </span>
+  );
+}
+
+// Целевое значение KR: свёрнутая подпись плюс детали измерения по наведению и по фокусу.
+// .has-tip висит на обёртке, а не на .kr-target__val: у значения overflow:hidden ради
+// многоточия, и абсолютно позиционированная подсказка внутри него обрезалась бы.
+function KRTarget({ kr }) {
+  const tip = krMeasureTip(kr);
+  return (
+    <span className="kr-target has-tip" tabIndex={0} data-tip-title={tip.title} data-tip={tip.body}>
+      <KRTargetLabel kr={kr} />
     </span>
   );
 }

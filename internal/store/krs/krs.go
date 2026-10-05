@@ -50,14 +50,15 @@ type ProjectStageInput struct {
 	IsDone      bool
 }
 
-// NumericalMetaInput is used by UpsertNumericalMeta.
+// NumericalMetaInput is used by UpsertNumericalMeta. It carries the DEFINITION of a
+// numerical measure only. The current value is progress, not definition: it is written
+// by the check-in path (updateNumericalCurrent / ApplyCheckIn) and by nothing else.
 type NumericalMetaInput struct {
-	KeyResultID  int64
-	StartValue   float64
-	TargetValue  float64
-	CurrentValue float64
-	Unit         string
-	Checkpoints  []domain.KRNumericalCheckpoint
+	KeyResultID int64
+	StartValue  float64
+	TargetValue float64
+	Unit        string
+	Checkpoints []domain.KRNumericalCheckpoint
 }
 
 // ParseCheckpoints decodes the key_results.checkpoints JSONB payload.
@@ -72,8 +73,20 @@ func ParseCheckpoints(raw []byte) ([]domain.KRNumericalCheckpoint, error) {
 	return cps, nil
 }
 
-// scanNumerical builds a *domain.KRNumerical from nullable column holders.
-func scanNumerical(start, target, current *float64, unit *string, checkpointsRaw []byte) (*domain.KRNumerical, error) {
+// NumericalFromColumns builds a *domain.KRNumerical from nullable column holders. It is
+// the ONE place where key_results' nullable numerical columns become a domain measure —
+// store/goals reads the same columns in its own batch queries and goes through here too,
+// so the rules below exist once.
+//
+// A NULL current_value means the progress of this KR was never updated, and reads report
+// it as the start value: a KR nobody has checked in on stands at its start, so editing the
+// start before the first check-in moves what is reported. Writing the current value is the
+// check-in's job alone (updateNumericalCurrent / ApplyCheckIn), which is also what stamps
+// progress_updated_at — the signal callers use for "never updated". The domain keeps a
+// plain float64 so that progress, health, export and rendering never see the NULL.
+//
+// Order matters: start is assigned before current, or the fallback reads a zero.
+func NumericalFromColumns(start, target, current *float64, unit *string, checkpointsRaw []byte) (*domain.KRNumerical, error) {
 	num := &domain.KRNumerical{}
 	if start != nil {
 		num.StartValue = *start
@@ -83,6 +96,8 @@ func scanNumerical(start, target, current *float64, unit *string, checkpointsRaw
 	}
 	if current != nil {
 		num.CurrentValue = *current
+	} else {
+		num.CurrentValue = num.StartValue
 	}
 	if unit != nil {
 		num.Unit = *unit
@@ -129,7 +144,7 @@ func (r *KRRepository) ListKeyResultsByGoal(ctx context.Context, scope domain.Te
 			kr.ZeroingCriteria = *zeroing
 		}
 		if kr.Kind == domain.KRKindNumerical {
-			num, err := scanNumerical(startValue, targetValue, currentValue, unit, checkpointsRaw)
+			num, err := NumericalFromColumns(startValue, targetValue, currentValue, unit, checkpointsRaw)
 			if err != nil {
 				return nil, err
 			}
@@ -373,12 +388,16 @@ func (r *KRRepository) UpsertNumericalMeta(ctx context.Context, scope domain.Ten
 		}
 		checkpointsJSON = b
 	}
+	// current_value is deliberately absent: saving the definition of a KR must not touch
+	// its progress. A KR created through here keeps current_value NULL until the first
+	// check-in, which is what lets a later edit of start_value move the reported current
+	// value (see NumericalFromColumns).
 	_, err := r.db.Exec(ctx, `
 		UPDATE key_results
-		SET start_value=$1, target_value=$2, current_value=$3, unit=$4,
-		    checkpoints=$5, updated_at=NOW()
-		WHERE id=$6 AND tenant_id=$7`,
-		input.StartValue, input.TargetValue, input.CurrentValue, input.Unit,
+		SET start_value=$1, target_value=$2, unit=$3,
+		    checkpoints=$4, updated_at=NOW()
+		WHERE id=$5 AND tenant_id=$6`,
+		input.StartValue, input.TargetValue, input.Unit,
 		checkpointsJSON, input.KeyResultID, scope.TenantID,
 	)
 	return err
@@ -440,7 +459,7 @@ func (r *KRRepository) GetKeyResult(ctx context.Context, scope domain.TenantScop
 		kr.ZeroingCriteria = *zeroing
 	}
 	if kr.Kind == domain.KRKindNumerical {
-		num, err := scanNumerical(startValue, targetValue, currentValue, unit, checkpointsRaw)
+		num, err := NumericalFromColumns(startValue, targetValue, currentValue, unit, checkpointsRaw)
 		if err != nil {
 			return domain.KeyResult{}, err
 		}

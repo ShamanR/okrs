@@ -94,7 +94,10 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 		if err != nil {
 			return err
 		}
-		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, CurrentValue: 1200, Unit: "пользователей"})
+		_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: krID2, StartValue: 1000, TargetValue: 1500, Unit: "пользователей"})
+		// Progress is a separate write now, as it is for a real KR: the definition says
+		// 1000 → 1500, the check-in says the KR stands at 1200.
+		_ = krsRepo.UpdateNumericalCurrent(ctx, scope, krID2, 1200)
 		_ = krsRepo.UpdateHealthStatus(ctx, scope, krID2, domain.KRHealthOnTrack)
 		if i == 0 {
 			platformAdoptionID = goalID2
@@ -234,7 +237,8 @@ func seedAnnualParentGoal(ctx context.Context, goalsRepo *goals.GoalRepository, 
 	if err != nil {
 		return 0, err
 	}
-	_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: annualKRID, StartValue: 0, TargetValue: 100, CurrentValue: 35, Unit: "%"})
+	_ = krsRepo.UpsertNumericalMeta(ctx, scope, krs.NumericalMetaInput{KeyResultID: annualKRID, StartValue: 0, TargetValue: 100, Unit: "%"})
+	_ = krsRepo.UpdateNumericalCurrent(ctx, scope, annualKRID, 35)
 
 	return annualGoalID, nil
 }
