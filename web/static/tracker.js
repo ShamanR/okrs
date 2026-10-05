@@ -2116,9 +2116,24 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   const [transfer, setTransfer] = useState(false);
   const [titleRef, titleClipped] = useClipped(goal.title);
   // Имена драйверов уступают место заголовку: решение измеряется по фактической раскладке,
-  // а не по количеству драйверов. Отметка «не влезло» привязана к заголовку и составу
-  // драйверов — меняется что-то из этого, и подбор начинается заново.
-  const [headRef, ownersCompact] = useOwnersFit(titleClipped, `${goal.title}|${goal.owners.length}`);
+  // а не по количеству драйверов.
+  //
+  // Отметка «имена не влезли» верна только для того содержимого шапки, на котором её
+  // получили, поэтому в ключ входит всё, что делит с заголовком место по горизонтали. Одного
+  // количества драйверов мало: пока имена скрыты, замена драйвера на другого с тем же
+  // количеством не меняет ни ширину их блока, ни ширину заголовка, ни ширину шапки — ни один
+  // наблюдатель не сработает, и короткое имя осталось бы скрытым до постороннего изменения
+  // размера окна. По той же причине в ключе лейблы, связи, вес и приоритет.
+  //
+  // Прогресса в ключе нет намеренно: у процента min-width и табличные цифры, его ширина от
+  // значения не зависит, а обновляется он часто — сброс на каждом обновлении был бы впустую.
+  const headFit = [
+    goal.title,
+    goal.owners.map(u => u.display_name || u.udid).join('\u0000'),
+    goal.weight, goal.priority, goal.type, goal.focus,
+    (goal.parents || []).length, (goal.children || []).length,
+  ].join('|');
+  const [headRef, ownersCompact] = useOwnersFit(titleClipped, headFit);
   const prog = goal.progress || 0;
   // "N дней без обновления" is an execution-phase signal: it applies only while
   // the team is in_progress ("в работе"). Drafts, goals awaiting validation and
