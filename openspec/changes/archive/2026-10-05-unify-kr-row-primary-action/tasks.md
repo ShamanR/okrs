@@ -76,7 +76,7 @@
       и доступный, и недоступный вид
 - [x] 5.5 Обновить прототип `design-system/prototype/app.js` под новую строку; проверяемый
       результат — `node --check` на собранном скрипте прототипа проходит
-- [ ] 5.6 Пересобрать `./design-system/build.sh` и `./design-system/prototype/build.sh` и залить
+- [x] 5.6 Пересобрать `./design-system/build.sh` и `./design-system/prototype/build.sh` и залить
       результат в проект Claude Design
 - [x] 5.7 Проверить, что `README.md` и `design-system/README.md` не описывают удалённые кнопки;
       обновить, если описывают

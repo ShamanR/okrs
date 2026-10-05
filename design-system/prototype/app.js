@@ -578,7 +578,7 @@ function krRow(goal, kr, teamId) {
         ${krHealthDot(displayHealth, progress)}
         <div class="kr-weight-chip has-tip" tabindex="0" data-tip-title="Вес KR · ${kr.weight}%" data-tip="Доля KR в прогрессе цели. Сумма весов всех KR цели — 100%.">${kr.weight}%</div>
         <div class="kr-info">
-          <div class="kr-name-row${mode === 'comments_only' ? '' : ' title-editable'}"${
+          <div class="kr-name-row${mode === 'full' || mode === 'progress_only' ? ' title-editable' : ''}"${
             mode === 'full' ? ` role="button" tabindex="0" title="Редактировать KR" data-kr-edit="${goal.id}:${kr.id}"`
             : mode === 'progress_only' ? ` role="button" tabindex="0" title="Обновить прогресс" data-kr-progress="${goal.id}:${kr.id}"`
             : ''}>
