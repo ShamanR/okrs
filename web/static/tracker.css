@@ -603,10 +603,10 @@
 .kr-add-btn { margin-top: 10px; padding: 7px 14px; border: 1px dashed #d1d5db; border-radius: 7px; background: transparent; color: #6b7280; font-size: 13px; cursor: pointer; }
 
 /* ── КОМПАКТНАЯ ПЛОТНОСТЬ ЦЕЛЕЙ ────────────────────────────────────────────── */
-.goal-card { margin-bottom: 8px; border-radius: 10px; }
+.goal-card { margin-bottom: 14px; border-radius: 10px; }
 .goal-card__body { padding: 10px 14px 8px; }
 .goal-card__title-row { margin-bottom: 2px; }
-.goal-card__title { font-size: 15px; line-height: 1.3; }
+.goal-card__title { font-size: 17px; line-height: 1.3; }
 .goal-card__desc { font-size: 13px; line-height: 1.45; margin-bottom: 6px; --md-collapse-max: 2.9em; }
 .goal-card__body > .md-collapsible { margin-bottom: 6px; }
 .goal-card__progress { margin-bottom: 2px; }
@@ -621,9 +621,13 @@
 .kr-weight-warn { margin: 4px 0 6px; padding: 6px 10px; }
 .kr-add-btn { margin-top: 6px; padding: 4px 10px; }
 .kr-row { container-type: inline-size; }
-.kr-row__main { display: grid; grid-template-columns: auto auto minmax(180px,1fr) minmax(96px,160px) minmax(130px,190px) auto; column-gap: 14px; align-items: center; }
+.kr-row__main { display: grid; grid-template-columns: auto auto minmax(180px,1fr) minmax(96px,160px) minmax(112px,136px) auto; column-gap: 14px; align-items: center; }
 .kr-info { align-self: center; }
-.kr-progress-col { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; }
+/* Целевое значение и полоса прогресса — две части одного измерения, и зазор между
+   ними должен быть меньше, чем между смысловыми блоками строки. Отдельной колонке
+   сетки зазор задать нельзя (column-gap действует на все), поэтому колонка прогресса
+   подтягивается влево: 14px - 6px = 8px. Съедается пустой зазор, перекрывать нечего. */
+.kr-progress-col { display: flex; flex-direction: row; align-items: center; gap: 8px; min-width: 0; margin-left: -6px; }
 .kr-progress-col__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .kr-hdot { position: relative; flex-shrink: 0; width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--hc); color: #fff; font-size: 9px; font-weight: 700; line-height: 1; cursor: help; outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--hc) 18%, #fff); }
 .kr-row__main > .kr-hdot { margin-right: -6px; }
@@ -671,10 +675,12 @@
 @container (max-width: 720px) {
   .kr-row__main { grid-template-columns: auto auto minmax(0,1fr) auto; row-gap: 6px; }
   .kr-info { grid-column: 3; }
-  .kr-measure { display: flex; align-items: center; gap: 12px; grid-column: 3; grid-row: 2; min-width: 0; }
+  .kr-measure { display: flex; align-items: center; gap: 8px; grid-column: 3; grid-row: 2; min-width: 0; }
   .kr-target-col { flex: 0 1 auto; }
   .kr-target-col:empty { display: none; }
-  .kr-progress-col { flex: 1 1 140px; max-width: 260px; }
+  /* Здесь измерение — не сетка, а flex-строка, и зазор задан её gap. Подтягивание
+     колонки нужно сбросить, иначе зазор сократится дважды. */
+  .kr-progress-col { flex: 1 1 140px; max-width: 260px; margin-left: 0; }
   .kr-row__actions { grid-column: 4; grid-row: 1; }
   .kr-row-btn { padding: 0 8px; font-size: 12px; gap: 4px; }
   .kr-update-stack { width: 132px; flex-basis: 132px; }
@@ -688,7 +694,10 @@
 .gc2__head { display: flex; align-items: flex-start; gap: 10px; }
 .gc2__title-wrap { flex: 1; min-width: 0; }
 .gc2 .goal-card__title-row { margin: 0; }
-.gc2 .goal-card__title { font-size: 15.5px; line-height: 1.35; text-wrap: pretty; }
+/* 17px при межстрочном 1.3 — это 22px, ровно высота, которую строка шапки уже
+   занимает (.gc2__weight ровно такой высоты). Поэтому заголовок читается крупнее
+   остальных подписей, а шапка не становится выше и не ломается на две строки. */
+.gc2 .goal-card__title { font-size: 17px; line-height: 1.3; text-wrap: pretty; }
 .gc2 .goal-card__progress-pct { font-size: 16px; font-weight: 800; color: var(--health); line-height: 1.2; }
 .gc2__bar { margin-top: 6px; }
 .gc2 .goal-card__desc { margin: 6px 0 0; }
@@ -703,13 +712,26 @@
 .gc2__labels { display: flex; align-items: center; gap: 5px; flex: 0 1 auto; min-width: 0; overflow: hidden; flex-wrap: nowrap; }
 .gc2__labels > * { flex-shrink: 0; white-space: nowrap; }
 .gc2__owner { flex-shrink: 0; }
-.gc2__head .gc2__bar { flex: 0 0 120px; margin: 0; }
+/* Три драйвера с именами — это около 350px в строке, где заголовку по раскладке
+   остаётся 120px. Больше двух — показываем только аватары: имя никуда не теряется,
+   его отдаёт всплывающая карточка пользователя (.uinfo__popup) по наведению. */
+.gc2__owner--compact .uinfo__name { display: none; }
+/* Полоса — индикатор, точное значение рядом числом (.goal-card__progress-pct),
+   поэтому ей хватает 84px. Освободившееся уходит заголовку: .gc2__title-wrap —
+   единственный растяжимый элемент шапки. */
+.gc2__head .gc2__bar { flex: 0 0 84px; margin: 0; }
 .gc2__head .goal-card__progress-pct { flex-shrink: 0; min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
 .gc2 > .md-collapsible, .gc2 > .goal-card__desc { margin-top: 6px; padding-left: 44px; }
 .gc-share-strip { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; padding: 4px 14px; background: #ecfeff; border-top: 1px solid #cffafe; font-size: 12px; line-height: 1.3; }
 .gc-share-strip__label { font-weight: 700; color: #0e7490; margin-right: 4px; white-space: nowrap; }
 .gc-share-strip__team { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; background: #fff; border: 1px solid #a5f3fc; color: #155e75; font-weight: 500; white-space: nowrap; }
 .gc-share-strip__team--owner { background: #0e7490; border-color: #0e7490; color: #fff; font-weight: 600; }
+/* Название команды-участника — переход на её доску. Вне наведения пилюля выглядит
+   так же, как неинтерактивная: признак перехода — курсор и усиление рамки. */
+a.gc-share-strip__team { text-decoration: none; cursor: pointer; transition: border-color .12s, background .12s; }
+a.gc-share-strip__team:hover { border-color: #0e7490; background: #f0fdff; }
+a.gc-share-strip__team--owner:hover { background: #155e75; border-color: #155e75; }
+a.gc-share-strip__team:focus-visible { outline: 2px solid #0e7490; outline-offset: 1px; }
 .gc-share-strip__role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; opacity: .85; }
 .gc-share-strip + .kr-section { border-top: none; }
 .gc2 { container-type: inline-size; background: #f8f9fb; border-radius: 10px 10px 0 0; }
