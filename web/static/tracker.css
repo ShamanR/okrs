@@ -516,10 +516,20 @@
 .kr-name-row { display: flex; align-items: center; gap: 4px; min-width: 0; margin-bottom: 3px; }
 .kr-name-row .kr-name { margin-bottom: 0; min-width: 0; }
 .kr-name-row .title-edit { width: 20px; height: 20px; font-size: 13px; }
-.kr-row-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid #e5e7eb; border-radius: 7px; background: #fff; color: #374151; font-size: 13px; font-weight: 500; line-height: 1; cursor: pointer; }
-.kr-row-btn:hover { background: #f9fafb; border-color: #d1d5db; }
-.kr-row-btn--accent { border-color: var(--accent); background: var(--accent-10); color: var(--accent); }
-.kr-row-btn--accent:hover { background: var(--accent-15); border-color: var(--accent-strong); color: var(--accent-strong); }
+/* Три вида признака основного действия строки KR в одном слоте: ✎ — нажатие на
+   заголовок откроет редактор, ↻ — окно обновления прогресса, 🔒 — период закрыт и
+   не откроется ничего. Знак обновления забирает акцент у исчезнувшей кнопки
+   «Обновить»: в периоде исполнения чек-ин — главное действие доски. */
+.title-edit--progress { color: var(--accent); }
+.title-editable:hover .title-edit--progress { background: var(--accent-15); color: var(--accent-strong); }
+/* Базовый .title-edit не ловит указатель, чтобы нажатие попадало на заголовок.
+   Замку указатель и фокус нужны: он не действие, а объяснение причины. */
+.title-edit--locked { pointer-events: auto; cursor: default; }
+.kr-name-row .title-edit--locked { font-size: 11px; }
+.title-edit--locked:focus-visible { box-shadow: 0 0 0 2px var(--accent-25, #ddd6fe); }
+/* Подсказка замка прижимается к левому краю: у заголовка она стоит в начале
+   строки, и выравнивание по правому краю уводит её за кромку карточки. */
+.kr-name-row .action-lock__tip { right: auto; left: 0; }
 .act-menu__item { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: transparent; cursor: pointer; border-radius: 8px; padding: 7px 10px; font-size: 14px; font-weight: 500; color: #111827; white-space: nowrap; }
 .act-menu__item:hover { background: #f8fafc; }
 .act-menu__ic { width: 16px; text-align: center; color: #6b7280; }
@@ -670,9 +680,10 @@
 .kr-progress-col__bar { flex: 1; min-width: 0; }
 .kr-progress-col__body--row .kr-pct { font-size: 14px; min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
 .kr-row__actions { display: flex; align-items: center; gap: 6px; }
-.kr-update-stack { display: flex; flex-direction: column-reverse; align-items: stretch; gap: 3px; width: 148px; flex: 0 0 148px; }
-.kr-update-stack .kr-row-btn { justify-content: center; width: 100%; box-sizing: border-box; }
-.kr-update-stack .kr-updated { min-width: 0; text-align: center; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Давность обновления прогресса — не действие, но стоит там же, где раньше была
+   кнопка. Ширина фиксирована: сетка у каждой строки своя, и «обн. сегодня» рядом
+   с «без обновлений» иначе развели бы колонки соседних строк. */
+.kr-row__actions .kr-updated { width: 96px; flex: 0 0 96px; min-width: 0; text-align: right; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @container (max-width: 720px) {
   .kr-row__main { grid-template-columns: auto auto minmax(0,1fr) auto; row-gap: 6px; }
   .kr-info { grid-column: 3; }
@@ -683,9 +694,7 @@
      колонки нужно сбросить, иначе зазор сократится дважды. */
   .kr-progress-col { flex: 1 1 140px; max-width: 260px; margin-left: 0; }
   .kr-row__actions { grid-column: 4; grid-row: 1; }
-  .kr-row-btn { padding: 0 8px; font-size: 12px; gap: 4px; }
-  .kr-update-stack { width: 132px; flex-basis: 132px; }
-  .kr-row-btn span { font-size: 13px; }
+  .kr-row__actions .kr-updated { width: 84px; flex-basis: 84px; }
 }
 .kr-section__empty { padding: 4px 0 0; }
 .goal-weight-warn { margin-bottom: 10px; padding: 10px 14px; }
