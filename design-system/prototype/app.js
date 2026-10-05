@@ -561,11 +561,13 @@ function krMeasureTip(kr) {
   }
   const start = Number(kr.start) || 0, target = Number(kr.target) || 0, cur = Number(kr.current) || 0;
   const up = target >= start;
+  // До первого чек-ина текущее значение равно стартовому — это сказано прямо, иначе
+  // «было 100 · стало 100» читается как потерянная правка. Пустой штамп сам по себе
+  // «не обновляли» не доказывает, поэтому условий два (см. tracker.js).
+  const neverUpdated = kr.progressDaysAgo === null && cur === start;
   const lines = [
     `Было: ${fmtVal(start, kr.unit)}`,
-    // До первого чек-ина текущее значение равно стартовому — это сказано прямо, иначе
-    // «было 100 · стало 100» читается как потерянная правка.
-    kr.progressDaysAgo === null
+    neverUpdated
       ? `Стало: ${fmtVal(cur, kr.unit)} — прогресс ещё не обновляли`
       : `Стало: ${fmtVal(cur, kr.unit)}`,
     `Цель: ${fmtVal(target, kr.unit)}`,

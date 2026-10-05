@@ -3,6 +3,7 @@ package goals_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/core/progress"
@@ -143,6 +144,14 @@ func TestCopyGoalWithoutProgressLeavesCurrentValueUnset(t *testing.T) {
 	}
 	if raw != nil {
 		t.Fatalf("expected the copy to carry no current value, got %v", *raw)
+	}
+
+	var stamp *time.Time
+	if err := pool.QueryRow(ctx, `SELECT progress_updated_at FROM key_results WHERE id=$1`, copiedKR.ID).Scan(&stamp); err != nil {
+		t.Fatalf("select progress_updated_at: %v", err)
+	}
+	if stamp != nil {
+		t.Fatalf("expected the copy to carry no progress timestamp, got %v", stamp)
 	}
 
 	// And it behaves like a new KR: the edited start value is what reads report.

@@ -3,6 +3,7 @@ package goals_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/store/goals"
@@ -117,6 +118,15 @@ func TestCopyGoalCarriesProgressNotesAndComments(t *testing.T) {
 	got, _ := repo.GetGoal(ctx, copyScope, newID)
 	if got.KeyResults[0].Numerical.CurrentValue != 70 {
 		t.Fatalf("progress not carried: %v", got.KeyResults[0].Numerical.CurrentValue)
+	}
+	// The timestamp travels with the value: a copy holding real progress must not look
+	// like a KR nobody ever checked in on.
+	var copiedStamp *time.Time
+	if err := pool.QueryRow(ctx, `SELECT progress_updated_at FROM key_results WHERE id=$1`, got.KeyResults[0].ID).Scan(&copiedStamp); err != nil {
+		t.Fatalf("select progress_updated_at: %v", err)
+	}
+	if copiedStamp == nil {
+		t.Fatal("progress timestamp not carried with the progress")
 	}
 	if got.KeyResults[0].Note == nil || got.KeyResults[0].Note.Text != "note text" {
 		t.Fatalf("note not carried: %+v", got.KeyResults[0].Note)
