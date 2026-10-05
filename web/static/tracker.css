@@ -78,7 +78,8 @@
    design-system/prototype, который инлайнит этот же файл. Не мёртвые. */
 .tb-lead__name { font-size: 14px; font-weight: 500; color: #111827; white-space: nowrap; }
 .tb-lead__role { font-size: 13px; color: #6b7280; white-space: nowrap; }
-.topbar__progress-bar { flex: 0 0 140px; }
+/* Explicit width contributes to the parent's intrinsic size in Firefox. */
+.topbar__progress-bar { width: 140px; flex: 0 0 auto; }
 .tb-menu { position: relative; flex-shrink: 0; }
 .tb-menu__btn { width: 36px; height: 36px; border: 1px solid #e5e7eb; border-radius: 8px; background: #fff; color: #374151; font-size: 16px; font-weight: 700; letter-spacing: 1px; cursor: pointer; }
 .tb-menu__btn:hover { background: #f9fafb; border-color: #d1d5db; }
