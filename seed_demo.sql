@@ -2565,7 +2565,7 @@ SELECT
     g.period_id,
     g.id,
     g.title,
-    jsonb_build_object('changed_team_ids', jsonb_build_array(s.team_id)),
+    jsonb_build_object('added_team_ids', jsonb_build_array(s.team_id)),
     'demo:shared:goal:' || g.id,
     1
 FROM goals g
