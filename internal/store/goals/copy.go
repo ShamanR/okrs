@@ -14,7 +14,7 @@ type CopyGoalInput struct {
 	SourceGoalID   int64
 	TargetTeamID   int64
 	TargetPeriodID int64
-	WithProgress   bool // carry KR progress (current_value / is_done / health_status) and KR notes
+	WithProgress   bool // carry KR progress (current_value / is_done / health_status / progress_updated_at) and KR notes
 	WithComments   bool // carry goal comments (tasks + replies), authors and resolve state preserved
 	DeleteSource   bool // move: hard-delete the source goal in the same transaction as the copy
 }
@@ -46,7 +46,7 @@ func (r *GoalRepository) CopyGoal(ctx context.Context, scope domain.TenantScope,
 	// 2) Copy KRs (ordered), each with its meta.
 	rows, err := tx.Query(ctx, `
 		SELECT id, title, description, weight, kind, sort_order, zeroing_criteria, health_status,
-		       start_value, target_value, current_value, unit, checkpoints
+		       start_value, target_value, current_value, unit, checkpoints, progress_updated_at
 		FROM key_results WHERE goal_id=$1 AND tenant_id=$2 ORDER BY sort_order, id`,
 		in.SourceGoalID, scope.TenantID)
 	if err != nil {
@@ -62,12 +62,13 @@ func (r *GoalRepository) CopyGoal(ctx context.Context, scope domain.TenantScope,
 		start, target, current *float64
 		unit                   *string
 		checkpoints            []byte
+		progressUpdatedAt      *time.Time
 	}
 	var srcKRs []srcKR
 	for rows.Next() {
 		var k srcKR
 		if err := rows.Scan(&k.id, &k.title, &k.description, &k.weight, &k.kind, &k.sortOrder, &k.zeroing, &k.health,
-			&k.start, &k.target, &k.current, &k.unit, &k.checkpoints); err != nil {
+			&k.start, &k.target, &k.current, &k.unit, &k.checkpoints, &k.progressUpdatedAt); err != nil {
 			rows.Close()
 			return 0, err
 		}
@@ -83,23 +84,32 @@ func (r *GoalRepository) CopyGoal(ctx context.Context, scope domain.TenantScope,
 		if !in.WithProgress {
 			health = string(domain.KRHealthNotStarted)
 		}
+		// The moment progress was last updated travels with the progress itself, for every
+		// kind. Carrying a value without its timestamp would produce a KR that holds real
+		// progress while claiming it was never updated — the state readers must not see
+		// (see krs.NumericalFromColumns) and the one migration 049 has to defend against.
+		var progressUpdatedAt *time.Time
+		if in.WithProgress {
+			progressUpdatedAt = k.progressUpdatedAt
+		}
 		var newKRID int64
 		if err := tx.QueryRow(ctx, `
-			INSERT INTO key_results (goal_id, title, description, zeroing_criteria, weight, kind, sort_order, health_status, tenant_id)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-			newGoalID, k.title, k.description, k.zeroing, k.weight, k.kind, k.sortOrder, health, scope.TenantID,
+			INSERT INTO key_results (goal_id, title, description, zeroing_criteria, weight, kind, sort_order, health_status, progress_updated_at, tenant_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id`,
+			newGoalID, k.title, k.description, k.zeroing, k.weight, k.kind, k.sortOrder, health, progressUpdatedAt, scope.TenantID,
 		).Scan(&newKRID); err != nil {
 			return 0, err
 		}
 
 		switch domain.KRKind(k.kind) {
 		case domain.KRKindNumerical:
-			current := 0.0
-			if k.start != nil {
-				current = *k.start // reset → start
-			}
-			if in.WithProgress && k.current != nil {
-				current = *k.current
+			// Reset → NULL, not → start: the copy has to be indistinguishable from a
+			// freshly created KR, including that editing its start value still moves the
+			// reported current value (see krs.NumericalFromColumns). Carrying progress
+			// copies the value as it is, NULL included.
+			var current *float64
+			if in.WithProgress {
+				current = k.current
 			}
 			if _, err := tx.Exec(ctx, `
 				UPDATE key_results SET start_value=$1, target_value=$2, current_value=$3, unit=$4, checkpoints=$5

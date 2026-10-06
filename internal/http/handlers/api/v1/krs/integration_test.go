@@ -90,7 +90,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
+	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, Unit: "%"}); err != nil {
 		t.Fatalf("meta: %v", err)
 	}
 
@@ -309,7 +309,7 @@ func TestUpdateKRHealthStatusIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create kr: %v", err)
 	}
-	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 0, Unit: "%"}); err != nil {
+	if err := repo.KRs.UpsertNumericalMeta(ctx, domain.TenantScope{TenantID: 1}, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, Unit: "%"}); err != nil {
 		t.Fatalf("meta: %v", err)
 	}
 

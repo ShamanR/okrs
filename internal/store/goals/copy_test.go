@@ -3,6 +3,7 @@ package goals_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"okrs/internal/core/domain"
 	"okrs/internal/store/goals"
@@ -42,9 +43,12 @@ func TestCopyGoalDuplicatesStructure(t *testing.T) {
 		t.Fatalf("CreateKeyResult: %v", err)
 	}
 	if err := krRepo.UpsertNumericalMeta(ctx, copyScope, krs.NumericalMetaInput{
-		KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 55, Unit: "%",
+		KeyResultID: krID, StartValue: 0, TargetValue: 100, Unit: "%",
 	}); err != nil {
 		t.Fatalf("UpsertNumericalMeta: %v", err)
+	}
+	if err := krRepo.UpdateNumericalCurrent(ctx, copyScope, krID, 55); err != nil {
+		t.Fatalf("UpdateNumericalCurrent: %v", err)
 	}
 
 	newID, err := repo.CopyGoal(ctx, copyScope, goals.CopyGoalInput{
@@ -75,7 +79,7 @@ func TestCopyGoalDuplicatesStructure(t *testing.T) {
 	if kr.Kind != domain.KRKindNumerical || kr.Numerical == nil {
 		t.Fatalf("KR kind/meta not copied: %+v", kr)
 	}
-	// WithProgress=false → current reset to start_value (0).
+	// WithProgress=false → current_value left NULL, so reads report the start value (0).
 	if kr.Numerical.CurrentValue != 0 || kr.Numerical.TargetValue != 100 {
 		t.Fatalf("progress not reset: current=%v target=%v", kr.Numerical.CurrentValue, kr.Numerical.TargetValue)
 	}
@@ -97,7 +101,8 @@ func TestCopyGoalCarriesProgressNotesAndComments(t *testing.T) {
 		WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
 	})
 	krID, _ := krRepo.CreateKeyResult(ctx, copyScope, krs.KeyResultInput{GoalID: srcGoal, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical})
-	krRepo.UpsertNumericalMeta(ctx, copyScope, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, CurrentValue: 70, Unit: "%"})
+	krRepo.UpsertNumericalMeta(ctx, copyScope, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, Unit: "%"})
+	krRepo.UpdateNumericalCurrent(ctx, copyScope, krID, 70)
 	krRepo.UpsertKeyResultNote(ctx, copyScope, krID, "note text", 1)
 	// A task + a reply.
 	var taskID int64
@@ -113,6 +118,15 @@ func TestCopyGoalCarriesProgressNotesAndComments(t *testing.T) {
 	got, _ := repo.GetGoal(ctx, copyScope, newID)
 	if got.KeyResults[0].Numerical.CurrentValue != 70 {
 		t.Fatalf("progress not carried: %v", got.KeyResults[0].Numerical.CurrentValue)
+	}
+	// The timestamp travels with the value: a copy holding real progress must not look
+	// like a KR nobody ever checked in on.
+	var copiedStamp *time.Time
+	if err := pool.QueryRow(ctx, `SELECT progress_updated_at FROM key_results WHERE id=$1`, got.KeyResults[0].ID).Scan(&copiedStamp); err != nil {
+		t.Fatalf("select progress_updated_at: %v", err)
+	}
+	if copiedStamp == nil {
+		t.Fatal("progress timestamp not carried with the progress")
 	}
 	if got.KeyResults[0].Note == nil || got.KeyResults[0].Note.Text != "note text" {
 		t.Fatalf("note not carried: %+v", got.KeyResults[0].Note)

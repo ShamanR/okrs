@@ -15,11 +15,17 @@ type NumericalCheckpoint struct {
 }
 
 type NumericalMeasure struct {
-	StartValue   float64               `json:"start_value"`
-	TargetValue  float64               `json:"target_value"`
-	CurrentValue float64               `json:"current_value"`
-	Unit         string                `json:"unit"`
-	Checkpoints  []NumericalCheckpoint `json:"checkpoints,omitempty"`
+	StartValue  float64 `json:"start_value"`
+	TargetValue float64 `json:"target_value"`
+	// CurrentValue всегда число: пока прогресс не обновляли, это стартовое значение.
+	CurrentValue float64 `json:"current_value"`
+	// CurrentValueRecorded — записывал ли чек-ин текущее значение. Нужен потребителю,
+	// чтобы различать «значения ещё нет» и «значение равно стартовому»: по самим числам
+	// эти случаи неотличимы, а progress_updated_at у данных, созданных до его появления,
+	// пуст и при записанном значении.
+	CurrentValueRecorded bool                  `json:"current_value_recorded"`
+	Unit                 string                `json:"unit"`
+	Checkpoints          []NumericalCheckpoint `json:"checkpoints,omitempty"`
 }
 
 type BooleanMeasure struct {

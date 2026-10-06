@@ -132,11 +132,10 @@ func TestUpsertAndLoadNumericalMeta(t *testing.T) {
 	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'KR',100,'NUMERICAL',1) RETURNING id`, goalID).Scan(&krID)
 
 	in := krs.NumericalMetaInput{
-		KeyResultID:  krID,
-		StartValue:   100,
-		TargetValue:  180,
-		CurrentValue: 150,
-		Unit:         "RPS",
+		KeyResultID: krID,
+		StartValue:  100,
+		TargetValue: 180,
+		Unit:        "RPS",
 		Checkpoints: []domain.KRNumericalCheckpoint{
 			{Value: 100, ProgressPercent: 0},
 			{Value: 150, ProgressPercent: 50},
@@ -156,7 +155,9 @@ func TestUpsertAndLoadNumericalMeta(t *testing.T) {
 		t.Fatalf("expected one numerical KR with meta, got %+v", krsLoaded)
 	}
 	num := krsLoaded[0].Numerical
-	if num.StartValue != 100 || num.TargetValue != 180 || num.CurrentValue != 150 {
+	// The meta write does not set a current value, so current_value is still NULL and
+	// reads report the start value.
+	if num.StartValue != 100 || num.TargetValue != 180 || num.CurrentValue != 100 {
 		t.Fatalf("unexpected values: %+v", num)
 	}
 	if num.Unit != "RPS" {
