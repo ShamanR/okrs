@@ -275,11 +275,12 @@ func buildMeasure(kr domain.KeyResult) dto.Measure {
 		return dto.Measure{
 			Kind: string(kr.Kind),
 			Numerical: &dto.NumericalMeasure{
-				StartValue:   kr.Numerical.StartValue,
-				TargetValue:  kr.Numerical.TargetValue,
-				CurrentValue: kr.Numerical.CurrentValue,
-				Unit:         kr.Numerical.Unit,
-				Checkpoints:  cps,
+				StartValue:           kr.Numerical.StartValue,
+				TargetValue:          kr.Numerical.TargetValue,
+				CurrentValue:         kr.Numerical.CurrentValue,
+				CurrentValueRecorded: kr.Numerical.CurrentValueRecorded,
+				Unit:                 kr.Numerical.Unit,
+				Checkpoints:          cps,
 			},
 		}
 	case domain.KRKindBoolean:

@@ -12,10 +12,11 @@ func TestBuildMeasureNumerical(t *testing.T) {
 	kr := domain.KeyResult{
 		Kind: domain.KRKindNumerical,
 		Numerical: &domain.KRNumerical{
-			StartValue:   0,
-			TargetValue:  100,
-			CurrentValue: 50,
-			Unit:         "RPS",
+			StartValue:           0,
+			TargetValue:          100,
+			CurrentValue:         50,
+			CurrentValueRecorded: true,
+			Unit:                 "RPS",
 			Checkpoints: []domain.KRNumericalCheckpoint{
 				{Value: 25, ProgressPercent: 25},
 			},
@@ -33,6 +34,15 @@ func TestBuildMeasureNumerical(t *testing.T) {
 	}
 	if len(measure.Numerical.Checkpoints) != 1 {
 		t.Fatalf("expected checkpoints")
+	}
+	// The marker must reach the wire: it is what lets a client tell "no value yet" from
+	// "value equal to the start".
+	if !measure.Numerical.CurrentValueRecorded {
+		t.Fatalf("expected current_value_recorded to be carried into the DTO")
+	}
+	kr.Numerical.CurrentValueRecorded = false
+	if buildMeasure(kr).Numerical.CurrentValueRecorded {
+		t.Fatalf("expected current_value_recorded=false to be carried into the DTO")
 	}
 }
 

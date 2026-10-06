@@ -187,10 +187,14 @@ function fmtDate(iso) {
 function mapKR(kr) {
   const m = kr.measure || {};
   let start = 0, target = 100, current = 0, done = false, stages = [];
+  // undefined, а не false: «признака в ответе нет» — не то же самое, что «значение не
+  // записывали», и подсказка на этом различии стоит.
+  let currentRecorded;
   let unit = '%', checkpoints = [];
   const zeroing = kr.zeroing_criteria || '';
   if (m.numerical) {
     start = m.numerical.start_value; target = m.numerical.target_value; current = m.numerical.current_value;
+    currentRecorded = m.numerical.current_value_recorded;
     unit = m.numerical.unit || '%';
     checkpoints = (m.numerical.checkpoints || []).map(c => ({ value: c.value, progress_percent: c.progress_percent }));
   }
@@ -200,7 +204,7 @@ function mapKR(kr) {
     id: kr.id, goalId: kr.goal_id, name: kr.title, desc: kr.description,
     weight: kr.weight, krType: kr.kind, progress: kr.progress,
     healthStatus: kr.health_status || 'not_started',
-    start, target, current, done, stages, unit, checkpoints, zeroing,
+    start, target, current, currentRecorded, done, stages, unit, checkpoints, zeroing,
     // daysAgo у заметки — её собственный, не KR: правка названия или веса KR трогает
     // kr.updated_at, но не заметку, и старая заметка не должна выглядеть свежей.
     note: kr.note ? { text: kr.note.text, author: kr.note.author_name, authorUdid: kr.note.author_udid, date: fmtDate(kr.note.updated_at), daysAgo: daysAgo(kr.note.updated_at) } : null,
@@ -1444,12 +1448,15 @@ function krMeasureTip(kr) {
   const cur = Number(kr.current) || 0;
   const up = target >= start;
   // До первого чек-ина текущее значение равно стартовому — это сказано прямо, иначе
-  // «было 100 · стало 100» читается как потерянная правка. Условий именно два: у
-  // необновлённого KR значение равно стартовому всегда (бекенд отдаёт его как старт),
-  // а вот пустой штамп сам по себе «не обновляли» не доказывает — он пуст и у строк,
-  // чей прогресс обновили до появления progress_updated_at. Там значение отличается от
-  // стартового, и утверждать про них нечего.
-  const neverUpdated = kr.progressDaysAgo === null && cur === start;
+  // «было 100 · стало 100» читается как потерянная правка.
+  //
+  // Признак берётся только из current_value_recorded: это ответ бекенда на вопрос «было ли
+  // значение записано», и ничем другим его не подменить. Совпадение текущего значения со
+  // стартовым ничего не доказывает (чек-ин мог прийтись ровно на старт), пустая давность
+  // прогресса — тоже (у данных, созданных до появления отметки времени, она пуста при
+  // записанном значении). Поэтому утверждаем только при явном false: если признака в
+  // ответе нет, подсказка про обновления молчит.
+  const neverUpdated = kr.currentRecorded === false;
   const lines = [
     `Было: ${fmtVal(start, kr.unit)}`,
     neverUpdated

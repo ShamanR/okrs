@@ -179,9 +179,10 @@ const BOARDS = {
         title: 'Разобрать технический долг по логам', desc: 'Цель вынесена из расчёта прогресса: берём её, если останется время после P0–P2.', updatedDaysAgo: 21,
         owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [], childIds: [],
         krs: [
-          // Прогресс ни разу не обновляли: current равен start, progressDaysAgo === null.
-          // На этом KR проверяется строка подсказки «прогресс ещё не обновляли».
-          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 0, healthStatus: 'not_started', updatedDaysAgo: 21, progressDaysAgo: null, note: true },
+          // Прогресс ни разу не обновляли: значение не записывали (currentRecorded: false),
+          // поэтому current равен start. На этом KR проверяется строка подсказки
+          // «прогресс ещё не обновляли».
+          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 0, currentRecorded: false, healthStatus: 'not_started', updatedDaysAgo: 21, progressDaysAgo: null, note: true },
         ],
         comments: [],
       },

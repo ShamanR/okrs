@@ -207,11 +207,20 @@ type KRProjectStage struct {
 }
 
 type KRNumerical struct {
-	StartValue   float64
-	TargetValue  float64
+	StartValue  float64
+	TargetValue float64
+	// CurrentValue — текущее значение метрики. Пока его не записал ни один чек-ин, здесь
+	// лежит стартовое значение, а CurrentValueRecorded равен false.
 	CurrentValue float64
-	Unit         string
-	Checkpoints  []KRNumericalCheckpoint
+	// CurrentValueRecorded — записывал ли чек-ин текущее значение хоть раз. Это
+	// единственный достоверный признак состояния «значения ещё нет»: он идёт прямо от
+	// того, пустая ли колонка current_value. Выводить это из совпадения текущего значения
+	// со стартовым нельзя — чек-ин мог прийтись ровно на стартовое значение, — и из
+	// пустого ProgressUpdatedAt тоже: отметка времени появилась позже самих значений, и у
+	// давних данных она пуста при записанном значении.
+	CurrentValueRecorded bool
+	Unit                 string
+	Checkpoints          []KRNumericalCheckpoint
 }
 
 type KRNumericalCheckpoint struct {

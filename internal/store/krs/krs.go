@@ -96,6 +96,7 @@ func NumericalFromColumns(start, target, current *float64, unit *string, checkpo
 	}
 	if current != nil {
 		num.CurrentValue = *current
+		num.CurrentValueRecorded = true
 	} else {
 		num.CurrentValue = num.StartValue
 	}

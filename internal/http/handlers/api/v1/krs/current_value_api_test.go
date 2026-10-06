@@ -46,9 +46,10 @@ func TestNumericalCurrentValueThroughAPI(t *testing.T) {
 		Title   string `json:"title"`
 		Measure struct {
 			Numerical *struct {
-				StartValue   float64 `json:"start_value"`
-				TargetValue  float64 `json:"target_value"`
-				CurrentValue float64 `json:"current_value"`
+				StartValue           float64 `json:"start_value"`
+				TargetValue          float64 `json:"target_value"`
+				CurrentValue         float64 `json:"current_value"`
+				CurrentValueRecorded bool    `json:"current_value_recorded"`
 			} `json:"numerical"`
 		} `json:"measure"`
 		ProgressUpdatedAt *time.Time `json:"progress_updated_at"`
@@ -98,6 +99,9 @@ func TestNumericalCurrentValueThroughAPI(t *testing.T) {
 	if created.Measure.Numerical.CurrentValue != 0 {
 		t.Fatalf("expected the current value to come back as the start value 0, got %v", created.Measure.Numerical.CurrentValue)
 	}
+	if created.Measure.Numerical.CurrentValueRecorded {
+		t.Fatal("expected current_value_recorded=false on a KR nobody checked in on")
+	}
 	if created.ProgressUpdatedAt != nil {
 		t.Fatalf("expected no progress timestamp on a new KR, got %v", created.ProgressUpdatedAt)
 	}
@@ -134,6 +138,9 @@ func TestNumericalCurrentValueThroughAPI(t *testing.T) {
 	if checked.Measure.Numerical.CurrentValue != 150 || checked.Progress != 50 {
 		t.Fatalf("expected current 150 at 50%%, got current=%v progress=%d",
 			checked.Measure.Numerical.CurrentValue, checked.Progress)
+	}
+	if !checked.Measure.Numerical.CurrentValueRecorded {
+		t.Fatal("expected current_value_recorded=true after the check-in")
 	}
 	if checked.ProgressUpdatedAt == nil {
 		t.Fatal("expected the check-in to stamp progress_updated_at")
