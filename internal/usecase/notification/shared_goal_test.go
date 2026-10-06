@@ -484,3 +484,72 @@ func (*sameUserPrefs) ResolveTenantAdmins(context.Context, domain.TenantScope, s
 func (*sameUserPrefs) DeliveryDefaults(context.Context, domain.TenantScope) (map[string]bool, error) {
 	return map[string]bool{notificationprefs.ChannelInApp: true}, nil
 }
+
+// Владелец удаляет общую цель: владение переходит первому участнику, а прежний
+// владелец остаётся без цели вовсе — ни владельцем, ни участником. Состав на
+// момент обработки его уже не упоминает, поэтому он обязан прийти из события.
+func TestOwnershipHandoverNotifiesTheTeamThatLostTheGoal(t *testing.T) {
+	// Состав ПОСЛЕ передачи: новый владелец 5 и участник 8. Команды 3 (прежний
+	// владелец из meta()) в нём нет.
+	uc, w, p, _ := sharedUC(map[int64][]int64{10: {5, 8}})
+	newOwner := int64(5)
+	m := meta()
+	m.TeamID = &newOwner
+	if err := uc.Handle(context.Background(), []event.Event{
+		event.GoalOwnerChanged{Meta: m, GoalID: 10, Title: "Цель", BeforeTeamID: 3, AfterTeamID: 5},
+	}); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if got, want := resolvedTeams(p.targets), []int64{3, 5, 8}; !equalInt64s(got, want) {
+		t.Fatalf("прежний владелец обязан попасть в адресацию: got %v, want %v", got, want)
+	}
+	var lost *notifications.InsertInput
+	for i := range w.rows {
+		if w.rows[i].TeamID != nil && *w.rows[i].TeamID == 3 {
+			lost = &w.rows[i]
+		}
+	}
+	if lost == nil {
+		t.Fatalf("у команды 3 нет уведомления: %+v", w.rows)
+	}
+	raw, ok := lost.Payload["removed_team_ids"].([]any)
+	if !ok || len(raw) != 1 {
+		t.Fatalf("прежний владелец обязан быть помечен как ушедший: %+v", lost.Payload)
+	}
+}
+
+// А если прежний владелец остался участником (цель просто сменила владельца
+// внутри того же набора команд), заявлять, что он цель потерял, нельзя.
+func TestOwnershipHandoverKeepsTheOldOwnerWhenItStaysAParticipant(t *testing.T) {
+	uc, w, _, _ := sharedUC(map[int64][]int64{10: {3, 5}})
+	newOwner := int64(5)
+	m := meta()
+	m.TeamID = &newOwner
+	if err := uc.Handle(context.Background(), []event.Event{
+		event.GoalOwnerChanged{Meta: m, GoalID: 10, Title: "Цель", BeforeTeamID: 3, AfterTeamID: 5},
+	}); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	for _, r := range w.rows {
+		if _, present := r.Payload["removed_team_ids"]; present {
+			t.Fatalf("команда 3 осталась участником — помечать её ушедшей нельзя: %+v", r.Payload)
+		}
+	}
+}
+
+// Если состав прочитать не удалось, утверждать про прежнего владельца ничего
+// нельзя: лучше нейтральный текст, чем ложное «цель у вас забрали».
+func TestOwnershipHandoverClaimsNothingWhenCompositionIsUnknown(t *testing.T) {
+	w := &fakeWriter{}
+	p := &teamAwarePrefs{distanceByTeam: map[int64]int{}}
+	g := &fakeGoalTeams{err: errors.New("БД недоступна")}
+	uc := notificationuc.New(notificationuc.Deps{Notifications: w, Prefs: p, GoalTeams: g})
+	_ = uc.Handle(context.Background(), []event.Event{
+		event.GoalOwnerChanged{Meta: meta(), GoalID: 10, Title: "Цель", BeforeTeamID: 3, AfterTeamID: 5},
+	})
+	for _, r := range w.rows {
+		if _, present := r.Payload["removed_team_ids"]; present {
+			t.Fatalf("состав неизвестен — пометки об уходе быть не должно: %+v", r.Payload)
+		}
+	}
+}

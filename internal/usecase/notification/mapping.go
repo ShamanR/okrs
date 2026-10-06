@@ -77,6 +77,14 @@ func composedTeamIDs(ev event.Event) []int64 {
 	switch e := ev.(type) {
 	case event.GoalShared:
 		return e.SharedWithTeamIDs
+	case event.GoalOwnerChanged:
+		// Ownership moving away can take the goal off the old owner's board
+		// entirely: goal.Delete on a shared goal hands ownership to the first
+		// participant and leaves the old owner with neither ownership nor a share.
+		// Of everyone involved that team is the one that certainly lost the goal,
+		// and the current composition no longer mentions it — so, like a removed
+		// participant, it has to come from the event.
+		return []int64{e.BeforeTeamID}
 	case event.GoalUnshared:
 		// Three publication sites, three different shapes — see the type's own
 		// comment. Exactly one is ever set; reading all three is what keeps this

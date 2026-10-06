@@ -141,6 +141,11 @@ type pending struct {
 	// teams is every team this event must be addressed from, filled for scoped
 	// types only. One entry for a goal in a single team, several for a shared one.
 	teams []int64
+	// departed are teams the event takes the goal away from, when that cannot be
+	// read off the event alone and the current composition had to settle it. Only
+	// an ownership change needs this; sharing and unsharing name their own teams,
+	// and payloadOf writes those directly.
+	departed []int64
 }
 
 // Handle is the bus subscriber. It groups the batch by (tenant, notification type),
@@ -322,6 +327,16 @@ func (u *UseCase) withAudienceTeams(ctx context.Context, scope domain.TenantScop
 		for _, teamID := range composedTeamIDs(p.ev) {
 			add(teamID)
 		}
+		// An ownership change is the one event whose departing team cannot be read
+		// off the event: goal.Delete hands a shared goal to a participant and drops
+		// the old owner, while UpdateOwnerAndShares can leave that same team on as
+		// a participant. Only the composition tells the two apart — and only when
+		// it was actually read, so a failed lookup claims nothing.
+		if e, ok := p.ev.(event.GoalOwnerChanged); ok && e.BeforeTeamID != 0 && p.anchor.goalID != nil {
+			if composition, known := teamsByGoal[*p.anchor.goalID]; known && !containsID(composition, e.BeforeTeamID) {
+				p.departed = []int64{e.BeforeTeamID}
+			}
+		}
 		if len(p.teams) == 0 {
 			continue
 		}
@@ -433,6 +448,26 @@ func (u *UseCase) dedupeByItem(ctx context.Context, recipients []notificationpre
 	return out
 }
 
+func containsID(ids []int64, want int64) bool {
+	for _, id := range ids {
+		if id == want {
+			return true
+		}
+	}
+	return false
+}
+
+// payloadFor is the event's payload plus whatever only the audience step could
+// work out — today just the team an ownership change took the goal away from, which
+// the renderer and the link both read as a removed participant.
+func payloadFor(p pending) map[string]any {
+	out := payloadOf(p.ev)
+	if len(p.departed) > 0 {
+		out[fieldRemovedTeams] = teamIDList(p.departed)
+	}
+	return out
+}
+
 // rowTeamID is the team a notification is recorded against: the one the recipient
 // was actually found through, so a lead of a participating team is sent to their own
 // board rather than the owner's, which they may have no access to. Resolvers that do
@@ -459,7 +494,7 @@ func (u *UseCase) row(p pending, rc notificationprefs.Recipient) notifications.I
 		KRID:        p.anchor.krID,
 		CommentID:   p.anchor.commentID,
 		EntityTitle: p.anchor.title,
-		Payload:     payloadOf(p.ev),
+		Payload:     payloadFor(p),
 		CoalesceKey: coalesceKey(p, m),
 	}
 }
@@ -477,7 +512,7 @@ func (u *UseCase) deliveryFor(p pending, rc notificationprefs.Recipient, channel
 		Type:        p.typ,
 		EntityTitle: p.anchor.title,
 		Count:       1,
-		Payload:     payloadOf(p.ev),
+		Payload:     payloadFor(p),
 		GoalID:      p.anchor.goalID,
 		TeamID:      rowTeamID(p, rc),
 		PeriodID:    m.PeriodID,

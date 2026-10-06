@@ -129,6 +129,11 @@ func wording(in Input) (title, body string) {
 	case event.KindGoalFieldsChanged:
 		return actor + " изменил цель", in.EntityTitle
 	case event.KindGoalOwnerChanged:
+		if teamIsIn(in, fieldRemovedTeams) {
+			// Ownership moved away from the reader's own team and took the goal
+			// with it: "сменил владельца" would read as news about someone else.
+			return actor + " передал цель другой команде", in.EntityTitle
+		}
 		return actor + " сменил владельца цели", in.EntityTitle
 	// Both composition kinds share one branch, and the payload — not the kind —
 	// decides the wording. A coalesced row keeps the kind of the FIRST event but
