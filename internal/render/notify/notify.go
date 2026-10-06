@@ -41,11 +41,20 @@ var healthLabel = map[string]string{
 }
 
 type Input struct {
-	Kind        event.Kind
+	Kind event.Kind
+	// Type is the notification type the row was written under. One event can
+	// produce two of them — a resolved remark is both an addressed notice to its
+	// author and a team notice on a shared goal — and the wording differs.
+	Type        string
 	ActorName   string
 	EntityTitle string
 	Count       int // coalesce_count: >1 means several events collapsed into one
 	Payload     map[string]any
+	// TeamID is the team the notification was recorded against — the one the
+	// recipient was found through. Only the two composition kinds read it, to tell
+	// "your team was added or removed" from "the goal's teams changed"; nil simply
+	// means the reader's team is not known, and the neutral wording is used.
+	TeamID *int64
 }
 
 type Text struct {
@@ -101,6 +110,12 @@ func wording(in Input) (title, body string) {
 		}
 		return actor + " ответил в обсуждении", in.EntityTitle
 	case event.KindCommentResolved:
+		if in.Type == TypeGoalComment {
+			// Not the addressed copy: this one goes to the teams of a shared goal,
+			// none of whom wrote the remark. Telling them "решил ВАШ комментарий"
+			// would claim authorship they do not have.
+			return actor + " решил замечание к цели", in.EntityTitle
+		}
 		return actor + " решил ваш комментарий", in.EntityTitle
 
 	case event.KindGoalCreated:
@@ -115,6 +130,18 @@ func wording(in Input) (title, body string) {
 		return actor + " изменил цель", in.EntityTitle
 	case event.KindGoalOwnerChanged:
 		return actor + " сменил владельца цели", in.EntityTitle
+	// Both composition kinds share one branch, and the payload — not the kind —
+	// decides the wording. A coalesced row keeps the kind of the FIRST event but
+	// the payload of the LAST, so reading the kind here would tell a team that was
+	// just removed that it had been added.
+	case event.KindGoalShared, event.KindGoalUnshared:
+		switch {
+		case teamIsIn(in, fieldRemovedTeams):
+			return actor + " убрал вашу команду из цели", in.EntityTitle
+		case teamIsIn(in, fieldAddedTeams):
+			return actor + " добавил вашу команду к цели", in.EntityTitle
+		}
+		return actor + " изменил состав команд цели", in.EntityTitle
 
 	case event.KindKRCreated:
 		return actor + " добавил ключевой результат", in.EntityTitle
@@ -167,6 +194,62 @@ func legacyProgressBody(in Input) string {
 		return fmt.Sprintf("%s: %d%% → %d%%", in.EntityTitle, before, after)
 	}
 	return fmt.Sprintf("%s: %d%%", in.EntityTitle, after)
+}
+
+// Payload keys naming the teams a composition change touched, written by
+// internal/usecase/notification. Spelled out as literals for the same reason
+// legacyKindKRProgress is: payload_json is a wire format between the two packages,
+// not a shared Go type, and render must not import a usecase to read a string key.
+const (
+	fieldAddedTeams   = "added_team_ids"
+	fieldRemovedTeams = "removed_team_ids"
+)
+
+// TypeGoalComment is the notification type whose rows go to a goal's teams rather
+// than to one named person. Only the resolved-remark wording needs to tell the two
+// apart; see wording. Literal for the reason above — the catalog lives in a store
+// package, which render has no business importing.
+const TypeGoalComment = "goal_comment"
+
+// teamIsIn reports whether the reader's own team is listed under the given payload
+// key.
+//
+// The ids arrive either as int64 (built in process, on the way to an external
+// channel) or as float64 (read back from payload_json in the feed), and a reader
+// must not be able to tell those two paths apart. An absent or unparsable list
+// simply answers false, which falls back to the neutral wording rather than
+// claiming something about the reader's team that may not be true.
+func teamIsIn(in Input, field string) bool {
+	return teamListed(in.Payload, in.TeamID, field)
+}
+
+// TeamWasRemoved reports whether the goal has just left this team's board, so a
+// caller can decide where the notification should actually point.
+func TeamWasRemoved(payload map[string]any, teamID *int64) bool {
+	return teamListed(payload, teamID, fieldRemovedTeams)
+}
+
+func teamListed(payload map[string]any, teamID *int64, field string) bool {
+	if teamID == nil {
+		return false
+	}
+	raw, ok := payload[field].([]any)
+	if !ok {
+		return false
+	}
+	for _, v := range raw {
+		switch id := v.(type) {
+		case int64:
+			if id == *teamID {
+				return true
+			}
+		case float64:
+			if int64(id) == *teamID {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // quoteOr returns the payload's field value if present and non-empty, otherwise
@@ -300,6 +383,11 @@ type LinkInput struct {
 	// something it cannot find. The reader decides: the feed knows because its
 	// LEFT JOIN returned no title, delivery knows because the event just happened.
 	GoalMissing bool
+	// GoalLeftTeam marks a notification telling this reader's team that the goal
+	// is no longer theirs. The goal still exists, so GoalMissing is false, but it
+	// is not on THIS team's board any more: linking to it would open the board and
+	// highlight nothing. The board itself is the honest destination.
+	GoalLeftTeam bool
 }
 
 // AccessRequestsURL is the admin's queue of pending join requests. It must match
@@ -359,6 +447,14 @@ func targetPath(in LinkInput) string {
 	}
 	if in.PeriodID != nil {
 		write("period", *in.PeriodID)
+	}
+	if in.GoalLeftTeam {
+		// Stop at the board: the goal is no longer on it. With no team to open
+		// either, there is nothing to link to at all.
+		if first {
+			return ""
+		}
+		return b.String()
 	}
 	write("goal", *in.GoalID)
 	if in.KRID != nil {

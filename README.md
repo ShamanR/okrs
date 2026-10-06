@@ -336,6 +336,12 @@ The bell in the sidebar is available on every page and shows what happened to th
 involved in: comments on your goals, your remarks being resolved, goal and KR changes, and progress
 updates.
 
+A shared goal reaches every team it lives in, not only the one that owns it: leads of the
+participating teams get its comments, check-ins and edits on the same terms as the owner, and each
+notification opens the board of the team it reached them through. Changing the set of teams is
+itself a goal change — the team added is told it was added, the team removed is told it was
+removed, and the rest are told the composition changed.
+
 ![Notifications](docs/screenshots/notifications.png)
 
 Under **Настройки → Уведомления** each person decides, per event type, whether to receive it and how

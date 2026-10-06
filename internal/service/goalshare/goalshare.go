@@ -19,6 +19,7 @@ func New(repo Repo) *Service { return &Service{repo: repo} }
 type Repo interface {
 	ListGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64) ([]shares.GoalShare, error)
 	ListGoalSharesByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error)
+	TeamIDsByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]int64, error)
 	GetGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) (shares.GoalShare, error)
 	ReplaceGoalShares(ctx context.Context, scope domain.TenantScope, goalID int64, list []shares.GoalShareInput) error
 	DeleteGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) error
@@ -44,6 +45,15 @@ func (s *Service) Delete(ctx context.Context, scope domain.TenantScope, goalID, 
 // Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
 func (s *Service) ListByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
 	return s.repo.ListGoalSharesByGoalIDs(ctx, scope, goalIDs)
+}
+
+// TeamIDsByGoalIDs returns every team a goal is visible in — its owner and its
+// participants. The notification fan-out asks this to address an event about a
+// shared goal to all of its teams, not only the owning one.
+//
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (s *Service) TeamIDsByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]int64, error) {
+	return s.repo.TeamIDsByGoalIDs(ctx, scope, goalIDs)
 }
 
 func (s *Service) Replace(ctx context.Context, scope domain.TenantScope, goalID int64, list []shares.GoalShareInput) error {

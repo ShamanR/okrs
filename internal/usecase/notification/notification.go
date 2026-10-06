@@ -41,6 +41,20 @@ type PrefResolver interface {
 	DeliveryDefaults(ctx context.Context, scope domain.TenantScope) (map[string]bool, error)
 }
 
+// GoalTeamsResolver answers which teams a goal is visible in — its owner and
+// every team it is shared with.
+//
+// A shared goal is one goal on several boards, so an event about it has to be
+// addressed from every one of those teams, not only from the owning team the
+// event happens to carry. Resolved here, on handling, rather than carried in the
+// event: the alternative is a field on event.Meta that every publication site has
+// to remember to fill, and a forgotten one would silently mean "no participants".
+//
+// Батчевая операция: один вызов на группу событий. Не превращать в цикл — это N+1.
+type GoalTeamsResolver interface {
+	TeamIDsByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]int64, error)
+}
+
 // Delivery is one created notification on its way to a recipient's external
 // channels: what happened, to whom, and where it has to be said.
 //
@@ -55,7 +69,10 @@ type Delivery struct {
 	// bell, which is the stored row itself.
 	Channels []string
 
-	Kind        string
+	Kind string
+	// Type is the notification type the row was written under; one event can
+	// produce two, and they are not worded the same.
+	Type        string
 	EntityTitle string
 	Count       int
 	Payload     map[string]any
@@ -85,6 +102,11 @@ type Deliverer interface {
 type Deps struct {
 	Notifications NotificationWriter
 	Prefs         PrefResolver
+	// GoalTeams widens an event's audience to every team a shared goal lives in.
+	// nil means the build cannot look shares up, and every goal is addressed from
+	// the team its event carries — exactly the behaviour before shared goals were
+	// notified at all.
+	GoalTeams GoalTeamsResolver
 	// Delivery sends notifications to external channels. nil means the build has
 	// none: the bell is written exactly as before.
 	Delivery Deliverer
@@ -96,6 +118,7 @@ type Deps struct {
 type UseCase struct {
 	notifications NotificationWriter
 	prefs         PrefResolver
+	goalTeams     GoalTeamsResolver
 	delivery      Deliverer
 	logger        *slog.Logger
 }
@@ -104,6 +127,7 @@ func New(deps Deps) *UseCase {
 	return &UseCase{
 		notifications: deps.Notifications,
 		prefs:         deps.Prefs,
+		goalTeams:     deps.GoalTeams,
 		delivery:      deps.Delivery,
 		logger:        deps.Logger,
 	}
@@ -114,6 +138,9 @@ type pending struct {
 	ev     event.Event
 	anchor anchor
 	typ    string
+	// teams is every team this event must be addressed from, filled for scoped
+	// types only. One entry for a goal in a single team, several for a shared one.
+	teams []int64
 }
 
 // Handle is the bus subscriber. It groups the batch by (tenant, notification type),
@@ -129,29 +156,27 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 	groups := make(map[groupKey][]pending)
 
 	for _, ev := range evs {
-		typ := notifyType(ev)
-		if typ == "" {
-			continue
-		}
 		a := anchorOf(ev)
 		m := ev.Context()
-		switch notificationprefs.AudienceOf(typ) {
-		case notificationprefs.AudienceAddressee:
-			// Nobody is notified about their own action.
-			if a.addressee == 0 || a.addressee == m.ActorID {
-				continue
+		for _, typ := range notifyTypes(ev) {
+			switch notificationprefs.AudienceOf(typ) {
+			case notificationprefs.AudienceAddressee:
+				// Nobody is notified about their own action.
+				if a.addressee == 0 || a.addressee == m.ActorID {
+					continue
+				}
+			case notificationprefs.AudienceTenantAdmins:
+				// Needs neither team nor addressee: the tenant is the audience, and
+				// the resolver drops the actor per event.
+			default:
+				if m.TeamID == nil {
+					// Without a team the event cannot be scoped to anyone.
+					continue
+				}
 			}
-		case notificationprefs.AudienceTenantAdmins:
-			// Needs neither team nor addressee: the tenant is the audience, and
-			// the resolver drops the actor per event.
-		default:
-			if m.TeamID == nil {
-				// Without a team the event cannot be scoped to anyone.
-				continue
-			}
+			k := groupKey{tenantID: m.Scope.TenantID, typ: typ}
+			groups[k] = append(groups[k], pending{ev: ev, anchor: a, typ: typ})
 		}
-		k := groupKey{tenantID: m.Scope.TenantID, typ: typ}
-		groups[k] = append(groups[k], pending{ev: ev, anchor: a, typ: typ})
 	}
 
 	// One group's failure must not cost every other tenant its rows: a batch spans
@@ -160,11 +185,21 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 	var errs []error
 	for k, items := range groups {
 		scope := domain.TenantScope{TenantID: k.tenantID}
-		recipients, err := u.resolve(ctx, scope, k.typ, items)
+		// A failure here is reported but does not abandon the group: see
+		// withAudienceTeams. The items it returns are always usable.
+		items, err := u.withAudienceTeams(ctx, scope, k.typ, items)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		if len(items) == 0 {
+			continue
+		}
+		recipients, ordToItem, err := u.resolve(ctx, scope, k.typ, items)
 		if err != nil {
 			errs = append(errs, err)
 			continue
 		}
+		recipients = u.dedupeByItem(ctx, recipients, ordToItem, k.typ, k.tenantID)
 		// Read once per group. A recipient's own answer already travelled in
 		// Recipient.ChannelOverrides; what is missing is only the tenant-wide
 		// default, and asking for it per recipient would be an N+1 over a value
@@ -189,27 +224,13 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 		rows := make([]notifications.InsertInput, 0, len(recipients))
 		var deliveries []Delivery
 		for _, rc := range recipients {
-			if rc.Ord < 0 || rc.Ord >= len(items) {
-				// A resolver returning an out-of-range Ord is a bug in that resolver,
-				// not a reason to crash the whole batch (this handler runs async,
-				// where the bus recovers panics and would silently drop everything).
-				if u.logger != nil {
-					u.logger.ErrorContext(ctx, "notification: recipient Ord out of range",
-						slog.String(logging.KeyEvent, logging.EventDomainEvent),
-						slog.Int("ord", rc.Ord),
-						slog.Int("items", len(items)),
-						slog.String("type", k.typ),
-						slog.Int64(logging.KeyTenantID, k.tenantID))
-				}
-				continue
-			}
 			p := items[rc.Ord]
 			// The row is written whatever the recipient chose about channels. It is
 			// the journal entry every reader works from — the feed hides it when the
 			// bell is switched off, and the digest an external channel sends is
 			// assembled from exactly these. Not writing it would leave the external
 			// channel with nothing to say.
-			rows = append(rows, u.row(p, rc.UserID))
+			rows = append(rows, u.row(p, rc))
 
 			if u.delivery == nil {
 				continue
@@ -218,7 +239,7 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 			if len(external) == 0 {
 				continue
 			}
-			deliveries = append(deliveries, u.deliveryFor(p, rc.UserID, external))
+			deliveries = append(deliveries, u.deliveryFor(p, rc, external))
 		}
 		if len(rows) == 0 {
 			// Nobody left to notify for this group: say so, rather than calling
@@ -240,40 +261,199 @@ func (u *UseCase) Handle(ctx context.Context, evs []event.Event) error {
 	return errors.Join(errs...)
 }
 
+// withAudienceTeams fills in, for every item of a scoped group, the teams the event
+// has to be addressed from, and drops the items that turn out to have no audience.
+//
+// Shares are read once for the whole group, never per event (правило 9 CLAUDE.md).
+func (u *UseCase) withAudienceTeams(ctx context.Context, scope domain.TenantScope, typ string, items []pending) ([]pending, error) {
+	if notificationprefs.AudienceOf(typ) != notificationprefs.AudienceTeamTree {
+		return items, nil
+	}
+
+	var teamsByGoal map[int64][]int64
+	var lookupErr error
+	if u.goalTeams != nil {
+		var goalIDs []int64
+		seen := map[int64]bool{}
+		for _, p := range items {
+			if p.anchor.goalID != nil && !seen[*p.anchor.goalID] {
+				seen[*p.anchor.goalID] = true
+				goalIDs = append(goalIDs, *p.anchor.goalID)
+			}
+		}
+		if len(goalIDs) > 0 {
+			byGoal, err := u.goalTeams.TeamIDsByGoalIDs(ctx, scope, goalIDs)
+			if err != nil {
+				// Reported, but NOT a reason to abandon the group — same reasoning
+				// as DeliveryDefaults above. This handler is asynchronous: the bus
+				// logs the error and nothing retries it, so returning here would
+				// cost EVERY recipient in the batch their notification, including
+				// the owning team that needs no shares lookup at all. Falling back
+				// to the event's own team notifies fewer people than it should,
+				// which is strictly better than notifying nobody, and is exactly
+				// what a build without the resolver does.
+				lookupErr = err
+			} else {
+				teamsByGoal = byGoal
+			}
+		}
+	}
+
+	out := items[:0]
+	for _, p := range items {
+		m := p.ev.Context()
+		seen := map[int64]bool{}
+		add := func(id int64) {
+			if id != 0 && !seen[id] {
+				seen[id] = true
+				p.teams = append(p.teams, id)
+			}
+		}
+		// The event's own team first: it is the owner for every goal event, and
+		// the only answer available when the goal's shares cannot be read.
+		if m.TeamID != nil {
+			add(*m.TeamID)
+		}
+		if p.anchor.goalID != nil {
+			for _, teamID := range teamsByGoal[*p.anchor.goalID] {
+				add(teamID)
+			}
+		}
+		for _, teamID := range composedTeamIDs(p.ev) {
+			add(teamID)
+		}
+		if len(p.teams) == 0 {
+			continue
+		}
+		// Resolving a task is the author's business on a goal that lives in one
+		// team; only on a shared goal is it also the other teams' business. More
+		// than one audience team IS the goal being shared.
+		if p.typ == notificationprefs.TypeGoalComment && p.ev.Kind() == event.KindCommentResolved && len(p.teams) == 1 {
+			continue
+		}
+		out = append(out, p)
+	}
+	// Non-fatal by contract: out is always usable, and the error only reports that
+	// the audience may be narrower than it should be.
+	return out, lookupErr
+}
+
 // resolve picks the addressing strategy for the group's type: addressed types carry
 // their recipient, tenant-admin types go to the tenant's admins, scoped types walk
 // the team tree. Each strategy is one call per group, never one per event.
-func (u *UseCase) resolve(ctx context.Context, scope domain.TenantScope, typ string, items []pending) ([]notificationprefs.Recipient, error) {
+//
+// It also returns the map from resolver Ord back to the item it belongs to. For the
+// scoped strategy the two differ: a shared goal contributes one target per team, so
+// several Ords stand for one event.
+func (u *UseCase) resolve(ctx context.Context, scope domain.TenantScope, typ string, items []pending) ([]notificationprefs.Recipient, []int, error) {
+	identity := func() []int {
+		out := make([]int, len(items))
+		for i := range out {
+			out[i] = i
+		}
+		return out
+	}
 	switch notificationprefs.AudienceOf(typ) {
 	case notificationprefs.AudienceAddressee:
 		userIDs := make([]int64, len(items))
 		for i, p := range items {
 			userIDs[i] = p.anchor.addressee
 		}
-		return u.prefs.ResolveAddressed(ctx, scope, typ, userIDs)
+		rcs, err := u.prefs.ResolveAddressed(ctx, scope, typ, userIDs)
+		return rcs, identity(), err
 	case notificationprefs.AudienceTenantAdmins:
 		actorIDs := make([]int64, len(items))
 		for i, p := range items {
 			actorIDs[i] = p.ev.Context().ActorID
 		}
-		return u.prefs.ResolveTenantAdmins(ctx, scope, typ, actorIDs)
+		rcs, err := u.prefs.ResolveTenantAdmins(ctx, scope, typ, actorIDs)
+		return rcs, identity(), err
 	}
-	targets := make([]notificationprefs.Target, len(items))
+	targets := make([]notificationprefs.Target, 0, len(items))
+	ordToItem := make([]int, 0, len(items))
 	for i, p := range items {
-		m := p.ev.Context()
-		targets[i] = notificationprefs.Target{TeamID: *m.TeamID, ActorID: m.ActorID}
+		actorID := p.ev.Context().ActorID
+		for _, teamID := range p.teams {
+			targets = append(targets, notificationprefs.Target{TeamID: teamID, ActorID: actorID})
+			ordToItem = append(ordToItem, i)
+		}
 	}
-	return u.prefs.Resolve(ctx, scope, typ, targets)
+	rcs, err := u.prefs.Resolve(ctx, scope, typ, targets)
+	return rcs, ordToItem, err
 }
 
-func (u *UseCase) row(p pending, userID int64) notifications.InsertInput {
+// dedupeByItem reduces resolver output to at most one recipient per (event, user)
+// and rewrites Ord to index the group's items.
+//
+// A shared goal is addressed from each of its teams, so the same lead can come back
+// several times for one event. Writing a row per hit would not produce several
+// notifications — they share a coalesce key, and notifications.Insert's ON CONFLICT
+// bumps coalesce_count instead — so the reader would be told "×3" about a single
+// change.
+//
+// The survivor is the nearest hit, because the team it was found from is the board
+// the notification links to and the nearest one is the board the recipient is
+// likeliest to be able to open. Equal distances go to the lowest team id: arbitrary,
+// but stable, so the same set of teams always yields the same link.
+func (u *UseCase) dedupeByItem(ctx context.Context, recipients []notificationprefs.Recipient, ordToItem []int, typ string, tenantID int64) []notificationprefs.Recipient {
+	type key struct {
+		item   int
+		userID int64
+	}
+	best := make(map[key]int, len(recipients))
+	out := make([]notificationprefs.Recipient, 0, len(recipients))
+	for _, rc := range recipients {
+		if rc.Ord < 0 || rc.Ord >= len(ordToItem) {
+			// A resolver returning an out-of-range Ord is a bug in that resolver,
+			// not a reason to crash the whole batch (this handler runs async,
+			// where the bus recovers panics and would silently drop everything).
+			if u.logger != nil {
+				u.logger.ErrorContext(ctx, "notification: recipient Ord out of range",
+					slog.String(logging.KeyEvent, logging.EventDomainEvent),
+					slog.Int("ord", rc.Ord),
+					slog.Int("targets", len(ordToItem)),
+					slog.String("type", typ),
+					slog.Int64(logging.KeyTenantID, tenantID))
+			}
+			continue
+		}
+		rc.Ord = ordToItem[rc.Ord]
+		k := key{item: rc.Ord, userID: rc.UserID}
+		at, seen := best[k]
+		if !seen {
+			best[k] = len(out)
+			out = append(out, rc)
+			continue
+		}
+		if cur := out[at]; rc.Distance < cur.Distance ||
+			(rc.Distance == cur.Distance && rc.TeamID < cur.TeamID) {
+			out[at] = rc
+		}
+	}
+	return out
+}
+
+// rowTeamID is the team a notification is recorded against: the one the recipient
+// was actually found through, so a lead of a participating team is sent to their own
+// board rather than the owner's, which they may have no access to. Resolvers that do
+// not walk the tree (an addressed type, a tenant admin) report no team, and the
+// event's own team stands as before.
+func rowTeamID(p pending, rc notificationprefs.Recipient) *int64 {
+	if rc.TeamID != 0 {
+		teamID := rc.TeamID
+		return &teamID
+	}
+	return p.ev.Context().TeamID
+}
+
+func (u *UseCase) row(p pending, rc notificationprefs.Recipient) notifications.InsertInput {
 	m := p.ev.Context()
 	return notifications.InsertInput{
-		UserID:      userID,
+		UserID:      rc.UserID,
 		Type:        p.typ,
 		Kind:        string(p.ev.Kind()),
 		ActorUserID: m.ActorID,
-		TeamID:      m.TeamID,
+		TeamID:      rowTeamID(p, rc),
 		PeriodID:    m.PeriodID,
 		GoalID:      p.anchor.goalID,
 		KRID:        p.anchor.krID,
@@ -287,18 +467,19 @@ func (u *UseCase) row(p pending, userID int64) notifications.InsertInput {
 // deliveryFor describes one created notification for the delivery side. Count is 1:
 // it reports this event, not the coalesced total of the row it may have merged
 // into — the accumulated message names how many updates it carries itself.
-func (u *UseCase) deliveryFor(p pending, userID int64, channels []string) Delivery {
+func (u *UseCase) deliveryFor(p pending, rc notificationprefs.Recipient, channels []string) Delivery {
 	m := p.ev.Context()
 	return Delivery{
-		UserID:      userID,
+		UserID:      rc.UserID,
 		ActorUserID: m.ActorID,
 		Channels:    channels,
 		Kind:        string(p.ev.Kind()),
+		Type:        p.typ,
 		EntityTitle: p.anchor.title,
 		Count:       1,
 		Payload:     payloadOf(p.ev),
 		GoalID:      p.anchor.goalID,
-		TeamID:      m.TeamID,
+		TeamID:      rowTeamID(p, rc),
 		PeriodID:    m.PeriodID,
 		KRID:        p.anchor.krID,
 		CommentID:   p.anchor.commentID,

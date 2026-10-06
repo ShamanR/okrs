@@ -53,6 +53,10 @@ type Preference struct {
 }
 
 // Target is one event's addressing input: the team it happened in and who did it.
+//
+// An event about a shared goal produces SEVERAL targets — one per participating
+// team — all carrying the same Ord position in the caller's batch. The caller is
+// what knows about goals; this package only ever walks the tree from a team.
 type Target struct {
 	TeamID  int64
 	ActorID int64
@@ -63,6 +67,15 @@ type Target struct {
 type Recipient struct {
 	Ord    int
 	UserID int64
+	// TeamID is the team the walk STARTED from — the one in Target, not the one
+	// the recipient leads. It is what the notification records and links to, so a
+	// lead of a participating team lands on their own board rather than the
+	// owner's, which they may not even be able to open.
+	TeamID int64
+	// Distance is how many steps up the tree the recipient was found, 0 meaning
+	// they lead TeamID itself. The caller uses it to pick between several teams
+	// that found the same person.
+	Distance int
 	// ChannelOverrides is this recipient's explicit per-channel choice; see
 	// Preference.ChannelOverrides. Turning it into the actual set of channels
 	// needs the tenant's channel defaults, which live a layer up — this type
@@ -156,22 +169,29 @@ func (r *Repository) Set(ctx context.Context, scope domain.TenantScope, userID i
 // never traversed, matching the convention recorded in
 // grants.GrantRepository.ListDescendantTeamIDs.
 //
-// SELECT DISTINCT collapses a lead reached through two ancestor paths of the same
-// event (e.g. one person leading both a team and its parent unit) into a single row.
-// Without it the fan-out would see the same (event, user) pair twice and, downstream,
-// notifications.Insert's ON CONFLICT would bump coalesce_count instead of discarding
-// the duplicate, so the user would see an inflated repeat count for one change.
+// DISTINCT ON (ord, user) collapses a lead reached through two ancestor paths of the
+// same target (e.g. one person leading both a team and its parent unit) into a single
+// row. Without it the fan-out would see the same (target, user) pair twice and,
+// downstream, notifications.Insert's ON CONFLICT would bump coalesce_count instead of
+// discarding the duplicate, so the user would see an inflated repeat count for one
+// change.
+//
+// ORDER BY distance first makes that collapse pick the CLOSEST path, which is what
+// decides the distance reported back — and the caller breaks its own ties with it
+// when several targets of one event found the same person. root_team is in the
+// ORDER BY only to make the row chosen fully determined rather than left to the plan.
 const resolveSQL = `
 WITH RECURSIVE chain AS (
-    SELECT src.ord, src.actor_id, t.id, t.parent_id, t.lead_udid, 0 AS distance
+    SELECT src.ord, src.actor_id, src.team_id AS root_team, t.id, t.parent_id, t.lead_udid, 0 AS distance
       FROM unnest($1::bigint[], $4::bigint[]) WITH ORDINALITY AS src(team_id, actor_id, ord)
       JOIN teams t ON t.id = src.team_id AND t.deleted_at IS NULL AND t.tenant_id = $2
     UNION ALL
-    SELECT c.ord, c.actor_id, t.id, t.parent_id, t.lead_udid, c.distance + 1
+    SELECT c.ord, c.actor_id, c.root_team, t.id, t.parent_id, t.lead_udid, c.distance + 1
       FROM teams t JOIN chain c ON t.id = c.parent_id
      WHERE t.deleted_at IS NULL AND t.tenant_id = $2
 )
-SELECT DISTINCT c.ord - 1, u.id, COALESCE(p.channel_overrides, '{}'::jsonb)
+SELECT DISTINCT ON (c.ord, u.id)
+       c.ord - 1, u.id, COALESCE(p.channel_overrides, '{}'::jsonb), c.root_team, c.distance
   FROM chain c
   JOIN users u       ON u.udid = c.lead_udid
   JOIN memberships m ON m.user_id = u.id AND m.tenant_id = $2 AND m.status = 'active'
@@ -183,7 +203,8 @@ SELECT DISTINCT c.ord - 1, u.id, COALESCE(p.channel_overrides, '{}'::jsonb)
          WHEN 'own'              THEN c.distance = 0
          WHEN 'own_and_children' THEN c.distance <= 1
          ELSE TRUE
-       END`
+       END
+ ORDER BY c.ord, u.id, c.distance, c.root_team`
 
 // ResolveRecipients answers "who must be notified" for a whole batch of events at
 // once: $1 and $4 are parallel arrays of team and actor, one pair per event, and the
@@ -211,7 +232,7 @@ func (r *Repository) ResolveRecipients(ctx context.Context, scope domain.TenantS
 	var out []Recipient
 	for rows.Next() {
 		var rc Recipient
-		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.ChannelOverrides); err != nil {
+		if err := rows.Scan(&rc.Ord, &rc.UserID, &rc.ChannelOverrides, &rc.TeamID, &rc.Distance); err != nil {
 			return nil, err
 		}
 		out = append(out, rc)

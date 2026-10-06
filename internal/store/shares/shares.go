@@ -74,6 +74,41 @@ func (r *GoalShareRepository) ListGoalSharesByGoalIDs(ctx context.Context, scope
 	return result, rows.Err()
 }
 
+// TeamIDsByGoalIDs answers "which teams is this goal visible in" for a batch of
+// goals: the owning team plus every team the goal is shared with.
+//
+// Lives here rather than in the goals repository because the answer IS the share
+// composition — the owning team is simply the member of it stored on the goal row
+// itself. Ids come back ascending, so a caller choosing between two of them gets a
+// stable answer; a goal of another tenant is absent from the map.
+//
+// Батчевая операция: один запрос на весь набор. Не превращать в цикл — это N+1.
+func (r *GoalShareRepository) TeamIDsByGoalIDs(ctx context.Context, scope domain.TenantScope, goalIDs []int64) (map[int64][]int64, error) {
+	result := make(map[int64][]int64, len(goalIDs))
+	if len(goalIDs) == 0 {
+		return result, nil
+	}
+	rows, err := r.db.Query(ctx, `
+		SELECT goal_id, team_id FROM (
+		    SELECT g.id      AS goal_id, g.team_id AS team_id FROM goals       g WHERE g.id      = ANY($1) AND g.tenant_id = $2
+		    UNION
+		    SELECT s.goal_id AS goal_id, s.team_id AS team_id FROM goal_shares s WHERE s.goal_id = ANY($1) AND s.tenant_id = $2
+		) t
+		ORDER BY goal_id, team_id`, goalIDs, scope.TenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var goalID, teamID int64
+		if err := rows.Scan(&goalID, &teamID); err != nil {
+			return nil, err
+		}
+		result[goalID] = append(result[goalID], teamID)
+	}
+	return result, rows.Err()
+}
+
 func (r *GoalShareRepository) GetGoalShare(ctx context.Context, scope domain.TenantScope, goalID, teamID int64) (GoalShare, error) {
 	var share GoalShare
 	row := r.db.QueryRow(ctx, `SELECT goal_id, team_id, weight, sort_order FROM goal_shares WHERE goal_id=$1 AND team_id=$2 AND tenant_id=$3`, goalID, teamID, scope.TenantID)

@@ -116,6 +116,7 @@ func Build(st *store.Store, grantsCache *grants.GrantsCache, periodCache *period
 	notificationUC := notificationuc.New(notificationuc.Deps{
 		Notifications: notifications,
 		Prefs:         notificationPrefs,
+		GoalTeams:     shares,
 		Delivery:      delivery,
 		Logger:        logger,
 	})
