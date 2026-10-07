@@ -130,7 +130,6 @@ func newUC() (*notificationuc.UseCase, *fakeWriter, *fakePrefs) {
 func TestNonNotifyingEventsAreIgnored(t *testing.T) {
 	uc, w, _ := newUC()
 	err := uc.Handle(context.Background(), []event.Event{
-		event.GoalShared{Meta: meta(), GoalID: 1, Title: "Цель"},
 		event.GoalLinked{Meta: meta(), ChildGoalID: 1, Title: "Цель"},
 		event.StatusChanged{Meta: meta(), TeamTitle: "Команда"},
 		event.CommentReopened{Meta: meta(), GoalID: 1, CommentID: 2, GoalTitle: "Цель"},

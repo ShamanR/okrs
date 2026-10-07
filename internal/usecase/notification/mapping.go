@@ -21,21 +21,32 @@ import (
 // to preview it.
 const payloadTextPreviewLimit = 500
 
-// notifyType maps an event onto the notification type it produces, or "" when the
-// event produces none. This function IS the boundary described in spec §6.1 —
-// widening it is a product decision, not a refactor.
-func notifyType(ev event.Event) string {
+// notifyTypes maps an event onto the notification types it produces, or nothing
+// when the event produces none. This function IS the boundary described in spec
+// §6.1 — widening it is a product decision, not a refactor.
+//
+// Nearly every event maps onto exactly one type. The one that does not is a
+// resolved task: its author is told personally, and on a SHARED goal the teams
+// working on that goal are told too, because resolving a task there is part of
+// the discussion they all see. The second type is dropped again for a goal that
+// is not shared — see Handle.
+func notifyTypes(ev event.Event) []string {
 	switch ev.(type) {
 	case event.CommentAdded, event.ReplyAdded:
-		return notificationprefs.TypeGoalComment
+		return []string{notificationprefs.TypeGoalComment}
 
 	case event.CommentResolved:
-		return notificationprefs.TypeMyCommentResolved
+		return []string{notificationprefs.TypeMyCommentResolved, notificationprefs.TypeGoalComment}
 
 	case event.GoalCreated, event.GoalCopied, event.GoalMoved, event.GoalDeleted,
 		event.GoalFieldsChanged, event.GoalOwnerChanged,
+		event.GoalShared, event.GoalUnshared,
 		event.KRCreated, event.KRFieldsChanged, event.KRDeleted:
-		return notificationprefs.TypeGoalChanged
+		// Sharing and unsharing are goal changes like any other: the goal's set of
+		// teams changed, and every team it concerns — the one added, the one
+		// removed, and the ones that stay — is told under the preference the user
+		// already has for goal changes.
+		return []string{notificationprefs.TypeGoalChanged}
 
 	case event.KRCheckedIn:
 		// Every check-in notifies — including a note-only or health-only one. It
@@ -44,17 +55,50 @@ func notifyType(ev event.Event) string {
 		// same for the checked-in notification that replaced it (this event
 		// replaces KRProgressUpdated, which used to be the only KR event that
 		// notified at all — see the plan this bridges, kr-checkin-notifications).
-		return notificationprefs.TypeKRProgress
+		return []string{notificationprefs.TypeKRProgress}
 
 	case event.AccessRequested:
-		return notificationprefs.TypeAccessRequested
+		return []string{notificationprefs.TypeAccessRequested}
 	}
-	// Deliberately silent: goal_shared, goal_unshared, goal_linked, goal_unlinked,
-	// status_changed, comment_reopened, comment_deleted and reply_deleted notify
-	// nobody (spec §6.1). Note goal_deleted and kr_deleted are NOT in this list:
-	// they fall through to the goal_changed case above, same as any other goal or
-	// KR edit.
-	return ""
+	// Deliberately silent: goal_linked, goal_unlinked, status_changed,
+	// comment_reopened, comment_deleted and reply_deleted notify nobody (spec
+	// §6.1). Note goal_deleted and kr_deleted are NOT in this list: they fall
+	// through to the goal_changed case above, same as any other goal or KR edit.
+	return nil
+}
+
+// composedTeamIDs names the teams an event is about that the goal's CURRENT set of
+// teams no longer answers for: the ones just added, and the ones just removed.
+//
+// The removed ones are the reason this exists. By the time the fan-out runs, their
+// rows are gone from goal_shares, so the only record that the goal ever concerned
+// them is the event itself — and they are exactly the people who need to be told.
+func composedTeamIDs(ev event.Event) []int64 {
+	switch e := ev.(type) {
+	case event.GoalShared:
+		return e.SharedWithTeamIDs
+	case event.GoalOwnerChanged:
+		// Ownership moving away can take the goal off the old owner's board
+		// entirely: goal.Delete on a shared goal hands ownership to the first
+		// participant and leaves the old owner with neither ownership nor a share.
+		// Of everyone involved that team is the one that certainly lost the goal,
+		// and the current composition no longer mentions it — so, like a removed
+		// participant, it has to come from the event.
+		return []int64{e.BeforeTeamID}
+	case event.GoalUnshared:
+		// Three publication sites, three different shapes — see the type's own
+		// comment. Exactly one is ever set; reading all three is what keeps this
+		// caller out of that history.
+		out := append([]int64(nil), e.UnsharedTeamIDs...)
+		if e.UnsharedTeamID != 0 {
+			out = append(out, e.UnsharedTeamID)
+		}
+		if e.DeclinedByTeamID != 0 {
+			out = append(out, e.DeclinedByTeamID)
+		}
+		return out
+	}
+	return nil
 }
 
 // anchor is what a notification points at: the goal (or KR, for progress) plus the
@@ -93,6 +137,10 @@ func anchorOf(ev event.Event) anchor {
 		return anchor{goalID: id(e.GoalID), title: e.Title}
 	case event.GoalOwnerChanged:
 		return anchor{goalID: id(e.GoalID), title: e.Title}
+	case event.GoalShared:
+		return anchor{goalID: id(e.GoalID), title: e.Title}
+	case event.GoalUnshared:
+		return anchor{goalID: id(e.GoalID), title: e.Title}
 
 	case event.KRCreated:
 		return anchor{goalID: id(e.GoalID), krID: id(e.KRID), title: e.KRTitle}
@@ -117,6 +165,22 @@ func payloadOf(ev event.Event) map[string]any {
 		return map[string]any{"text": truncateText(e.Text)}
 	case event.ReplyAdded:
 		return map[string]any{"text": truncateText(e.Text)}
+	case event.GoalShared:
+		// The renderer says "your team was added" or "the goal's teams changed"
+		// depending on whether the reader's own team is in this list, so the list
+		// has to travel with the notification: goal_shares no longer tells the two
+		// apart once the change is done.
+		//
+		// Added and removed are SEPARATE keys, never one "changed" list, because a
+		// coalesced row keeps the first event's kind but takes the last event's
+		// payload (store/notifications' upsert). One list plus the kind would then
+		// tell a team that was just removed it had been added: sharing and
+		// unsharing the same goal inside one coalesce window is a single
+		// ReplaceShares call away. Naming the verb in the payload keeps the row
+		// readable whichever event wrote it last.
+		return map[string]any{fieldAddedTeams: teamIDList(e.SharedWithTeamIDs)}
+	case event.GoalUnshared:
+		return map[string]any{fieldRemovedTeams: teamIDList(composedTeamIDs(e))}
 	case event.KRCheckedIn:
 		// before/after carry all three values the checked-in event tracks, not just
 		// progress: the renderer (internal/render/notify) picks a different wording
@@ -149,6 +213,27 @@ func payloadOf(ev event.Event) map[string]any {
 		}
 	}
 	return map[string]any{}
+}
+
+// Payload keys naming the teams a composition change touched. Spelled here and
+// read in render/notify, the two ends of payload_json.
+const (
+	fieldAddedTeams   = "added_team_ids"
+	fieldRemovedTeams = "removed_team_ids"
+)
+
+// teamIDList converts ids into the shape payload_json round-trips cleanly.
+//
+// []any of int64 rather than []int64: payload_json is written as JSONB and read
+// back as []any of float64, and the renderer has to accept one shape, not two
+// that differ only by where the notification came from (freshly built in process,
+// or loaded from the feed).
+func teamIDList(ids []int64) []any {
+	out := make([]any, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id)
+	}
+	return out
 }
 
 // truncateText caps a user-supplied string (comment text, check-in note) at

@@ -2534,6 +2534,92 @@ ORDER BY g.id
 LIMIT 2
 ON CONFLICT DO NOTHING;
 
+-- Уведомления об общей цели. Цель 30 принадлежит команде-владельцу и расшарена в
+-- команду 6. Важное здесь — team_id = 6, а не команда-владелец: получатель найден
+-- через команду-участника, и переход обязан вести на её доску. Получатель —
+-- user_id 1, как и у остальных демо-уведомлений: ни у одной команды демо-набора
+-- нет руководителя, сопоставленного с пользователем, так что «настоящего» лида
+-- команды-участника здесь взять неоткуда.
+INSERT INTO
+    notifications (
+        tenant_id,
+        user_id,
+        type,
+        kind,
+        actor_user_id,
+        team_id,
+        period_id,
+        goal_id,
+        entity_title,
+        payload_json,
+        coalesce_key,
+        coalesce_count
+    )
+SELECT
+    1,
+    1,
+    'goal_changed',
+    'goal_shared',
+    2,
+    s.team_id,
+    g.period_id,
+    g.id,
+    g.title,
+    jsonb_build_object('added_team_ids', jsonb_build_array(s.team_id)),
+    'demo:shared:goal:' || g.id,
+    1
+FROM goals g
+    JOIN goal_shares s ON s.goal_id = g.id AND s.tenant_id = 1
+WHERE
+    g.id = 30
+    AND g.tenant_id = 1
+ON CONFLICT DO NOTHING;
+
+INSERT INTO
+    notifications (
+        tenant_id,
+        user_id,
+        type,
+        kind,
+        actor_user_id,
+        team_id,
+        period_id,
+        goal_id,
+        kr_id,
+        entity_title,
+        payload_json,
+        coalesce_key,
+        coalesce_count
+    )
+SELECT
+    1,
+    1,
+    'kr_progress',
+    'kr_checked_in',
+    2,
+    s.team_id,
+    g.period_id,
+    g.id,
+    kr.id,
+    kr.title,
+    jsonb_build_object(
+        'before', jsonb_build_object('progress', 20, 'health', 'on_track', 'note', ''),
+        'after', jsonb_build_object('progress', 45, 'health', 'on_track', 'note', ''),
+        'goal_title', g.title,
+        'note_changed', FALSE
+    ),
+    'demo:shared:kr:' || kr.id,
+    1
+FROM goals g
+    JOIN goal_shares s ON s.goal_id = g.id AND s.tenant_id = 1
+    JOIN key_results kr ON kr.goal_id = g.id
+WHERE
+    g.id = 30
+    AND g.tenant_id = 1
+ORDER BY kr.id
+LIMIT 1
+ON CONFLICT DO NOTHING;
+
 -- Системные уведомления по умолчанию выключены: администратор включает заявки на
 -- доступ сам. Демо-пользователь их включил, поэтому в колокольчике есть пример.
 INSERT INTO

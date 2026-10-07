@@ -158,6 +158,23 @@ func (f *GoalStore) ListGoalSharesByGoalIDs(_ context.Context, _ domain.TenantSc
 	}
 	return result, nil
 }
+func (f *GoalStore) TeamIDsByGoalIDs(_ context.Context, _ domain.TenantScope, goalIDs []int64) (map[int64][]int64, error) {
+	result := make(map[int64][]int64, len(goalIDs))
+	for _, id := range goalIDs {
+		seen := map[int64]bool{}
+		if g, ok := f.Goals[id]; ok && g.TeamID != 0 {
+			seen[g.TeamID] = true
+			result[id] = append(result[id], g.TeamID)
+		}
+		for _, sh := range f.GoalShares[id] {
+			if !seen[sh.TeamID] {
+				seen[sh.TeamID] = true
+				result[id] = append(result[id], sh.TeamID)
+			}
+		}
+	}
+	return result, nil
+}
 func (f *GoalStore) ListGoalsByTeamPeriod(_ context.Context, _ domain.TenantScope, teamID, periodID int64) ([]domain.Goal, error) {
 	if m := f.GoalsAfterDelete[teamID]; m != nil {
 		return m[periodID], nil

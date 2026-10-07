@@ -180,6 +180,9 @@ func (f *Store) ListGoalShares(context.Context, domain.TenantScope, int64) ([]sh
 func (f *Store) ListGoalSharesByGoalIDs(_ context.Context, _ domain.TenantScope, goalIDs []int64) (map[int64][]shares.GoalShare, error) {
 	return make(map[int64][]shares.GoalShare, len(goalIDs)), nil
 }
+func (f *Store) TeamIDsByGoalIDs(_ context.Context, _ domain.TenantScope, goalIDs []int64) (map[int64][]int64, error) {
+	return make(map[int64][]int64, len(goalIDs)), nil
+}
 func (f *Store) GetTeamPeriodStatus(_ context.Context, _ domain.TenantScope, teamID, periodID int64) (domain.TeamPeriodStatus, error) {
 	if status, ok := f.Statuses[[2]int64{teamID, periodID}]; ok {
 		return status, nil

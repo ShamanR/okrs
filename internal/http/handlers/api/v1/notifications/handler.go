@@ -106,10 +106,12 @@ func toDTO(n storenotif.Notification) dto.Notification {
 	}
 	text := notify.Render(notify.Input{
 		Kind:        event.Kind(n.Kind),
+		Type:        n.Type,
 		ActorName:   actor,
 		EntityTitle: n.EntityTitle,
 		Count:       n.CoalesceCount,
 		Payload:     n.Payload,
+		TeamID:      n.TeamID,
 	})
 	d := dto.Notification{
 		ID: n.ID, Type: n.Type, Kind: n.Kind,
@@ -154,5 +156,7 @@ func targetURL(n storenotif.Notification) string {
 		KRID:        n.KRID,
 		CommentID:   n.CommentID,
 		GoalMissing: n.GoalTitle == "",
+		// The goal still exists, but not on this reader's board any more.
+		GoalLeftTeam: notify.TeamWasRemoved(n.Payload, n.TeamID),
 	})
 }

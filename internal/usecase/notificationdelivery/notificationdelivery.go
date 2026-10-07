@@ -224,10 +224,12 @@ func (u *UseCase) render(scope domain.TenantScope, it notification.Delivery, con
 	}
 	text := notify.Render(notify.Input{
 		Kind:        event.Kind(it.Kind),
+		Type:        it.Type,
 		ActorName:   actor,
 		EntityTitle: it.EntityTitle,
 		Count:       it.Count,
 		Payload:     it.Payload,
+		TeamID:      it.TeamID,
 	})
 	body := text.Body
 	if text.Subject != "" {
@@ -254,6 +256,8 @@ func (u *UseCase) render(scope domain.TenantScope, it notification.Delivery, con
 			// the deletion itself, which is published after the row is gone. The
 			// usecase knows which event this was; this side only carries the answer.
 			GoalMissing: it.GoalGone,
+			// The goal still exists, but not on this reader's board any more.
+			GoalLeftTeam: notify.TeamWasRemoved(it.Payload, it.TeamID),
 		})),
 	}
 }

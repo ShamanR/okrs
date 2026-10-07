@@ -114,6 +114,16 @@ ON CONFLICT (tenant_id, user_id, coalesce_key) DO UPDATE
    SET coalesce_count = notifications.coalesce_count + 1,
        updated_at     = now(),
        payload_json   = EXCLUDED.payload_json,
+       -- team_id travels WITH payload_json, and for the same reason. It is not
+       -- wording but routing: it is the team the recipient was resolved through,
+       -- which is the board the notification opens, and on a shared goal two events
+       -- in one bucket can resolve the same person through different teams. Keeping
+       -- the first team beside the last payload is what breaks: after a team is
+       -- removed from a shared goal, a later edit refreshes the payload to one that
+       -- says nothing about teams while team_id still names the board the goal just
+       -- left, and the link lands where the goal is not. Refreshed together, the two
+       -- always describe the same event.
+       team_id        = EXCLUDED.team_id,
        -- kind and entity_title are deliberately NOT refreshed here: a coalesced row
        -- keeps rendering with the first event's wording (kind, entity_title) even
        -- though payload_json now holds the latest event's data. Cheap trade, not an
