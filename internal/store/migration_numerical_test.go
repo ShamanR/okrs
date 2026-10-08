@@ -3,12 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"okrs/internal/platform/migrations"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
@@ -22,6 +22,7 @@ import (
 func TestMigration023ConvertsLegacyKindsToNumerical(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -46,21 +47,13 @@ func TestMigration023ConvertsLegacyKindsToNumerical(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	defer db.Close()
-	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{})
-	if err != nil {
-		t.Fatalf("driver: %v", err)
-	}
 	migrationsPath, err := resolveMigrationsPath()
 	if err != nil {
 		t.Fatalf("path: %v", err)
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
-	if err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
 
 	// Migrate to the pre-numerical schema (legacy meta tables still present).
-	if err := m.Migrate(22); err != nil {
+	if err := migrations.To(ctx, db, os.DirFS(migrationsPath), 22); err != nil {
 		t.Fatalf("migrate to 22: %v", err)
 	}
 
@@ -88,7 +81,7 @@ func TestMigration023ConvertsLegacyKindsToNumerical(t *testing.T) {
 	exec(t, pool, `INSERT INTO kr_boolean_meta (key_result_id, is_done) VALUES ($1,true)`, boolKR)
 
 	// Apply the conversion migration.
-	if err := m.Migrate(23); err != nil {
+	if err := migrations.To(ctx, db, os.DirFS(migrationsPath), 23); err != nil {
 		t.Fatalf("migrate to 23: %v", err)
 	}
 

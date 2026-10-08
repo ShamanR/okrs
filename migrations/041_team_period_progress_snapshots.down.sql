@@ -1,1 +1,0 @@
-DROP TABLE team_period_progress_snapshots;

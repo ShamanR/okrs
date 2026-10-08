@@ -3,12 +3,12 @@ package store
 import (
 	"context"
 	"database/sql"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"okrs/internal/platform/migrations"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -21,6 +21,7 @@ func migrateTo(t *testing.T, version uint) (*sql.DB, func()) {
 	t.Helper()
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -40,19 +41,11 @@ func migrateTo(t *testing.T, version uint) (*sql.DB, func()) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{})
-	if err != nil {
-		t.Fatalf("driver: %v", err)
-	}
 	path, err := resolveMigrationsPath()
 	if err != nil {
 		t.Fatalf("path: %v", err)
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+path, "postgres", driver)
-	if err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if err := m.Migrate(version); err != nil {
+	if err := migrations.To(context.Background(), db, os.DirFS(path), int64(version)); err != nil {
 		t.Fatalf("migrate to %d: %v", version, err)
 	}
 	cleanup := func() {
@@ -65,19 +58,11 @@ func migrateTo(t *testing.T, version uint) (*sql.DB, func()) {
 // migrateDBTo applies migrations up to version on an already-open db (same container).
 func migrateDBTo(t *testing.T, db *sql.DB, version uint) {
 	t.Helper()
-	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{})
-	if err != nil {
-		t.Fatalf("driver: %v", err)
-	}
 	path, err := resolveMigrationsPath()
 	if err != nil {
 		t.Fatalf("path: %v", err)
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+path, "postgres", driver)
-	if err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	if err := m.Migrate(version); err != nil {
+	if err := migrations.To(context.Background(), db, os.DirFS(path), int64(version)); err != nil {
 		t.Fatalf("migrate to %d: %v", version, err)
 	}
 }

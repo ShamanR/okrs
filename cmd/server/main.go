@@ -23,6 +23,7 @@ import (
 	"okrs/internal/core/domain"
 	"okrs/internal/platform/entitlements"
 	"okrs/internal/platform/logging"
+	"okrs/internal/platform/migrations"
 	"okrs/internal/store"
 	"okrs/internal/store/periods"
 	"okrs/notifychannel"
@@ -33,9 +34,6 @@ import (
 	_ "okrs/internal/auth/providers/google"
 	_ "okrs/internal/auth/providers/keycloak"
 
-	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -391,19 +389,11 @@ func runMigrations(databaseURL string) error {
 	}
 	defer db.Close()
 
-	driver, err := postgres.WithInstance(db, &postgres.Config{})
-	if err != nil {
-		return err
-	}
 	migrationsPath, err := resolveMigrationsPath()
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
-	if err != nil {
-		return err
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := migrations.Up(context.Background(), db, os.DirFS(migrationsPath)); err != nil {
 		return err
 	}
 	return nil

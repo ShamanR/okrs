@@ -1,0 +1,22 @@
+-- +goose Up
+-- +goose StatementBegin
+CREATE TABLE IF NOT EXISTS goal_shares (
+  goal_id INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+  weight INTEGER NOT NULL CHECK (weight BETWEEN 0 AND 100),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (goal_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS goal_shares_team_idx ON goal_shares(team_id);
+
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+DROP INDEX IF EXISTS goal_shares_team_idx;
+DROP TABLE IF EXISTS goal_shares;
+
+-- +goose StatementEnd
