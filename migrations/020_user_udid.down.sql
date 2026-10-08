@@ -1,2 +1,0 @@
-DROP INDEX IF EXISTS users_udid_idx;
-ALTER TABLE users DROP COLUMN IF EXISTS udid;

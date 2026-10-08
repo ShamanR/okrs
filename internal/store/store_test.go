@@ -10,12 +10,10 @@ import (
 	"time"
 
 	"okrs/internal/core/domain"
+	"okrs/internal/platform/migrations"
 	"okrs/internal/store/goals"
 	"okrs/internal/store/krs"
 
-	"github.com/golang-migrate/migrate/v4"
-	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
@@ -26,6 +24,7 @@ import (
 func TestStoreExposesTenantRepos(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -64,6 +63,7 @@ func TestStoreExposesTenantRepos(t *testing.T) {
 func TestStoreCRUD(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -149,6 +149,7 @@ func TestStoreCRUD(t *testing.T) {
 func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -245,6 +246,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -364,6 +366,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 func TestKRActivityTimestampsUsedForGoalUpdates(t *testing.T) {
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -489,19 +492,11 @@ func runMigrations(databaseURL string) error {
 	if err := db.PingContext(ctx); err != nil {
 		return err
 	}
-	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{})
-	if err != nil {
-		return err
-	}
 	migrationsPath, err := resolveMigrationsPath()
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
-	if err != nil {
-		return err
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := migrations.Up(ctx, db, os.DirFS(migrationsPath)); err != nil {
 		return err
 	}
 	// Migration 032 drops the transitional tenant_id DEFAULT 1; these single-tenant fixtures

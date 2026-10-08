@@ -9,9 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"okrs/internal/platform/migrations"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/testcontainers/testcontainers-go"
@@ -26,6 +25,7 @@ func SetupDB(t testing.TB) (*pgxpool.Pool, func()) {
 	t.Helper()
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),
@@ -85,19 +85,11 @@ func runMigrations(databaseURL string) error {
 	if err := db.PingContext(ctx); err != nil {
 		return err
 	}
-	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{})
-	if err != nil {
-		return err
-	}
 	path, err := resolveMigrationsPath()
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+path, "postgres", driver)
-	if err != nil {
-		return err
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := migrations.Up(ctx, db, os.DirFS(path)); err != nil {
 		return err
 	}
 	return nil

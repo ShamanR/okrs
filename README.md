@@ -509,3 +509,33 @@ It is the source of truth: when code and spec disagree, the spec is the thing to
 through the quarter, how to close it — starting at [docs/index.md](docs/index.md).
 
 Both are written in Russian.
+
+### Database migrations
+
+Migrations live in `migrations/` and are applied by the server at startup, before seeding and
+before it reports ready; a restart with nothing new to apply is a no-op. The image ships them as
+`/app/migrations`.
+
+- One goose file per version: `NNN_name.sql` with `-- +goose Up` and `-- +goose Down` sections,
+  each run in a transaction. Numbers are three digits, consecutive, no gaps or timestamps.
+- Add a migration by creating the next number by hand. Do not run `goose up/down/status` against
+  a live database: the CLI skips the server's history checks and its lock.
+
+Upgrading from a release that used golang-migrate: on first start the server imports
+`schema_migrations` into `goose_db_version` and applies only the missing versions, leaving
+`schema_migrations` as it was. A `dirty` or inconsistent history stops startup; there is no
+automatic force.
+
+- Back up the database first.
+- At version 49, replicas can be updated one at a time, and rolling back to the previous release
+  works.
+- Below 49, stop the old instances before starting the new release.
+
+Design and guarantees: `openspec/changes/replace-golang-migrate-with-goose/`. The runner's
+integration tests need PostgreSQL 15; the legacy-runner checks also need
+`LEGACY_MIGRATION_RUNNER` (see `internal/platform/migrations/testdata/legacy/`):
+
+```sh
+MIGRATIONS_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' \
+go test ./internal/platform/migrations ./cmd/server
+```

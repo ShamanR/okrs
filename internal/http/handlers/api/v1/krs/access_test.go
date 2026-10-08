@@ -29,6 +29,7 @@ func setupKRAccessDB(t *testing.T) (*pgxpool.Pool, *store.Store, func()) {
 	t.Helper()
 	ctx := context.Background()
 	container, err := tcpostgres.RunContainer(ctx,
+		testcontainers.WithImage("postgres:15"),
 		tcpostgres.WithDatabase("okrs"),
 		tcpostgres.WithUsername("postgres"),
 		tcpostgres.WithPassword("postgres"),

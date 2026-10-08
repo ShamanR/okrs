@@ -1,2 +1,0 @@
-ALTER TABLE periods ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE periods DROP COLUMN archived_at;
