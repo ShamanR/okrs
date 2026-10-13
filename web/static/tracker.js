@@ -645,21 +645,59 @@ function KRHealthBadge({ status }) {
     : <Badge label={label} color={color} />;
 }
 
-function InfoHint({ children, width = 300 }) {
-  const [open, setOpen] = useState(false);
+// Тёмная подсказка .info-hint__tooltip у элемента-якоря — общая для «?» у полей и для полного
+// текста обрезанного заголовка. Хук держит прямоугольник якоря на момент показа; подсказка
+// fixed и от якоря не отслеживается, поэтому при прокрутке скрывается, а не отрывается от него.
+// anchorRef — если у якоря уже есть ref (как у заголовка из useClipped). enabled=false (заголовок
+// перестал быть обрезанным) закрывает подсказку: обработчик ухода курсора к тому времени снят,
+// и без сброса она всплыла бы сама при следующем обрезании.
+function useFloatingTip(anchorRef, enabled = true) {
+  const ownRef = useRef(null);
+  const ref = anchorRef || ownRef;
+  const [anchor, setAnchor] = useState(null);
+  const show = () => { if (ref.current) setAnchor(ref.current.getBoundingClientRect()); };
+  const hide = () => setAnchor(null);
+  useEffect(() => { if (!enabled) setAnchor(null); }, [enabled]);
+  useEffect(() => {
+    if (!anchor) return undefined;
+    window.addEventListener('scroll', hide, true);
+    return () => window.removeEventListener('scroll', hide, true);
+  }, [anchor]);
+  return { ref, anchor, show, hide };
+}
+
+// Подсказка рисуется порталом в body: внутри якоря она унаследовала бы его шрифт (жирный у
+// заголовка цели) и попадала бы под overflow:hidden, на котором держится многоточие. Под якорем
+// по центру, в пределах окна с отступом 8px; не помещается снизу — над якорем. Пока размер не
+// замерен, подсказка невидима, чтобы не мигнуть в углу.
+function FloatingTip({ anchor, width, fit, children }) {
+  const ref = useRef(null);
   const [pos, setPos] = useState(null);
-  const ref = useRef();
-  const show = () => {
-    if (!ref.current) return;
-    const r = ref.current.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
-    setOpen(true);
-  };
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const tw = el.offsetWidth, th = el.offsetHeight, gap = 6, margin = 8;
+    const left = Math.min(window.innerWidth - tw - margin, Math.max(margin, anchor.left + anchor.width / 2 - tw / 2));
+    let top = anchor.bottom + gap;
+    if (top + th > window.innerHeight - margin && anchor.top - gap - th >= margin) top = anchor.top - gap - th;
+    setPos({ top, left });
+  }, [anchor, width, fit, children]);
+  return ReactDOM.createPortal(
+    <span ref={ref} role="tooltip" className={`info-hint__tooltip${fit ? ' info-hint__tooltip--fit' : ''}`}
+      style={{ top: pos ? pos.top : 0, left: pos ? pos.left : 0, width, transform: 'none', visibility: pos ? 'visible' : 'hidden' }}>
+      {children}
+    </span>,
+    document.body
+  );
+}
+
+function InfoHint({ children, width = 300 }) {
+  const tip = useFloatingTip();
   return (
-    <span ref={ref} onMouseEnter={show} onMouseLeave={() => setOpen(false)}
-      tabIndex={0} onFocus={show} onBlur={() => setOpen(false)} className="info-hint">
+    <span ref={tip.ref} onMouseEnter={tip.show} onMouseLeave={tip.hide}
+      tabIndex={0} onFocus={tip.show} onBlur={tip.hide} className="info-hint">
       ?
-      {open && pos && <span className="info-hint__tooltip" style={{ top: pos.top, left: pos.left, width }}>{children}</span>}
+      {tip.anchor && <FloatingTip anchor={tip.anchor} width={width}>{children}</FloatingTip>}
     </span>
   );
 }
@@ -1559,8 +1597,7 @@ function KRNote({ note, open, onToggle }) {
 //
 // На этом признаке держатся две вещи, поэтому заголовок измеряется один раз: подсказка с
 // полным текстом (нужна только обрезанному — у влезающего она дублировала бы видимый текст и
-// отняла бы подсказку действия у строки-предка, которая несёт title «Редактировать цель»;
-// title внутреннего элемента вытесняет title предка на время наведения именно на текст) и
+// отняла бы подсказку действия у строки-предка, которая несёт title «Редактировать цель») и
 // выбор формы драйверов в useOwnersFit.
 function useClipped(text) {
   const ref = useRef(null);
@@ -1577,6 +1614,13 @@ function useClipped(text) {
     return () => ro.disconnect();
   }, [text]);
   return [ref, clipped];
+}
+
+// Атрибуты текста заголовка под подсказку с полным текстом (FloatingTip рисует вызывающий).
+// Пустой title у обрезанного текста гасит над ним нативную подсказку действия строки-предка,
+// чтобы она не всплывала поверх полного текста; над ✎ и остальной строкой она остаётся.
+function clippedTitleProps(clipped, tip) {
+  return clipped ? { title: '', onMouseEnter: tip.show, onMouseLeave: tip.hide } : {};
 }
 
 // Насколько шапка должна стать шире, чтобы снова пробовать имена драйверов. Без этой полосы
@@ -1648,6 +1692,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
   useEffect(() => { setNoteVisOverride(null); setNoteExpanded(true); }, [notesOpen]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nameRef, nameClipped] = useClipped(kr.name);
+  const nameTip = useFloatingTip(nameRef, nameClipped);
   const progress = kr.progress;
   // Цвет давности задаётся классом: fresh → warn → stale по тому же порогу.
   // Цвет давности считаем по прогрессу, а не по kr.updated_at. Если прогресс ещё
@@ -1686,7 +1731,8 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             <div className={`kr-name-row${titleAction ? ' title-editable' : ''}`}
               {...(titleAction ? { role: 'button', tabIndex: 0, title: KR_TITLE_ACTION[titleAction].hint, onClick: openTitleAction,
                 onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTitleAction(); } } } : {})}>
-              <div ref={nameRef} title={nameClipped ? kr.name : undefined} className="kr-name">{kr.name}</div>
+              <div ref={nameRef} {...clippedTitleProps(nameClipped, nameTip)} className="kr-name">{kr.name}</div>
+              {nameClipped && nameTip.anchor && <FloatingTip anchor={nameTip.anchor} fit>{kr.name}</FloatingTip>}
               {titleAction
                 ? <span className={`title-edit${KR_TITLE_ACTION[titleAction].cls}`} aria-hidden="true">{KR_TITLE_ACTION[titleAction].mark}</span>
                 : <LockedAction reason={titleLock}>
@@ -2219,6 +2265,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const [transfer, setTransfer] = useState(false);
   const [titleRef, titleClipped] = useClipped(goal.title);
+  const titleTip = useFloatingTip(titleRef, titleClipped);
   // Имена драйверов уступают место заголовку: решение измеряется по фактической раскладке,
   // а не по количеству драйверов.
   //
@@ -2316,7 +2363,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
               {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать цель',
                 onClick: () => onEditGoal(goal),
                 onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditGoal(goal); } } } : {})}>
-              <div ref={titleRef} title={titleClipped ? goal.title : undefined} className="goal-card__title goal-card__title--readonly">{goal.title}</div>
+              <div ref={titleRef} {...clippedTitleProps(titleClipped, titleTip)} className="goal-card__title goal-card__title--readonly">{goal.title}</div>
+              {titleClipped && titleTip.anchor && <FloatingTip anchor={titleTip.anchor} fit>{goal.title}</FloatingTip>}
               {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
             </div>
             <GoalLinksPopover dir="up" items={goal.parents} />

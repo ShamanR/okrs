@@ -176,13 +176,13 @@ const BOARDS = {
         // Вес 0: цель в периоде есть, но в прогресс команды не входит. Нужна, чтобы на
         // прототипе было видно работу птички «Скрыть цели с весом 0».
         id: 104, priority: 'P3', weight: 0, type: 'discovery', focus: 'TECH_INDEPENDENCE',
-        title: 'Разобрать технический долг по логам', desc: 'Цель вынесена из расчёта прогресса: берём её, если останется время после P0–P2.', updatedDaysAgo: 21,
+        title: 'Разобрать технический долг по логам: единый формат, ротация, хранение и алертинг во всех сервисах платформы', desc: 'Цель вынесена из расчёта прогресса: берём её, если останется время после P0–P2.', updatedDaysAgo: 21,
         owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [], childIds: [],
         krs: [
           // Прогресс ни разу не обновляли: значение не записывали (currentRecorded: false),
           // поэтому current равен start. На этом KR проверяется строка подсказки
           // «прогресс ещё не обновляли».
-          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 0, currentRecorded: false, healthStatus: 'not_started', updatedDaysAgo: 21, progressDaysAgo: null, note: true },
+          { id: 1041, weight: 100, name: 'Сервисов с единым форматом логов и сквозным trace-id в каждой записи, включая фоновые задачи', desc: '', krType: 'NUMERICAL', unit: 'шт', start: 0, target: 6, current: 0, currentRecorded: false, healthStatus: 'not_started', updatedDaysAgo: 21, progressDaysAgo: null, note: true },
         ],
         comments: [],
       },
