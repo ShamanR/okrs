@@ -136,6 +136,23 @@ function filterTreeForSidebar(nodes, sel, currentId) {
   return nodes.map(keep).filter(Boolean);
 }
 
+// Прокручивает контейнер дерева команд к выбранной строке. Двигаем только сам
+// контейнер (страница остаётся на месте) и только когда строка вне видимой зоны:
+// при переходе из команды в команду выбранная команда остаётся на виду.
+function scrollTreeToSelected(container, id) {
+  if (!container || id == null) return;
+  // «Избранное» дублирует строки полного дерева; берём последнюю — она из дерева,
+  // а если узел скрыт свёрнутым предком, остаётся только копия в избранном.
+  const rows = container.querySelectorAll(`[data-team-row="${id}"]`);
+  const row = rows[rows.length - 1];
+  if (!row) return;
+  const c = container.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  const gap = 24; // строка не прилипает к краю: видно, что выше/ниже есть команды
+  if (r.top < c.top + gap) container.scrollTop += r.top - c.top - gap;
+  else if (r.bottom > c.bottom - gap) container.scrollTop += r.bottom - c.bottom + gap;
+}
+
 // ── FAVORITE TEAMS PERSISTENCE ────────────────────────────────────────────────
 // Per-user list of favorited team ids, in add-order. Client-only (no backend).
 // Unknown ids are ignored at render time but kept in storage, so a favorite that
@@ -2387,8 +2404,8 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
           return (
             <div key={kr.id} id={`kr-${kr.id}`}
               draggable={!!canReorderKR}
-              onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag]')); } : undefined}
-              onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
+              onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag], .modal-overlay')); } : undefined}
+              onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); e.stopPropagation(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
               onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
               onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
               onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
@@ -3097,7 +3114,7 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
   ].filter(Boolean).join(' ');
   return (
     <div>
-      <div onClick={() => onSelect(node.id)}
+      <div onClick={() => onSelect(node.id)} data-team-row={node.id}
         className={`sidebar-node__row${isSel ? ' sidebar-node__row--selected' : ''}`}
         style={{ paddingLeft: pad, paddingTop: 5, paddingBottom: 5, paddingRight: 10 }}>
         {ch.length > 0
@@ -3135,6 +3152,8 @@ function App() {
   const [behindMargin, setBehindMargin] = useState(10);
   const [greenThreshold, setGreenThreshold] = useState(80);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Скролл-регион дерева команд: по нему прокручиваем к выбранной команде.
+  const treeRef = useRef(null);
 
   // Read desired initial team+period once from URL (highest prio) then cookie.
   const initialNavRef = useRef(null);
@@ -3293,6 +3312,11 @@ function App() {
   useEffect(() => { if (me && favorites !== null) writeFavorites(me.id, favorites); }, [favorites, me]);
   const onToggleFav = useCallback(id => setFavorites(f => toggleFavorite(f || [], id)), []);
   const selectTeam = useCallback(id => setSelId(id), []);
+  // Выбор команды перерисовывает борд и само дерево (фильтр по выбранной команде,
+  // блок избранного), из-за чего выбранная строка уезжала из видимой части сайдбара.
+  // Возвращаем её на виду — и при переходе из команды в команду, и при открытии
+  // страницы по ссылке/куке, когда выбранная команда лежит глубоко в дереве.
+  useEffect(() => { scrollTreeToSelected(treeRef.current, selId); }, [selId, hierarchy]);
   const handlePeriodChange = id => { setPeriodId(Number(id)); };
 
   const reload = useCallback(() => {
@@ -3414,7 +3438,7 @@ function App() {
           </div>
         }
       >
-        <div className="sidebar__tree">
+        <div className="sidebar__tree" ref={treeRef}>
           {!loading && hierarchy.length === 0
             ? (
               <div className="no-access">

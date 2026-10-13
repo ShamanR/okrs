@@ -255,7 +255,32 @@ function treeNode(node, depth) {
   return rows.join('');
 }
 
+// Повторяет поведение tracker.js. Сайдбар собирается через innerHTML, поэтому
+// позицию скролла дерева снимаем до перерисовки и возвращаем после — иначе дерево
+// прыгает наверх на каждом действии. Выбранная команда подтягивается в видимую
+// зону и только когда из неё вышла: при переходе из команды в команду строка
+// остаётся на виду.
+let sidebarTreeScroll = 0;
+function keepSidebarTreeScroll() {
+  const tree = document.querySelector('.sidebar__tree');
+  if (!tree) return;
+  tree.scrollTop = sidebarTreeScroll;
+  // «Избранное» дублирует строки полного дерева; берём последнюю — она из дерева.
+  const rows = tree.querySelectorAll('.sidebar-node__row--selected');
+  const row = rows[rows.length - 1];
+  if (row) {
+    const c = tree.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    const gap = 24;
+    if (r.top < c.top + gap) tree.scrollTop += r.top - c.top - gap;
+    else if (r.bottom > c.bottom - gap) tree.scrollTop += r.bottom - c.bottom + gap;
+  }
+  sidebarTreeScroll = tree.scrollTop;
+}
+
 function renderSidebar() {
+  const prevTree = document.querySelector('.sidebar__tree');
+  if (prevTree) sidebarTreeScroll = prevTree.scrollTop;
   const p = period();
   const tenant = TENANTS.find(t => t.active) || TENANTS[0];
   const canSwitch = TENANTS.length > 1;
@@ -338,6 +363,8 @@ function renderSidebar() {
         </div>` : ''}
       </div>
     </div>`;
+
+  keepSidebarTreeScroll();
 }
 
 // ── Топбар и степпер ─────────────────────────────────────────────────────────
