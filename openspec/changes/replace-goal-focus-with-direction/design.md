@@ -75,9 +75,12 @@ API, а названия на русском задаёт клиент. Поря
 3. `ALTER TABLE goals ALTER COLUMN focus_type SET DEFAULT ''` — новый код в `focus_type` не
    пишет.
 
-Down-миграция удаляет `direction` и возвращает `focus_type` без default. Строкам, созданным
-новым кодом (`focus_type = ''`), она проставляет фокус по направлению: PRODUCT →
-PROFITABILITY, TECH → STABILITY, PROCESS → SPEED_EFFICIENCY.
+Down-миграция удаляет `direction` и возвращает `focus_type` без default. Фокус по направлению
+(PRODUCT → PROFITABILITY, TECH → STABILITY, PROCESS → SPEED_EFFICIENCY) она проставляет там,
+где направление свежее фокуса: строкам, созданным новым кодом (`focus_type = ''`), и строкам,
+чьё направление после наката сменили (оно больше не выводится из фокуса по таблице выше). Иначе
+правка направления, сделанная после выкладки, молча пропала бы при откате. Остальные строки
+сохраняют исходный фокус — в том числе Tech Independence, который при накате слился с Stability.
 
 Почему не `RENAME COLUMN` с заменой значений: старый под во время rolling update сразу начнёт
 падать на `SELECT focus_type`, и у части пользователей перестанет открываться доска. При
