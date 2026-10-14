@@ -336,10 +336,6 @@ function RootPicker({ data, value, onChange }) {
 
 // ── Мелкие визуальные помощники детальной панели ───────────────────────────
 const GT_PRI_COLOR = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' };
-// SPEED_EFFICIENCY → "Speed Efficiency" (человекочитаемое отображение UPPER_SNAKE enum).
-function gtFocusLabel(f) {
-  return String(f || '').split('_').filter(Boolean).map(w => w[0] + w.slice(1).toLowerCase()).join(' ');
-}
 function GtBadge({ label, color = '#6b7280' }) {
   return <span className="gt-badge" style={{ color, background: `${color}18` }}>{label}</span>;
 }
@@ -368,7 +364,7 @@ function GoalTreeCard({ node, teamsById, periodsById, onSelect, highlighted, dim
           {isCollapsed ? '▸' : '▾'}
         </button>
       )}
-      <div className="gt-card__title">{g.title}</div>
+      <div className="gt-card__title"><DirectionIcon code={g.direction} sm /> {g.title}</div>
       <div className="gt-card__meta">
         <span className="gt-card__team">
           <span className="gt-card__dot" />
@@ -398,7 +394,7 @@ function GoalDetailPanel({ goal, data, focused, onToggleFocus, onClose }) {
   return (
     <div className="gt-panel" role="dialog" aria-label="Детали цели">
       <div className="gt-panel__header">
-        <div className="gt-panel__title">{goal.title}</div>
+        <div className="gt-panel__title"><DirectionIcon code={goal.direction} /> {goal.title}</div>
         <button type="button" className="gt-panel__close" aria-label="Закрыть" onClick={onClose}>×</button>
       </div>
       <div className="gt-panel__body">
@@ -416,7 +412,7 @@ function GoalDetailPanel({ goal, data, focused, onToggleFocus, onClose }) {
           {period && <span className="gt-panel__pill">{period.name}</span>}
           <GtBadge label={goal.priority} color={priColor} />
           <span className="gt-panel__muted">вес {goal.weight}%</span>
-          <span className="gt-panel__muted">{gtFocusLabel(goal.focus_type)}</span>
+          <span className="gt-panel__muted">{(goalDirection(goal.direction) || {}).label || ''}</span>
         </div>
         <div className="gt-panel__barwrap">
           <div className="gt-panel__bar"><div className="gt-panel__barfill" style={{ width: goal.progress + '%' }} /></div>

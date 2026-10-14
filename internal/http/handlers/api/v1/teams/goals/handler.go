@@ -43,7 +43,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		Priority    string   `json:"priority"`
 		Weight      int      `json:"weight"`
 		WorkType    string   `json:"work_type"`
-		FocusType   string   `json:"focus_type"`
+		Direction   string   `json:"direction"`
 		OwnerUDIDs  []string `json:"owner_udids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -60,8 +60,8 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	}
 	priority := domain.Priority(req.Priority)
 	workType := domain.WorkType(req.WorkType)
-	focusType := domain.FocusType(req.FocusType)
-	if msg := common.ValidateGoalInput(priority, workType, focusType, req.Weight); msg != "" {
+	direction := domain.GoalDirection(req.Direction)
+	if msg := common.ValidateGoalInput(priority, workType, direction, req.Weight); msg != "" {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", msg, nil)
 		return
 	}
@@ -89,7 +89,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		Priority:    priority,
 		Weight:      req.Weight,
 		WorkType:    workType,
-		FocusType:   focusType,
+		Direction:   direction,
 		OwnerUDIDs:  req.OwnerUDIDs,
 	}, auth.UserIDFromContext(r.Context()))
 	if err != nil {

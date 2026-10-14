@@ -31,7 +31,7 @@ func TestCopyGoalDuplicatesStructure(t *testing.T) {
 
 	srcGoal, err := repo.CreateGoal(ctx, copyScope, goals.GoalInput{
 		TeamID: srcTeam, PeriodID: period, Title: "Src goal", Description: "d",
-		Priority: domain.Priority("P1"), Weight: 40, WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
+		Priority: domain.Priority("P1"), Weight: 40, WorkType: domain.WorkType("Delivery"), Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("CreateGoal: %v", err)
@@ -72,6 +72,9 @@ func TestCopyGoalDuplicatesStructure(t *testing.T) {
 	if got.Title != "Src goal" || got.Weight != 40 || got.Priority != domain.Priority("P1") {
 		t.Fatalf("fields not copied: %+v", got)
 	}
+	if got.Direction != domain.DirectionTech {
+		t.Fatalf("direction not copied: got %q, want %q", got.Direction, domain.DirectionTech)
+	}
 	if len(got.KeyResults) != 1 {
 		t.Fatalf("expected 1 KR, got %d", len(got.KeyResults))
 	}
@@ -98,7 +101,7 @@ func TestCopyGoalCarriesProgressNotesAndComments(t *testing.T) {
 
 	srcGoal, _ := repo.CreateGoal(ctx, copyScope, goals.GoalInput{
 		TeamID: team, PeriodID: period, Title: "G", Priority: domain.Priority("P2"), Weight: 10,
-		WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
+		WorkType: domain.WorkType("Delivery"), Direction: domain.DirectionTech,
 	})
 	krID, _ := krRepo.CreateKeyResult(ctx, copyScope, krs.KeyResultInput{GoalID: srcGoal, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical})
 	krRepo.UpsertNumericalMeta(ctx, copyScope, krs.NumericalMetaInput{KeyResultID: krID, StartValue: 0, TargetValue: 100, Unit: "%"})
@@ -153,7 +156,7 @@ func TestCopyGoalDeleteSourceRemovesOriginal(t *testing.T) {
 
 	srcGoal, _ := repo.CreateGoal(ctx, copyScope, goals.GoalInput{
 		TeamID: srcTeam, PeriodID: period, Title: "Src", Priority: domain.Priority("P1"), Weight: 10,
-		WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
+		WorkType: domain.WorkType("Delivery"), Direction: domain.DirectionTech,
 	})
 	krRepo.CreateKeyResult(ctx, copyScope, krs.KeyResultInput{GoalID: srcGoal, Title: "KR", Weight: 100, Kind: domain.KRKindBoolean})
 

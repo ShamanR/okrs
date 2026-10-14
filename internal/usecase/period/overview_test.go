@@ -2,6 +2,7 @@ package period
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -59,9 +60,9 @@ func TestComputePeriodOverview_CountsWeightsProgress(t *testing.T) {
 
 func TestComputeBalances_CountsAndPercentsWithFixedOrder(t *testing.T) {
 	goals := []PeriodGoalItem{
-		{ID: 1, WorkType: "Delivery", FocusType: "STABILITY", Priority: "P1"},
-		{ID: 2, WorkType: "Delivery", FocusType: "TECH_INDEPENDENCE", Priority: "P1"},
-		{ID: 3, WorkType: "Discovery", FocusType: "PROFITABILITY", Priority: "P2"},
+		{ID: 1, WorkType: "Delivery", Direction: "TECH", Priority: "P1"},
+		{ID: 2, WorkType: "Delivery", Direction: "TECH", Priority: "P1"},
+		{ID: 3, WorkType: "Discovery", Direction: "PRODUCT", Priority: "P2"},
 	}
 	b := computeBalances(goals)
 	if b.DiscoveryDelivery[0].Key != "Delivery" || b.DiscoveryDelivery[0].Count != 2 {
@@ -73,8 +74,10 @@ func TestComputeBalances_CountsAndPercentsWithFixedOrder(t *testing.T) {
 	if len(b.Priorities) != 4 || b.Priorities[0].Key != "P0" || b.Priorities[0].Count != 0 {
 		t.Fatalf("priorities must list P0..P3 incl zero: %+v", b.Priorities)
 	}
-	if len(b.Focuses) != 4 {
-		t.Fatalf("focuses must list all 4 categories: %+v", b.Focuses)
+	// Направления — в фиксированном порядке Продукт, Техника, Процессы, включая нулевые.
+	wantDirs := []BalanceBucket{{Key: "PRODUCT", Count: 1, Percent: 33}, {Key: "TECH", Count: 2, Percent: 67}, {Key: "PROCESS", Count: 0, Percent: 0}}
+	if !reflect.DeepEqual(b.Directions, wantDirs) {
+		t.Fatalf("directions: want %+v, got %+v", wantDirs, b.Directions)
 	}
 }
 
@@ -82,8 +85,8 @@ func TestComputePeriodOverview_EmitsBalancesAndGoals(t *testing.T) {
 	teams := []domain.Team{{ID: 1, Name: "Alpha"}}
 	goalsByTeam := map[int64][]domain.Goal{
 		1: {
-			{ID: 10, TeamID: 1, Title: "G1", Weight: 50, Priority: domain.PriorityP1, WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}},
-			{ID: 11, TeamID: 1, Title: "G2", Weight: 50, Priority: domain.PriorityP2, WorkType: domain.WorkTypeDiscovery, FocusType: domain.FocusProfitability, KeyResults: []domain.KeyResult{numericKR(101, 100, 60)}},
+			{ID: 10, TeamID: 1, Title: "G1", Weight: 50, Priority: domain.PriorityP1, WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech, KeyResults: []domain.KeyResult{numericKR(100, 100, 40)}},
+			{ID: 11, TeamID: 1, Title: "G2", Weight: 50, Priority: domain.PriorityP2, WorkType: domain.WorkTypeDiscovery, Direction: domain.DirectionProduct, KeyResults: []domain.KeyResult{numericKR(101, 100, 60)}},
 		},
 	}
 	statuses := map[int64]domain.TeamPeriodStatus{1: domain.TeamPeriodStatusInProgress}
@@ -377,5 +380,18 @@ func TestComputePeriodOverview_WeightToleranceFromSettings(t *testing.T) {
 	}
 	if got := computePeriodOverview(data, 5, nil).Summary.WeightErrorCount; got != 0 {
 		t.Fatalf("tolerance 5: sum 97 is within tolerance, got count %d", got)
+	}
+}
+
+// Сценарий spec «Баланс между направлениями»: две цели «Продукт», по одной «Техника» и
+// «Процессы» дают 50 / 25 / 25.
+func TestComputeBalances_DirectionShares(t *testing.T) {
+	goals := []PeriodGoalItem{
+		{ID: 1, Direction: "PRODUCT"}, {ID: 2, Direction: "PRODUCT"},
+		{ID: 3, Direction: "TECH"}, {ID: 4, Direction: "PROCESS"},
+	}
+	want := []BalanceBucket{{Key: "PRODUCT", Count: 2, Percent: 50}, {Key: "TECH", Count: 1, Percent: 25}, {Key: "PROCESS", Count: 1, Percent: 25}}
+	if got := computeBalances(goals).Directions; !reflect.DeepEqual(got, want) {
+		t.Fatalf("directions: want %+v, got %+v", want, got)
 	}
 }

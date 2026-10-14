@@ -18,15 +18,6 @@ const (
 	WorkTypeDelivery  WorkType = "Delivery"
 )
 
-type FocusType string
-
-const (
-	FocusProfitability    FocusType = "PROFITABILITY"
-	FocusStability        FocusType = "STABILITY"
-	FocusSpeedEfficiency  FocusType = "SPEED_EFFICIENCY"
-	FocusTechIndependence FocusType = "TECH_INDEPENDENCE"
-)
-
 type KRKind string
 
 const (
@@ -118,7 +109,7 @@ type Goal struct {
 	Priority    Priority
 	Weight      int
 	WorkType    WorkType
-	FocusType   FocusType
+	Direction   GoalDirection
 	OwnerText   string
 	OwnerUDIDs  []string
 	Progress    int
@@ -339,4 +330,8 @@ type ActivityEvent struct {
 	// if the viewer can access it, otherwise a shared team the viewer can access. Computed on read
 	// (List) from the viewer's accessible set; nil when there is no navigable team.
 	TargetTeamID *int64
+
+	// GoalDirection is the CURRENT direction of the event's goal, computed on read (List).
+	// nil when the event has no goal or the goal has been deleted.
+	GoalDirection *GoalDirection
 }

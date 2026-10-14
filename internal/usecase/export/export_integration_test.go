@@ -74,7 +74,7 @@ func TestExportOKRTree(t *testing.T) {
 	goalID, err := repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: rootID, PeriodID: periodID, Title: "Общая цель",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability, OwnerText: "Owner",
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech, OwnerText: "Owner",
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
@@ -92,7 +92,7 @@ func TestExportOKRTree(t *testing.T) {
 	}
 	outsideGoalID, err = repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: otherID, PeriodID: periodID, Title: "Внешняя цель", Description: "детали внешней цели",
-		Priority: domain.PriorityP2, Weight: 100, WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		Priority: domain.PriorityP2, Weight: 100, WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create outside goal: %v", err)

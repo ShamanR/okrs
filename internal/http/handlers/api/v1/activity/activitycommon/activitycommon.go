@@ -71,22 +71,31 @@ func BuildTarget(ev domain.ActivityEvent) *dto.ActivityTarget {
 	}
 }
 
+// goalDirection отдаёт код направления или пустую строку, когда его нет.
+func goalDirection(d *domain.GoalDirection) string {
+	if d == nil {
+		return ""
+	}
+	return string(*d)
+}
+
 // FeedResponse собирает ответ ленты из готовой страницы сервиса.
 func FeedResponse(page activitysvc.Page) dto.ActivityFeedResponse {
 	items := make([]dto.ActivityEvent, 0, len(page.Events))
 	for _, ev := range page.Events {
 		items = append(items, dto.ActivityEvent{
 			ID: ev.ID, Category: string(ev.Category), Action: string(ev.Action),
-			Actor:       dto.ActivityActor{UDID: ev.ActorUDID, DisplayName: ev.ActorDisplayName, AvatarURL: ev.ActorAvatarURL, Removed: ev.ActorRemoved},
-			TeamID:      ev.TeamID,
-			PeriodID:    ev.PeriodID,
-			GoalID:      ev.GoalID,
-			KRID:        ev.KRID,
-			CommentID:   ev.CommentID,
-			EntityTitle: ev.EntityTitle,
-			Target:      BuildTarget(ev),
-			Payload:     ev.Payload,
-			CreatedAt:   ev.CreatedAt.UTC().Format(time.RFC3339),
+			Actor:         dto.ActivityActor{UDID: ev.ActorUDID, DisplayName: ev.ActorDisplayName, AvatarURL: ev.ActorAvatarURL, Removed: ev.ActorRemoved},
+			TeamID:        ev.TeamID,
+			PeriodID:      ev.PeriodID,
+			GoalID:        ev.GoalID,
+			KRID:          ev.KRID,
+			CommentID:     ev.CommentID,
+			EntityTitle:   ev.EntityTitle,
+			GoalDirection: goalDirection(ev.GoalDirection),
+			Target:        BuildTarget(ev),
+			Payload:       ev.Payload,
+			CreatedAt:     ev.CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}
 	return dto.ActivityFeedResponse{Items: items, NextCursor: page.NextCursor}

@@ -28,7 +28,7 @@ func TestBoardReportsCurrentValueFromStartUntilCheckIn(t *testing.T) {
 
 	goalID, err := repo.CreateGoal(ctx, copyScope, goals.GoalInput{
 		TeamID: team, PeriodID: period, Title: "G", Priority: domain.Priority("P1"), Weight: 100,
-		WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
+		WorkType: domain.WorkType("Delivery"), Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("CreateGoal: %v", err)
@@ -117,7 +117,7 @@ func TestCopyGoalWithoutProgressLeavesCurrentValueUnset(t *testing.T) {
 
 	srcGoal, _ := repo.CreateGoal(ctx, copyScope, goals.GoalInput{
 		TeamID: team, PeriodID: period, Title: "G", Priority: domain.Priority("P1"), Weight: 100,
-		WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("STABILITY"),
+		WorkType: domain.WorkType("Delivery"), Direction: domain.DirectionTech,
 	})
 	srcKR, _ := krRepo.CreateKeyResult(ctx, copyScope, krs.KeyResultInput{GoalID: srcGoal, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical})
 	if err := krRepo.UpsertNumericalMeta(ctx, copyScope, krs.NumericalMetaInput{KeyResultID: srcKR, StartValue: 0, TargetValue: 100, Unit: "%"}); err != nil {

@@ -49,7 +49,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 			Priority:    domain.PriorityP1,
 			Weight:      60,
 			WorkType:    domain.WorkTypeDelivery,
-			FocusType:   domain.FocusStability,
+			Direction:   domain.DirectionTech,
 			OwnerText:   "Engineering Lead",
 		})
 		if err != nil {
@@ -78,7 +78,7 @@ func seedDemo(ctx context.Context, goalsRepo *goals.GoalRepository, krsRepo *krs
 			Priority:    domain.PriorityP2,
 			Weight:      40,
 			WorkType:    domain.WorkTypeDiscovery,
-			FocusType:   domain.FocusSpeedEfficiency,
+			Direction:   domain.DirectionProcess,
 			OwnerText:   "Product Manager",
 		})
 		if err != nil {
@@ -221,7 +221,7 @@ func seedAnnualParentGoal(ctx context.Context, goalsRepo *goals.GoalRepository, 
 		Priority:    domain.PriorityP0,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "Engineering Lead",
 	})
 	if err != nil {

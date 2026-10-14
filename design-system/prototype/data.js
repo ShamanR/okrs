@@ -1,7 +1,7 @@
 // Тестовые данные прототипа. Вымышленные: команды, люди и числа не соответствуют
 // ничему реальному. Имена полей намеренно совпадают с теми, что приходят в
 // компоненты трекера (kr.krType, kr.healthStatus, kr.updatedDaysAgo, goal.type,
-// goal.focus, goal.priority), чтобы разметка переносилась в код дословно.
+// goal.direction, goal.priority), чтобы разметка переносилась в код дословно.
 
 // ── Константы из web/static/ui.js и tracker.js ───────────────────────────────
 const ACCENT = '#7c3aed';
@@ -21,8 +21,14 @@ const PRI_HINT = {
   P3: 'Низкий: делаем, если останется время.',
 };
 const PRI_COLOR = { P0: '#dc2626', P1: '#d97706', P2: '#2563eb', P3: '#6b7280' };
-const FOCUS_COLORS = { EFFICIENCY: '#0891b2', QUALITY: '#7c3aed', RELIABILITY: '#059669', GROWTH: '#d97706', PROFITABILITY: '#dc2626', STABILITY: '#6366f1', SPEED_EFFICIENCY: '#0891b2', TECH_INDEPENDENCE: '#be185d', DEFAULT: '#6b7280' };
-const FOCUS_LABEL = { PROFITABILITY: 'Profitability', STABILITY: 'Stability', SPEED_EFFICIENCY: 'Speed Efficiency', TECH_INDEPENDENCE: 'Tech Independency' };
+// Направление цели — как GOAL_DIRECTIONS в web/static/goal_direction.js: порядок, иконка,
+// название, описание и цвет задаются один раз и нигде не повторяются.
+const GOAL_DIRECTIONS = [
+  { code: 'PRODUCT', icon: '🚀', label: 'Продукт', hint: 'Развитие функциональности, ценность для пользователей, бизнес-результаты', color: '#2563eb' },
+  { code: 'TECH', icon: '⚙️', label: 'Техника', hint: 'Архитектура, надёжность, безопасность, техническое качество', color: '#0891b2' },
+  { code: 'PROCESS', icon: '📈', label: 'Процессы', hint: 'Эффективность, организация работы, автоматизация процессов', color: '#16a34a' },
+];
+const goalDirection = code => GOAL_DIRECTIONS.find(d => d.code === code) || null;
 
 const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706' };
 const KR_MEASURE_INFO = {
@@ -124,7 +130,7 @@ const BOARDS = {
     status: 'ready', changedAt: '15 июн.',
     goals: [
       {
-        id: 101, priority: 'P1', weight: 35, type: 'delivery', focus: 'SPEED_EFFICIENCY',
+        id: 101, priority: 'P1', weight: 35, type: 'delivery', direction: 'PROCESS',
         title: 'Отказ от Маркетинговой Админки', desc: 'Переводим все сценарии заведения рекламы из **Маркетинговой Админки** в Self Service, чтобы у агентств и внутренних команд остался один инструмент.\n\n**Зачем**\n- Админка не развивается с 2023 года\n- на её поддержку уходит ~20% времени команды\n- ошибки ручного заведения дают до 15 инцидентов в месяц\n\n**Критерий успеха:** Админка в режиме *только для чтения*, новых заведений нет 4 недели подряд.\n\n**Вне скоупа:** миграция исторических кампаний — остаются в архиве. Подробности — [RFC-214](#).', updatedDaysAgo: 114,
         owners: [{ name: 'Сергей Иванов', initials: 'СИ' }], periodId: 3, parentIds: [103], childIds: [],
         parents: [{ id: 103, title: 'Единый онбординг сервисов', periodName: 'Y26', teamName: 'Платформенная команда' }], shareTeams: null,
@@ -145,7 +151,7 @@ const BOARDS = {
         ],
       },
       {
-        id: 102, priority: 'P1', weight: 10, type: 'delivery', focus: 'SPEED_EFFICIENCY',
+        id: 102, priority: 'P1', weight: 10, type: 'delivery', direction: 'PROCESS',
         title: 'Отказ от старого кабинета Медиа', desc: 'Закрываем старый кабинет Медиа: медиапланирование и отчётность переезжают в новый кабинет. После переезда отключаем старые API и освобождаем 3 сервера.', updatedDaysAgo: 114,
         owners: [{ name: 'Анна Петрова', initials: 'АП' }, { name: 'Иван Петров', initials: 'ИП' }], periodId: 3, parentIds: [103], childIds: [202],
         parents: [{ id: 103, title: 'Единый онбординг сервисов', periodName: 'Y26', teamName: 'Платформенная команда' }],
@@ -159,7 +165,7 @@ const BOARDS = {
         comments: [],
       },
       {
-        id: 103, priority: 'P2', weight: 20, type: 'discovery', focus: 'TECH_INDEPENDENCE',
+        id: 103, priority: 'P2', weight: 20, type: 'discovery', direction: 'PROCESS',
         title: 'Единый онбординг сервисов', desc: 'Общая цель с мобильной разработкой и аналитикой. Новый сервис подключается к платформе **за один день** по общему шаблону.\n\nИз коробки:\n1. CI/CD и `deploy.yaml`\n2. логирование и метрики\n3. алёрты и дашборд\n\n> Сейчас на это уходит 1–2 недели, и у каждой команды свой набор инструментов.', updatedDaysAgo: 5,
         owners: [{ name: 'Сергей Иванов', initials: 'СИ' }, { name: 'Мария Ковалёва', initials: 'МК' }, { name: 'Дмитрий Смирнов', initials: 'ДС' }], periodId: 1, parentIds: [], childIds: [101, 102, 301],
         children: [
@@ -175,7 +181,7 @@ const BOARDS = {
       {
         // Вес 0: цель в периоде есть, но в прогресс команды не входит. Нужна, чтобы на
         // прототипе было видно работу птички «Скрыть цели с весом 0».
-        id: 104, priority: 'P3', weight: 0, type: 'discovery', focus: 'TECH_INDEPENDENCE',
+        id: 104, priority: 'P3', weight: 0, type: 'discovery', direction: 'TECH',
         title: 'Разобрать технический долг по логам: единый формат, ротация, хранение и алертинг во всех сервисах платформы', desc: 'Цель вынесена из расчёта прогресса: берём её, если останется время после P0–P2.', updatedDaysAgo: 21,
         owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [], childIds: [],
         krs: [
@@ -192,7 +198,7 @@ const BOARDS = {
     status: 'in_progress', changedAt: '2 июл.',
     goals: [
       {
-        id: 201, priority: 'P0', weight: 50, type: 'delivery', focus: 'STABILITY',
+        id: 201, priority: 'P0', weight: 50, type: 'delivery', direction: 'PRODUCT',
         title: 'Оценка приложения в сторах не ниже 4,6', desc: 'Средневзвешенная по App Store и Google Play.', updatedDaysAgo: 6,
         owners: [{ name: 'Иван Петров', initials: 'ИП' }], periodId: 3, parentIds: [401], childIds: [], shareTeams: null,
         krs: [
@@ -204,7 +210,7 @@ const BOARDS = {
         ],
       },
       {
-        id: 202, priority: 'P1', weight: 40, type: 'discovery', focus: 'PROFITABILITY',
+        id: 202, priority: 'P1', weight: 40, type: 'discovery', direction: 'PRODUCT',
         title: 'Запуск офлайн-режима', desc: '', updatedDaysAgo: 15,
         owners: [], periodId: 3, parentIds: [401, 102], childIds: [], shareTeams: null,
         krs: [
@@ -220,7 +226,7 @@ const BOARDS = {
     status: 'forming', changedAt: 'сегодня',
     goals: [
       {
-        id: 301, priority: 'P2', weight: 100, type: 'discovery', focus: 'TECH_INDEPENDENCE',
+        id: 301, priority: 'P2', weight: 100, type: 'discovery', direction: 'PRODUCT',
         title: 'Витрина удержания в проде', desc: 'Единый источник для всех продуктовых команд.', updatedDaysAgo: 0,
         owners: [{ name: 'Мария Ковалёва', initials: 'МК' }], periodId: 3, parentIds: [103], childIds: [], shareTeams: null,
         krs: [
@@ -235,7 +241,7 @@ const BOARDS = {
     status: 'closed', changedAt: '3 дня назад',
     goals: [
       {
-        id: 401, priority: 'P1', weight: 60, type: 'delivery', focus: 'STABILITY',
+        id: 401, priority: 'P1', weight: 60, type: 'delivery', direction: 'TECH',
         title: 'Аптайм дежурного контура 99,95%', desc: '', updatedDaysAgo: 3,
         owners: [{ name: 'Дмитрий Смирнов', initials: 'ДС' }], periodId: 1, parentIds: [], childIds: [201, 202], shareTeams: null,
         krs: [
@@ -244,7 +250,7 @@ const BOARDS = {
         comments: [],
       },
       {
-        id: 402, priority: 'P3', weight: 30, type: 'delivery', focus: 'SPEED_EFFICIENCY',
+        id: 402, priority: 'P3', weight: 30, type: 'delivery', direction: 'TECH',
         title: 'Замена сетевого оборудования в DC2', desc: '', updatedDaysAgo: 10,
         owners: [], periodId: 3, parentIds: [], childIds: [], shareTeams: null,
         krs: [
@@ -276,8 +282,6 @@ const PO_STATUS_TILES = [
 
 const PO_DD_LABELS = { delivery: 'Delivery', discovery: 'Discovery' };
 const PO_DD_COLORS = { delivery: '#475569', discovery: '#7c6cf0' };
-const PO_FOCUS_LABELS = FOCUS_LABEL;
-const PO_FOCUS_COLORS = { PROFITABILITY: '#ef4444', STABILITY: '#22c55e', SPEED_EFFICIENCY: '#f59e0b', TECH_INDEPENDENCE: '#7c6cf0' };
 const PO_PRIO_LABELS = { P0: 'P0 · критично', P1: 'P1 · высокий', P2: 'P2 · средний', P3: 'P3 · низкий' };
 const PO_PRIO_COLORS = { P0: '#dc2626', P1: '#f59e0b', P2: '#3b82f6', P3: '#94a3b8' };
 const PO_HEALTH_LABELS = KR_HEALTH_LABEL;
@@ -321,52 +325,54 @@ const STATUS_RU = { no_goals: 'Нет целей', forming: 'Черновик', 
 const _ago = (days, hours = 0) => new Date(Date.now() - days * 864e5 - hours * 36e5).toISOString();
 
 const ACTIVITY = [
-  { id: 1, category: 'progress', action: 'kr_progress', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3,
+  { id: 1, category: 'progress', action: 'kr_progress', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3, kr_id: 1, goal_direction: 'PROCESS',
     entity_title: 'Доля активных пользователей в неделю', created_at: _ago(0, 1),
     payload: { before: { progress: 64 }, after: { progress: 78 }, goal_title: 'Отказ от Маркетинговой Админки' } },
-  { id: 2, category: 'discussion', action: 'comment_added', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 3,
+  { id: 2, category: 'discussion', action: 'comment_added', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 3, goal_direction: 'PROCESS',
     entity_title: 'Отказ от Маркетинговой Админки', created_at: _ago(0, 3),
     payload: { text: 'Пересчитал по новой методике — расхождение `0,4 п.п.`\n\n- витрина обновлена\n- дашборд перепривязан' } },
   { id: 3, category: 'status', action: 'status_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
     entity_title: 'Мобильная разработка', created_at: _ago(0, 5),
     payload: { before: { status: 'forming' }, after: { status: 'in_progress' } } },
-  { id: 4, category: 'composition', action: 'kr_created', actor: { display_name: 'Мария Ковалёва' }, team_id: 13, period_id: 3,
+  { id: 4, category: 'composition', action: 'kr_created', actor: { display_name: 'Мария Ковалёва' }, team_id: 13, period_id: 3, kr_id: 4,
     entity_title: 'Витрина dm_retention доступна', created_at: _ago(1, 2), payload: {} },
-  { id: 5, category: 'progress', action: 'kr_progress', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 3,
+  { id: 5, category: 'progress', action: 'kr_progress', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 3, kr_id: 5, goal_direction: 'TECH',
     entity_title: 'Стойки переведены', created_at: _ago(1, 6),
     payload: { before: { progress: 75 }, after: { progress: 100 }, goal_title: 'Замена сетевого оборудования в DC2' } },
-  { id: 6, category: 'composition', action: 'goal_shared', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 1,
+  { id: 6, category: 'composition', action: 'goal_shared', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 1, goal_direction: 'PROCESS',
     entity_title: 'Единый онбординг сервисов', created_at: _ago(1, 9),
     payload: { shared_with_team_ids: [12, 13] } },
-  { id: 7, category: 'discussion', action: 'reply_added', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3,
+  { id: 7, category: 'discussion', action: 'reply_added', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3, goal_direction: 'PROCESS',
     entity_title: 'Отказ от Маркетинговой Админки', created_at: _ago(2, 1),
     payload: { text: 'Согласна, оставляем как есть до конца квартала.' } },
-  { id: 8, category: 'composition', action: 'goal_fields_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+  { id: 8, category: 'composition', action: 'goal_fields_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3, goal_direction: 'PRODUCT',
     entity_title: 'Оценка приложения в сторах не ниже 4,6', created_at: _ago(2, 4),
     payload: { changed: ['weight', 'priority'] } },
-  { id: 9, category: 'discussion', action: 'comment_resolved', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 3,
+  { id: 9, category: 'discussion', action: 'comment_resolved', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 3, goal_direction: 'PROCESS',
     entity_title: 'Отказ от старого кабинета Медиа', created_at: _ago(3, 2), payload: {} },
-  { id: 10, category: 'progress', action: 'kr_progress', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+  { id: 10, category: 'progress', action: 'kr_progress', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3, kr_id: 10, goal_direction: 'PRODUCT',
     entity_title: 'Средняя оценка', created_at: _ago(3, 7),
     payload: { before: { progress: 18 }, after: { progress: 24 }, goal_title: 'Оценка приложения в сторах не ниже 4,6' } },
-  { id: 11, category: 'composition', action: 'goal_created', actor: { display_name: 'Мария Ковалёва' }, team_id: 13, period_id: 3,
+  { id: 11, category: 'composition', action: 'goal_created', actor: { display_name: 'Мария Ковалёва' }, team_id: 13, period_id: 3, goal_direction: 'PRODUCT',
     entity_title: 'Витрина удержания в проде', created_at: _ago(4, 3), payload: {} },
   { id: 12, category: 'status', action: 'status_changed', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 3,
     entity_title: 'Инфраструктура', created_at: _ago(5, 1),
     payload: { before: { status: 'in_progress' }, after: { status: 'closed' } } },
-  { id: 13, category: 'composition', action: 'kr_deleted', actor: { display_name: 'Анна Петрова', removed: true }, team_id: 11, period_id: 3,
+  { id: 13, category: 'composition', action: 'kr_deleted', actor: { display_name: 'Анна Петрова', removed: true }, team_id: 11, period_id: 3, kr_id: 13,
     entity_title: 'Старый счётчик конверсии', created_at: _ago(6, 5), payload: {} },
-  { id: 14, category: 'discussion', action: 'comment_added', actor: { display_name: 'Мария Ковалёва' }, team_id: 12, period_id: 3,
+  { id: 14, category: 'discussion', action: 'comment_added', actor: { display_name: 'Мария Ковалёва' }, team_id: 12, period_id: 3, goal_direction: 'PRODUCT',
     entity_title: 'Запуск офлайн-режима', created_at: _ago(9, 2),
     payload: { text: 'Синхронизация упирается в лимиты API — нужен разговор с платформой.' } },
-  { id: 15, category: 'composition', action: 'goal_unshared', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 1,
+  { id: 15, category: 'composition', action: 'goal_unshared', actor: { display_name: 'Сергей Иванов' }, team_id: 11, period_id: 1, goal_direction: 'PROCESS',
     entity_title: 'Единый онбординг сервисов', created_at: _ago(12, 4),
     payload: { unshared_team_ids: [13] } },
-  { id: 16, category: 'progress', action: 'kr_note_updated', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 1,
+  { id: 16, category: 'progress', action: 'kr_note_updated', actor: { display_name: 'Дмитрий Смирнов' }, team_id: 15, period_id: 1, kr_id: 16,
     entity_title: 'Аптайм за квартал', created_at: _ago(14, 6), payload: {} },
-  { id: 17, category: 'composition', action: 'goal_owner_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+  { id: 17, category: 'composition', action: 'goal_owner_changed', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3, goal_direction: 'PRODUCT',
     entity_title: 'Запуск офлайн-режима', created_at: _ago(18, 1), payload: {} },
   { id: 18, category: 'status', action: 'status_changed', actor: { display_name: 'Анна Петрова' }, team_id: 11, period_id: 3,
     entity_title: 'Платформенная команда', created_at: _ago(21, 3),
     payload: { before: { status: 'no_goals' }, after: { status: 'forming' } } },
+  { id: 19, category: 'composition', action: 'goal_deleted', actor: { display_name: 'Иван Петров' }, team_id: 12, period_id: 3,
+    entity_title: 'Пилот push-рассылок', created_at: _ago(22, 2), payload: {} },
 ];

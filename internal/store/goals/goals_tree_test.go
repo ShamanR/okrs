@@ -40,7 +40,7 @@ func TestListGoalsForPeriods(t *testing.T) {
 		id, err := gr.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID: team, PeriodID: period, Title: title,
 			Priority: domain.PriorityP1, Weight: 100,
-			WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+			WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 		})
 		if err != nil {
 			t.Fatalf("goal: %v", err)

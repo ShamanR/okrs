@@ -59,6 +59,11 @@
 .filter-bar__btn--pri:hover:not(:disabled) { background: color-mix(in srgb, var(--pc) 10%, #fff); }
 .filter-bar__btn--pri:disabled { color: #c4c8cf; cursor: default; }
 .filter-bar__btn--pri.filter-bar__btn--on, .filter-bar__btn--pri.filter-bar__btn--on:hover { background: var(--pc); color: #fff; }
+/* Кнопка направления: иконка и название, цвет направления — через --pc, как у приоритета.
+   Эмодзи цветом не погасить, поэтому недоступное направление гаснет прозрачностью. */
+.filter-bar__btn--dir:hover:not(:disabled) { background: color-mix(in srgb, var(--pc) 10%, #fff); }
+.filter-bar__btn--dir:disabled { opacity: .45; cursor: default; }
+.filter-bar__btn--dir.filter-bar__btn--on, .filter-bar__btn--dir.filter-bar__btn--on:hover { background: var(--pc); color: #fff; }
 .filter-bar__n { font-weight: 500; opacity: .75; font-variant-numeric: tabular-nums; line-height: 1; }
 .filter-bar__btn--on .filter-bar__n { opacity: .9; }
 .filter-bar__clear { width: 26px; height: 26px; border: none; background: transparent; border-radius: 6px; color: #6b7280; font-size: 20px; line-height: 1; cursor: pointer; }
@@ -67,3 +72,19 @@
 .filter-bar__spacer { flex: 1 1 0; min-width: 0; }
 .filter-bar__reset { padding: 6px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 999px; background: var(--surface-subtle, #f1f5f9); font: inherit; font-size: 13.5px; font-weight: 600; color: #334155; cursor: pointer; white-space: nowrap; }
 .filter-bar__reset:hover { background: #e2e8f0; }
+
+/* Тёмная подсказка у элемента-якоря (FloatingTip в goal_direction.js): пояснения «?» у полей,
+   полный текст обрезанного заголовка, название и описание направления цели. */
+.info-hint__tooltip { position: fixed; background: #111827; color: #f3f4f6; font-size: 11.5px; line-height: 1.45; padding: 10px 13px; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.25); z-index: 2000; pointer-events: none; transform: translateX(-50%); white-space: pre-line; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: hidden; }
+/* Полный текст обрезанного заголовка: ширина по тексту, а не фиксированная, как у пояснения «?».
+   Не шире окна за вычетом отступов 8px по краям, которые держит FloatingTip. */
+.info-hint__tooltip--fit { width: max-content; max-width: min(360px, calc(100vw - 16px)); overflow-wrap: anywhere; }
+
+/* Иконка направления цели слева от заголовка: доска, дерево целей, обзор, журнал.
+   Ширина фиксирована — эмодзи на разных ОС разной ширины, а шапка карточки прыгать не должна.
+   Название и описание показывает подсказка .info-hint__tooltip по наведению и по фокусу. */
+.dir-icon { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; border-radius: 6px; font-size: 15px; line-height: 1; cursor: help; outline: none; user-select: none; }
+.dir-icon:hover { background: #f3f4f6; }
+.dir-icon:focus-visible { box-shadow: 0 0 0 2px var(--accent-25, #ddd6fe); }
+.dir-icon--sm { width: 18px; height: 18px; font-size: 13px; border-radius: 5px; vertical-align: -3px; }
+.dir-tip__title { display: block; font-weight: 700; color: #fff; }

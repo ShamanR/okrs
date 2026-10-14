@@ -79,7 +79,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "Owner",
 	}); err != nil {
 		t.Fatalf("create historical goal: %v", err)
@@ -177,7 +177,7 @@ func TestDeletedTeamsVisibilityDependsOnPeriodIntegration(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "Owner",
 	}); err != nil {
 		t.Fatalf("create current goal: %v", err)

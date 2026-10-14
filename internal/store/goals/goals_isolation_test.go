@@ -31,7 +31,7 @@ func seedGoal(t *testing.T, ctx context.Context, gr *goals.GoalRepository, tr *t
 	goalID, err := gr.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: name + " goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal (%s): %v", name, err)

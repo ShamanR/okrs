@@ -32,8 +32,8 @@ func (r *GoalRepository) CopyGoal(ctx context.Context, scope domain.TenantScope,
 	// 1) New goal row, sort_order appended to the target board.
 	var newGoalID int64
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, sort_order, tenant_id)
-		SELECT $1, $2, g.title, g.description, g.priority, g.weight, g.work_type, g.focus_type, g.owner_text, g.owner_udids,
+		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, direction, owner_text, owner_udids, sort_order, tenant_id)
+		SELECT $1, $2, g.title, g.description, g.priority, g.weight, g.work_type, g.direction, g.owner_text, g.owner_udids,
 		       (SELECT COALESCE(MAX(sort_order),0)+1 FROM goals WHERE team_id=$1 AND period_id=$2 AND tenant_id=$4),
 		       $4
 		FROM goals g WHERE g.id=$3 AND g.tenant_id=$4

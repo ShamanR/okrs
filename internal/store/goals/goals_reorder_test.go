@@ -52,7 +52,7 @@ func TestMoveGoalReordersSharedGoals(t *testing.T) {
 		id, err := gr.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID: teamID, PeriodID: periodID, Title: title,
 			Priority: domain.PriorityP1, Weight: 100,
-			WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+			WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 		})
 		if err != nil {
 			t.Fatalf("create goal %s: %v", title, err)

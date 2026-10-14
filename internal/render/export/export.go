@@ -113,8 +113,8 @@ func goalMetaLine(g domain.Goal) string {
 		"вес " + strconv.Itoa(g.Weight) + "%",
 		string(g.WorkType),
 	}
-	if f := focusLabel(g.FocusType); f != "" {
-		segs = append(segs, f)
+	if d := directionLabel(g.Direction); d != "" {
+		segs = append(segs, d)
 	}
 	segs = append(segs, "прогресс "+strconv.Itoa(g.Progress)+"%")
 	line := strings.Join(segs, " · ")
@@ -172,18 +172,16 @@ func numericalSuffix(kr domain.KeyResult) string {
 	return s
 }
 
-func focusLabel(f domain.FocusType) string {
-	if f == "" {
-		return ""
-	}
-	words := strings.Split(strings.ToLower(string(f)), "_")
-	for i, w := range words {
-		if w == "" {
-			continue
-		}
-		words[i] = strings.ToUpper(w[:1]) + w[1:]
-	}
-	return strings.Join(words, " ")
+// directionLabels — названия направлений цели в выгрузке. Пустое или неизвестное
+// направление даёт пустую строку, и сегмент пропускается.
+var directionLabels = map[domain.GoalDirection]string{
+	domain.DirectionProduct: "Продукт",
+	domain.DirectionTech:    "Техника",
+	domain.DirectionProcess: "Процессы",
+}
+
+func directionLabel(d domain.GoalDirection) string {
+	return directionLabels[d]
 }
 
 func formatNumber(v float64) string {

@@ -100,7 +100,7 @@ func buildResponse(data goaltreeuc.GoalTreeData) dto.GoalTreeResponse {
 		resp.Goals = append(resp.Goals, dto.GoalTreeGoal{
 			ID: g.ID, Title: g.Title, TeamID: g.TeamID, PeriodID: g.PeriodID,
 			Progress: g.Progress, Priority: string(g.Priority), Weight: g.Weight,
-			WorkType: string(g.WorkType), FocusType: string(g.FocusType), OwnerText: g.OwnerText,
+			WorkType: string(g.WorkType), Direction: string(g.Direction), OwnerText: g.OwnerText,
 			ParentGoalIDs: emptyIfNil(n.ParentGoalIDs), ChildGoalIDs: emptyIfNil(n.ChildGoalIDs),
 		})
 	}

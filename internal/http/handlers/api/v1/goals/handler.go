@@ -86,14 +86,14 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 	}
 	priority := domain.Priority(r.FormValue("priority"))
 	workType := domain.WorkType(r.FormValue("work_type"))
-	focusType := domain.FocusType(r.FormValue("focus_type"))
+	direction := domain.GoalDirection(r.FormValue("direction"))
 	teamID, err := goalcommon.OptionalID(r.FormValue("team_id"))
 	if err != nil {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", "invalid team_id", map[string]string{"team_id": "invalid"})
 		return
 	}
 	weight := common.ParseIntField(r.FormValue("weight"))
-	if validationErr := common.ValidateGoalInput(priority, workType, focusType, weight); validationErr != "" {
+	if validationErr := common.ValidateGoalInput(priority, workType, direction, weight); validationErr != "" {
 		v1.WriteError(w, http.StatusBadRequest, "VALIDATION_ERROR", validationErr, nil)
 		return
 	}
@@ -125,7 +125,7 @@ func (h *Handler) Post(w http.ResponseWriter, r *http.Request) {
 		Priority:    priority,
 		Weight:      goalWeight,
 		WorkType:    workType,
-		FocusType:   focusType,
+		Direction:   direction,
 		OwnerUDIDs:  ownerUDIDs,
 	}, auth.UserIDFromContext(r.Context())); err != nil {
 		v1.WriteError(w, http.StatusInternalServerError, "INTERNAL", "failed to update goal", nil)

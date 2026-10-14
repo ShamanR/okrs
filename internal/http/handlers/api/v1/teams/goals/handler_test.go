@@ -12,7 +12,7 @@ import (
 
 const uri = "/api/v1/teams/1/goals"
 
-const valid = `{"period_id":1,"title":"Цель","priority":"P0","weight":100,"work_type":"Delivery","focus_type":"STABILITY"}`
+const valid = `{"period_id":1,"title":"Цель","priority":"P0","weight":100,"work_type":"Delivery","direction":"TECH"}`
 
 func TestBadTeamIDIs400(t *testing.T) {
 	w := handlertest.Do(New(nil, nil).Post, http.MethodPost, uri, valid,
@@ -45,4 +45,18 @@ func TestRequiresTenant(t *testing.T) {
 	w := handlertest.Do(New(nil, nil).Post, http.MethodPost, uri, valid,
 		handlertest.URLParam("teamID", "1"))
 	handlertest.IsError(t, w, http.StatusForbidden)
+}
+
+// Направление обязательно и берётся только из набора: прежние значения фокуса и пустое
+// значение отклоняются как ошибка валидации ещё до обращения к хранилищу.
+func TestInvalidDirectionIs400(t *testing.T) {
+	for _, body := range []string{
+		`{"period_id":1,"title":"Цель","priority":"P0","weight":100,"work_type":"Delivery","direction":"STABILITY"}`,
+		`{"period_id":1,"title":"Цель","priority":"P0","weight":100,"work_type":"Delivery","direction":""}`,
+		`{"period_id":1,"title":"Цель","priority":"P0","weight":100,"work_type":"Delivery"}`,
+	} {
+		w := handlertest.Do(New(nil, nil).Post, http.MethodPost, uri, body,
+			handlertest.Tenant(1), handlertest.URLParam("teamID", "1"))
+		handlertest.IsError(t, w, http.StatusBadRequest)
+	}
 }

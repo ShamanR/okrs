@@ -181,7 +181,7 @@ func MapGoalDetails(detail okrboarduc.GoalDetails, period domain.Period, userRef
 		Priority:     string(goal.Priority),
 		Weight:       goal.Weight,
 		WorkType:     string(goal.WorkType),
-		FocusType:    string(goal.FocusType),
+		Direction:    string(goal.Direction),
 		Owners:       ResolveOwnersByUDIDs(goal.OwnerUDIDs, goal.OwnerText, userRefs),
 		Progress:     goal.Progress,
 		ProgressMeta: BuildProgressBarInfo(goal.Progress, period),
