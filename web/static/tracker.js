@@ -668,8 +668,10 @@ function useFloatingTip(anchorRef, enabled = true) {
 
 // Подсказка рисуется порталом в body: внутри якоря она унаследовала бы его шрифт (жирный у
 // заголовка цели) и попадала бы под overflow:hidden, на котором держится многоточие. Под якорем
-// по центру, в пределах окна с отступом 8px; не помещается снизу — над якорем. Пока размер не
-// замерен, подсказка невидима, чтобы не мигнуть в углу.
+// по центру, в пределах окна с отступом 8px; не помещается снизу — над якорем; не помещается ни
+// там, ни там (длина заголовка не ограничена, окно бывает низким) — прижимается к окну поверх
+// якоря: подсказка pointer-events:none и наведение на якорь не перехватывает. Высоту сверх окна
+// срезает max-height в CSS. Пока размер не замерен, подсказка невидима, чтобы не мигнуть в углу.
 function FloatingTip({ anchor, width, fit, children }) {
   const ref = useRef(null);
   const [pos, setPos] = useState(null);
@@ -679,7 +681,10 @@ function FloatingTip({ anchor, width, fit, children }) {
     const tw = el.offsetWidth, th = el.offsetHeight, gap = 6, margin = 8;
     const left = Math.min(window.innerWidth - tw - margin, Math.max(margin, anchor.left + anchor.width / 2 - tw / 2));
     let top = anchor.bottom + gap;
-    if (top + th > window.innerHeight - margin && anchor.top - gap - th >= margin) top = anchor.top - gap - th;
+    if (top + th > window.innerHeight - margin) {
+      const above = anchor.top - gap - th;
+      top = above >= margin ? above : Math.max(margin, window.innerHeight - th - margin);
+    }
     setPos({ top, left });
   }, [anchor, width, fit, children]);
   return ReactDOM.createPortal(
