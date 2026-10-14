@@ -99,7 +99,7 @@
 
 ## 6. Дизайн-система и документация
 
-- [ ] 6.1 Обновить карточки `design-system/src/cards/`: `goal-card.html`, `goal-form.html`,
+- [x] 6.1 Обновить карточки `design-system/src/cards/`: `goal-card.html`, `goal-form.html`,
       `goal-tree-canvas.html`, `goal-tree-panel.html`, карточки фильтров доски и баланса обзора
       (`rg -n "focus|Фокус" design-system/src/cards` пуст); завести карточку `direction-icon`;
       переименовать классы `.pri-select*` в карточках. Проверка: `./design-system/build.sh` и
