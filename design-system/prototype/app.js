@@ -153,7 +153,7 @@ function krHealthDot(status, progress = 0) {
   const closed = KR_CLOSED_VIEW[view];
   const icon = closed ? closed.icon : KR_HEALTH_ICON[s];
   const hint = closed ? closed.hint(progress) : (KR_HEALTH_HINT[s] || '');
-  return `<span class="kr-hdot kr-hdot--${view}" tabindex="0" aria-label="Статус KR: ${KR_HEALTH_LABEL[s]}${closed && closed.note ? ', ' + closed.note : ''}" data-no-drag>
+  return `<span class="kr-hdot kr-hdot--${view}" tabindex="0" aria-label="Статус KR: ${KR_HEALTH_LABEL[s]}${closed && closed.note ? ', ' + closed.note : ''}">
     <span class="kr-hdot__mark">${icon}</span>
     ${closed && closed.flag ? `<span class="kr-hdot__flag" aria-hidden="true">${closed.flag}</span>` : ''}
     <span class="kr-hdot__pop" role="tooltip">
@@ -553,7 +553,7 @@ function krNote(kr) {
   const open = !state.noteCollapsed[kr.id];
   const long = text.length > 90 || text.includes('\n');
   const ago = kr.updatedDaysAgo === 0 ? 'сегодня' : kr.updatedDaysAgo + 'д назад';
-  return `<div class="kr-note${open ? ' kr-note--open' : ''}${long ? ' kr-note--long' : ''}"${long ? ` role="button" tabindex="0" aria-expanded="${open}" data-kr-note="${kr.id}"` : ''} data-no-drag>
+  return `<div class="kr-note${open ? ' kr-note--open' : ''}${long ? ' kr-note--long' : ''}"${long ? ` role="button" tabindex="0" aria-expanded="${open}" data-kr-note="${kr.id}"` : ''}>
     <span class="kr-note__label">Заметка</span>
     <div class="md-content kr-note__text"><p>${esc(text)}</p></div>
     ${long ? `<span class="kr-note__toggle">${open ? 'Свернуть' : 'Ещё'}</span>` : ''}
@@ -656,8 +656,8 @@ function krRow(goal, kr, teamId) {
   const krBehind = board.status !== 'closed' && forecastNow() - progress > KR_BEHIND_PP;
   const krBarC = krBehind ? '#dc2626' : ACCENT;
   return `<div class="kr-item${mode === 'full' ? ' kr-item--reorderable' : ''}"
-       ${mode === 'full' ? `draggable="true" data-kr-item="${goal.id}:${kr.id}"` : ''}>
-    ${mode === 'full' ? '<div class="kr-item__drag-handle">⋮⋮</div>' : ''}
+       ${mode === 'full' ? `draggable="false" data-kr-item="${goal.id}:${kr.id}"` : ''}>
+    ${mode === 'full' ? '<div class="kr-item__drag-handle" title="Перетащите для изменения порядка" data-kr-handle>⋮⋮</div>' : ''}
     <div class="kr-row">
       <div class="kr-row__main">
         ${krHealthDot(displayHealth, progress)}
@@ -684,7 +684,7 @@ function krRow(goal, kr, teamId) {
           </div>
         </div>
         </div>
-        <div class="kr-row__actions" data-no-drag>
+        <div class="kr-row__actions">
           <span class="kr-row__spacer"></span>
           ${mode === 'full' ? '' : `<span class="kr-updated" style="color:${staleC}" title="Последнее обновление прогресса">${kr.updatedDaysAgo === 0 ? 'обн. сегодня' : 'обн. ' + kr.updatedDaysAgo + 'д назад'}</span>`}
           ${krMenu(goal.id, kr.id, teamId)}
@@ -3403,15 +3403,27 @@ function reorder(list, fromId, toId) {
 }
 
 document.addEventListener('mousedown', e => {
+  // Цель и KR перетаскиваемые только на время жеста от ручки: иначе текст в них не выделить.
+  const krHandle = e.target.closest && e.target.closest('[data-kr-handle]');
+  if (krHandle) {
+    const krItem = krHandle.closest('[data-kr-item]');
+    if (krItem) krItem.setAttribute('draggable', 'true');
+    return;
+  }
   const handle = e.target.closest && e.target.closest('[data-goal-handle]');
   if (!handle) return;
   const card = handle.closest('[data-goal-item]');
   if (card) card.setAttribute('draggable', 'true');
 });
 
-document.addEventListener('mouseup', () => {
-  document.querySelectorAll('[data-goal-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
-});
+// Снимаем взведение по отпусканию кнопки, а если её отпустили за пределами окна и mouseup
+// не пришёл — по первому mousemove без нажатых кнопок или по потере окном фокуса.
+function disarmDragHandles() {
+  document.querySelectorAll('[data-goal-item][draggable="true"], [data-kr-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
+}
+document.addEventListener('mouseup', disarmDragHandles);
+document.addEventListener('mousemove', e => { if (e.buttons === 0) disarmDragHandles(); });
+window.addEventListener('blur', disarmDragHandles);
 
 document.addEventListener('dragstart', e => {
   const krItem = e.target.closest && e.target.closest('[data-kr-item]');
@@ -3468,7 +3480,7 @@ document.addEventListener('dragend', () => {
   drag.kr = null; drag.goal = null;
   document.querySelectorAll('.kr-item--dragging').forEach(el => el.classList.remove('kr-item--dragging'));
   document.querySelectorAll('.goal-card--dragging').forEach(el => el.classList.remove('goal-card--dragging'));
-  document.querySelectorAll('[data-goal-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
+  disarmDragHandles();
 });
 
 // ── Дерево целей: зум, панорамирование, выбор ───────────────────────────────
@@ -3666,7 +3678,6 @@ function enhanceDescs() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'md-collapsible__toggle';
-    btn.setAttribute('data-no-drag', '');
     const paint = o => { btn.innerHTML = `<span class="md-collapsible__label">${o ? 'Свернуть' : 'Показать полностью'}</span><span class="md-collapsible__caret">${o ? '▴' : '▾'}</span>`; btn.setAttribute('aria-expanded', o); };
     paint(open);
     btn.addEventListener('click', e => {

@@ -494,7 +494,7 @@ function KRHealthDot({ status, progress = 0, greenThreshold = 80 }) {
   const label = KR_HEALTH_LABEL[s];
   return (
     <span className={`kr-hdot kr-hdot--${view}`} tabIndex={0}
-      aria-label={`Статус KR: ${label}${closed && closed.note ? `, ${closed.note}` : ''}`} data-no-drag>
+      aria-label={`Статус KR: ${label}${closed && closed.note ? `, ${closed.note}` : ''}`}>
       <span className="kr-hdot__mark">{icon}</span>
       {closed && closed.flag && <span className="kr-hdot__flag" aria-hidden="true">{closed.flag}</span>}
       <span className="kr-hdot__pop" role="tooltip">
@@ -621,7 +621,7 @@ function RowMenu({ items, btnClass = 'export-menu__btn', dropdownClass = '' }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
   return (
-    <div className="export-menu" ref={ref} data-no-drag>
+    <div className="export-menu" ref={ref}>
       <button type="button" className={btnClass} title="Ещё" aria-label="Ещё"
         onClick={() => setOpen(!open)}>···</button>
       {open && (
@@ -1578,7 +1578,7 @@ function KRNote({ note, open, onToggle }) {
   const press = long ? { role: 'button', tabIndex: 0, 'aria-expanded': open, onClick: onToggle,
     onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } } : {};
   return (
-    <div className={cls} data-no-drag {...press}>
+    <div className={cls} {...press}>
       <span className="kr-note__label">Заметка</span>
       {/* Разметка в тексте заметки нормативна (content-safety, «Поля, поддерживающие
           разметку»), поэтому текст всегда идёт через Markdown. В свёрнутом виде CSS
@@ -1762,7 +1762,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
               </div>
             </div>
           </div>
-          <div className="kr-row__actions" data-no-drag>
+          <div className="kr-row__actions">
             {/* Распорка держит колонку действий одной ширины во всех режимах:
                 давность показывается не в каждом, но строка не должна съезжать. */}
             <span className="kr-row__spacer" />
@@ -2240,6 +2240,38 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone, 
   );
 }
 
+// Перетаскиваемость на время жеста от ручки. Карточка цели и строка KR становятся
+// draggable, только пока нажата их ручка: будь они draggable всегда, текст в них нельзя
+// было бы выделить — браузер начинает перетаскивание вместо выделения.
+//
+// Признак НЕЛЬЗЯ снимать по mouseleave ручки. Ручка маленькая, а чтобы потащить элемент,
+// указатель обязан её покинуть — mouseleave успевал снять draggable раньше, чем браузер
+// решал, что это перетаскивание, и dragstart не наступал вовсе. Снимается признак по dragend
+// элемента (это делает вызывающий код) и по отпусканию кнопки где угодно (ручку нажали, но
+// не потащили). Отпущенную за пределами окна кнопку mouseup может и не сообщить — тогда
+// признак снимает первый mousemove без нажатых кнопок (указатель вернулся на страницу раньше,
+// чем успеет нажать на текст) или потеря окном фокуса. Во время перетаскивания ни mouseup, ни
+// mousemove не приходят, вместо них приходит dragend, поэтому начатый жест не прерывается.
+//
+// Значение — что именно взведено (true для цели, id для KR), null — ничего.
+function useHandleDragArm() {
+  const [armed, setArmed] = useState(null);
+  useEffect(() => {
+    if (armed == null) return;
+    const release = () => setArmed(null);
+    const releaseIfUp = e => { if (e.buttons === 0) release(); };
+    window.addEventListener('mouseup', release);
+    window.addEventListener('mousemove', releaseIfUp);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('mouseup', release);
+      window.removeEventListener('mousemove', releaseIfUp);
+      window.removeEventListener('blur', release);
+    };
+  }, [armed]);
+  return [armed, setArmed, () => setArmed(null)];
+}
+
 function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => { }, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null, notesOpen = false }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
@@ -2248,25 +2280,10 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   const [showCom, setShowCom] = useState(!!(isDeepTarget && deepLink.comment));
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
-  // A KR row is draggable as a whole, so a press on a nested control (the description's
-  // "Показать полностью") would otherwise start a reorder. A ref, not state: it is read
-  // synchronously in onDragStart, with no re-render in between to make it stale.
-  const krPressNoDrag = React.useRef(false);
-  // Карточка становится перетаскиваемой только на время жеста от ручки: будь она
-  // draggable всегда, в описании цели нельзя было бы выделить текст.
-  const [goalDraggable, setGoalDraggable] = useState(false);
-  // Признак НЕЛЬЗЯ снимать по mouseleave ручки. Ручка 16×42px, а чтобы потащить карточку,
-  // указатель обязан её покинуть — mouseleave успевал снять draggable раньше, чем браузер
-  // решал, что это перетаскивание, и dragstart не наступал вовсе: порядок целей не менялся.
-  // Снимаем по dragend карточки, а этим эффектом — по отпусканию кнопки где угодно (ручку
-  // нажали, но не потащили). Во время перетаскивания mouseup не приходит, вместо него
-  // приходит dragend, поэтому эффект начатый жест не прерывает.
-  useEffect(() => {
-    if (!goalDraggable) return;
-    const release = () => setGoalDraggable(false);
-    window.addEventListener('mouseup', release);
-    return () => window.removeEventListener('mouseup', release);
-  }, [goalDraggable]);
+  // Карточка цели и строки KR перетаскиваются только от своих ручек: иначе в описании цели
+  // и в названии KR нельзя было бы выделить текст.
+  const [goalArmed, armGoal, disarmGoal] = useHandleDragArm();
+  const [armedKr, armKr, disarmKr] = useHandleDragArm();
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const [transfer, setTransfer] = useState(false);
   const [titleRef, titleClipped] = useClipped(goal.title);
@@ -2344,13 +2361,13 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   ].filter(Boolean).join(' ');
 
   return (
-    <div {...rootDrag} id={`goal-${goal.id}`} draggable={!!(canReorderGoal && goalDraggable)}
-      onDragEnd={e => { setGoalDraggable(false); rootDrag.onDragEnd && rootDrag.onDragEnd(e); }}
+    <div {...rootDrag} id={`goal-${goal.id}`} draggable={!!(canReorderGoal && goalArmed)}
+      onDragEnd={e => { disarmGoal(); rootDrag.onDragEnd && rootDrag.onDragEnd(e); }}
       style={{ '--health': hC, '--health-soft': `${hC}18` }}
       className={cardClass}>
       {canReorderGoal && (
         <div className="drag-handle" title="Перетащите для изменения порядка"
-          onMouseDown={() => setGoalDraggable(true)}>⋮⋮</div>
+          onMouseDown={() => armGoal(true)}>⋮⋮</div>
       )}
       {/* Шапка цели — одна строка: вес · приоритет · заголовок со связями · лейблы ·
           драйвер · полоса прогресса · процент · меню. Заголовок и есть элемент
@@ -2456,14 +2473,14 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
           const isKrDrag = krDrag === kr.id;
           return (
             <div key={kr.id} id={`kr-${kr.id}`}
-              draggable={!!canReorderKR}
-              onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag], .modal-overlay')); } : undefined}
-              onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); e.stopPropagation(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
+              draggable={!!(canReorderKR && armedKr === kr.id)}
+              onDragStart={canReorderKR ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
               onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
               onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
-              onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
+              onDragEnd={canReorderKR ? () => { disarmKr(); setKrDrag(null); } : undefined}
               className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
-              {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
+              {canReorderKR && <div className="kr-item__drag-handle" title="Перетащите для изменения порядка"
+                onMouseDown={() => armKr(kr.id)}>⋮⋮</div>}
               <KRRow kr={kr} goalId={goal.id} goalTitle={goal.title} editMode={editMode} onReload={onReload}
                 accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast}
                 teamId={currentTeamId} periodId={periodId} greenThreshold={greenThreshold} notesOpen={notesOpen} />
