@@ -2753,11 +2753,13 @@ function fitGoalCardOwners() {
 // Подсказка с полным текстом только у обрезанного заголовка — то же правило, что у useClipped
 // в tracker.js: у влезающего она дублировала бы видимый текст и отняла бы подсказку действия
 // у строки-предка. В приложении это React-хук с ResizeObserver, здесь достаточно прохода
-// после отрисовки и по изменению размера окна.
+// после отрисовки и по изменению размера окна. Полный текст показывает общая подсказка
+// .info-hint__tooltip (см. обработчик в конце файла), а пустой title гасит над текстом
+// нативную подсказку действия строки-предка.
 function markClippedTitles() {
   document.querySelectorAll('.goal-card__title, .kr-name').forEach(el => {
-    if (el.scrollWidth - el.clientWidth > 1) el.setAttribute('title', el.textContent);
-    else el.removeAttribute('title');
+    if (el.scrollWidth - el.clientWidth > 1) { el.dataset.hint = el.textContent; el.setAttribute('title', ''); }
+    else { delete el.dataset.hint; el.removeAttribute('title'); }
   });
 }
 
@@ -3619,24 +3621,28 @@ document.addEventListener('wheel', e => {
 
 render();
 
-// Всплывающая подсказка для «?» (.info-hint): читает data-hint или title.
+// Всплывающая подсказка для «?» (.info-hint): читает data-hint или title. Ей же показывается
+// полный текст обрезанного заголовка (data-hint ставит markClippedTitles) — по ширине текста.
 (() => {
+  const SEL = '.info-hint, .goal-card__title[data-hint], .kr-name[data-hint]';
   let tip = null, cur = null;
   const show = el => {
     const html = el.dataset.hintHtml;
     const text = el.dataset.hint || el.getAttribute('title');
     if (!html && !text) return;
-    if (el.hasAttribute('title')) { el.dataset.hint = text; el.removeAttribute('title'); }
-    if (!tip) { tip = document.createElement('div'); tip.className = 'info-hint__tooltip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    if (el.getAttribute('title')) { el.dataset.hint = text; el.removeAttribute('title'); }
+    if (!tip) { tip = document.createElement('div'); tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    const fit = !el.classList.contains('info-hint');
+    tip.className = fit ? 'info-hint__tooltip info-hint__tooltip--fit' : 'info-hint__tooltip';
     if (html) tip.innerHTML = html; else tip.textContent = text;
-    tip.style.display = 'block'; tip.style.transform = 'none'; tip.style.whiteSpace = 'pre-line'; tip.style.maxWidth = '300px';
+    tip.style.display = 'block'; tip.style.transform = 'none'; tip.style.whiteSpace = 'pre-line'; tip.style.maxWidth = fit ? '' : '300px';
     const r = el.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
     let left = Math.min(window.innerWidth - tw - 8, Math.max(8, r.left + r.width / 2 - tw / 2));
     let top = r.top - th - 8; if (top < 8) top = r.bottom + 8;
     tip.style.left = left + 'px'; tip.style.top = top + 'px'; cur = el;
   };
   const hide = () => { if (tip) tip.style.display = 'none'; cur = null; };
-  document.addEventListener('mouseover', e => { const el = e.target.closest && e.target.closest('.info-hint'); if (el && el !== cur) show(el); else if (!el && cur) hide(); });
+  document.addEventListener('mouseover', e => { const el = e.target.closest && e.target.closest(SEL); if (el && el !== cur) show(el); else if (!el && cur) hide(); });
   document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('.info-hint'); if (el) show(el); });
   document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('.info-hint')) hide(); });
   document.addEventListener('scroll', hide, true);
