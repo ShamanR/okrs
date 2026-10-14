@@ -7,10 +7,12 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,14 +33,50 @@ const (
 	migrationsDir     = "../../../migrations"
 )
 
-// latestVersion is the number of migration files, which form a consecutive prefix.
-func latestVersion(t *testing.T) int {
+// migrationEntries ignores unrelated files and validates the consecutive versions.
+func migrationEntries(source fs.FS) ([]fs.DirEntry, error) {
+	entries, err := fs.ReadDir(source, ".")
+	if err != nil {
+		return nil, err
+	}
+	var migrations []fs.DirEntry
+	versions := make(map[string]int)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".sql") {
+			continue
+		}
+		prefix, name, ok := strings.Cut(strings.TrimSuffix(entry.Name(), ".sql"), "_")
+		version, err := strconv.Atoi(prefix)
+		if !ok || name == "" || err != nil || version <= 0 || strings.Trim(prefix, "0123456789") != "" {
+			return nil, fmt.Errorf("invalid migration filename %q", entry.Name())
+		}
+		versions[entry.Name()] = version
+		migrations = append(migrations, entry)
+	}
+	sort.Slice(migrations, func(i, j int) bool {
+		return versions[migrations[i].Name()] < versions[migrations[j].Name()]
+	})
+	for i, entry := range migrations {
+		if versions[entry.Name()] != i+1 {
+			return nil, fmt.Errorf("invalid source version %s: expected %d", entry.Name(), i+1)
+		}
+	}
+	return migrations, nil
+}
+
+func sourceMigrationEntries(t *testing.T) []fs.DirEntry {
 	t.Helper()
-	entries, err := os.ReadDir(migrationsDir)
+	entries, err := migrationEntries(os.DirFS(migrationsDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return len(entries)
+	return entries
+}
+
+// latestVersion is the number of migration files, which form a consecutive prefix.
+func latestVersion(t *testing.T) int {
+	t.Helper()
+	return len(sourceMigrationEntries(t))
 }
 
 func legacyFixture(name string) string {
@@ -522,10 +560,7 @@ func TestBootstrapFailuresAndResume(t *testing.T) {
 		db, dsn := testDB(t)
 		restore(t, dsn, "testdata/legacy/v22.sql")
 		altered := fstest.MapFS{}
-		entries, err := os.ReadDir(migrationsDir)
-		if err != nil {
-			t.Fatal(err)
-		}
+		entries := sourceMigrationEntries(t)
 		for _, entry := range entries {
 			data, err := os.ReadFile(filepath.Join(migrationsDir, entry.Name()))
 			if err != nil {
@@ -639,10 +674,7 @@ func TestConcurrentLegacyAndContinuousLock(t *testing.T) {
 	db, dsn = testDB(t)
 	restore(t, dsn, legacyFixture("v%d.sql"))
 	delayed := fstest.MapFS{}
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	entries := sourceMigrationEntries(t)
 	for _, entry := range entries {
 		data, err := os.ReadFile(filepath.Join(migrationsDir, entry.Name()))
 		if err != nil {
@@ -704,28 +736,20 @@ func TestConcurrentLegacyAndContinuousLock(t *testing.T) {
 }
 
 func TestSQLBodiesMatchHistoricalRevision(t *testing.T) {
-	entries, err := os.ReadDir(migrationsDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	entries := sourceMigrationEntries(t)
 	if len(entries) < lastLegacyVersion {
 		t.Fatalf("expected at least %d migration files, got %d", lastLegacyVersion, len(entries))
 	}
 	prefix := []byte("-- +goose Up\n-- +goose StatementBegin\n")
 	separator := []byte("\n-- +goose StatementEnd\n\n-- +goose Down\n-- +goose StatementBegin\n")
 	suffix := []byte("\n-- +goose StatementEnd\n")
-	for n, entry := range entries {
-		version, err := strconv.Atoi(entry.Name()[:3])
-		if err != nil || version != n+1 {
-			t.Fatalf("invalid source version %s", entry.Name())
-		}
-	}
 	requireLegacyRevision(t)
 	for _, entry := range entries[:lastLegacyVersion] {
 		data, err := os.ReadFile(filepath.Join(migrationsDir, entry.Name()))
 		if err != nil {
 			t.Fatal(err)
 		}
+		data = normalizeSQLLineEndings(data)
 		parts := bytes.Split(data, separator)
 		if len(parts) != 2 || !bytes.HasPrefix(parts[0], prefix) || !bytes.HasSuffix(parts[1], suffix) {
 			t.Fatalf("invalid SQL sections in %s", entry.Name())
@@ -737,9 +761,57 @@ func TestSQLBodiesMatchHistoricalRevision(t *testing.T) {
 			if err != nil {
 				t.Fatal("historical revision is required", err)
 			}
-			if !bytes.Equal(bodies[i], expected) {
+			if !bytes.Equal(bodies[i], normalizeSQLLineEndings(expected)) {
 				t.Fatalf("SQL body changed: %s", original)
 			}
+		}
+	}
+}
+
+// Only checkout line endings are normalized; all other SQL bytes remain significant.
+func normalizeSQLLineEndings(data []byte) []byte {
+	return bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+}
+
+func TestMigrationEntries(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		source  fstest.MapFS
+		want    int
+		wantErr bool
+	}{
+		{"unrelated files", fstest.MapFS{
+			"001_first.sql": {}, "002_second.sql": {}, ".DS_Store": {}, "README.md": {},
+			"003_directory.sql": {Mode: fs.ModeDir},
+		}, 2, false},
+		{"numeric order", fstest.MapFS{"1_first.sql": {}, "02_second.sql": {}}, 2, false},
+		{"gap", fstest.MapFS{"001_first.sql": {}, "003_third.sql": {}}, 0, true},
+		{"duplicate", fstest.MapFS{"001_first.sql": {}, "001_other.sql": {}}, 0, true},
+		{"short name", fstest.MapFS{"x.sql": {}}, 0, true},
+		{"missing name", fstest.MapFS{"001_.sql": {}}, 0, true},
+		{"zero version", fstest.MapFS{"000_first.sql": {}}, 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entries, err := migrationEntries(tc.source)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("migrationEntries error = %v, want error %v", err, tc.wantErr)
+			}
+			if err == nil && len(entries) != tc.want {
+				t.Fatalf("got %d migrations, want %d", len(entries), tc.want)
+			}
+		})
+	}
+}
+
+func TestNormalizeSQLLineEndings(t *testing.T) {
+	lf := []byte("SELECT 1;\n\n-- comment\n")
+	crlf := bytes.ReplaceAll(lf, []byte("\n"), []byte("\r\n"))
+	if !bytes.Equal(normalizeSQLLineEndings(lf), normalizeSQLLineEndings(crlf)) {
+		t.Fatal("LF and CRLF SQL should match")
+	}
+	for _, changed := range [][]byte{[]byte("SELECT 2;\n\n-- comment\n"), bytes.TrimSuffix(lf, []byte("\n")), []byte("SELECT  1;\n\n-- comment\n")} {
+		if bytes.Equal(normalizeSQLLineEndings(lf), normalizeSQLLineEndings(changed)) {
+			t.Fatal("SQL changes other than line endings must remain significant")
 		}
 	}
 }

@@ -539,3 +539,17 @@ integration tests need PostgreSQL 15; the legacy-runner checks also need
 MIGRATIONS_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' \
 go test ./internal/platform/migrations ./cmd/server
 ```
+
+The Docker image smoke test is run manually; it is not invoked by `go test`.
+Build the image and run it against an isolated PostgreSQL 15 container with host
+`psql` and `pg_dump` available:
+
+```sh
+docker build -t okrs:goose-validation .
+MIGRATIONS_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' \
+POSTGRES_CONTAINER=your-postgres-container \
+python3 internal/platform/migrations/testdata/docker-smoke.py
+```
+
+It checks fresh and legacy databases, repeated startup, and `-seed`.
+Set `MIGRATIONS_TEST_IMAGE` to test a different image.
