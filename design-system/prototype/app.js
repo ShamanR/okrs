@@ -986,7 +986,7 @@ function eventText(ev, teamNames) {
     case 'comment_reopened': return `переоткрыл замечание к ${g}`;
     case 'comment_deleted': return `удалил замечание к ${g}`;
     case 'reply_deleted': return `удалил ответ на замечание к ${g}`;
-    default: return `${esc(ev.action)} «${t}»`;
+    default: return `${esc(ev.action)} ${g}`;
   }
 }
 

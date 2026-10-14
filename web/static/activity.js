@@ -204,7 +204,9 @@ function eventText(ev, teamNames) {
     case 'comment_reopened': return <>переоткрыл замечание к {g}</>;
     case 'comment_deleted': return <>удалил замечание к {g}</>;
     case 'reply_deleted': return <>удалил ответ на замечание к {g}</>;
-    default: return <>{ev.action} «{t}»</>;
+    // goal_copied, goal_moved, goal_linked, goal_unlinked и прочие события без своего текста:
+    // через g, чтобы названная цель тоже получила иконку направления.
+    default: return <>{ev.action} {g}</>;
   }
 }
 
