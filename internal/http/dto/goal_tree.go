@@ -28,7 +28,7 @@ type GoalTreeGoal struct {
 	Priority      string  `json:"priority"`
 	Weight        int     `json:"weight"`
 	WorkType      string  `json:"work_type"`
-	FocusType     string  `json:"focus_type"`
+	Direction     string  `json:"direction"`
 	OwnerText     string  `json:"owner_text"`
 	ParentGoalIDs []int64 `json:"parent_goal_ids"`
 	ChildGoalIDs  []int64 `json:"child_goal_ids"`

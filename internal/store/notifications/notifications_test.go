@@ -394,8 +394,8 @@ func setupContext(t *testing.T) (*pgxpool.Pool, *notifications.Repository, conte
 	mustScan(`INSERT INTO teams (name, parent_id) VALUES ('Платформа', $1) RETURNING id`, &mid, root)
 	mustScan(`INSERT INTO teams (name, parent_id) VALUES ('Биллинг', $1) RETURNING id`, &leaf, mid)
 	mustScan(`INSERT INTO periods (name, start_date, end_date) VALUES ('P', '2026-01-01', '2026-03-31') RETURNING id`, &periodID)
-	mustScan(`INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order)
-	          VALUES ($1,$2,'Снизить отток','P1',100,'Delivery','STABILITY',1) RETURNING id`, &goalID, leaf, periodID)
+	mustScan(`INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order)
+	          VALUES ($1,$2,'Снизить отток','P1',100,'Delivery','TECH',1) RETURNING id`, &goalID, leaf, periodID)
 
 	return pool, notifications.NewRepository(pool), ctx, domain.TenantScope{TenantID: 1}, leaf, goalID, cleanup
 }

@@ -48,8 +48,8 @@ func TestKRsScopedByTenant(t *testing.T) {
 
 	var goalID int64
 	if err := pool.QueryRow(ctx,
-		`INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order, tenant_id)
-		 VALUES ($1,$2,'Goal','P1',100,'Delivery','STABILITY',1,1) RETURNING id`,
+		`INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order, tenant_id)
+		 VALUES ($1,$2,'Goal','P1',100,'Delivery','TECH',1,1) RETURNING id`,
 		teamID, periodID,
 	).Scan(&goalID); err != nil {
 		t.Fatalf("insert goal: %v", err)

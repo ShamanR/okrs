@@ -22,7 +22,7 @@ func TestUpsertKeyResultNote(t *testing.T) {
 	var periodID int64
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`).Scan(&periodID)
 	var goalID int64
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 	var userID int64
 	pool.QueryRow(ctx, `INSERT INTO users (provider_subject_key, provider, subject, display_name) VALUES ('system:test','system','test','Test User') RETURNING id`).Scan(&userID)
 	var krID int64
@@ -70,7 +70,7 @@ func TestUpdateKeyResultDescription(t *testing.T) {
 	var periodID int64
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`).Scan(&periodID)
 	var goalID int64
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 	var krID int64
 	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'KR1',100,'NUMERICAL',1) RETURNING id`, goalID).Scan(&krID)
 
@@ -128,7 +128,7 @@ func TestUpsertAndLoadNumericalMeta(t *testing.T) {
 	var teamID, periodID, goalID, krID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`).Scan(&periodID)
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order) VALUES ($1,'KR',100,'NUMERICAL',1) RETURNING id`, goalID).Scan(&krID)
 
 	in := krs.NumericalMetaInput{
@@ -194,7 +194,7 @@ func TestZeroingCriteriaAllKinds(t *testing.T) {
 	var teamID, periodID, goalID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1','2024-01-01','2024-03-31') RETURNING id`).Scan(&periodID)
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 
 	for _, kind := range []domain.KRKind{domain.KRKindBoolean, domain.KRKindProject} {
 		krID, err := repo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
@@ -239,7 +239,7 @@ func TestUpdateHealthStatus(t *testing.T) {
 	var periodID int64
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1', '2024-01-01', '2024-03-31') RETURNING id`).Scan(&periodID)
 	var goalID int64
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 	var krID int64
 	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order, start_value, target_value, current_value, unit) VALUES ($1,'KR1',100,'NUMERICAL',1,0,100,0,'%') RETURNING id`, goalID).Scan(&krID)
 
@@ -287,8 +287,8 @@ func TestApplyCheckInRollsBackProgressWhenNoteFails(t *testing.T) {
 	var teamID, periodID, goalID, krID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1','2024-01-01','2024-03-31') RETURNING id`).Scan(&periodID)
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order)
-	                    VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order)
+	                    VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 	pool.QueryRow(ctx, `INSERT INTO key_results (goal_id, title, weight, kind, sort_order, current_value)
 	                    VALUES ($1,'KR1',100,'NUMERICAL',1,10) RETURNING id`, goalID).Scan(&krID)
 

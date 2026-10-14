@@ -58,7 +58,7 @@ type GoalDetails struct {
 	Priority     string          `json:"priority"`
 	Weight       int             `json:"weight"`
 	WorkType     string          `json:"work_type"`
-	FocusType    string          `json:"focus_type"`
+	Direction    string          `json:"direction"`
 	Owners       []UserRef       `json:"owners"`
 	Progress     int             `json:"progress"`
 	ProgressMeta ProgressBarInfo `json:"progress_meta"`

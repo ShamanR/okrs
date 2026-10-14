@@ -106,7 +106,7 @@ func GoalResponse(goal domain.Goal, userRefs map[string]*dto.UserRef) dto.GoalRe
 		Priority:    string(goal.Priority),
 		Weight:      goal.Weight,
 		WorkType:    string(goal.WorkType),
-		FocusType:   string(goal.FocusType),
+		Direction:   string(goal.Direction),
 		Owners:      v1.ResolveOwnersByUDIDs(goal.OwnerUDIDs, goal.OwnerText, userRefs),
 		Progress:    goal.Progress,
 		KeyResults:  krList,

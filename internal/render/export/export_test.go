@@ -59,7 +59,7 @@ func TestMarkdownFullGoalAndKR(t *testing.T) {
 			ID: 10, TeamID: 1, Title: "Снизить P95 latency",
 			Description: "Оптимизировать пути",
 			Priority:    domain.Priority("P1"), Weight: 20,
-			WorkType: domain.WorkType("Delivery"), FocusType: domain.FocusType("TECH_INDEPENDENCE"),
+			WorkType: domain.WorkType("Delivery"), Direction: domain.DirectionTech,
 			OwnerText: "Иван, Мария", Progress: 45,
 			KeyResults: []domain.KeyResult{{
 				Title: "P95 latency", Kind: domain.KRKindNumerical, Weight: 30, Progress: 45,
@@ -73,7 +73,7 @@ func TestMarkdownFullGoalAndKR(t *testing.T) {
 	got := Markdown(domain.Period{Name: "Q1 2026"}, blocks, Options{Format: FormatFull})
 	for _, want := range []string{
 		"## Снизить P95 latency\n",
-		"\nP1 · вес 20% · Delivery · Tech Independence · прогресс 45% · драйверы: Иван, Мария\n",
+		"\nP1 · вес 20% · Delivery · Техника · прогресс 45% · драйверы: Иван, Мария\n",
 		"\nОптимизировать пути\n",
 		"- [ ] P95 latency\n",
 		"  - тип: NUMERICAL · 300 → 250 / 200 мс · вес 30% · прогресс 45%\n",
@@ -88,7 +88,7 @@ func TestMarkdownFullGoalAndKR(t *testing.T) {
 	}
 }
 
-func TestMarkdownFullOmitsEmptyFocusAndDrivers(t *testing.T) {
+func TestMarkdownFullOmitsEmptyDirectionAndDrivers(t *testing.T) {
 	got := Markdown(domain.Period{Name: "Q1 2026"}, []TeamBlock{{
 		Heading: "Платформа", TeamID: 1,
 		Goals: []domain.Goal{{

@@ -73,7 +73,7 @@ func TestUpdateKRProgressIntegration(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "Owner",
 	})
 	if err != nil {
@@ -176,7 +176,7 @@ func TestUpsertKRNoteIntegration(t *testing.T) {
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Note Goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
@@ -298,7 +298,7 @@ func TestUpdateKRHealthStatusIntegration(t *testing.T) {
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Health Goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)

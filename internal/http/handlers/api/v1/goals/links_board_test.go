@@ -75,7 +75,7 @@ func TestBoardEmbedsParentsScopeFiltered(t *testing.T) {
 		id, err := repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID: teamID, PeriodID: periodID, Title: title,
 			Priority: domain.PriorityP1, Weight: 100,
-			WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+			WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 		})
 		if err != nil {
 			t.Fatalf("create goal %s: %v", title, err)

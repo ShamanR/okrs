@@ -92,7 +92,7 @@ type BalanceBucket struct {
 // PeriodBalances groups the three goal balances shown as bar charts.
 type PeriodBalances struct {
 	DiscoveryDelivery []BalanceBucket `json:"discovery_delivery"`
-	Focuses           []BalanceBucket `json:"focuses"`
+	Directions        []BalanceBucket `json:"directions"`
 	Priorities        []BalanceBucket `json:"priorities"`
 	Health            []BalanceBucket `json:"health"`
 }
@@ -104,7 +104,7 @@ type PeriodGoalItem struct {
 	TeamID    int64  `json:"team_id"`
 	TeamName  string `json:"team_name"`
 	WorkType  string `json:"work_type"`
-	FocusType string `json:"focus_type"`
+	Direction string `json:"direction"`
 	Priority  string `json:"priority"`
 	Progress  int    `json:"progress"`
 }
@@ -137,11 +137,21 @@ type PeriodOverview struct {
 
 // Fixed category orders so bars render consistently (zero categories included).
 var (
-	workTypeOrder = []string{"Delivery", "Discovery"}
-	focusOrder    = []string{"PROFITABILITY", "STABILITY", "SPEED_EFFICIENCY", "TECH_INDEPENDENCE"}
-	priorityOrder = []string{"P0", "P1", "P2", "P3"}
-	krHealthOrder = []string{"not_started", "on_track", "at_risk", "done"}
+	workTypeOrder  = []string{"Delivery", "Discovery"}
+	directionOrder = directionKeys()
+	priorityOrder  = []string{"P0", "P1", "P2", "P3"}
+	krHealthOrder  = []string{"not_started", "on_track", "at_risk", "done"}
 )
+
+// directionKeys lists goal directions in display order; the order itself lives in the domain.
+func directionKeys() []string {
+	dirs := domain.GoalDirections()
+	out := make([]string, len(dirs))
+	for i, d := range dirs {
+		out[i] = string(d)
+	}
+	return out
+}
 
 func bucketsFor(order []string, counts map[string]int, total int) []BalanceBucket {
 	out := make([]BalanceBucket, 0, len(order))
@@ -156,19 +166,19 @@ func bucketsFor(order []string, counts map[string]int, total int) []BalanceBucke
 	return out
 }
 
-// computeBalances tallies goals-in-scope by work type, focus and priority. Percent is
+// computeBalances tallies goals-in-scope by work type, direction and priority. Percent is
 // the share of all scoped goals; every fixed category is present even when zero.
 func computeBalances(goals []PeriodGoalItem) PeriodBalances {
-	wt, ft, pr := map[string]int{}, map[string]int{}, map[string]int{}
+	wt, dr, pr := map[string]int{}, map[string]int{}, map[string]int{}
 	for _, g := range goals {
 		wt[g.WorkType]++
-		ft[g.FocusType]++
+		dr[g.Direction]++
 		pr[g.Priority]++
 	}
 	total := len(goals)
 	return PeriodBalances{
 		DiscoveryDelivery: bucketsFor(workTypeOrder, wt, total),
-		Focuses:           bucketsFor(focusOrder, ft, total),
+		Directions:        bucketsFor(directionOrder, dr, total),
 		Priorities:        bucketsFor(priorityOrder, pr, total),
 	}
 }
@@ -317,7 +327,7 @@ func computePeriodOverview(data *PeriodData, weightTolerance int, teamFilter map
 					TeamID:    gTeamID,
 					TeamName:  gTeamName,
 					WorkType:  string(goals[i].WorkType),
-					FocusType: string(goals[i].FocusType),
+					Direction: string(goals[i].Direction),
 					Priority:  string(goals[i].Priority),
 					Progress:  goals[i].Progress,
 				})

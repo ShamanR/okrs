@@ -162,44 +162,51 @@ function fieldsSummary(changed) {
 function eventText(ev, teamNames) {
   const p = ev.payload || {};
   const t = ev.entity_title || '';
+  // Иконка направления — перед заголовком цели: у событий самой цели и её комментариев
+  // (kr_id нет) и у названной цели в прогрессе KR. Направление текущее, его отдаёт сервер;
+  // у удалённой цели его нет, и иконки нет. Перед KR и командой иконка не ставится.
+  const gi = ev.goal_direction ? <><DirectionIcon code={ev.goal_direction} sm />{' '}</> : null;
+  const g = <>{ev.kr_id ? null : gi}«{t}»</>;
   const names = teamNames || {};
   const teamList = ids => (ids || []).map(id => names[id] || `#${id}`).join(', ');
   switch (ev.action) {
     case 'kr_progress': {
       const b = (p.before || {}).progress, a = (p.after || {}).progress;
       const goal = p.goal_title;
-      return <>обновил KR «{t}»{goal ? <> цели «{goal}»</> : null} — <b>{a}%</b> <span className="act-was">(было {b}%)</span></>;
+      return <>обновил KR «{t}»{goal ? <> цели {gi}«{goal}»</> : null} — <b>{a}%</b> <span className="act-was">(было {b}%)</span></>;
     }
     case 'status_changed': {
       const b = STATUS_RU[(p.before || {}).status] || (p.before || {}).status;
       const a = STATUS_RU[(p.after || {}).status] || (p.after || {}).status;
       return <>перевёл цели команды «{t}» в статус <b>«{a}»</b> <span className="act-was">(было «{b}»)</span></>;
     }
-    case 'goal_created': return <>создал цель «{t}»</>;
-    case 'goal_deleted': return <>удалил цель «{t}»</>;
+    case 'goal_created': return <>создал цель {g}</>;
+    case 'goal_deleted': return <>удалил цель {g}</>;
     case 'kr_created': return <>добавил KR «{t}»</>;
     case 'kr_deleted': return <>удалил KR «{t}»</>;
     case 'goal_shared': {
       const ids = p.shared_with_team_ids || [];
-      return <>добавил к общей цели «{t}»{ids.length ? <> команды: <b>{teamList(ids)}</b></> : null}</>;
+      return <>добавил к общей цели {g}{ids.length ? <> команды: <b>{teamList(ids)}</b></> : null}</>;
     }
     case 'goal_unshared': {
       const rem = p.unshared_team_ids;
       const d = p.declined_by_team_id;
-      if (rem && rem.length) return <>убрал из общей цели «{t}» команды: <b>{teamList(rem)}</b></>;
-      return <>отказался от общей цели «{t}»{d ? <> (команда <b>{names[d] || `#${d}`}</b>)</> : null}</>;
+      if (rem && rem.length) return <>убрал из общей цели {g} команды: <b>{teamList(rem)}</b></>;
+      return <>отказался от общей цели {g}{d ? <> (команда <b>{names[d] || `#${d}`}</b>)</> : null}</>;
     }
-    case 'goal_owner_changed': return <>сменил владельца цели «{t}»</>;
-    case 'goal_fields_changed': return <>изменил цель «{t}»{fieldsSummary(p.changed)}</>;
+    case 'goal_owner_changed': return <>сменил владельца цели {g}</>;
+    case 'goal_fields_changed': return <>изменил цель {g}{fieldsSummary(p.changed)}</>;
     case 'kr_fields_changed': return <>изменил KR «{t}»{fieldsSummary(p.changed)}</>;
     case 'kr_note_updated': return <>обновил заметку к KR «{t}»</>;
-    case 'comment_added': return <>оставил замечание к «{t}»</>;
-    case 'reply_added': return <>ответил на замечание к «{t}»</>;
-    case 'comment_resolved': return <>отметил замечание к «{t}» решённым</>;
-    case 'comment_reopened': return <>переоткрыл замечание к «{t}»</>;
-    case 'comment_deleted': return <>удалил замечание к «{t}»</>;
-    case 'reply_deleted': return <>удалил ответ на замечание к «{t}»</>;
-    default: return <>{ev.action} «{t}»</>;
+    case 'comment_added': return <>оставил замечание к {g}</>;
+    case 'reply_added': return <>ответил на замечание к {g}</>;
+    case 'comment_resolved': return <>отметил замечание к {g} решённым</>;
+    case 'comment_reopened': return <>переоткрыл замечание к {g}</>;
+    case 'comment_deleted': return <>удалил замечание к {g}</>;
+    case 'reply_deleted': return <>удалил ответ на замечание к {g}</>;
+    // goal_copied, goal_moved, goal_linked, goal_unlinked и прочие события без своего текста:
+    // через g, чтобы названная цель тоже получила иконку направления.
+    default: return <>{ev.action} {g}</>;
   }
 }
 

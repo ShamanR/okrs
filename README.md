@@ -205,9 +205,11 @@ goals. A node with children is no different: its board carries its goals and not
 teams beneath it — those are one click away in the sidebar, which shows each of them with its own
 progress.
 
-Each goal card shows priority (P0–P3), weight, work type (Delivery or Discovery), strategic focus,
-the driver, a progress bar with a forecast marker, and how recently it was touched. A goal shared
-with other teams carries a banner naming them. The `🔗` icon copies a deep link to that goal.
+Each goal card shows priority (P0–P3), weight, its direction as an icon before the title (🚀 Product,
+⚙️ Tech or 📈 Processes — hover it for the description), work type (Delivery or Discovery), the
+driver, a progress bar with a forecast marker, and how recently it was touched. A goal shared with
+other teams carries a banner naming them. Above the list, goals can be filtered by priority and by
+direction. The `🔗` icon copies a deep link to that goal.
 
 The status a team is in decides what the board lets you do, and the server enforces the same rule
 rather than trusting the UI:
@@ -315,7 +317,7 @@ between the teams you lead and the whole organisation.
 ![Period overview](docs/screenshots/period-overview.png)
 
 It counts teams by status, flags formation errors (goal weights that do not sum to 100), shows the
-Discovery/Delivery split, the strategic focus mix, the P0–P3 distribution and the KR health
+Discovery/Delivery split, the balance of goal directions, the P0–P3 distribution and the KR health
 breakdown — each bar clickable to see what is inside it. The chart plots recorded progress against
 an even-pace diagonal. At the bottom are the bulk operations: move every team that has goals into
 *В работе*, or close the period for all of them at once. Teams without goals are skipped and the

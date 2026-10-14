@@ -33,8 +33,9 @@ function ScopeToggle({ isAdmin, value, onChange }) {
 // Ярлыки и цвета корзин балансов (порядок фиксирован сервером).
 const PO_DD_LABELS = { Delivery: 'Delivery', Discovery: 'Discovery' };
 const PO_DD_COLORS = { Delivery: '#475569', Discovery: '#7c6cf0' };
-const PO_FOCUS_LABELS = { PROFITABILITY: 'Profitability', STABILITY: 'Stability', SPEED_EFFICIENCY: 'Speed Efficiency', TECH_INDEPENDENCE: 'Tech Independency' };
-const PO_FOCUS_COLORS = { PROFITABILITY: '#ef4444', STABILITY: '#22c55e', SPEED_EFFICIENCY: '#f59e0b', TECH_INDEPENDENCE: '#7c6cf0' };
+// Направления — из общего справочника goal_direction.js: подпись с иконкой и цвет направления.
+const PO_DIR_LABELS = Object.fromEntries(GOAL_DIRECTIONS.map(d => [d.code, `${d.icon} ${d.label}`]));
+const PO_DIR_COLORS = Object.fromEntries(GOAL_DIRECTIONS.map(d => [d.code, d.color]));
 const PO_PRIO_LABELS = { P0: 'P0 · критично', P1: 'P1 · высокий', P2: 'P2 · средний', P3: 'P3 · низкий' };
 const PO_PRIO_COLORS = { P0: '#dc2626', P1: '#f59e0b', P2: '#3b82f6', P3: '#94a3b8' };
 // Health-статусы KR (значения совпадают с трекером; ярлык done — «Closed»).
@@ -136,9 +137,9 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
       <BalanceBars title="Discovery / Delivery" subtitle="Соотношение исследовательской и поставочной работы"
         items={(data.balances && data.balances.discovery_delivery) || []} labels={PO_DD_LABELS} colors={PO_DD_COLORS}
         onSelect={k => setDrill({ kind: 'balance', field: 'work_type', key: k, title: 'Discovery / Delivery: ' + (PO_DD_LABELS[k] || k) })} />
-      <BalanceBars title="Стратегические фокусы" subtitle="Profitability · Stability · Speed Efficiency · Tech Independency"
-        items={(data.balances && data.balances.focuses) || []} labels={PO_FOCUS_LABELS} colors={PO_FOCUS_COLORS}
-        onSelect={k => setDrill({ kind: 'balance', field: 'focus_type', key: k, title: 'Фокус: ' + (PO_FOCUS_LABELS[k] || k) })} />
+      <BalanceBars title="Направления целей" subtitle="Продукт · Техника · Процессы"
+        items={(data.balances && data.balances.directions) || []} labels={PO_DIR_LABELS} colors={PO_DIR_COLORS}
+        onSelect={k => setDrill({ kind: 'balance', field: 'direction', key: k, title: 'Направление: ' + ((goalDirection(k) || {}).label || k) })} />
       <BalanceBars title="Приоритеты" subtitle="Распределение целей по приоритету P0–P3"
         items={(data.balances && data.balances.priorities) || []} labels={PO_PRIO_LABELS} colors={PO_PRIO_COLORS}
         onSelect={k => setDrill({ kind: 'balance', field: 'priority', key: k, title: 'Приоритет: ' + (PO_PRIO_LABELS[k] || k) })} />
@@ -159,7 +160,7 @@ function PeriodOverviewContent({ data, busy, onApply, isAdmin, scope }) {
           {dg.length === 0
             ? <div style={{ padding: '16px', textAlign: 'center', color: PO.dimFg, fontSize: 12.5 }}>Пусто</div>
             : dg.map(g => <PODrillRow key={g.id} target={{ team_id: g.team_id, period_id: data.period_id, goal_id: g.id }}>
-                <span title={`${g.title} · ${g.team_name}`} style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title} <span style={{ color: PO.dimFg }}>· {g.team_name}</span></span>
+                <span title={`${g.title} · ${g.team_name}`} style={{ color: PO.headingFg, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}><DirectionIcon code={g.direction} sm /> {g.title} <span style={{ color: PO.dimFg }}>· {g.team_name}</span></span>
                 <span style={{ color: PO.mutedFg, flexShrink: 0 }}>{g.progress}%</span>
               </PODrillRow>)}
         </div>
