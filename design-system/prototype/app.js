@@ -3416,9 +3416,14 @@ document.addEventListener('mousedown', e => {
   if (card) card.setAttribute('draggable', 'true');
 });
 
-document.addEventListener('mouseup', () => {
+// Снимаем взведение по отпусканию кнопки, а если её отпустили за пределами окна и mouseup
+// не пришёл — по первому mousemove без нажатых кнопок или по потере окном фокуса.
+function disarmDragHandles() {
   document.querySelectorAll('[data-goal-item][draggable="true"], [data-kr-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
-});
+}
+document.addEventListener('mouseup', disarmDragHandles);
+document.addEventListener('mousemove', e => { if (e.buttons === 0) disarmDragHandles(); });
+window.addEventListener('blur', disarmDragHandles);
 
 document.addEventListener('dragstart', e => {
   const krItem = e.target.closest && e.target.closest('[data-kr-item]');
@@ -3475,7 +3480,7 @@ document.addEventListener('dragend', () => {
   drag.kr = null; drag.goal = null;
   document.querySelectorAll('.kr-item--dragging').forEach(el => el.classList.remove('kr-item--dragging'));
   document.querySelectorAll('.goal-card--dragging').forEach(el => el.classList.remove('goal-card--dragging'));
-  document.querySelectorAll('[data-goal-item][draggable="true"], [data-kr-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
+  disarmDragHandles();
 });
 
 // ── Дерево целей: зум, панорамирование, выбор ───────────────────────────────

@@ -2248,8 +2248,10 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone, 
 // указатель обязан её покинуть — mouseleave успевал снять draggable раньше, чем браузер
 // решал, что это перетаскивание, и dragstart не наступал вовсе. Снимается признак по dragend
 // элемента (это делает вызывающий код) и по отпусканию кнопки где угодно (ручку нажали, но
-// не потащили). Во время перетаскивания mouseup не приходит, вместо него приходит dragend,
-// поэтому начатый жест не прерывается.
+// не потащили). Отпущенную за пределами окна кнопку mouseup может и не сообщить — тогда
+// признак снимает первый mousemove без нажатых кнопок (указатель вернулся на страницу раньше,
+// чем успеет нажать на текст) или потеря окном фокуса. Во время перетаскивания ни mouseup, ни
+// mousemove не приходят, вместо них приходит dragend, поэтому начатый жест не прерывается.
 //
 // Значение — что именно взведено (true для цели, id для KR), null — ничего.
 function useHandleDragArm() {
@@ -2257,8 +2259,15 @@ function useHandleDragArm() {
   useEffect(() => {
     if (armed == null) return;
     const release = () => setArmed(null);
+    const releaseIfUp = e => { if (e.buttons === 0) release(); };
     window.addEventListener('mouseup', release);
-    return () => window.removeEventListener('mouseup', release);
+    window.addEventListener('mousemove', releaseIfUp);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('mouseup', release);
+      window.removeEventListener('mousemove', releaseIfUp);
+      window.removeEventListener('blur', release);
+    };
   }, [armed]);
   return [armed, setArmed, () => setArmed(null)];
 }
