@@ -252,7 +252,8 @@ function RootPicker({ data, value, onChange }) {
   useEffect(() => {
     if (!open) return;
     const onDoc = e => { if (!e.target.closest('.gt-rootpick')) setOpen(false); };
-    const onScroll = () => setOpen(false);
+    // Панель fixed — закрываем при прокрутке страницы, но не при прокрутке самого списка.
+    const onScroll = e => { if (!(e.target instanceof Element && e.target.closest('.gt-rootpick__panel'))) setOpen(false); };
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', onScroll, true);
     return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', onScroll, true); };
@@ -622,7 +623,7 @@ function GtPeriodSelect({ periods, value, onChange }) {
   useEffect(() => {
     if (!open) return;
     const onDoc = e => { if (!e.target.closest('.gt-psel')) setOpen(false); };
-    const onScroll = () => setOpen(false);
+    const onScroll = e => { if (!(e.target instanceof Element && e.target.closest('.gt-psel__panel'))) setOpen(false); };
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', onScroll, true);
     return () => { document.removeEventListener('mousedown', onDoc); window.removeEventListener('scroll', onScroll, true); };
