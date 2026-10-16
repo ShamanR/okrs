@@ -1,9 +1,0 @@
-ALTER TABLE teams                  DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE periods                DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE goals                  DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE goal_shares            DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE team_period_statuses   DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE user_hierarchy_grants  DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE key_results            DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE goal_comments          DROP COLUMN IF EXISTS tenant_id;
-ALTER TABLE key_result_notes       DROP COLUMN IF EXISTS tenant_id;

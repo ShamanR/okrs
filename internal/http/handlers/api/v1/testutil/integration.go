@@ -4,13 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
-
-	"log/slog"
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
@@ -51,13 +50,11 @@ import (
 	teamsstatus "okrs/internal/http/handlers/api/v1/teams/status"
 	"okrs/internal/http/httpdeps"
 	"okrs/internal/platform/eventbus"
+	"okrs/internal/platform/migrations"
 	"okrs/internal/store"
 	"okrs/internal/store/grants"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/golang-migrate/migrate/v4"
-	migratepostgres "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -158,19 +155,11 @@ func RunMigrations(databaseURL string) error {
 	if err := db.PingContext(ctx); err != nil {
 		return err
 	}
-	driver, err := migratepostgres.WithInstance(db, &migratepostgres.Config{})
-	if err != nil {
-		return err
-	}
 	migrationsPath, err := resolveMigrationsPath()
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsPath, "postgres", driver)
-	if err != nil {
-		return err
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	if err := migrations.Up(ctx, db, os.DirFS(migrationsPath)); err != nil {
 		return err
 	}
 	// Migration 032 drops the transitional tenant_id DEFAULT 1 so a forgotten tenant_id fails
