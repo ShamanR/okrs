@@ -23,10 +23,9 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-// The golang-migrate history ends at lastLegacyVersion: a legacy database carries
-// at most this version, and fixtures in testdata/legacy are generated up to it from
-// legacyRevision, the last upstream revision with paired .up/.down files. Versions
-// after it exist only in goose format and are checked by plain Up.
+// Historical fixtures cover versions through lastLegacyVersion from legacyRevision.
+// Upstream subsequently added version 50; keep the independent fixtures pinned
+// and verify that conversion against its own upstream revision.
 const (
 	lastLegacyVersion = 49
 	legacyRevision    = "58fbf14f93a98c32fb33d8bb99d96dfab20de531"
@@ -221,6 +220,39 @@ func TestLegacyAndClean(t *testing.T) {
 		t.Fatal("runner closed caller database", err)
 	}
 }
+
+// The latest upstream release already applies 050 with golang-migrate.
+func TestLegacy050Import(t *testing.T) {
+	if err := exec.Command("git", "-C", "../../..", "cat-file", "-e", "8dd5904^{commit}").Run(); err != nil {
+		t.Skip("upstream migration 050 revision is unavailable")
+	}
+	db, dsn := testDB(t)
+	restore(t, dsn, legacyFixture("v%d.sql"))
+	original, err := exec.Command("git", "-C", "../../..", "show", "8dd5904:migrations/050_goal_direction.up.sql").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(string(original)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE schema_migrations SET version = 50`); err != nil {
+		t.Fatal(err)
+	}
+	before := dump(t, dsn, false)
+	for i := 0; i < 2; i++ {
+		if err := Up(context.Background(), db, os.DirFS(migrationsDir)); err != nil {
+			t.Fatal(err)
+		}
+		if dump(t, dsn, false) != before {
+			t.Fatal("import/repeat changed upstream version 50 schema, data or sequences")
+		}
+	}
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM goose_db_version WHERE is_applied`).Scan(&count); err != nil || count != 51 {
+		t.Fatalf("imported history count %d: %v", count, err)
+	}
+}
+
 func TestConcurrentAndRollback(t *testing.T) {
 	db, dsn := testDB(t)
 	other, err := sql.Open("pgx", dsn)
@@ -393,7 +425,7 @@ func TestLegacyLockAndReturn(t *testing.T) {
 	restore(t, dsn, legacyFixture("v%d.sql"))
 	source := os.DirFS(migrationsDir)
 	before := dump(t, dsn, false)
-	if err := Up(context.Background(), db, source); err != nil {
+	if err := To(context.Background(), db, source, lastLegacyVersion); err != nil {
 		t.Fatal(err)
 	}
 	historical := t.TempDir()
@@ -410,7 +442,7 @@ func TestLegacyLockAndReturn(t *testing.T) {
 	if out, err := exec.Command(exe, historical+"/migrations", dsn, strconv.Itoa(lastLegacyVersion)).CombinedOutput(); err != nil {
 		t.Fatalf("previous release: %v %s", err, out)
 	}
-	if err := Up(context.Background(), db, source); err != nil {
+	if err := To(context.Background(), db, source, lastLegacyVersion); err != nil {
 		t.Fatal(err)
 	}
 	if before != dump(t, dsn, false) {
@@ -435,7 +467,7 @@ func TestLegacyLockAndReturn(t *testing.T) {
 		t.Fatal("old lock", line, err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Millisecond)
-	err = Up(ctx, db, source)
+	err = To(ctx, db, source, lastLegacyVersion)
 	cancel()
 	if err == nil {
 		t.Fatal("new runner bypassed old lock")
@@ -445,7 +477,7 @@ func TestLegacyLockAndReturn(t *testing.T) {
 	if err = old.Wait(); err != nil {
 		t.Fatal(err)
 	}
-	if err = Up(context.Background(), db, source); err != nil {
+	if err = To(context.Background(), db, source, lastLegacyVersion); err != nil {
 		t.Fatal(err)
 	}
 	// New-compatible lock first: the actual legacy driver must wait.
@@ -737,14 +769,18 @@ func TestConcurrentLegacyAndContinuousLock(t *testing.T) {
 
 func TestSQLBodiesMatchHistoricalRevision(t *testing.T) {
 	entries := sourceMigrationEntries(t)
-	if len(entries) < lastLegacyVersion {
-		t.Fatalf("expected at least %d migration files, got %d", lastLegacyVersion, len(entries))
+	if len(entries) < 50 {
+		t.Fatalf("expected at least %d migration files, got %d", 50, len(entries))
 	}
 	prefix := []byte("-- +goose Up\n-- +goose StatementBegin\n")
 	separator := []byte("\n-- +goose StatementEnd\n\n-- +goose Down\n-- +goose StatementBegin\n")
 	suffix := []byte("\n-- +goose StatementEnd\n")
 	requireLegacyRevision(t)
-	for _, entry := range entries[:lastLegacyVersion] {
+	for _, entry := range entries[:50] {
+		revision := legacyRevision
+		if strings.HasPrefix(entry.Name(), "050_") {
+			revision = "8dd5904"
+		}
 		data, err := os.ReadFile(filepath.Join(migrationsDir, entry.Name()))
 		if err != nil {
 			t.Fatal(err)
@@ -757,7 +793,7 @@ func TestSQLBodiesMatchHistoricalRevision(t *testing.T) {
 		bodies := [][]byte{bytes.TrimPrefix(parts[0], prefix), bytes.TrimSuffix(parts[1], suffix)}
 		for i, direction := range []string{"up", "down"} {
 			original := "migrations/" + strings.TrimSuffix(entry.Name(), ".sql") + "." + direction + ".sql"
-			expected, err := exec.Command("git", "-C", "../../..", "show", legacyRevision+":"+original).Output()
+			expected, err := exec.Command("git", "-C", "../../..", "show", revision+":"+original).Output()
 			if err != nil {
 				t.Fatal("historical revision is required", err)
 			}

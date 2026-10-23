@@ -188,3 +188,39 @@ docker build -t okrs:goose-review-smoke .
 Во всех запусках событие `migration` предшествует `app_ready`, ошибок уровня
 ERROR до готовности нет, сервер штатно завершается после `docker stop`.
 Временные базы и контейнеры приложения удалены smoke-скриптом.
+
+
+## Повторная проверка после замечания Паши — 2026-10-23
+
+В ветку PR влит `upstream/main` (`83b8841`). Из main пришла прикладная
+миграция `050_goal_direction`; обе исходные секции из `8dd5904` объединены
+в goose-файл без изменения SQL. Поэтому прежние утверждения об отсутствии
+версий 50+ и об окончании всей legacy-истории на 49 относятся к исходной
+проверке, а не к текущему состоянию PR. Независимые fixtures остаются на 49.
+
+Пройдено:
+
+- `go test ./...` с доступным Docker; `go vet ./...`.
+- `MIGRATIONS_TEST_DATABASE_URL=… go test ./internal/platform/migrations ./cmd/server -count=1 -v`
+  на отдельном PostgreSQL 15. Два теста, которым нужен внешний legacy runner,
+  дополнительно пройдены с `LEGACY_MIGRATION_RUNNER` — независимым runner
+  golang-migrate v4.17.1: `TestLegacyLockAndReturn` и
+  `TestConcurrentLegacyAndContinuousLock`.
+- `TestSQLBodiesMatchHistoricalRevision`: SQL 001–049 сравнивается с прежним
+  источником, 050 — с `8dd5904`; нормализация CRLF сохранена.
+- `TestLegacy050Import`: исходный SQL 050 применяется к fixture 49,
+  legacy-история выставляется в 50; импорт всех 51 записей (включая 0) и
+  повторный старт сохраняют схему, данные и последовательности.
+- `TestMigration050GoalDirection` отдельно, без пропуска: Up 49 → 50,
+  преобразование данных, ограничения, Down 50 → 49.
+- `docker build -t okrs:goose-validation .` и `testdata/docker-smoke.py`:
+  новая БД, legacy 49 → 50, повторные старты, `-seed`. Для legacy-сценария
+  результат сравнивается с независимым применением исходного SQL 050 из main.
+- `git diff --check`.
+
+Исторический тест возврата старого релиза ограничен схемой 49. README теперь
+отдельно описывает обновление legacy-БД, уже находящейся на 50, и необходимость
+остановить старые экземпляры при переходе с версии ниже 50.
+
+OpenSpec CLI в текущем окружении отсутствует (`openspec: command not found`),
+поэтому повторная строгая валидация не выполнялась.

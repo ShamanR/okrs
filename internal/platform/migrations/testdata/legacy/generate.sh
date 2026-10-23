@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Last upstream revision with paired golang-migrate files; the legacy history
-# ends at its final version, later versions exist only in goose format.
+# Pinned fixture revision and final version. Upstream migration 050 is checked
+# separately against its original SQL in migrations_test.go.
 reference=58fbf14f93a98c32fb33d8bb99d96dfab20de531
 final=49
 here=$(cd "$(dirname "$0")" && pwd)

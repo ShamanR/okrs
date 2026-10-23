@@ -102,7 +102,7 @@ def run_ready(dbname, seed=False):
 
 
 LATEST = str(len(list((ROOT / 'migrations').glob('*.sql'))))
-LEGACY = '49'  # last version of the golang-migrate history
+LEGACY = '49'  # pinned historical fixture before upstream migration 050
 
 try:
     name, dsn = database('new')
@@ -115,12 +115,18 @@ try:
     print('PASS image: clean PostgreSQL 15, /app/migrations, repeat startup')
 
     name, dsn = database('legacy', 'v' + LEGACY + '.sql')
-    before = dump(dsn)
+    # Independent continuation of the pinned fixture using upstream's original SQL.
+    _, expected_dsn = database('expected', 'v' + LEGACY + '.sql')
+    original = subprocess.check_output(
+        ['git', 'show', '8dd5904:migrations/050_goal_direction.up.sql'], cwd=ROOT, text=True)
+    sql(expected_dsn, original)
     run_ready(name)
+    assert dump(dsn) == dump(expected_dsn)
+    before = dump(dsn)
     run_ready(name)
     assert dump(dsn) == before
     assert sql(dsn, 'SELECT version FROM schema_migrations WHERE NOT dirty').strip() == LEGACY
-    print('PASS image: legacy ' + LEGACY + ' import and repeat, exact data/sequence preservation')
+    print('PASS image: legacy ' + LEGACY + ' import, upstream 050 equivalence and repeat')
 
     name, dsn = database('seed')
     run_ready(name, True)

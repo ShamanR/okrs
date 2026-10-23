@@ -529,9 +529,11 @@ Upgrading from a release that used golang-migrate: on first start the server imp
 automatic force.
 
 - Back up the database first.
-- At version 49, replicas can be updated one at a time, and rolling back to the previous release
+- At version 50, replicas can be updated one at a time, and rolling back to the previous release
   works.
-- Below 49, stop the old instances before starting the new release.
+- Below 50, stop the old instances before starting the new release: migration 050 also changes
+  the application schema and data. The historical rollback checks at version 49 apply only
+  before migration 050; they do not establish rollback safety after it.
 
 Design and guarantees: `openspec/changes/replace-golang-migrate-with-goose/`. The runner's
 integration tests need PostgreSQL 15; the legacy-runner checks also need

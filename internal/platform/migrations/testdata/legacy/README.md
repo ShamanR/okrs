@@ -1,10 +1,10 @@
 # Независимые эталоны старого мигратора
 
-Источник SQL: ревизия `58fbf14f93a98c32fb33d8bb99d96dfab20de531` — последняя
-ревизия upstream с парными `.up.sql`/`.down.sql`. История прежнего мигратора
-заканчивается её версией 49 (`final` в `generate.sh`, `lastLegacyVersion` в
-тестах); более поздние версии существуют только в формате goose и эталонов
-не требуют.
+Источник SQL fixtures: ревизия `58fbf14f93a98c32fb33d8bb99d96dfab20de531`,
+версии 001–049 (`final` в `generate.sh`, `lastLegacyVersion` в тестах).
+Позже upstream добавил парную миграцию 050 в `8dd5904`. Её SQL отдельно
+сверяется с исходной ревизией; импорт legacy-БД версии 50 проверяет
+`TestLegacy050Import`. Исторические fixtures остаются зафиксированы на 49.
 Мигратор: `github.com/golang-migrate/migrate/v4 v4.17.1`.
 Сервер генерации: PostgreSQL 15, точная версия — `postgres-version.txt`.
 
