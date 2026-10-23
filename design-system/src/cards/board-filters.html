@@ -1,6 +1,6 @@
 <!-- @dsCard group="Navigation" -->
 <!-- @dsName Ряд фильтров -->
-<!-- @dsSubtitle Порядок, фильтр приоритета, птички показа, сброс -->
+<!-- @dsSubtitle Порядок, фильтры приоритета и направления, птички показа, сброс -->
 <!-- @dsCss tokens.css shell.css components.css tracker.css goal_tree.css -->
 <!-- @dsViewport 1100x620 -->
 <section class="ds-section">
@@ -21,6 +21,14 @@
           <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#d97706">P1<span class="filter-bar__n">2</span></button>
           <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#2563eb">P2<span class="filter-bar__n">1</span></button>
           <button type="button" class="filter-bar__btn filter-bar__btn--pri" style="--pc:#6b7280">P3<span class="filter-bar__n">1</span></button>
+        </div>
+      </div>
+      <div class="filter-bar__group">
+        <span class="filter-bar__cap">Направление</span>
+        <div class="filter-bar__seg" role="group" aria-label="Фильтр по направлению">
+          <button type="button" class="filter-bar__btn filter-bar__btn--dir" style="--pc:#2563eb" disabled>🚀 Продукт<span class="filter-bar__n">0</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--dir" style="--pc:#0891b2">⚙️ Техника<span class="filter-bar__n">3</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--dir" style="--pc:#16a34a">📈 Процессы<span class="filter-bar__n">1</span></button>
         </div>
       </div>
       <label class="filter-bar__check"><input type="checkbox"> Заметки к KR</label>
@@ -52,13 +60,22 @@
         </div>
         <button type="button" class="filter-bar__clear" aria-label="Сбросить фильтр по приоритету">×</button>
       </div>
+      <div class="filter-bar__group">
+        <span class="filter-bar__cap">Направление</span>
+        <div class="filter-bar__seg" role="group" aria-label="Фильтр по направлению">
+          <button type="button" class="filter-bar__btn filter-bar__btn--dir" style="--pc:#2563eb" disabled>🚀 Продукт<span class="filter-bar__n">0</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--dir filter-bar__btn--on" style="--pc:#0891b2" aria-pressed="true">⚙️ Техника<span class="filter-bar__n">3</span></button>
+          <button type="button" class="filter-bar__btn filter-bar__btn--dir" style="--pc:#16a34a">📈 Процессы<span class="filter-bar__n">1</span></button>
+        </div>
+        <button type="button" class="filter-bar__clear" aria-label="Сбросить фильтр по направлению">×</button>
+      </div>
       <label class="filter-bar__check"><input type="checkbox" checked> Заметки к KR</label>
       <label class="filter-bar__check"><input type="checkbox" checked> Скрыть цели с весом 0</label>
       <span class="filter-bar__spacer"></span>
       <button type="button" class="filter-bar__reset">Сбросить</button>
     </div>
   </div>
-  <div class="ds-section__note">Два сброса с разным охватом: <code>×</code> внутри группы снимает только фильтр приоритета, <code>.filter-bar__reset</code> возвращает к значениям по умолчанию весь ряд. Сброс появляется, когда хоть одна настройка отличается от дефолта.</div>
+  <div class="ds-section__note">Два сброса с разным охватом: <code>×</code> внутри группы снимает только её фильтр — приоритета или направления, <code>.filter-bar__reset</code> возвращает к значениям по умолчанию весь ряд. Сброс появляется, когда хоть одна настройка отличается от дефолта.</div>
 </section>
 
 <section class="ds-section">

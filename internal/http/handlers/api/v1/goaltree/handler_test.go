@@ -34,6 +34,7 @@ type treeResp struct {
 		TeamID        int64   `json:"team_id"`
 		ParentGoalIDs []int64 `json:"parent_goal_ids"`
 		ChildGoalIDs  []int64 `json:"child_goal_ids"`
+		Direction     string  `json:"direction"`
 	} `json:"goals"`
 }
 
@@ -76,7 +77,7 @@ func TestGoalTree_Contract(t *testing.T) {
 		id, err := repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 			TeamID: team, PeriodID: period, Title: title,
 			Priority: domain.PriorityP1, Weight: 100,
-			WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+			WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 		})
 		if err != nil {
 			t.Fatalf("goal %s: %v", title, err)
@@ -103,6 +104,9 @@ func TestGoalTree_Contract(t *testing.T) {
 		t.Fatalf("cross_period=1 goals = %d, want 2", len(tr.Goals))
 	}
 	child := findGoal(t, tr, quarterGoal)
+	if child.Direction != string(domain.DirectionTech) {
+		t.Fatalf("child.direction = %q, want %q", child.Direction, domain.DirectionTech)
+	}
 	if len(child.ParentGoalIDs) != 1 || child.ParentGoalIDs[0] != annualGoal {
 		t.Fatalf("child.parent_goal_ids = %v, want [%d]", child.ParentGoalIDs, annualGoal)
 	}
@@ -170,7 +174,7 @@ func TestGoalTree_TenantIsolation(t *testing.T) {
 	goal2, err := repo.Goals.CreateGoal(ctx, scope2, goals.GoalInput{
 		TeamID: team2, PeriodID: period2, Title: "tenant2 goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("goal2: %v", err)
@@ -216,6 +220,7 @@ func findGoal(t *testing.T, tr treeResp, id int64) struct {
 	TeamID        int64   `json:"team_id"`
 	ParentGoalIDs []int64 `json:"parent_goal_ids"`
 	ChildGoalIDs  []int64 `json:"child_goal_ids"`
+	Direction     string  `json:"direction"`
 } {
 	t.Helper()
 	for _, g := range tr.Goals {

@@ -39,7 +39,7 @@ type GoalInput struct {
 	Priority    domain.Priority
 	Weight      int
 	WorkType    domain.WorkType
-	FocusType   domain.FocusType
+	Direction   domain.GoalDirection
 	OwnerText   string
 	OwnerUDIDs  []string
 }
@@ -51,7 +51,7 @@ type GoalUpdateInput struct {
 	Priority    domain.Priority
 	Weight      int
 	WorkType    domain.WorkType
-	FocusType   domain.FocusType
+	Direction   domain.GoalDirection
 	OwnerText   string
 	OwnerUDIDs  []string
 }
@@ -62,7 +62,7 @@ type GoalFieldsUpdateInput struct {
 	Description string
 	Priority    domain.Priority
 	WorkType    domain.WorkType
-	FocusType   domain.FocusType
+	Direction   domain.GoalDirection
 	OwnerText   string
 	OwnerUDIDs  []string
 }
@@ -89,7 +89,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, scope domai
 	goalRows, err := r.db.Query(ctx, `
 		SELECT g.id, t.team_id, g.period_id, g.title, g.description, g.priority,
 		       COALESCE(gs.weight, g.weight) AS weight,
-		       g.work_type, g.focus_type, g.owner_text, g.owner_udids, g.created_at, g.updated_at
+		       g.work_type, g.direction, g.owner_text, g.owner_udids, g.created_at, g.updated_at
 		FROM (
 			SELECT g.id, g.team_id
 			FROM goals g
@@ -122,7 +122,7 @@ func (r *GoalRepository) ListGoalsByTeamsPeriod(ctx context.Context, scope domai
 			&goal.Priority,
 			&goal.Weight,
 			&goal.WorkType,
-			&goal.FocusType,
+			&goal.Direction,
 			&goal.OwnerText,
 			&goal.OwnerUDIDs,
 			&goal.CreatedAt,
@@ -294,10 +294,10 @@ func resultFromGoalPointers(teamGoals map[int64]map[int64]*domain.Goal, teamGoal
 func (r *GoalRepository) CreateGoal(ctx context.Context, scope domain.TenantScope, input GoalInput) (int64, error) {
 	var id int64
 	err := r.db.QueryRow(ctx, `
-		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, sort_order, tenant_id)
+		INSERT INTO goals (team_id, period_id, title, description, priority, weight, work_type, direction, owner_text, owner_udids, sort_order, tenant_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM goals WHERE team_id=$1 AND period_id=$2 AND tenant_id=$11), $11)
 		RETURNING id`,
-		input.TeamID, input.PeriodID, input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.OwnerUDIDs, scope.TenantID,
+		input.TeamID, input.PeriodID, input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.Direction, input.OwnerText, input.OwnerUDIDs, scope.TenantID,
 	).Scan(&id)
 	return id, err
 }
@@ -357,7 +357,7 @@ func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, scope domain
 	rows, err := r.db.Query(ctx, `
 		SELECT g.id, g.team_id, g.period_id, g.title, g.description, g.priority,
 		       COALESCE(gs.weight, g.weight) AS weight,
-		       g.work_type, g.focus_type, g.owner_text, g.owner_udids, g.created_at, g.updated_at,
+		       g.work_type, g.direction, g.owner_text, g.owner_udids, g.created_at, g.updated_at,
 		       COALESCE(gs.sort_order, g.sort_order) AS team_sort_order
 		FROM goals g
 		LEFT JOIN goal_shares gs ON gs.goal_id = g.id AND gs.team_id = $1 AND gs.tenant_id = $3
@@ -372,7 +372,7 @@ func (r *GoalRepository) ListGoalsByTeamPeriod(ctx context.Context, scope domain
 	for rows.Next() {
 		var goal domain.Goal
 		var sortOrder int
-		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt, &sortOrder); err != nil {
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.Direction, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt, &sortOrder); err != nil {
 			return nil, err
 		}
 		goals = append(goals, goal)
@@ -751,9 +751,9 @@ func (r *GoalRepository) MoveGoal(ctx context.Context, scope domain.TenantScope,
 func (r *GoalRepository) GetGoal(ctx context.Context, scope domain.TenantScope, id int64) (domain.Goal, error) {
 	var goal domain.Goal
 	row := r.db.QueryRow(ctx, `
-		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, created_at, updated_at
+		SELECT id, team_id, period_id, title, description, priority, weight, work_type, direction, owner_text, owner_udids, created_at, updated_at
 		FROM goals WHERE id=$1 AND tenant_id=$2`, id, scope.TenantID)
-	if err := row.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+	if err := row.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.Direction, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 		return domain.Goal{}, err
 	}
 	krsSlice, err := r.krs.ListKeyResultsByGoal(ctx, scope, goal.ID)
@@ -773,7 +773,7 @@ func (r *GoalRepository) ListGoalsByIDs(ctx context.Context, scope domain.Tenant
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, created_at, updated_at
+		SELECT id, team_id, period_id, title, description, priority, weight, work_type, direction, owner_text, owner_udids, created_at, updated_at
 		FROM goals WHERE id = ANY($1) AND tenant_id = $2`, ids, scope.TenantID)
 	if err != nil {
 		return nil, err
@@ -782,7 +782,7 @@ func (r *GoalRepository) ListGoalsByIDs(ctx context.Context, scope domain.Tenant
 	goals := make([]domain.Goal, 0, len(ids))
 	for rows.Next() {
 		var goal domain.Goal
-		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.FocusType, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
+		if err := rows.Scan(&goal.ID, &goal.TeamID, &goal.PeriodID, &goal.Title, &goal.Description, &goal.Priority, &goal.Weight, &goal.WorkType, &goal.Direction, &goal.OwnerText, &goal.OwnerUDIDs, &goal.CreatedAt, &goal.UpdatedAt); err != nil {
 			return nil, err
 		}
 		goals = append(goals, goal)
@@ -809,7 +809,7 @@ func (r *GoalRepository) ListGoalsForPeriods(ctx context.Context, scope domain.T
 		return nil, nil
 	}
 	rows, err := r.db.Query(ctx, `
-		SELECT id, team_id, period_id, title, description, priority, weight, work_type, focus_type, owner_text, owner_udids, created_at, updated_at
+		SELECT id, team_id, period_id, title, description, priority, weight, work_type, direction, owner_text, owner_udids, created_at, updated_at
 		FROM goals
 		WHERE tenant_id = $1
 		  AND period_id = ANY($2)
@@ -822,7 +822,7 @@ func (r *GoalRepository) ListGoalsForPeriods(ctx context.Context, scope domain.T
 	out := make([]domain.Goal, 0)
 	for rows.Next() {
 		var g domain.Goal
-		if err := rows.Scan(&g.ID, &g.TeamID, &g.PeriodID, &g.Title, &g.Description, &g.Priority, &g.Weight, &g.WorkType, &g.FocusType, &g.OwnerText, &g.OwnerUDIDs, &g.CreatedAt, &g.UpdatedAt); err != nil {
+		if err := rows.Scan(&g.ID, &g.TeamID, &g.PeriodID, &g.Title, &g.Description, &g.Priority, &g.Weight, &g.WorkType, &g.Direction, &g.OwnerText, &g.OwnerUDIDs, &g.CreatedAt, &g.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
@@ -848,9 +848,9 @@ func (r *GoalRepository) DeleteGoal(ctx context.Context, scope domain.TenantScop
 func (r *GoalRepository) UpdateGoal(ctx context.Context, scope domain.TenantScope, input GoalUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE goals
-		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, focus_type=$6, owner_text=$7, owner_udids=$8, updated_at=NOW()
+		SET title=$1, description=$2, priority=$3, weight=$4, work_type=$5, direction=$6, owner_text=$7, owner_udids=$8, updated_at=NOW()
 		WHERE id=$9 AND tenant_id=$10`,
-		input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.FocusType, input.OwnerText, input.OwnerUDIDs, input.ID, scope.TenantID,
+		input.Title, input.Description, input.Priority, input.Weight, input.WorkType, input.Direction, input.OwnerText, input.OwnerUDIDs, input.ID, scope.TenantID,
 	)
 	return err
 }
@@ -858,9 +858,9 @@ func (r *GoalRepository) UpdateGoal(ctx context.Context, scope domain.TenantScop
 func (r *GoalRepository) UpdateGoalFields(ctx context.Context, scope domain.TenantScope, input GoalFieldsUpdateInput) error {
 	_, err := r.db.Exec(ctx, `
 		UPDATE goals
-		SET title=$1, description=$2, priority=$3, work_type=$4, focus_type=$5, owner_text=$6, owner_udids=$7, updated_at=NOW()
+		SET title=$1, description=$2, priority=$3, work_type=$4, direction=$5, owner_text=$6, owner_udids=$7, updated_at=NOW()
 		WHERE id=$8 AND tenant_id=$9`,
-		input.Title, input.Description, input.Priority, input.WorkType, input.FocusType, input.OwnerText, input.OwnerUDIDs, input.ID, scope.TenantID,
+		input.Title, input.Description, input.Priority, input.WorkType, input.Direction, input.OwnerText, input.OwnerUDIDs, input.ID, scope.TenantID,
 	)
 	return err
 }

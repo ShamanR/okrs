@@ -216,9 +216,11 @@ func (r *ActivityRepository) List(ctx context.Context, scope domain.TenantScope,
 		       e.entity_title, e.payload_json, e.created_at,
 		       COALESCE(u.udid::text,''), COALESCE(u.display_name,''), COALESCE(u.avatar_url,''), COALESCE(u.provider,''),
 		       EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = e.actor_user_id AND m.tenant_id = e.tenant_id AND m.status = 'active'),
-		       ` + targetTeamExpr + ` AS target_team_id
+		       ` + targetTeamExpr + ` AS target_team_id,
+		       g.direction
 		FROM activity_events e
 		LEFT JOIN users u ON u.id = e.actor_user_id
+		LEFT JOIN goals g ON g.id = e.goal_id AND g.tenant_id = e.tenant_id
 		WHERE ` + strings.Join(where, " AND ") + `
 		ORDER BY e.created_at DESC, e.id DESC
 		LIMIT ` + limPlaceholder
@@ -237,7 +239,7 @@ func (r *ActivityRepository) List(ctx context.Context, scope domain.TenantScope,
 		var active bool
 		if err := rows.Scan(&ev.ID, &ev.ActorUserID, &ev.Category, &ev.Action, &ev.TeamID, &ev.PeriodID,
 			&ev.GoalID, &ev.KRID, &ev.CommentID, &ev.EntityTitle, &raw, &ev.CreatedAt,
-			&ev.ActorUDID, &ev.ActorDisplayName, &ev.ActorAvatarURL, &provider, &active, &ev.TargetTeamID); err != nil {
+			&ev.ActorUDID, &ev.ActorDisplayName, &ev.ActorAvatarURL, &provider, &active, &ev.TargetTeamID, &ev.GoalDirection); err != nil {
 			return nil, nil, err
 		}
 		_ = json.Unmarshal(raw, &ev.Payload)

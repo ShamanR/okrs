@@ -16,7 +16,7 @@ const state = {
   expanded: { 10: true, 12: true },
   favorites: { 11: true, 12: true, 15: true },
   // Настройки показа целей на доске — один объект, как BOARD_VIEW в tracker.js.
-  boardView: { sort: 'custom', pri: {}, notes: false, hideZeroWeight: false },
+  boardView: { sort: 'custom', pri: {}, dir: {}, notes: false, hideZeroWeight: false },
   topMenu: false,
   showCom: {},        // goalId → развёрнуты комментарии
   noteVis: {},        // krId → перекрытие птички «Заметки к KR» (undefined — следовать ей)
@@ -153,7 +153,7 @@ function krHealthDot(status, progress = 0) {
   const closed = KR_CLOSED_VIEW[view];
   const icon = closed ? closed.icon : KR_HEALTH_ICON[s];
   const hint = closed ? closed.hint(progress) : (KR_HEALTH_HINT[s] || '');
-  return `<span class="kr-hdot kr-hdot--${view}" tabindex="0" aria-label="Статус KR: ${KR_HEALTH_LABEL[s]}${closed && closed.note ? ', ' + closed.note : ''}" data-no-drag>
+  return `<span class="kr-hdot kr-hdot--${view}" tabindex="0" aria-label="Статус KR: ${KR_HEALTH_LABEL[s]}${closed && closed.note ? ', ' + closed.note : ''}">
     <span class="kr-hdot__mark">${icon}</span>
     ${closed && closed.flag ? `<span class="kr-hdot__flag" aria-hidden="true">${closed.flag}</span>` : ''}
     <span class="kr-hdot__pop" role="tooltip">
@@ -255,7 +255,32 @@ function treeNode(node, depth) {
   return rows.join('');
 }
 
+// Повторяет поведение tracker.js. Сайдбар собирается через innerHTML, поэтому
+// позицию скролла дерева снимаем до перерисовки и возвращаем после — иначе дерево
+// прыгает наверх на каждом действии. Выбранная команда подтягивается в видимую
+// зону и только когда из неё вышла: при переходе из команды в команду строка
+// остаётся на виду.
+let sidebarTreeScroll = 0;
+function keepSidebarTreeScroll() {
+  const tree = document.querySelector('.sidebar__tree');
+  if (!tree) return;
+  tree.scrollTop = sidebarTreeScroll;
+  // «Избранное» дублирует строки полного дерева; берём последнюю — она из дерева.
+  const rows = tree.querySelectorAll('.sidebar-node__row--selected');
+  const row = rows[rows.length - 1];
+  if (row) {
+    const c = tree.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    const gap = 24;
+    if (r.top < c.top + gap) tree.scrollTop += r.top - c.top - gap;
+    else if (r.bottom > c.bottom - gap) tree.scrollTop += r.bottom - c.bottom + gap;
+  }
+  sidebarTreeScroll = tree.scrollTop;
+}
+
 function renderSidebar() {
+  const prevTree = document.querySelector('.sidebar__tree');
+  if (prevTree) sidebarTreeScroll = prevTree.scrollTop;
   const p = period();
   const tenant = TENANTS.find(t => t.active) || TENANTS[0];
   const canSwitch = TENANTS.length > 1;
@@ -338,6 +363,8 @@ function renderSidebar() {
         </div>` : ''}
       </div>
     </div>`;
+
+  keepSidebarTreeScroll();
 }
 
 // ── Топбар и степпер ─────────────────────────────────────────────────────────
@@ -526,7 +553,7 @@ function krNote(kr) {
   const open = !state.noteCollapsed[kr.id];
   const long = text.length > 90 || text.includes('\n');
   const ago = kr.updatedDaysAgo === 0 ? 'сегодня' : kr.updatedDaysAgo + 'д назад';
-  return `<div class="kr-note${open ? ' kr-note--open' : ''}${long ? ' kr-note--long' : ''}"${long ? ` role="button" tabindex="0" aria-expanded="${open}" data-kr-note="${kr.id}"` : ''} data-no-drag>
+  return `<div class="kr-note${open ? ' kr-note--open' : ''}${long ? ' kr-note--long' : ''}"${long ? ` role="button" tabindex="0" aria-expanded="${open}" data-kr-note="${kr.id}"` : ''}>
     <span class="kr-note__label">Заметка</span>
     <div class="md-content kr-note__text"><p>${esc(text)}</p></div>
     ${long ? `<span class="kr-note__toggle">${open ? 'Свернуть' : 'Ещё'}</span>` : ''}
@@ -629,8 +656,8 @@ function krRow(goal, kr, teamId) {
   const krBehind = board.status !== 'closed' && forecastNow() - progress > KR_BEHIND_PP;
   const krBarC = krBehind ? '#dc2626' : ACCENT;
   return `<div class="kr-item${mode === 'full' ? ' kr-item--reorderable' : ''}"
-       ${mode === 'full' ? `draggable="true" data-kr-item="${goal.id}:${kr.id}"` : ''}>
-    ${mode === 'full' ? '<div class="kr-item__drag-handle">⋮⋮</div>' : ''}
+       ${mode === 'full' ? `draggable="false" data-kr-item="${goal.id}:${kr.id}"` : ''}>
+    ${mode === 'full' ? '<div class="kr-item__drag-handle" title="Перетащите для изменения порядка" data-kr-handle>⋮⋮</div>' : ''}
     <div class="kr-row">
       <div class="kr-row__main">
         ${krHealthDot(displayHealth, progress)}
@@ -657,7 +684,7 @@ function krRow(goal, kr, teamId) {
           </div>
         </div>
         </div>
-        <div class="kr-row__actions" data-no-drag>
+        <div class="kr-row__actions">
           <span class="kr-row__spacer"></span>
           ${mode === 'full' ? '' : `<span class="kr-updated" style="color:${staleC}" title="Последнее обновление прогресса">${kr.updatedDaysAgo === 0 ? 'обн. сегодня' : 'обн. ' + kr.updatedDaysAgo + 'д назад'}</span>`}
           ${krMenu(goal.id, kr.id, teamId)}
@@ -766,6 +793,7 @@ function goalCard(goal, teamId) {
         <span class="gc2__weight has-tip" tabindex="0" data-tip-title="Вес цели · ${goal.weight}%" data-tip="Доля цели в общем прогрессе команды за период. Сумма весов всех целей — 100%.">${goal.weight}%</span>
         <span class="has-tip" tabindex="0" data-tip-title="Приоритет · ${goal.priority}" data-tip="${PRI_HINT[goal.priority] || ''}">${priBadge(goal.priority)}</span>
         <div class="gc2__title-wrap">
+          ${dirIcon(goal.direction)}
           <div class="goal-card__title-row${canEditText(teamId) ? ' title-editable' : ''}"${canEditText(teamId) ? ` role="button" tabindex="0" title="Редактировать цель" data-modal="goal-edit" data-goal="${goal.id}"` : ''}>
             <div class="goal-card__title goal-card__title--readonly">${esc(goal.title)}</div>
             ${canEditText(teamId) ? `<span class="title-edit" aria-hidden="true">✎</span>` : ''}
@@ -775,7 +803,6 @@ function goalCard(goal, teamId) {
         </div>
         <div class="gc2__labels">
           ${badge(goal.type === 'delivery' ? 'Delivery' : 'Discovery', goal.type === 'delivery' ? '#374151' : '#7c3aed')}
-          ${goal.focus ? badge(FOCUS_LABEL[goal.focus] || goal.focus, FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT) : ''}
         </div>
         ${goal.owners.length ? `<div class="goal-card__owner gc2__owner" title="Драйвер цели">${goal.owners.map(u => userInfo(u, 18)).join('')}</div>` : ''}
         <div class="gc2__bar" title="Прогресс ${prog}% · прогноз ${forecast}%">${progressBar(prog, forecast, 5, 'var(--health)')}</div>
@@ -820,12 +847,13 @@ const BOARD_SORTS = [['custom', 'Мой порядок'], ['priority', 'По п�
 
 const boardViewDirty = () => {
   const v = state.boardView;
-  return v.sort !== 'custom' || PRI_LEVELS.some(p => v.pri[p]) || v.notes || v.hideZeroWeight;
+  return v.sort !== 'custom' || PRI_LEVELS.some(p => v.pri[p]) || GOAL_DIRECTIONS.some(d => v.dir[d.code]) || v.notes || v.hideZeroWeight;
 };
 
 function boardFilters(goals) {
   const v = state.boardView;
   const anyPri = PRI_LEVELS.some(p => v.pri[p]);
+  const anyDir = GOAL_DIRECTIONS.some(d => v.dir[d.code]);
   return `<div class="filter-bar">
     <div class="filter-bar__group">
       <span class="filter-bar__cap">Порядок</span>
@@ -844,6 +872,17 @@ function boardFilters(goals) {
       </div>
       ${anyPri ? '<button type="button" class="filter-bar__clear" data-pri-clear="1" title="Сбросить фильтр по приоритету" aria-label="Сбросить фильтр по приоритету">×</button>' : ''}
     </div>
+    <div class="filter-bar__group">
+      <span class="filter-bar__cap">Направление</span>
+      <div class="filter-bar__seg" role="group" aria-label="Фильтр по направлению">
+        ${GOAL_DIRECTIONS.map(d => {
+          const n = goals.filter(g => g.direction === d.code).length;
+          const on = !!v.dir[d.code];
+          return `<button type="button" class="filter-bar__btn filter-bar__btn--dir${on ? ' filter-bar__btn--on' : ''}" style="--pc:${d.color}" data-dir-filter="${d.code}" aria-pressed="${on}" title="${esc(d.hint)}"${n ? '' : ' disabled'}>${d.icon} ${esc(d.label)}<span class="filter-bar__n">${n}</span></button>`;
+        }).join('')}
+      </div>
+      ${anyDir ? '<button type="button" class="filter-bar__clear" data-dir-clear="1" title="Сбросить фильтр по направлению" aria-label="Сбросить фильтр по направлению">×</button>' : ''}
+    </div>
     <label class="filter-bar__check"><input type="checkbox" data-flt-notes="1"${v.notes ? ' checked' : ''}> Заметки к KR</label>
     <label class="filter-bar__check"><input type="checkbox" data-flt-zero="1"${v.hideZeroWeight ? ' checked' : ''}> Скрыть цели с весом 0</label>
     <span class="filter-bar__spacer"></span>
@@ -852,12 +891,14 @@ function boardFilters(goals) {
 }
 
 // Фильтры сужают показ, сортировка упорядочивает то, что осталось. Порядок шагов
-// фиксирован: приоритет → нулевой вес → сортировка. Сортировка стабильная, поэтому
+// фиксирован: приоритет → направление → нулевой вес → сортировка. Сортировка стабильная, поэтому
 // цели одного приоритета сохраняют пользовательский порядок.
 function shownGoals(goals) {
   const v = state.boardView;
   const sel = PRI_LEVELS.filter(p => v.pri[p]);
   let out = sel.length ? goals.filter(g => sel.includes(g.priority)) : goals.slice();
+  const dirs = GOAL_DIRECTIONS.map(d => d.code).filter(c => v.dir[c]);
+  if (dirs.length) out = out.filter(g => dirs.includes(g.direction));
   if (v.hideZeroWeight) out = out.filter(g => (g.weight || 0) !== 0);
   if (v.sort === 'priority') out = out.slice().sort((a, b) => PRI_LEVELS.indexOf(a.priority) - PRI_LEVELS.indexOf(b.priority));
   return out;
@@ -900,48 +941,52 @@ function fmtLogDateTimeFull(iso) {
   return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
 }
 
-const FIELD_RU = { weight: 'вес', priority: 'приоритет', title: 'название', desc: 'описание', focus: 'фокус', type: 'тип работы' };
+const FIELD_RU = { weight: 'вес', priority: 'приоритет', title: 'название', desc: 'описание', type: 'тип работы' };
 const fieldsSummary = changed =>
   (changed || []).length ? `<span class="act-was"> (${changed.map(k => FIELD_RU[k] || k).join(', ')})</span>` : '';
 
 function eventText(ev, teamNames) {
   const p = ev.payload || {};
   const t = esc(ev.entity_title || '');
+  // Иконка — у заголовка цели: событие самой цели или её комментария (kr_id нет), и у
+  // названной цели в прогрессе KR. Направление текущее; у удалённой цели его нет.
+  const gi = ev.goal_direction ? dirIcon(ev.goal_direction, true) + ' ' : '';
+  const g = (ev.kr_id ? '' : gi) + `«${t}»`;
   const teamList = ids => (ids || []).map(id => esc(teamNames[id] || `#${id}`)).join(', ');
   switch (ev.action) {
     case 'kr_progress': {
       const b = (p.before || {}).progress, a = (p.after || {}).progress;
-      return `обновил KR «${t}»${p.goal_title ? ` цели «${esc(p.goal_title)}»` : ''} — <b>${a}%</b> <span class="act-was">(было ${b}%)</span>`;
+      return `обновил KR «${t}»${p.goal_title ? ` цели ${gi}«${esc(p.goal_title)}»` : ''} — <b>${a}%</b> <span class="act-was">(было ${b}%)</span>`;
     }
     case 'status_changed': {
       const b = STATUS_RU[(p.before || {}).status] || (p.before || {}).status;
       const a = STATUS_RU[(p.after || {}).status] || (p.after || {}).status;
       return `перевёл цели команды «${t}» в статус <b>«${a}»</b> <span class="act-was">(было «${b}»)</span>`;
     }
-    case 'goal_created': return `создал цель «${t}»`;
-    case 'goal_deleted': return `удалил цель «${t}»`;
+    case 'goal_created': return `создал цель ${g}`;
+    case 'goal_deleted': return `удалил цель ${g}`;
     case 'kr_created': return `добавил KR «${t}»`;
     case 'kr_deleted': return `удалил KR «${t}»`;
     case 'goal_shared': {
       const ids = p.shared_with_team_ids || [];
-      return `добавил к общей цели «${t}»${ids.length ? ` команды: <b>${teamList(ids)}</b>` : ''}`;
+      return `добавил к общей цели ${g}${ids.length ? ` команды: <b>${teamList(ids)}</b>` : ''}`;
     }
     case 'goal_unshared': {
       const rem = p.unshared_team_ids;
-      if (rem && rem.length) return `убрал из общей цели «${t}» команды: <b>${teamList(rem)}</b>`;
-      return `отказался от общей цели «${t}»`;
+      if (rem && rem.length) return `убрал из общей цели ${g} команды: <b>${teamList(rem)}</b>`;
+      return `отказался от общей цели ${g}`;
     }
-    case 'goal_owner_changed': return `сменил владельца цели «${t}»`;
-    case 'goal_fields_changed': return `изменил цель «${t}»${fieldsSummary(p.changed)}`;
+    case 'goal_owner_changed': return `сменил владельца цели ${g}`;
+    case 'goal_fields_changed': return `изменил цель ${g}${fieldsSummary(p.changed)}`;
     case 'kr_fields_changed': return `изменил KR «${t}»${fieldsSummary(p.changed)}`;
     case 'kr_note_updated': return `обновил заметку к KR «${t}»`;
-    case 'comment_added': return `оставил замечание к «${t}»`;
-    case 'reply_added': return `ответил на замечание к «${t}»`;
-    case 'comment_resolved': return `отметил замечание к «${t}» решённым`;
-    case 'comment_reopened': return `переоткрыл замечание к «${t}»`;
-    case 'comment_deleted': return `удалил замечание к «${t}»`;
-    case 'reply_deleted': return `удалил ответ на замечание к «${t}»`;
-    default: return `${esc(ev.action)} «${t}»`;
+    case 'comment_added': return `оставил замечание к ${g}`;
+    case 'reply_added': return `ответил на замечание к ${g}`;
+    case 'comment_resolved': return `отметил замечание к ${g} решённым`;
+    case 'comment_reopened': return `переоткрыл замечание к ${g}`;
+    case 'comment_deleted': return `удалил замечание к ${g}`;
+    case 'reply_deleted': return `удалил ответ на замечание к ${g}`;
+    default: return `${esc(ev.action)} ${g}`;
   }
 }
 
@@ -1361,7 +1406,7 @@ function goalTreeData() {
       id: g.id, title: g.title, team_id: t.id, period_id: g.periodId,
       parent_goal_ids: [...g.parentIds], child_goal_ids: [...g.childIds],
       progress: goalProgress(g), priority: g.priority, weight: g.weight,
-      focus_type: g.focus, owner_text: (g.owners || []).map(o => o.name).join(', '),
+      direction: g.direction, owner_text: (g.owners || []).map(o => o.name).join(', '),
     }));
   });
   return { teams, goals, periods: PERIODS };
@@ -1381,7 +1426,7 @@ function goalTreeCard(n, byId) {
     <i class="gt-card__strip" style="background:${accent}"></i>
     ${hasChildren ? `<button type="button" class="gt-collapse-btn" data-gt-collapse="${n.id}"
       title="${collapsed ? 'Развернуть поддерево' : 'Свернуть поддерево'}">${collapsed ? '▸' : '▾'}</button>` : ''}
-    <div class="gt-card__title">${esc(g.title)}</div>
+    <div class="gt-card__title">${dirIcon(g.direction, true)} ${esc(g.title)}</div>
     <div class="gt-card__meta">
       <span class="gt-card__team"><span class="gt-card__dot"></span><span class="gt-card__teamname">${esc(team ? team.name : '')}</span></span>
       ${per ? `<span class="gt-card__period">${esc(per.name)}</span>` : ''}
@@ -1399,7 +1444,7 @@ function goalTreePanel(goal, data) {
   const parents = goal.parent_goal_ids.map(id => goals.get(id)).filter(Boolean);
   return `<div class="gt-panel" role="dialog" aria-label="Детали цели">
     <div class="gt-panel__header">
-      <div class="gt-panel__title">${esc(goal.title)}</div>
+      <div class="gt-panel__title">${dirIcon(goal.direction)} ${esc(goal.title)}</div>
       <button type="button" class="gt-panel__close" aria-label="Закрыть" data-gt-close="1">×</button>
     </div>
     <div class="gt-panel__body">
@@ -1409,7 +1454,7 @@ function goalTreePanel(goal, data) {
         ${per ? `<span class="gt-panel__pill">${esc(per.name)}</span>` : ''}
         ${badge(goal.priority, GT_PRI_COLOR[goal.priority] || '#6b7280')}
         <span class="gt-panel__muted">вес ${goal.weight}%</span>
-        <span class="gt-panel__muted">${esc(FOCUS_LABEL[goal.focus_type] || '')}</span>
+        <span class="gt-panel__muted">${esc((goalDirection(goal.direction) || {}).label || '')}</span>
       </div>
       <div class="gt-panel__barwrap">
         <div class="gt-panel__bar"><div class="gt-panel__barfill" style="width:${goal.progress}%"></div></div>
@@ -1600,6 +1645,10 @@ function overviewTeams() {
 const allGoals = () => flatTeams().flatMap(t => goalsOf(t.id).map(g => ({ ...g, team_id: t.id, team_name: t.name })));
 const allKRs = () => allGoals().flatMap(g => g.krs.map(kr => ({ ...kr, team_name: g.team_name, goal_title: g.title })));
 
+// Подписи баланса направлений — с иконкой, цвета — из GOAL_DIRECTIONS.
+const PO_DIR_LABELS = Object.fromEntries(GOAL_DIRECTIONS.map(d => [d.code, `${d.icon} ${d.label}`]));
+const PO_DIR_COLORS = Object.fromEntries(GOAL_DIRECTIONS.map(d => [d.code, d.color]));
+
 function balanceItems(rows, field, keys) {
   const total = rows.length || 1;
   return keys.map(k => {
@@ -1716,7 +1765,7 @@ function renderOverview() {
   }
   if (d && d.kind === 'balance') {
     balanceDrill = poDrillPanel(d.title, goals.filter(g => g[d.field] === d.key).map(g => poDrillRow(
-      `${esc(g.title)} <span style="color:${PO.dimFg}">· ${esc(g.team_name)}</span>`, `${goalProgress(g)}%`)));
+      `${dirIcon(g.direction, true)} ${esc(g.title)} <span style="color:${PO.dimFg}">· ${esc(g.team_name)}</span>`, `${goalProgress(g)}%`)));
   }
   if (d && d.kind === 'krhealth') {
     balanceDrill = poDrillPanel(d.title, krs.filter(kr => kr.healthStatus === d.key).map(kr => poDrillRow(
@@ -1743,8 +1792,8 @@ function renderOverview() {
     <div style="display:flex;gap:28px;flex-wrap:wrap">
       ${balanceBars('Discovery / Delivery', 'Соотношение исследовательской и поставочной работы',
         balanceItems(goals, 'type', ['delivery', 'discovery']), PO_DD_LABELS, PO_DD_COLORS, 'type')}
-      ${balanceBars('Стратегические фокусы', 'Profitability · Stability · Speed Efficiency · Tech Independency',
-        balanceItems(goals, 'focus', Object.keys(PO_FOCUS_LABELS)), PO_FOCUS_LABELS, PO_FOCUS_COLORS, 'focus')}
+      ${balanceBars('Направления целей', 'Продукт · Техника · Процессы',
+        balanceItems(goals, 'direction', GOAL_DIRECTIONS.map(d => d.code)), PO_DIR_LABELS, PO_DIR_COLORS, 'direction')}
       ${balanceBars('Приоритеты', 'Распределение целей по приоритету P0–P3',
         balanceItems(goals, 'priority', Object.keys(PO_PRIO_LABELS)), PO_PRIO_LABELS, PO_PRIO_COLORS, 'priority')}
       ${balanceBars('Статусы KR', 'Распределение key results по health-статусу',
@@ -1973,19 +2022,20 @@ function markdownEditor(value, placeholder, preview, id = 'goal-desc', rows = 3)
 const fieldLabel = (text, required, hint, hintHtml) =>
   `<div class="field-label">${text}${required ? '<span class="field-label__required">*</span>' : ''}${hint ? `<span class="info-hint" tabindex="0"${hintHtml ? ` data-hint-html="${esc(hintHtml)}"` : ''} data-hint="${esc(hint)}" aria-label="${esc(hint)}">?</span>` : ''}</div>`;
 
-// Подсказка фокуса: по строке на тему, название — своим цветом.
-const FOCUS_HINT = {
-  PROFITABILITY: 'выручка и маржинальность',
-  STABILITY: 'надёжность и меньше инцидентов',
-  SPEED_EFFICIENCY: 'скорость поставки и эффективность процессов',
-  TECH_INDEPENDENCE: 'уход от внешних и legacy-зависимостей',
-};
-const FOCUS_KEYS = Object.keys(FOCUS_HINT);
-const FOCUS_HINT_TEXT = 'На какую стратегическую тему работает цель.\n'
-  + FOCUS_KEYS.map(f => `${FOCUS_LABEL[f] || f} — ${FOCUS_HINT[f]}`).join('\n');
-const FOCUS_HINT_HTML = 'На какую стратегическую тему работает цель.'
-  + FOCUS_KEYS.map(f =>
-      `<span class="hint-row"><span class="hint-code" style="color:${FOCUS_COLORS[f] || FOCUS_COLORS.DEFAULT}">${esc(FOCUS_LABEL[f] || f)}</span> — ${esc(FOCUS_HINT[f])}</span>`).join('');
+// Подсказка поля «Направление цели»: по строке на направление.
+const DIR_HINT_TEXT = 'На какую область работы нацелена цель.\n'
+  + GOAL_DIRECTIONS.map(d => `${d.icon} ${d.label} — ${d.hint}`).join('\n');
+const DIR_HINT_HTML = 'На какую область работы нацелена цель.'
+  + GOAL_DIRECTIONS.map(d =>
+      `<span class="hint-row"><span class="hint-code" style="color:${d.color}">${d.icon} ${esc(d.label)}</span> — ${esc(d.hint)}</span>`).join('');
+
+// Иконка направления цели слева от заголовка — как DirectionIcon в goal_direction.js.
+// Название и описание показывает общая тёмная подсказка (обработчик в конце файла).
+function dirIcon(code, sm) {
+  const d = goalDirection(code);
+  if (!d) return '';
+  return `<span class="dir-icon${sm ? ' dir-icon--sm' : ''}" tabindex="0" data-dir="${d.code}" aria-label="Направление: ${esc(d.label)}">${d.icon}</span>`;
+}
 
 // Подсказка приоритета: по строке на уровень, код уровня — своим цветом.
 const PRIORITY_HINT_TEXT = 'Насколько цель важна относительно других.\n'
@@ -2549,7 +2599,7 @@ function pickerListHTML(m, groups, selected) {
 
 // ── Модалка цели ─────────────────────────────────────────────────────────────
 // Повторяет GoalModal: шапка с периодом и командой, название, markdown-описание,
-// приоритет сегментами, вес со счётчиком, тип работы, фокус, драйвер, тумблер
+// приоритет сегментами, вес со счётчиком, тип работы, направление, драйвер, тумблер
 // общей цели и секция связанных целей.
 function goalModal(m) {
   const f = m.form;
@@ -2595,13 +2645,13 @@ function goalModal(m) {
         <div class="form-row goal-meta-row">
           <div class="form-col">
             ${fieldLabel('Приоритет', false, PRIORITY_HINT_TEXT, PRIORITY_HINT_HTML)}
-            <div class="pri-select" data-menu-wrap>
-              <button type="button" class="pri-select__btn" data-pri-open="1" aria-haspopup="listbox" aria-expanded="${!!m.priOpen}">
-                ${priBadge(f.priority)}<span class="pri-select__txt">${esc(PRI_SHORT[f.priority] || '')}</span><span class="pri-select__caret">▾</span>
+            <div class="rich-select" data-menu-wrap>
+              <button type="button" class="rich-select__btn" data-pri-open="1" aria-haspopup="listbox" aria-expanded="${!!m.priOpen}">
+                ${priBadge(f.priority)}<span class="rich-select__txt">${esc(PRI_SHORT[f.priority] || '')}</span><span class="rich-select__caret">▾</span>
               </button>
-              ${m.priOpen ? `<div class="pri-select__menu" role="listbox">
-                ${['P0', 'P1', 'P2', 'P3'].map(p => `<button type="button" role="option" aria-selected="${f.priority === p}" class="pri-select__opt${f.priority === p ? ' pri-select__opt--on' : ''}" data-pri="${p}">
-                  ${priBadge(p)}<span class="pri-select__opt-txt"><b>${esc(PRI_SHORT[p])}</b><span>${esc(PRI_HINT[p] || '')}</span></span>${f.priority === p ? '<span class="pri-select__check">✓</span>' : ''}
+              ${m.priOpen ? `<div class="rich-select__menu" role="listbox">
+                ${['P0', 'P1', 'P2', 'P3'].map(p => `<button type="button" role="option" aria-selected="${f.priority === p}" class="rich-select__opt${f.priority === p ? ' rich-select__opt--on' : ''}" data-pri="${p}">
+                  ${priBadge(p)}<span class="rich-select__opt-txt"><b>${esc(PRI_SHORT[p])}</b><span>${esc(PRI_HINT[p] || '')}</span></span>${f.priority === p ? '<span class="rich-select__check">✓</span>' : ''}
                 </button>`).join('')}
               </div>` : ''}
             </div>
@@ -2616,10 +2666,17 @@ function goalModal(m) {
             </div>
           </div>
           <div class="form-col">
-            ${fieldLabel('Фокус', false, FOCUS_HINT_TEXT, FOCUS_HINT_HTML)}
-            <select id="goal-focus" class="form-select">
-              ${Object.keys(FOCUS_LABEL).map(k => `<option value="${k}"${f.focus === k ? ' selected' : ''}>${FOCUS_LABEL[k]}</option>`).join('')}
-            </select>
+            ${fieldLabel('Направление цели', false, DIR_HINT_TEXT, DIR_HINT_HTML)}
+            <div class="rich-select" data-menu-wrap>
+              <button type="button" class="rich-select__btn" data-dir-open="1" aria-haspopup="listbox" aria-expanded="${!!m.dirOpen}">
+                <span class="dir-icon" aria-hidden="true">${(goalDirection(f.direction) || {}).icon || ''}</span><span class="rich-select__txt">${esc((goalDirection(f.direction) || {}).label || '')}</span><span class="rich-select__caret">▾</span>
+              </button>
+              ${m.dirOpen ? `<div class="rich-select__menu rich-select__menu--end" role="listbox">
+                ${GOAL_DIRECTIONS.map(d => `<button type="button" role="option" aria-selected="${f.direction === d.code}" class="rich-select__opt${f.direction === d.code ? ' rich-select__opt--on' : ''}" data-dir-opt="${d.code}">
+                  <span class="dir-icon" aria-hidden="true">${d.icon}</span><span class="rich-select__opt-txt"><b>${esc(d.label)}</b><span>${esc(d.hint)}</span></span>${f.direction === d.code ? '<span class="rich-select__check">✓</span>' : ''}
+                </button>`).join('')}
+              </div>` : ''}
+            </div>
           </div>
         </div>
 
@@ -2726,11 +2783,13 @@ function fitGoalCardOwners() {
 // Подсказка с полным текстом только у обрезанного заголовка — то же правило, что у useClipped
 // в tracker.js: у влезающего она дублировала бы видимый текст и отняла бы подсказку действия
 // у строки-предка. В приложении это React-хук с ResizeObserver, здесь достаточно прохода
-// после отрисовки и по изменению размера окна.
+// после отрисовки и по изменению размера окна. Полный текст показывает общая подсказка
+// .info-hint__tooltip (см. обработчик в конце файла), а пустой title гасит над текстом
+// нативную подсказку действия строки-предка.
 function markClippedTitles() {
   document.querySelectorAll('.goal-card__title, .kr-name').forEach(el => {
-    if (el.scrollWidth - el.clientWidth > 1) el.setAttribute('title', el.textContent);
-    else el.removeAttribute('title');
+    if (el.scrollWidth - el.clientWidth > 1) { el.dataset.hint = el.textContent; el.setAttribute('title', ''); }
+    else { delete el.dataset.hint; el.removeAttribute('title'); }
   });
 }
 
@@ -2792,6 +2851,9 @@ document.addEventListener('click', e => {
   const pri = hit('[data-pri-filter]');
   if (pri) { const p = pri.dataset.priFilter; state.boardView.pri[p] = !state.boardView.pri[p]; render(); return; }
   if (hit('[data-pri-clear]')) { state.boardView.pri = {}; render(); return; }
+  const dirF = hit('[data-dir-filter]');
+  if (dirF) { const c = dirF.dataset.dirFilter; state.boardView.dir[c] = !state.boardView.dir[c]; render(); return; }
+  if (hit('[data-dir-clear]')) { state.boardView.dir = {}; render(); return; }
   const fltSort = hit('[data-flt-sort]');
   if (fltSort) { state.boardView.sort = fltSort.dataset.fltSort; render(); return; }
   // Переключение птички сбрасывает перекрытия показа заметок у отдельных KR — после него
@@ -2799,7 +2861,7 @@ document.addEventListener('click', e => {
   if (hit('[data-flt-notes]')) { state.boardView.notes = !state.boardView.notes; state.noteVis = {}; state.noteCollapsed = {}; render(); return; }
   if (hit('[data-flt-zero]')) { state.boardView.hideZeroWeight = !state.boardView.hideZeroWeight; render(); return; }
   if (hit('[data-flt-reset]')) {
-    state.boardView = { sort: 'custom', pri: {}, notes: false, hideZeroWeight: false };
+    state.boardView = { sort: 'custom', pri: {}, dir: {}, notes: false, hideZeroWeight: false };
     state.noteVis = {}; state.noteCollapsed = {};
     render(); return;
   }
@@ -2932,7 +2994,7 @@ document.addEventListener('click', e => {
     const [field, key] = balEl.dataset.bal.split(':');
     const titles = {
       type: k => 'Discovery / Delivery: ' + (PO_DD_LABELS[k] || k),
-      focus: k => 'Фокус: ' + (PO_FOCUS_LABELS[k] || k),
+      direction: k => 'Направление: ' + ((goalDirection(k) || {}).label || k),
       priority: k => 'Приоритет: ' + (PO_PRIO_LABELS[k] || k),
       healthStatus: k => 'Статус KR: ' + (PO_HEALTH_LABELS[k] || k),
     };
@@ -3097,7 +3159,7 @@ document.addEventListener('click', e => {
       type: 'goal', goalId: gid, preview: false,
       form: g
         ? { title: g.title, desc: g.desc || '', priority: g.priority, weight: g.weight, type: g.type,
-            focus: g.focus,
+            direction: g.direction,
             // Драйверы и команды-участники приводим к тем же сущностям, с которыми
             // работают UserSelector и TeamCombobox.
             owners: (g.owners || []).map(o => USERS.find(u => u.name === o.name) || { udid: 'x' + o.name, ...o }),
@@ -3107,7 +3169,7 @@ document.addEventListener('click', e => {
               : [],
             parents: [...(g.parents || [])] }
         : { title: '', desc: '', priority: 'P1', weight: Math.max(0, Math.min(20, 100 - used)),
-            type: 'delivery', focus: 'PROFITABILITY', owners: [], shared: false, shareTeamIds: [], parents: [] },
+            type: 'delivery', direction: 'PRODUCT', owners: [], shared: false, shareTeamIds: [], parents: [] },
     };
     renderOverlays(); return;
   }
@@ -3118,8 +3180,11 @@ document.addEventListener('click', e => {
     const f = m2.form;
     const pri = hit('[data-pri]');
     if (pri) { f.priority = pri.dataset.pri; m2.priOpen = false; renderOverlays(); return; }
-    if (hit('[data-pri-open]')) { m2.priOpen = !m2.priOpen; renderOverlays(); return; }
-    if (m2.priOpen && !hit('.pri-select')) { m2.priOpen = false; renderOverlays(); }
+    if (hit('[data-pri-open]')) { m2.priOpen = !m2.priOpen; m2.dirOpen = false; renderOverlays(); return; }
+    const dirOpt = hit('[data-dir-opt]');
+    if (dirOpt) { f.direction = dirOpt.dataset.dirOpt; m2.dirOpen = false; renderOverlays(); return; }
+    if (hit('[data-dir-open]')) { m2.dirOpen = !m2.dirOpen; m2.priOpen = false; renderOverlays(); return; }
+    if ((m2.priOpen || m2.dirOpen) && !hit('.rich-select')) { m2.priOpen = false; m2.dirOpen = false; renderOverlays(); }
     const wt = hit('[data-wtype]');
     if (wt) { f.type = wt.dataset.wtype; renderOverlays(); return; }
     if (hit('[data-shared]')) { f.shared = !f.shared; renderOverlays(); return; }
@@ -3186,9 +3251,9 @@ document.addEventListener('click', e => {
     if (hit('[data-parent-add]')) { m2.pickerOpen = true; m2.pickerPeriod = state.periodId; m2.pickerQ = ''; renderOverlays(); return; }
     if (t.id === 'goal-save') {
       const g = state.modal.goalId ? goalsOf(state.teamId).find(x => x.id === state.modal.goalId) : null;
-      if (g) Object.assign(g, { title: f.title, desc: f.desc, priority: f.priority, weight: Number(f.weight) || 0, type: f.type, focus: f.focus, owners: f.owners, updatedDaysAgo: 0 });
+      if (g) Object.assign(g, { title: f.title, desc: f.desc, priority: f.priority, weight: Number(f.weight) || 0, type: f.type, direction: f.direction, owners: f.owners, updatedDaysAgo: 0 });
       else goalsOf(state.teamId).push({ id: Date.now(), title: f.title, desc: f.desc, priority: f.priority,
-        weight: Number(f.weight) || 0, type: f.type, focus: f.focus, owners: f.owners, updatedDaysAgo: 0,
+        weight: Number(f.weight) || 0, type: f.type, direction: f.direction, owners: f.owners, updatedDaysAgo: 0,
         parents: 0, children: 0, shareTeams: null, krs: [], comments: [] });
       closeOverlays(); render(); return;
     }
@@ -3237,7 +3302,6 @@ document.addEventListener('change', e => {
     state.activity.actor = e.target.value; redrawContent(); return;
   }
   if (!state.modal) return;
-  if (e.target.id === 'goal-focus') { state.modal.form.focus = e.target.value; return; }
   if (state.modal.type === 'kredit') {
     if (e.target.id === 'kre-type') { state.modal.form.krType = e.target.value; renderOverlays(); return; }
     if (e.target.id === 'kre-unit') { state.modal.form.unit = e.target.value; renderOverlays(); return; }
@@ -3374,15 +3438,27 @@ function reorder(list, fromId, toId) {
 }
 
 document.addEventListener('mousedown', e => {
+  // Цель и KR перетаскиваемые только на время жеста от ручки: иначе текст в них не выделить.
+  const krHandle = e.target.closest && e.target.closest('[data-kr-handle]');
+  if (krHandle) {
+    const krItem = krHandle.closest('[data-kr-item]');
+    if (krItem) krItem.setAttribute('draggable', 'true');
+    return;
+  }
   const handle = e.target.closest && e.target.closest('[data-goal-handle]');
   if (!handle) return;
   const card = handle.closest('[data-goal-item]');
   if (card) card.setAttribute('draggable', 'true');
 });
 
-document.addEventListener('mouseup', () => {
-  document.querySelectorAll('[data-goal-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
-});
+// Снимаем взведение по отпусканию кнопки, а если её отпустили за пределами окна и mouseup
+// не пришёл — по первому mousemove без нажатых кнопок или по потере окном фокуса.
+function disarmDragHandles() {
+  document.querySelectorAll('[data-goal-item][draggable="true"], [data-kr-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
+}
+document.addEventListener('mouseup', disarmDragHandles);
+document.addEventListener('mousemove', e => { if (e.buttons === 0) disarmDragHandles(); });
+window.addEventListener('blur', disarmDragHandles);
 
 document.addEventListener('dragstart', e => {
   const krItem = e.target.closest && e.target.closest('[data-kr-item]');
@@ -3439,7 +3515,7 @@ document.addEventListener('dragend', () => {
   drag.kr = null; drag.goal = null;
   document.querySelectorAll('.kr-item--dragging').forEach(el => el.classList.remove('kr-item--dragging'));
   document.querySelectorAll('.goal-card--dragging').forEach(el => el.classList.remove('goal-card--dragging'));
-  document.querySelectorAll('[data-goal-item][draggable="true"]').forEach(el => el.setAttribute('draggable', 'false'));
+  disarmDragHandles();
 });
 
 // ── Дерево целей: зум, панорамирование, выбор ───────────────────────────────
@@ -3592,26 +3668,32 @@ document.addEventListener('wheel', e => {
 
 render();
 
-// Всплывающая подсказка для «?» (.info-hint): читает data-hint или title.
+// Всплывающая подсказка для «?» (.info-hint): читает data-hint или title. Ей же показывается
+// полный текст обрезанного заголовка (data-hint ставит markClippedTitles) — по ширине текста.
 (() => {
+  const SEL = '.info-hint, .goal-card__title[data-hint], .kr-name[data-hint], .dir-icon[data-dir]';
   let tip = null, cur = null;
   const show = el => {
-    const html = el.dataset.hintHtml;
+    // Иконка направления: название и описание берутся из GOAL_DIRECTIONS по коду.
+    const dir = el.dataset.dir ? goalDirection(el.dataset.dir) : null;
+    const html = dir ? `<span class="dir-tip__title">${dir.icon} ${esc(dir.label)}</span>${esc(dir.hint)}` : el.dataset.hintHtml;
     const text = el.dataset.hint || el.getAttribute('title');
     if (!html && !text) return;
-    if (el.hasAttribute('title')) { el.dataset.hint = text; el.removeAttribute('title'); }
-    if (!tip) { tip = document.createElement('div'); tip.className = 'info-hint__tooltip'; tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    if (el.getAttribute('title')) { el.dataset.hint = text; el.removeAttribute('title'); }
+    if (!tip) { tip = document.createElement('div'); tip.setAttribute('role', 'tooltip'); document.body.appendChild(tip); }
+    const fit = !el.classList.contains('info-hint') && !dir;
+    tip.className = fit ? 'info-hint__tooltip info-hint__tooltip--fit' : 'info-hint__tooltip';
     if (html) tip.innerHTML = html; else tip.textContent = text;
-    tip.style.display = 'block'; tip.style.transform = 'none'; tip.style.whiteSpace = 'pre-line'; tip.style.maxWidth = '300px';
+    tip.style.display = 'block'; tip.style.transform = 'none'; tip.style.whiteSpace = 'pre-line'; tip.style.maxWidth = fit ? '' : '300px';
     const r = el.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
     let left = Math.min(window.innerWidth - tw - 8, Math.max(8, r.left + r.width / 2 - tw / 2));
     let top = r.top - th - 8; if (top < 8) top = r.bottom + 8;
     tip.style.left = left + 'px'; tip.style.top = top + 'px'; cur = el;
   };
   const hide = () => { if (tip) tip.style.display = 'none'; cur = null; };
-  document.addEventListener('mouseover', e => { const el = e.target.closest && e.target.closest('.info-hint'); if (el && el !== cur) show(el); else if (!el && cur) hide(); });
-  document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('.info-hint'); if (el) show(el); });
-  document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('.info-hint')) hide(); });
+  document.addEventListener('mouseover', e => { const el = e.target.closest && e.target.closest(SEL); if (el && el !== cur) show(el); else if (!el && cur) hide(); });
+  document.addEventListener('focusin', e => { const el = e.target.closest && e.target.closest('.info-hint, .dir-icon[data-dir]'); if (el) show(el); });
+  document.addEventListener('focusout', e => { if (e.target.closest && e.target.closest('.info-hint, .dir-icon[data-dir]')) hide(); });
   document.addEventListener('scroll', hide, true);
 })();
 
@@ -3633,7 +3715,6 @@ function enhanceDescs() {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'md-collapsible__toggle';
-    btn.setAttribute('data-no-drag', '');
     const paint = o => { btn.innerHTML = `<span class="md-collapsible__label">${o ? 'Свернуть' : 'Показать полностью'}</span><span class="md-collapsible__caret">${o ? '▴' : '▾'}</span>`; btn.setAttribute('aria-expanded', o); };
     paint(open);
     btn.addEventListener('click', e => {

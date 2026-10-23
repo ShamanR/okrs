@@ -162,8 +162,8 @@ func setup(t *testing.T) (*harness, func()) {
 		t.Fatalf("period: %v", err)
 	}
 	if err := pool.QueryRow(ctx, `
-		INSERT INTO goals (tenant_id, team_id, period_id, title, priority, weight, work_type, focus_type)
-		VALUES (1, $1, $2, 'Снизить отток', 'P1', 100, 'Delivery', 'STABILITY') RETURNING id`,
+		INSERT INTO goals (tenant_id, team_id, period_id, title, priority, weight, work_type, direction)
+		VALUES (1, $1, $2, 'Снизить отток', 'P1', 100, 'Delivery', 'TECH') RETURNING id`,
 		teamID, periodID).Scan(&goalID); err != nil {
 		cleanup()
 		t.Fatalf("goal: %v", err)

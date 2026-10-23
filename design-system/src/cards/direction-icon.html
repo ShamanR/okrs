@@ -1,0 +1,26 @@
+<!-- @dsCard group="Data display" -->
+<!-- @dsName Иконка направления цели -->
+<!-- @dsSubtitle Продукт, Техника, Процессы · подсказка по наведению -->
+<!-- @dsCss tokens.css shell.css components.css tracker.css -->
+<!-- @dsViewport 900x460 -->
+<section class="ds-section">
+  <div class="ds-section__title">Три направления</div>
+  <div class="ds-row">
+    <div class="ds-item"><span class="dir-icon" tabindex="0" aria-label="Направление: Продукт">🚀</span><div class="ds-item__label">PRODUCT · Продукт</div></div>
+    <div class="ds-item"><span class="dir-icon" tabindex="0" aria-label="Направление: Техника">⚙️</span><div class="ds-item__label">TECH · Техника</div></div>
+    <div class="ds-item"><span class="dir-icon" tabindex="0" aria-label="Направление: Процессы">📈</span><div class="ds-item__label">PROCESS · Процессы</div></div>
+    <div class="ds-item"><span class="dir-icon dir-icon--sm" tabindex="0" aria-label="Направление: Техника">⚙️</span><div class="ds-item__label">.dir-icon--sm — в строке текста</div></div>
+  </div>
+  <div class="ds-section__note">Иконка стоит слева от заголовка цели: на карточке доски, на карточке и в панели дерева целей, в списке детализации обзора периода и в записях журнала. Ширина фиксирована, чтобы шапка карточки не прыгала от разной ширины эмодзи. Отдельного текстового лейбла направления нет — название и описание отдаёт подсказка по наведению и по фокусу с клавиатуры (DirectionIcon в web/static/goal_direction.js).</div>
+</section>
+
+<section class="ds-section">
+  <div class="ds-section__title">Подсказка</div>
+  <div class="ds-frame" style="background:#fff;padding:16px 16px 90px;position:relative">
+    <span class="dir-icon" tabindex="0" aria-label="Направление: Процессы">📈</span>
+    <span class="info-hint__tooltip info-hint__tooltip--fit" role="tooltip" style="position:absolute;top:44px;left:16px;transform:none">
+      <span class="dir-tip__title">📈 Процессы</span>Эффективность, организация работы, автоматизация процессов
+    </span>
+  </div>
+  <div class="ds-section__note">Та же тёмная .info-hint__tooltip, что у «?» полей и у обрезанного заголовка: рисуется порталом в body, поэтому не обрезается карточкой и не ломается от масштаба холста дерева.</div>
+</section>

@@ -24,7 +24,7 @@ func TestNumericalCurrentValueFollowsStartUntilFirstCheckIn(t *testing.T) {
 	var teamID, periodID, goalID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1','2024-01-01','2024-03-31') RETURNING id`).Scan(&periodID)
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 
 	krID, err := repo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
 		GoalID: goalID, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical,
@@ -147,7 +147,7 @@ func TestRecordedMarkerSurvivesCheckInAtStartValue(t *testing.T) {
 	var teamID, periodID, goalID int64
 	pool.QueryRow(ctx, `INSERT INTO teams (name) VALUES ('T') RETURNING id`).Scan(&teamID)
 	pool.QueryRow(ctx, `INSERT INTO periods (name, start_date, end_date) VALUES ('Q1','2024-01-01','2024-03-31') RETURNING id`).Scan(&periodID)
-	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, focus_type, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','STABILITY',1) RETURNING id`, teamID, periodID).Scan(&goalID)
+	pool.QueryRow(ctx, `INSERT INTO goals (team_id, period_id, title, priority, weight, work_type, direction, sort_order) VALUES ($1,$2,'G','P1',100,'Delivery','TECH',1) RETURNING id`, teamID, periodID).Scan(&goalID)
 
 	krID, err := repo.CreateKeyResult(ctx, scope, krs.KeyResultInput{
 		GoalID: goalID, Title: "KR", Weight: 100, Kind: domain.KRKindNumerical,

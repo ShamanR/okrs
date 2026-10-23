@@ -32,7 +32,7 @@ func makeGoal(t *testing.T, ctx context.Context, pool *pgxpool.Pool, scope domai
 	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
 	id, err := gr.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: title, Priority: domain.PriorityP1,
-		Weight: 100, WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		Weight: 100, WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal (%s): %v", title, err)

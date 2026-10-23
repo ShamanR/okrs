@@ -67,7 +67,7 @@ func TestTeamExportEndpoint(t *testing.T) {
 	if _, err := repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Цель",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability, OwnerText: "Owner",
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech, OwnerText: "Owner",
 	}); err != nil {
 		t.Fatalf("create goal: %v", err)
 	}

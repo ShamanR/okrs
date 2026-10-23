@@ -59,13 +59,13 @@ function writeTreeExpanded(expanded) {
 }
 
 // ── BOARD VIEW PERSISTENCE ────────────────────────────────────────────────────
-// Настройки показа целей на доске: порядок, фильтр по приоритету, показ заметок к KR,
+// Настройки показа целей на доске: порядок, фильтры по приоритету и направлению, показ заметок к KR,
 // скрытие целей с нулевым весом. Один объект под одним ключом, не привязанным ни к
 // команде, ни к периоду — поэтому смена команды и смена периода их не сбрасывают, а
 // перезагрузка восстанавливает. Настройки влияют только на показ: прогресс, сумма
 // весов, охват выгрузки и занятый вес в окне цели считаются по всем целям периода.
 const BOARD_SORTS = ['custom', 'priority'];
-const BOARD_VIEW_DEFAULT = { sort: 'custom', pri: {}, notes: false, hideZeroWeight: false };
+const BOARD_VIEW_DEFAULT = { sort: 'custom', pri: {}, dir: {}, notes: false, hideZeroWeight: false };
 
 // Прочитанное значение не принимается на веру: неизвестный порядок, лишние уровни
 // приоритета и нечитаемый JSON дают дефолты, а не ошибку рендера — как в
@@ -74,27 +74,31 @@ function normalizeBoardView(raw) {
   const v = raw && typeof raw === 'object' ? raw : {};
   const pri = {};
   if (v.pri && typeof v.pri === 'object') PRI_LEVELS.forEach(p => { if (v.pri[p]) pri[p] = true; });
+  const dir = {};
+  if (v.dir && typeof v.dir === 'object') GOAL_DIRECTIONS.forEach(d => { if (v.dir[d.code]) dir[d.code] = true; });
   return {
     sort: BOARD_SORTS.includes(v.sort) ? v.sort : BOARD_VIEW_DEFAULT.sort,
     pri,
+    dir,
     notes: !!v.notes,
     hideZeroWeight: !!v.hideZeroWeight,
   };
 }
 const readBoardView = () => normalizeBoardView(readJSON(STORAGE_KEYS.boardView, null));
 const writeBoardView = v => writeJSON(STORAGE_KEYS.boardView, v);
-const boardViewDefault = () => ({ ...BOARD_VIEW_DEFAULT, pri: {} });
+const boardViewDefault = () => ({ ...BOARD_VIEW_DEFAULT, pri: {}, dir: {} });
 const boardViewIsDefault = v =>
-  v.sort === BOARD_VIEW_DEFAULT.sort && !PRI_LEVELS.some(p => v.pri[p]) && !v.notes && !v.hideZeroWeight;
+  v.sort === BOARD_VIEW_DEFAULT.sort && !PRI_LEVELS.some(p => v.pri[p]) && !GOAL_DIRECTIONS.some(d => v.dir[d.code]) && !v.notes && !v.hideZeroWeight;
 // Нажатие на уже выбранный порядок приходит как onChange с теми же настройками. Такое
 // обращение не должно считаться изменением: оно снимало бы закрепление цели по прямой
 // ссылке, и цель исчезала бы с доски, хотя пользователь ничего не менял.
 const boardViewEquals = (a, b) =>
   a.sort === b.sort && !!a.notes === !!b.notes && !!a.hideZeroWeight === !!b.hideZeroWeight
-  && PRI_LEVELS.every(p => !!a.pri[p] === !!b.pri[p]);
+  && PRI_LEVELS.every(p => !!a.pri[p] === !!b.pri[p])
+  && GOAL_DIRECTIONS.every(d => !!a.dir[d.code] === !!b.dir[d.code]);
 
 // Фильтры сужают показ, сортировка упорядочивает то, что осталось. Порядок шагов
-// фиксирован: приоритет → нулевой вес → сортировка. Сортировка стабильная, поэтому
+// фиксирован: приоритет → направление → нулевой вес → сортировка. Сортировка стабильная, поэтому
 // цели одного приоритета сохраняют пользовательский порядок. Неизвестный приоритет
 // уходит в конец, а не в начало (indexOf дал бы -1).
 // keepId — цель, открытая по прямой ссылке: фильтры её не скрывают, иначе общая ссылка
@@ -104,6 +108,8 @@ function visibleGoals(allGoals, view, keepId = null) {
   const pinned = g => keepId != null && g.id === keepId;
   const activePri = PRI_LEVELS.filter(p => view.pri[p]);
   let out = activePri.length ? allGoals.filter(g => pinned(g) || activePri.includes(g.priority)) : allGoals.slice();
+  const activeDir = GOAL_DIRECTIONS.map(d => d.code).filter(c => view.dir[c]);
+  if (activeDir.length) out = out.filter(g => pinned(g) || activeDir.includes(g.direction));
   if (view.hideZeroWeight) out = out.filter(g => pinned(g) || (g.weight || 0) !== 0);
   if (view.sort === 'priority') out.sort((a, b) => priRank(a.priority) - priRank(b.priority));
   return out;
@@ -134,6 +140,23 @@ function filterTreeForSidebar(nodes, sel, currentId) {
     return null;
   };
   return nodes.map(keep).filter(Boolean);
+}
+
+// Прокручивает контейнер дерева команд к выбранной строке. Двигаем только сам
+// контейнер (страница остаётся на месте) и только когда строка вне видимой зоны:
+// при переходе из команды в команду выбранная команда остаётся на виду.
+function scrollTreeToSelected(container, id) {
+  if (!container || id == null) return;
+  // «Избранное» дублирует строки полного дерева; берём последнюю — она из дерева,
+  // а если узел скрыт свёрнутым предком, остаётся только копия в избранном.
+  const rows = container.querySelectorAll(`[data-team-row="${id}"]`);
+  const row = rows[rows.length - 1];
+  if (!row) return;
+  const c = container.getBoundingClientRect();
+  const r = row.getBoundingClientRect();
+  const gap = 24; // строка не прилипает к краю: видно, что выше/ниже есть команды
+  if (r.top < c.top + gap) container.scrollTop += r.top - c.top - gap;
+  else if (r.bottom > c.bottom - gap) container.scrollTop += r.bottom - c.bottom + gap;
 }
 
 // ── FAVORITE TEAMS PERSISTENCE ────────────────────────────────────────────────
@@ -221,7 +244,7 @@ function mapGoal(g) {
     title: g.title, desc: g.description,
     priority: g.priority, weight: g.weight,
     type: (g.work_type || '').toLowerCase(),
-    focus: g.focus_type,
+    direction: g.direction,
     owners: g.owners || [],
     progress: g.progress,
     progressMeta: g.progress_meta,
@@ -275,7 +298,6 @@ function calcKRProgress(kr) {
 // ── DESIGN CONSTANTS ──────────────────────────────────────────────────────────
 const HEALTH_COLOR = { ahead: '#16a34a', on_track: '#2563eb', below: '#ef4444', stale: '#d97706', no_goals: '#d1d5db' };
 const HEALTH_LABEL = { ahead: 'опережает', on_track: 'в плане', below: 'отстаёт', stale: 'нет обновлений', no_goals: 'нет целей' };
-const FOCUS_COLORS = { EFFICIENCY: '#0891b2', QUALITY: '#7c3aed', RELIABILITY: '#059669', GROWTH: '#d97706', PROFITABILITY: '#dc2626', STABILITY: '#6366f1', SPEED_EFFICIENCY: '#0891b2', TECH_INDEPENDENCE: '#be185d', DEFAULT: '#6b7280' };
 const KR_TYPE_C = { NUMERICAL: '#2563eb', BOOLEAN: '#7c3aed', PROJECT: '#d97706' };
 const KR_UNITS = ['%', 'RPS', 'мс', 'сек', 'мин', 'час', 'дней', 'шт', '₽', 'запросов', 'ошибок', 'пользователей', 'заказов', 'рублей'];
 const KR_TYPE_LABEL = { BOOLEAN: 'Бинарный', PROJECT: 'Проектный', NUMERICAL: 'Числовой' };
@@ -394,14 +416,6 @@ function NumInput({ value, onChange, className, placeholder, ...rest }) {
   return <input type="text" inputMode="decimal" ref={ref} value={display} onChange={handleChange}
     className={className} placeholder={placeholder} {...rest} />;
 }
-const FOCUS_OPTIONS = ['PROFITABILITY', 'STABILITY', 'SPEED_EFFICIENCY', 'TECH_INDEPENDENCE'];
-// focusLabel title-cases an UPPER_SNAKE focus enum for display (SPEED_EFFICIENCY → "Speed
-// Efficiency"), matching the Title Case style of work-type labels (Delivery/Discovery).
-function focusLabel(f) {
-  if (!f) return '';
-  return String(f).split('_').filter(Boolean)
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-}
 const STATUS_STEPS = [{ k: 'forming', l: 'Черновик' }, { k: 'ready', l: 'К валидации' }, { k: 'in_progress', l: 'В работе' }, { k: 'closed', l: 'Закрыты' }];
 
 // greenThreshold: progress at or above this percent is considered "in plan" (green)
@@ -477,7 +491,7 @@ function KRHealthDot({ status, progress = 0, greenThreshold = 80 }) {
   const label = KR_HEALTH_LABEL[s];
   return (
     <span className={`kr-hdot kr-hdot--${view}`} tabIndex={0}
-      aria-label={`Статус KR: ${label}${closed && closed.note ? `, ${closed.note}` : ''}`} data-no-drag>
+      aria-label={`Статус KR: ${label}${closed && closed.note ? `, ${closed.note}` : ''}`}>
       <span className="kr-hdot__mark">{icon}</span>
       {closed && closed.flag && <span className="kr-hdot__flag" aria-hidden="true">{closed.flag}</span>}
       <span className="kr-hdot__pop" role="tooltip">
@@ -488,21 +502,15 @@ function KRHealthDot({ status, progress = 0, greenThreshold = 80 }) {
   );
 }
 
-// Подсказка фокуса: по строке на тему, название окрашено как бейдж на карточке.
-// Названия берутся из focusLabel, чтобы подсказка и выпадающий список не разошлись.
-const FOCUS_HINT = {
-  PROFITABILITY: 'выручка и маржинальность',
-  STABILITY: 'надёжность и меньше инцидентов',
-  SPEED_EFFICIENCY: 'скорость поставки и эффективность процессов',
-  TECH_INDEPENDENCE: 'уход от внешних и legacy-зависимостей',
-};
-const FOCUS_HINT_BLOCK = (
+// Подсказка поля «Направление цели»: по строке на направление, название окрашено цветом
+// направления. Всё берётся из GOAL_DIRECTIONS, чтобы подсказка и селектор не разошлись.
+const DIRECTION_HINT_BLOCK = (
   <>
-    На какую стратегическую тему работает цель.
-    {FOCUS_OPTIONS.map(f => (
-      <span key={f} className="hint-row">
-        <span className="hint-code" style={{ color: FOCUS_COLORS[f] || FOCUS_COLORS.DEFAULT }}>{focusLabel(f)}</span>
-        {' — '}{FOCUS_HINT[f]}
+    На какую область работы нацелена цель.
+    {GOAL_DIRECTIONS.map(d => (
+      <span key={d.code} className="hint-row">
+        <span className="hint-code" style={{ color: d.color }}>{d.icon} {d.label}</span>
+        {' — '}{d.hint}
       </span>
     ))}
   </>
@@ -522,9 +530,11 @@ const PRIORITY_HINT = (
   </>
 );
 
-// Выбор приоритета в окне цели: бейдж, короткое имя и пояснение каждого уровня —
-// вместо четырёх кнопок P0..P3, по которым не видно, чем они отличаются.
-function PrioritySelect({ value, onChange }) {
+// Раскрывающийся выбор с пояснением каждого варианта: в закрытом виде — метка и название
+// выбранного, в раскрытом — метка, название и описание каждого, выбранный отмечен ✓.
+// options: [{ value, mark, title, hint }], mark — React-узел (бейдж приоритета, иконка
+// направления). end — меню раскрывается влево: для поля в правой колонке окна.
+function RichSelect({ value, options, onChange, end }) {
   const [open, setOpen] = useState(false);
   const ref = React.useRef(null);
   React.useEffect(() => {
@@ -533,32 +543,49 @@ function PrioritySelect({ value, onChange }) {
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
+  const cur = options.find(o => o.value === value);
   return (
-    <div className="pri-select" ref={ref}>
-      <button type="button" className="pri-select__btn" aria-haspopup="listbox" aria-expanded={open}
+    <div className="rich-select" ref={ref}>
+      <button type="button" className="rich-select__btn" aria-haspopup="listbox" aria-expanded={open}
         onClick={() => setOpen(!open)}>
-        <PriBadge p={value} />
-        <span className="pri-select__txt">{PRI_SHORT[value] || ''}</span>
-        <span className="pri-select__caret">▾</span>
+        {cur && cur.mark}
+        <span className="rich-select__txt">{cur ? cur.title : ''}</span>
+        <span className="rich-select__caret">▾</span>
       </button>
       {open && (
-        <div className="pri-select__menu" role="listbox">
-          {PRI_LEVELS.map(p => (
-            <button key={p} type="button" role="option" aria-selected={value === p}
-              className={`pri-select__opt${value === p ? ' pri-select__opt--on' : ''}`}
-              onClick={() => { onChange(p); setOpen(false); }}>
-              <PriBadge p={p} />
-              <span className="pri-select__opt-txt">
-                <b>{PRI_SHORT[p]}</b>
-                <span>{PRI_HINT[p] || ''}</span>
+        <div className={`rich-select__menu${end ? ' rich-select__menu--end' : ''}`} role="listbox">
+          {options.map(o => (
+            <button key={o.value} type="button" role="option" aria-selected={value === o.value}
+              className={`rich-select__opt${value === o.value ? ' rich-select__opt--on' : ''}`}
+              onClick={() => { onChange(o.value); setOpen(false); }}>
+              {o.mark}
+              <span className="rich-select__opt-txt">
+                <b>{o.title}</b>
+                <span>{o.hint}</span>
               </span>
-              {value === p && <span className="pri-select__check">✓</span>}
+              {value === o.value && <span className="rich-select__check">✓</span>}
             </button>
           ))}
         </div>
       )}
     </div>
   );
+}
+
+// Выбор приоритета в окне цели: бейдж, короткое имя и пояснение каждого уровня —
+// вместо четырёх кнопок P0..P3, по которым не видно, чем они отличаются.
+function PrioritySelect({ value, onChange }) {
+  const options = PRI_LEVELS.map(p => ({ value: p, mark: <PriBadge p={p} />, title: PRI_SHORT[p], hint: PRI_HINT[p] || '' }));
+  return <RichSelect value={value} options={options} onChange={onChange} />;
+}
+
+// Выбор направления цели: иконка, название и описание каждого направления. Поле стоит в
+// правой колонке окна, поэтому меню раскрывается влево.
+function DirectionSelect({ value, onChange }) {
+  const options = GOAL_DIRECTIONS.map(d => ({
+    value: d.code, mark: <span className="dir-icon" aria-hidden="true">{d.icon}</span>, title: d.label, hint: d.hint,
+  }));
+  return <RichSelect value={value} options={options} onChange={onChange} end />;
 }
 
 // Меню действий строки — одинаковое у цели и у KR. Пункт, недоступный по статусу,
@@ -604,7 +631,7 @@ function RowMenu({ items, btnClass = 'export-menu__btn', dropdownClass = '' }) {
     return () => document.removeEventListener('mousedown', onDoc);
   }, [open]);
   return (
-    <div className="export-menu" ref={ref} data-no-drag>
+    <div className="export-menu" ref={ref}>
       <button type="button" className={btnClass} title="Ещё" aria-label="Ещё"
         onClick={() => setOpen(!open)}>···</button>
       {open && (
@@ -628,21 +655,14 @@ function KRHealthBadge({ status }) {
     : <Badge label={label} color={color} />;
 }
 
+// useFloatingTip и FloatingTip — в goal_direction.js: ими пользуются и другие страницы.
 function InfoHint({ children, width = 300 }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const ref = useRef();
-  const show = () => {
-    if (!ref.current) return;
-    const r = ref.current.getBoundingClientRect();
-    setPos({ top: r.bottom + 6, left: r.left + r.width / 2 });
-    setOpen(true);
-  };
+  const tip = useFloatingTip();
   return (
-    <span ref={ref} onMouseEnter={show} onMouseLeave={() => setOpen(false)}
-      tabIndex={0} onFocus={show} onBlur={() => setOpen(false)} className="info-hint">
+    <span ref={tip.ref} onMouseEnter={tip.show} onMouseLeave={tip.hide}
+      tabIndex={0} onFocus={tip.show} onBlur={tip.hide} className="info-hint">
       ?
-      {open && pos && <span className="info-hint__tooltip" style={{ top: pos.top, left: pos.left, width }}>{children}</span>}
+      {tip.anchor && <FloatingTip anchor={tip.anchor} width={width}>{children}</FloatingTip>}
     </span>
   );
 }
@@ -888,8 +908,37 @@ function PriorityFilter({ goals, value, onChange }) {
   );
 }
 
+// Фильтр доски по направлению — устроен как фильтр по приоритету: счётчик целей периода у
+// каждого направления, направление без целей нажать нельзя, × сбрасывает только этот фильтр.
+function DirectionFilter({ goals, value, onChange }) {
+  const any = GOAL_DIRECTIONS.some(d => value[d.code]);
+  return (
+    <div className="filter-bar__group">
+      <span className="filter-bar__cap">Направление</span>
+      <div className="filter-bar__seg" role="group" aria-label="Фильтр по направлению">
+        {GOAL_DIRECTIONS.map(d => {
+          const n = goals.filter(g => g.direction === d.code).length;
+          const on = !!value[d.code];
+          return (
+            <button key={d.code} type="button" aria-pressed={on} disabled={!n} title={d.hint}
+              className={`filter-bar__btn filter-bar__btn--dir${on ? ' filter-bar__btn--on' : ''}`}
+              style={{ '--pc': d.color }}
+              onClick={() => onChange({ ...value, [d.code]: !on })}>
+              {d.icon} {d.label}<span className="filter-bar__n">{n}</span>
+            </button>
+          );
+        })}
+      </div>
+      {any && (
+        <button type="button" className="filter-bar__clear" title="Сбросить фильтр по направлению"
+          aria-label="Сбросить фильтр по направлению" onClick={() => onChange({})}>×</button>
+      )}
+    </div>
+  );
+}
+
 // ── BOARD FILTER BAR ──────────────────────────────────────────────────────────
-// Ряд управления показом целей: порядок, фильтр по приоритету, показ заметок к KR,
+// Ряд управления показом целей: порядок, фильтры по приоритету и направлению, показ заметок к KR,
 // скрытие целей с нулевым весом, сброс. Стоит над списком целей, а не в шапке доски:
 // шапка описывает команду, а это управление списком, который начинается ниже.
 // У команды без целей управлять показом нечем — ряд не рендерится.
@@ -911,6 +960,7 @@ function BoardFilterBar({ goals, value, onChange }) {
         </div>
       </div>
       <PriorityFilter goals={goals} value={value.pri} onChange={pri => set({ pri })} />
+      <DirectionFilter goals={goals} value={value.dir} onChange={dir => set({ dir })} />
       <label className="filter-bar__check">
         <input type="checkbox" checked={value.notes} onChange={e => set({ notes: e.target.checked })} />
         Заметки к KR
@@ -1518,7 +1568,7 @@ function KRNote({ note, open, onToggle }) {
   const press = long ? { role: 'button', tabIndex: 0, 'aria-expanded': open, onClick: onToggle,
     onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } } } : {};
   return (
-    <div className={cls} data-no-drag {...press}>
+    <div className={cls} {...press}>
       <span className="kr-note__label">Заметка</span>
       {/* Разметка в тексте заметки нормативна (content-safety, «Поля, поддерживающие
           разметку»), поэтому текст всегда идёт через Markdown. В свёрнутом виде CSS
@@ -1542,8 +1592,7 @@ function KRNote({ note, open, onToggle }) {
 //
 // На этом признаке держатся две вещи, поэтому заголовок измеряется один раз: подсказка с
 // полным текстом (нужна только обрезанному — у влезающего она дублировала бы видимый текст и
-// отняла бы подсказку действия у строки-предка, которая несёт title «Редактировать цель»;
-// title внутреннего элемента вытесняет title предка на время наведения именно на текст) и
+// отняла бы подсказку действия у строки-предка, которая несёт title «Редактировать цель») и
 // выбор формы драйверов в useOwnersFit.
 function useClipped(text) {
   const ref = useRef(null);
@@ -1560,6 +1609,13 @@ function useClipped(text) {
     return () => ro.disconnect();
   }, [text]);
   return [ref, clipped];
+}
+
+// Атрибуты текста заголовка под подсказку с полным текстом (FloatingTip рисует вызывающий).
+// Пустой title у обрезанного текста гасит над ним нативную подсказку действия строки-предка,
+// чтобы она не всплывала поверх полного текста; над ✎ и остальной строкой она остаётся.
+function clippedTitleProps(clipped, tip) {
+  return clipped ? { title: '', onMouseEnter: tip.show, onMouseLeave: tip.hide } : {};
 }
 
 // Насколько шапка должна стать шире, чтобы снова пробовать имена драйверов. Без этой полосы
@@ -1631,6 +1687,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
   useEffect(() => { setNoteVisOverride(null); setNoteExpanded(true); }, [notesOpen]);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [nameRef, nameClipped] = useClipped(kr.name);
+  const nameTip = useFloatingTip(nameRef, nameClipped);
   const progress = kr.progress;
   // Цвет давности задаётся классом: fresh → warn → stale по тому же порогу.
   // Цвет давности считаем по прогрессу, а не по kr.updated_at. Если прогресс ещё
@@ -1669,7 +1726,8 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
             <div className={`kr-name-row${titleAction ? ' title-editable' : ''}`}
               {...(titleAction ? { role: 'button', tabIndex: 0, title: KR_TITLE_ACTION[titleAction].hint, onClick: openTitleAction,
                 onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openTitleAction(); } } } : {})}>
-              <div ref={nameRef} title={nameClipped ? kr.name : undefined} className="kr-name">{kr.name}</div>
+              <div ref={nameRef} {...clippedTitleProps(nameClipped, nameTip)} className="kr-name">{kr.name}</div>
+              {nameClipped && nameTip.anchor && <FloatingTip anchor={nameTip.anchor} fit>{kr.name}</FloatingTip>}
               {titleAction
                 ? <span className={`title-edit${KR_TITLE_ACTION[titleAction].cls}`} aria-hidden="true">{KR_TITLE_ACTION[titleAction].mark}</span>
                 : <LockedAction reason={titleLock}>
@@ -1694,7 +1752,7 @@ function KRRow({ kr, goalId, goalTitle = '', editMode, onReload, accent, staleDa
               </div>
             </div>
           </div>
-          <div className="kr-row__actions" data-no-drag>
+          <div className="kr-row__actions">
             {/* Распорка держит колонку действий одной ширины во всех режимах:
                 давность показывается не в каждом, но строка не должна съезжать. */}
             <span className="kr-row__spacer" />
@@ -2172,6 +2230,38 @@ function TransferGoalModal({ goal, teamId, periodId, allTeams, onClose, onDone, 
   );
 }
 
+// Перетаскиваемость на время жеста от ручки. Карточка цели и строка KR становятся
+// draggable, только пока нажата их ручка: будь они draggable всегда, текст в них нельзя
+// было бы выделить — браузер начинает перетаскивание вместо выделения.
+//
+// Признак НЕЛЬЗЯ снимать по mouseleave ручки. Ручка маленькая, а чтобы потащить элемент,
+// указатель обязан её покинуть — mouseleave успевал снять draggable раньше, чем браузер
+// решал, что это перетаскивание, и dragstart не наступал вовсе. Снимается признак по dragend
+// элемента (это делает вызывающий код) и по отпусканию кнопки где угодно (ручку нажали, но
+// не потащили). Отпущенную за пределами окна кнопку mouseup может и не сообщить — тогда
+// признак снимает первый mousemove без нажатых кнопок (указатель вернулся на страницу раньше,
+// чем успеет нажать на текст) или потеря окном фокуса. Во время перетаскивания ни mouseup, ни
+// mousemove не приходят, вместо них приходит dragend, поэтому начатый жест не прерывается.
+//
+// Значение — что именно взведено (true для цели, id для KR), null — ничего.
+function useHandleDragArm() {
+  const [armed, setArmed] = useState(null);
+  useEffect(() => {
+    if (armed == null) return;
+    const release = () => setArmed(null);
+    const releaseIfUp = e => { if (e.buttons === 0) release(); };
+    window.addEventListener('mouseup', release);
+    window.addEventListener('mousemove', releaseIfUp);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('mouseup', release);
+      window.removeEventListener('mousemove', releaseIfUp);
+      window.removeEventListener('blur', release);
+    };
+  }, [armed]);
+  return [armed, setArmed, () => setArmed(null)];
+}
+
 function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => { }, me, isAdmin = false, accent, currentTeamId, periodId, allTeams, dragProps, onReorderKR, staleDays = 7, periodStatus, greenThreshold = 80, deepLink = null, notesOpen = false }) {
   // A deep link (?goal/kr/comment) targeting this goal forces the relevant sections open.
   const isDeepTarget = deepLink && deepLink.goal === goal.id;
@@ -2180,28 +2270,14 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   const [showCom, setShowCom] = useState(!!(isDeepTarget && deepLink.comment));
   const [newKR, setNewKR] = useState(false);
   const [krDrag, setKrDrag] = useState(null);
-  // A KR row is draggable as a whole, so a press on a nested control (the description's
-  // "Показать полностью") would otherwise start a reorder. A ref, not state: it is read
-  // synchronously in onDragStart, with no re-render in between to make it stale.
-  const krPressNoDrag = React.useRef(false);
-  // Карточка становится перетаскиваемой только на время жеста от ручки: будь она
-  // draggable всегда, в описании цели нельзя было бы выделить текст.
-  const [goalDraggable, setGoalDraggable] = useState(false);
-  // Признак НЕЛЬЗЯ снимать по mouseleave ручки. Ручка 16×42px, а чтобы потащить карточку,
-  // указатель обязан её покинуть — mouseleave успевал снять draggable раньше, чем браузер
-  // решал, что это перетаскивание, и dragstart не наступал вовсе: порядок целей не менялся.
-  // Снимаем по dragend карточки, а этим эффектом — по отпусканию кнопки где угодно (ручку
-  // нажали, но не потащили). Во время перетаскивания mouseup не приходит, вместо него
-  // приходит dragend, поэтому эффект начатый жест не прерывает.
-  useEffect(() => {
-    if (!goalDraggable) return;
-    const release = () => setGoalDraggable(false);
-    window.addEventListener('mouseup', release);
-    return () => window.removeEventListener('mouseup', release);
-  }, [goalDraggable]);
+  // Карточка цели и строки KR перетаскиваются только от своих ручек: иначе в описании цели
+  // и в названии KR нельзя было бы выделить текст.
+  const [goalArmed, armGoal, disarmGoal] = useHandleDragArm();
+  const [armedKr, armKr, disarmKr] = useHandleDragArm();
   const [confirmDeleteGoal, setConfirmDeleteGoal] = useState(false);
   const [transfer, setTransfer] = useState(false);
   const [titleRef, titleClipped] = useClipped(goal.title);
+  const titleTip = useFloatingTip(titleRef, titleClipped);
   // Имена драйверов уступают место заголовку: решение измеряется по фактической раскладке,
   // а не по количеству драйверов.
   //
@@ -2217,7 +2293,7 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   const headFit = [
     goal.title,
     goal.owners.map(u => u.display_name || u.udid).join('\u0000'),
-    goal.weight, goal.priority, goal.type, goal.focus,
+    goal.weight, goal.priority, goal.type, goal.direction,
     (goal.parents || []).length, (goal.children || []).length,
   ].join('|');
   const [headRef, ownersCompact] = useOwnersFit(titleClipped, headFit);
@@ -2275,16 +2351,16 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
   ].filter(Boolean).join(' ');
 
   return (
-    <div {...rootDrag} id={`goal-${goal.id}`} draggable={!!(canReorderGoal && goalDraggable)}
-      onDragEnd={e => { setGoalDraggable(false); rootDrag.onDragEnd && rootDrag.onDragEnd(e); }}
+    <div {...rootDrag} id={`goal-${goal.id}`} draggable={!!(canReorderGoal && goalArmed)}
+      onDragEnd={e => { disarmGoal(); rootDrag.onDragEnd && rootDrag.onDragEnd(e); }}
       style={{ '--health': hC, '--health-soft': `${hC}18` }}
       className={cardClass}>
       {canReorderGoal && (
         <div className="drag-handle" title="Перетащите для изменения порядка"
-          onMouseDown={() => setGoalDraggable(true)}>⋮⋮</div>
+          onMouseDown={() => armGoal(true)}>⋮⋮</div>
       )}
       {/* Шапка цели — одна строка: вес · приоритет · заголовок со связями · лейблы ·
-          драйвер · полоса прогресса · процент · меню. Заголовок и есть элемент
+          драйвер · полоса прогресса · процент · меню. Иконка направления — перед заголовком. Заголовок и есть элемент
           редактирования, ✎ рядом — только признак того, что по нему можно нажать. */}
       <div className="goal-card__body gc2">
         <div ref={headRef} className="gc2__head">
@@ -2295,11 +2371,14 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
             data-tip-title={`Приоритет · ${goal.priority}`}
             data-tip={PRI_HINT[goal.priority] || ''}><PriBadge p={goal.priority} /></span>
           <div className="gc2__title-wrap">
+            {/* Иконка вне кликабельного заголовка: наведение и фокус на ней не открывают окно цели. */}
+            <DirectionIcon code={goal.direction} />
             <div className={`goal-card__title-row${canEditText ? ' title-editable' : ''}`}
               {...(canEditText ? { role: 'button', tabIndex: 0, title: 'Редактировать цель',
                 onClick: () => onEditGoal(goal),
                 onKeyDown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onEditGoal(goal); } } } : {})}>
-              <div ref={titleRef} title={titleClipped ? goal.title : undefined} className="goal-card__title goal-card__title--readonly">{goal.title}</div>
+              <div ref={titleRef} {...clippedTitleProps(titleClipped, titleTip)} className="goal-card__title goal-card__title--readonly">{goal.title}</div>
+              {titleClipped && titleTip.anchor && <FloatingTip anchor={titleTip.anchor} fit>{goal.title}</FloatingTip>}
               {canEditText && <span className="title-edit" aria-hidden="true">✎</span>}
             </div>
             <GoalLinksPopover dir="up" items={goal.parents} />
@@ -2307,7 +2386,6 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
           </div>
           <div className="gc2__labels">
             <Badge label={goal.type === 'delivery' ? 'Delivery' : 'Discovery'} color={goal.type === 'delivery' ? '#374151' : '#7c3aed'} />
-            {goal.focus && <Badge label={focusLabel(goal.focus)} color={FOCUS_COLORS[goal.focus] || FOCUS_COLORS.DEFAULT} />}
           </div>
           {goal.owners.length > 0 && (
             // Когда имена не вмещаются без обрезания заголовка, остаются только аватары.
@@ -2386,14 +2464,14 @@ function GoalCard({ goal, editMode, onReload, onEditGoal, onExportGoal = () => {
           const isKrDrag = krDrag === kr.id;
           return (
             <div key={kr.id} id={`kr-${kr.id}`}
-              draggable={!!canReorderKR}
-              onMouseDownCapture={canReorderKR ? (e) => { krPressNoDrag.current = !!(e.target.closest && e.target.closest('[data-no-drag]')); } : undefined}
-              onDragStart={canReorderKR ? (e) => { if (krPressNoDrag.current) { e.preventDefault(); return; } e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
+              draggable={!!(canReorderKR && armedKr === kr.id)}
+              onDragStart={canReorderKR ? (e) => { e.stopPropagation(); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', 'kr'); setKrDrag(kr.id); } : undefined}
               onDragOver={canReorderKR ? (e) => { if (krDrag && krDrag !== kr.id) { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; } } : undefined}
               onDrop={canReorderKR ? (e) => { e.preventDefault(); e.stopPropagation(); if (krDrag && krDrag !== kr.id) onReorderKR(krDrag, kr.id); setKrDrag(null); } : undefined}
-              onDragEnd={canReorderKR ? () => setKrDrag(null) : undefined}
+              onDragEnd={canReorderKR ? () => { disarmKr(); setKrDrag(null); } : undefined}
               className={`kr-item${isKrDrag ? ' kr-item--dragging' : ''}${canReorderKR ? ' kr-item--reorderable' : ''}`}>
-              {canReorderKR && <div className="kr-item__drag-handle">⋮⋮</div>}
+              {canReorderKR && <div className="kr-item__drag-handle" title="Перетащите для изменения порядка"
+                onMouseDown={() => armKr(kr.id)}>⋮⋮</div>}
               <KRRow kr={kr} goalId={goal.id} goalTitle={goal.title} editMode={editMode} onReload={onReload}
                 accent={accent} staleDays={staleDays} periodStatus={periodStatus} forecast={forecast}
                 teamId={currentTeamId} periodId={periodId} greenThreshold={greenThreshold} notesOpen={notesOpen} />
@@ -2716,7 +2794,7 @@ function goalFormData(form, teamId) {
   fd.append('priority', form.priority);
   fd.append('weight', String(Number(form.weight) || 0));
   fd.append('work_type', form.type === 'delivery' ? 'Delivery' : 'Discovery');
-  fd.append('focus_type', form.focus);
+  fd.append('direction', form.direction);
   (form.ownerUDIDs || []).forEach(u => fd.append('owner_udids', u));
   fd.append('team_id', String(teamId));
   return fd;
@@ -2851,7 +2929,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
   const wasShared = isEdit && (goal.shareTeams || []).filter(t => t.id !== teamId).length > 0;
   const [form, setForm] = useState(goal
     ? { shareTeamIds: (goal.shareTeams || []).filter(t => t.id !== teamId).map(t => t.id), ...goal, shared: wasShared, ownerUDIDs: (goal.owners || []).map(u => u.udid).filter(Boolean), parents: goal.parents || [] }
-    : { title: '', desc: '', priority: 'P1', weight: Math.max(0, Math.min(20, 100 - usedWeight)), type: 'delivery', focus: 'PROFITABILITY', shared: false, shareTeamIds: [], ownerUDIDs: [], parents: [] });
+    : { title: '', desc: '', priority: 'P1', weight: Math.max(0, Math.min(20, 100 - usedWeight)), type: 'delivery', direction: GOAL_DIRECTION_DEFAULT, shared: false, shareTeamIds: [], ownerUDIDs: [], parents: [] });
   const [saving, setSaving] = useState(false);
   const [confirmUnshare, setConfirmUnshare] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -2911,7 +2989,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             period_id: periodId, title: form.title.trim(), description: form.desc || '',
             priority: form.priority, weight: Number(form.weight) || 0,
             work_type: form.type === 'delivery' ? 'Delivery' : 'Discovery',
-            focus_type: form.focus, owner_udids: form.ownerUDIDs || [],
+            direction: form.direction, owner_udids: form.ownerUDIDs || [],
           });
           if (!created || !created.id) throw new Error('не удалось создать цель');
           newGoalId = created.id;
@@ -2977,7 +3055,7 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
             <FieldLabel hint="Контекст, почему эта цель важна. Не дублируйте название.">Описание</FieldLabel>
             <MarkdownEditor value={form.desc} onChange={v => set('desc', v)} rows={3} placeholder="Дополнительный контекст…" textareaClassName="form-textarea" />
           </div>
-          {/* Приоритет, тип работы и фокус — одной строкой. */}
+          {/* Приоритет, тип работы и направление — одной строкой. */}
           <div className="form-row goal-meta-row">
             <div className="form-col">
               <FieldLabel hint={PRIORITY_HINT}>Приоритет</FieldLabel>
@@ -2996,10 +3074,8 @@ function GoalModal({ goal, teamId, periodId, teamName, periodName, existingGoals
               </div>
             </div>
             <div className="form-col">
-              <FieldLabel hint={FOCUS_HINT_BLOCK}>Фокус</FieldLabel>
-              <select value={form.focus} onChange={e => set('focus', e.target.value)} className="form-select">
-                {FOCUS_OPTIONS.map(f => <option key={f} value={f}>{focusLabel(f)}</option>)}
-              </select>
+              <FieldLabel hint={DIRECTION_HINT_BLOCK}>Направление цели</FieldLabel>
+              <DirectionSelect value={form.direction} onChange={d => set('direction', d)} />
             </div>
           </div>
           <div className="form-group">
@@ -3097,7 +3173,7 @@ function SidebarNode({ node, depth, selectedId, onSelect, expanded, toggle, acce
   ].filter(Boolean).join(' ');
   return (
     <div>
-      <div onClick={() => onSelect(node.id)}
+      <div onClick={() => onSelect(node.id)} data-team-row={node.id}
         className={`sidebar-node__row${isSel ? ' sidebar-node__row--selected' : ''}`}
         style={{ paddingLeft: pad, paddingTop: 5, paddingBottom: 5, paddingRight: 10 }}>
         {ch.length > 0
@@ -3135,6 +3211,8 @@ function App() {
   const [behindMargin, setBehindMargin] = useState(10);
   const [greenThreshold, setGreenThreshold] = useState(80);
   const [isAdmin, setIsAdmin] = useState(false);
+  // Скролл-регион дерева команд: по нему прокручиваем к выбранной команде.
+  const treeRef = useRef(null);
 
   // Read desired initial team+period once from URL (highest prio) then cookie.
   const initialNavRef = useRef(null);
@@ -3293,6 +3371,11 @@ function App() {
   useEffect(() => { if (me && favorites !== null) writeFavorites(me.id, favorites); }, [favorites, me]);
   const onToggleFav = useCallback(id => setFavorites(f => toggleFavorite(f || [], id)), []);
   const selectTeam = useCallback(id => setSelId(id), []);
+  // Выбор команды перерисовывает борд и само дерево (фильтр по выбранной команде,
+  // блок избранного), из-за чего выбранная строка уезжала из видимой части сайдбара.
+  // Возвращаем её на виду — и при переходе из команды в команду, и при открытии
+  // страницы по ссылке/куке, когда выбранная команда лежит глубоко в дереве.
+  useEffect(() => { scrollTreeToSelected(treeRef.current, selId); }, [selId, hierarchy]);
   const handlePeriodChange = id => { setPeriodId(Number(id)); };
 
   const reload = useCallback(() => {
@@ -3414,7 +3497,7 @@ function App() {
           </div>
         }
       >
-        <div className="sidebar__tree">
+        <div className="sidebar__tree" ref={treeRef}>
           {!loading && hierarchy.length === 0
             ? (
               <div className="no-access">

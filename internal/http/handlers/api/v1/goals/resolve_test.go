@@ -33,7 +33,7 @@ func TestResolveGoalComment(t *testing.T) {
 	goalID, err := repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID, Title: "Goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)
@@ -126,7 +126,7 @@ func TestResolveGoalCommentOnSharedGoal(t *testing.T) {
 	goalID, err := repo.Goals.CreateGoal(ctx, scope, goals.GoalInput{
 		TeamID: ownerTeam, PeriodID: periodID, Title: "Goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal: %v", err)

@@ -45,7 +45,7 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 	goalID, err := repo.Goals.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: ownerTeam, PeriodID: periodID, Title: "Shared goal",
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestSharedGoalWeightEditKeepsGoalVisible(t *testing.T) {
 	_ = mw.WriteField("description", "")
 	_ = mw.WriteField("priority", string(domain.PriorityP1))
 	_ = mw.WriteField("work_type", string(domain.WorkTypeDelivery))
-	_ = mw.WriteField("focus_type", string(domain.FocusStability))
+	_ = mw.WriteField("direction", string(domain.DirectionTech))
 	_ = mw.WriteField("weight", "70")
 	_ = mw.WriteField("team_id", fmt.Sprintf("%d", teamB))
 	mw.Close()

@@ -85,7 +85,7 @@ func (f *linkFixture) goal(t *testing.T, teamID int64, title string) int64 {
 	id, err := f.gr.CreateGoal(f.ctx, f.scope, goals.GoalInput{
 		TeamID: teamID, PeriodID: f.period, Title: title,
 		Priority: domain.PriorityP1, Weight: 100,
-		WorkType: domain.WorkTypeDelivery, FocusType: domain.FocusStability,
+		WorkType: domain.WorkTypeDelivery, Direction: domain.DirectionTech,
 	})
 	if err != nil {
 		t.Fatalf("create goal %s: %v", title, err)

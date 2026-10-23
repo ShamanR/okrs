@@ -113,7 +113,7 @@ func TestStoreCRUD(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      50,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "QA",
 	})
 	if err != nil {
@@ -201,7 +201,7 @@ func TestListGoalsByTeamsPeriodIncludesKRDataForSharedGoals(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "owner",
 	})
 	if err != nil {
@@ -304,7 +304,7 @@ func TestTeamDeleteLifecycleAndVisibility(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "Owner",
 	}); err != nil {
 		t.Fatalf("create goal: %v", err)
@@ -415,7 +415,7 @@ func TestKRActivityTimestampsUsedForGoalUpdates(t *testing.T) {
 		Priority:    domain.PriorityP1,
 		Weight:      100,
 		WorkType:    domain.WorkTypeDelivery,
-		FocusType:   domain.FocusStability,
+		Direction:   domain.DirectionTech,
 		OwnerText:   "Owner",
 	})
 	if err != nil {

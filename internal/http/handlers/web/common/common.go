@@ -78,7 +78,7 @@ func ParsePeriodID(r *http.Request) (int64, error) {
 	return ParseID(value)
 }
 
-func ValidateGoalInput(priority domain.Priority, workType domain.WorkType, focusType domain.FocusType, weight int) string {
+func ValidateGoalInput(priority domain.Priority, workType domain.WorkType, direction domain.GoalDirection, weight int) string {
 	if weight < 0 || weight > 100 {
 		return "Вес должен быть 0..100"
 	}
@@ -88,8 +88,8 @@ func ValidateGoalInput(priority domain.Priority, workType domain.WorkType, focus
 	if !ValidWorkType(workType) {
 		return "Неверный тип работы"
 	}
-	if !ValidFocusType(focusType) {
-		return "Неверный тип фокуса"
+	if !direction.Valid() {
+		return "Неверное направление цели"
 	}
 	return ""
 }
@@ -106,15 +106,6 @@ func ValidPriority(p domain.Priority) bool {
 func ValidWorkType(t domain.WorkType) bool {
 	switch t {
 	case domain.WorkTypeDiscovery, domain.WorkTypeDelivery:
-		return true
-	default:
-		return false
-	}
-}
-
-func ValidFocusType(t domain.FocusType) bool {
-	switch t {
-	case domain.FocusProfitability, domain.FocusStability, domain.FocusSpeedEfficiency, domain.FocusTechIndependence:
 		return true
 	default:
 		return false

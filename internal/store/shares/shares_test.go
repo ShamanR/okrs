@@ -28,7 +28,7 @@ func prepareGoal(t *testing.T, pool *pgxpool.Pool, ctx context.Context, suffix s
 	gr := goals.NewGoalRepository(pool, krs.NewKRRepository(pool))
 	goalID, err := gr.CreateGoal(ctx, domain.TenantScope{TenantID: 1}, goals.GoalInput{
 		TeamID: teamID, PeriodID: periodID,
-		Title: "G " + suffix, Priority: domain.PriorityP1, Weight: 100,
+		Title: "G " + suffix, Priority: domain.PriorityP1, Weight: 100, Direction: domain.DirectionProduct,
 	})
 	if err != nil {
 		t.Fatalf("CreateGoal %s: %v", suffix, err)
