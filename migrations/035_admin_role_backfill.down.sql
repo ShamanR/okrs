@@ -1,2 +1,0 @@
--- Irreversible data backfill: which memberships were promoted from the global is_admin flag is
--- not recorded, so there is nothing to safely revert. No-op.

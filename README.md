@@ -511,3 +511,95 @@ It is the source of truth: when code and spec disagree, the spec is the thing to
 through the quarter, how to close it — starting at [docs/index.md](docs/index.md).
 
 Both are written in Russian.
+
+### Database migrations
+
+Migrations live in `migrations/` and are applied by the server at startup, before seeding and
+before it reports ready; a restart with nothing new to apply is a no-op. The image ships them as
+`/app/migrations`.
+
+- One goose file per version: `NNN_name.sql` with `-- +goose Up` and `-- +goose Down` sections,
+  each run in a transaction. Numbers are three digits, consecutive, no gaps or timestamps.
+- Add a migration by creating the next number by hand. Do not run `goose up/down/status` against
+  a live database: the CLI skips the server's history checks and its lock.
+
+Upgrading from a release that used golang-migrate: on first start the server imports
+`schema_migrations` into `goose_db_version` and applies only the missing versions, leaving
+`schema_migrations` as it was. A `dirty` or inconsistent history stops startup; there is no
+automatic force.
+
+- Back up the database first.
+- At version 50, replicas can be updated one at a time, and rolling back to the previous release
+  works.
+- Below 50, stop the old instances before starting the new release: migration 050 also changes
+  the application schema and data. The historical rollback checks at version 49 apply only
+  before migration 050; they do not establish rollback safety after it.
+
+Design and guarantees: `openspec/changes/replace-golang-migrate-with-goose/`. The runner's
+integration tests need PostgreSQL 15; the legacy-runner checks also need
+`LEGACY_MIGRATION_RUNNER` (see `internal/platform/migrations/testdata/legacy/`):
+
+```sh
+MIGRATIONS_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' \
+go test ./internal/platform/migrations ./cmd/server
+```
+
+The Docker image smoke test is run manually; it is not invoked by `go test`.
+Build the image and run it against an isolated PostgreSQL 15 container with host
+`psql` and `pg_dump` available:
+
+```sh
+docker build -t okrs:goose-validation .
+MIGRATIONS_TEST_DATABASE_URL='postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' \
+POSTGRES_CONTAINER=your-postgres-container \
+python3 internal/platform/migrations/testdata/docker-smoke.py
+```
+
+It checks fresh and legacy databases, repeated startup, and `-seed`.
+Set `MIGRATIONS_TEST_IMAGE` to test a different image.
+
+
+For deployments with a separate migration job, the service can use a DML-only PostgreSQL
+login. Apply **all migrations shipped with that service release** before starting it. The
+startup history check still runs, but an up-to-date database needs no DDL or history writes.
+A missing migration or an unimported legacy history prevents readiness; the service does
+not silently skip migration errors.
+
+Use two separate logins and keep the migrator credentials out of the service deployment:
+
+- The migrator owns the database/schema and application objects. A legacy database needs
+  its history imported by `internal/platform/migrations.Up` under this login before the
+  service starts. An external job can call this same runner without starting the server.
+- The service needs `CONNECT`, schema `USAGE`, `SELECT/INSERT/UPDATE/DELETE` on application
+  tables and `USAGE/SELECT` on their sequences. Grant only `SELECT` on `goose_db_version`
+  and, when present, `schema_migrations`; it needs no access to the goose history sequence.
+  It needs no database/schema `CREATE`, `TEMP`, object ownership, or membership in the
+  migrator role. Revoke inherited `PUBLIC` creation/temporary privileges as appropriate.
+- Configure `ALTER DEFAULT PRIVILEGES` for the **actual role that creates the objects** so
+  subsequent migrations grant application DML/sequence access. Exclude migration history
+  from write grants after its initial creation. Set the same `search_path` for both logins;
+  a dedicated application schema is supported. Use a trusted CA and `sslmode=verify-full`
+  in each deployment's `DATABASE_URL`.
+
+The ordinary goose CLI can prepare a fresh database while the service is stopped. It
+cannot import legacy history or take the application's legacy-compatible lock; use the
+shared runner for that transition and avoid concurrent external CLI migrations.
+
+A separate, self-contained enterprise smoke test builds a migration-job helper and runs
+PostgreSQL 15 plus the service image with distinct logins. It requires Docker, Go, Python 3
+and OpenSSL, and removes its disposable containers on exit:
+
+```sh
+docker build -t okrs:goose-validation .
+python3 internal/platform/migrations/testdata/enterprise-smoke.py
+```
+
+Set `OPENSSL` to the OpenSSL executable if it is outside `PATH`, and
+`MIGRATIONS_TEST_IMAGE` to test a different service image. The test enforces TLS certificate
+verification and SCRAM, rejects plaintext and incorrect passwords, and checks clean,
+standard-goose, dedicated-schema, legacy 49/50, and pending-migration deployments. It
+exercises HTTP writes/check-ins/deletes, two replicas and restart persistence under a
+non-root, read-only container with no Linux capabilities. PostgreSQL statements and
+schema/history snapshots verify that prepared service instances issue no DDL or history
+writes. Authentication is disabled only at the HTTP layer to isolate database permissions;
+PostgreSQL authentication and authorization remain enforced.

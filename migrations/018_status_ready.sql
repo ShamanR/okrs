@@ -1,0 +1,13 @@
+-- +goose Up
+-- +goose StatementBegin
+-- Rename status 'validated' → 'ready' to match the new status model:
+-- no_goals → forming → ready → in_progress → closed
+UPDATE team_period_statuses SET status = 'ready' WHERE status = 'validated';
+
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+UPDATE team_period_statuses SET status = 'validated' WHERE status = 'ready';
+
+-- +goose StatementEnd
