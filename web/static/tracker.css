@@ -337,15 +337,17 @@
    строки подписей уже не хватает. Подпись — две строки (значение + процент) по
    ~26px, второй ярус уходит вниз на её высоту с небольшим зазором. */
 .kr-scale__labels--tiers { height: 56px; }
+.kr-scale__lbl { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
+.kr-scale__lbl:first-child { transform: none; align-items: flex-start; }
+.kr-scale__lbl:last-child { transform: translateX(-100%); align-items: flex-end; }
+.kr-scale__lbl--cp b { font-weight: 600; color: #374151; font-size: 10px; }
+/* Модификаторы ярусов стоят после базового .kr-scale__lbl: при равной специфичности
+   top второго яруса должен побеждать базовый top: 0. */
 .kr-scale__lbl--tier1 { top: 28px; }
 /* Подпись, которой не хватило места и на втором ярусе: скрыта, но остаётся в DOM —
    при пересчёте раскладки её ширина снова измеряется. Значение и процент доступны
    по наведению на отметку .kr-scale__cp. */
 .kr-scale__lbl--hidden { visibility: hidden; }
-.kr-scale__lbl { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
-.kr-scale__lbl:first-child { transform: none; align-items: flex-start; }
-.kr-scale__lbl:last-child { transform: translateX(-100%); align-items: flex-end; }
-.kr-scale__lbl--cp b { font-weight: 600; color: #374151; font-size: 10px; }
 .kr-scale__note { font-size: 12px; color: #6b7280; margin-top: 2px; }
 .kr-num-field { flex: 1; }
 .kr-measure-pick { margin-bottom: 14px; }
