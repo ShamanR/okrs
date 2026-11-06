@@ -220,6 +220,21 @@ const BOARDS = {
         ],
         comments: [],
       },
+      {
+        // Демо-данные к change numerical-kr-progress-scale: пороговая метрика с
+        // отметкой в рубль от цели и метрика с близкими отметками 95% и 98% — на них
+        // согласуется вид шкалы по прогрессу, ярусов подписей и пути к цели.
+        id: 203, priority: 'P2', weight: 10, type: 'delivery', direction: 'PRODUCT',
+        title: 'Потери на отказах ниже 3 млн ₽ за квартал', desc: 'Пороговые метрики: прогресс зависит от значения нелинейно.', updatedDaysAgo: 2,
+        owners: [{ name: 'Иван Петров', initials: 'ИП' }], periodId: 3, parentIds: [], childIds: [], shareTeams: null,
+        krs: [
+          { id: 2031, weight: 60, name: 'Потери от отказов в месяц', desc: '', krType: 'NUMERICAL', unit: '₽', start: 5000000, target: 3000000, current: 3000001,
+            checkpoints: [{ value: 3000001, progress_percent: 50 }], healthStatus: 'on_track', updatedDaysAgo: 2 },
+          { id: 2032, weight: 40, name: 'Доля заказов без ручной обработки', desc: '', krType: 'NUMERICAL', unit: '%', start: 0, target: 100, current: 55,
+            checkpoints: [{ value: 50, progress_percent: 95 }, { value: 80, progress_percent: 98 }], healthStatus: 'at_risk', updatedDaysAgo: 1 },
+        ],
+        comments: [],
+      },
     ],
   },
   13: {

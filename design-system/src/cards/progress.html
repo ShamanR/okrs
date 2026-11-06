@@ -2,7 +2,24 @@
 <!-- @dsName Прогресс -->
 <!-- @dsSubtitle Полосы прогресса, прогноз, сводка по кластеру -->
 <!-- @dsCss tokens.css shell.css tracker.css goal_tree.css -->
-<!-- @dsViewport 900x640 -->
+<!-- @dsViewport 900x900 -->
+<section class="ds-section">
+  <div class="ds-section__title">Шкала прогресса — .kr-scale (окно «Обновить прогресс»)</div>
+  <div class="ds-surface" style="max-width: 520px">
+    <div class="kr-scale"><div class="kr-scale__track"><div class="kr-scale__fill" style="width:50%;background:#2563eb"></div></div><span class="kr-scale__cp kr-scale__cp--hit" style="left:50%" title="Промежуточное значение: 3 000 001 ₽ → 50% прогресса"></span><span class="kr-scale__cur" style="left:50%;border-color:#2563eb"></span></div>
+    <div class="kr-scale__labels kr-scale__labels--tiers"><span class="kr-scale__lbl" style="left:0">5 000 000</span><span class="kr-scale__lbl kr-scale__lbl--cp" style="left:50%">3 000 001<b>50%</b></span><span class="kr-scale__lbl" style="left:100%">3 000 000</span></div>
+    <div class="kr-scale__note">Промежуточные значения задают, какой прогресс даёт значение метрики — шкала нелинейная.</div>
+    <div class="ds-item__label" style="margin-top: 8px">пороговая метрика: отметка в рубль от цели стоит на своём проценте, ползунок совпадает с ним</div>
+  </div>
+  <div class="ds-surface" style="max-width: 520px; margin-top: 12px">
+    <div class="kr-scale"><div class="kr-scale__track"><div class="kr-scale__fill" style="width:95.5%;background:#2563eb"></div></div><span class="kr-scale__cp kr-scale__cp--hit" style="left:95%" title="Промежуточное значение: 50 % → 95% прогресса"></span><span class="kr-scale__cp" style="left:98%" title="Промежуточное значение: 80 % → 98% прогресса"></span><span class="kr-scale__cur" style="left:95.5%;border-color:#2563eb"></span></div>
+    <div class="kr-scale__labels kr-scale__labels--tiers"><span class="kr-scale__lbl" style="left:0">0</span><span class="kr-scale__lbl kr-scale__lbl--cp" style="left:95%">50<b>95%</b></span><span class="kr-scale__lbl kr-scale__lbl--cp kr-scale__lbl--tier1" style="left:98%">80<b>98%</b></span><span class="kr-scale__lbl" style="left:100%">100</span></div>
+    <div class="kr-scale__note">Промежуточные значения задают, какой прогресс даёт значение метрики — шкала нелинейная.</div>
+    <div class="ds-item__label" style="margin-top: 8px">близкие отметки 95% и 98%: вторая подпись уходит на второй ярус (.kr-scale__lbl--tier1)</div>
+  </div>
+  <div class="ds-section__note" style="margin-top: 12px">Положение на шкале — процент прогресса, а не доля пути по значению: старт на 0%, цель на 100%, промежуточное значение на своём проценте, ползунок и заливка на текущем прогрессе. Подписи раскладываются в два яруса (.kr-scale__labels--tiers увеличивает высоту); если места не хватает и там, подпись скрывается (.kr-scale__lbl--hidden), а её значение и процент доступны по наведению на отметку. Подписи старта и цели не скрываются. Без промежуточных значений шкала линейна и ярусов нет.</div>
+</section>
+
 <section class="ds-section">
   <div class="ds-section__title">Полоса прогресса — .progress-bar</div>
   <div class="ds-surface">

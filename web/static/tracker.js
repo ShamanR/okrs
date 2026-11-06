@@ -271,26 +271,74 @@ function mapGoalRef(r) {
 // ── KR PROGRESS CALC (client-side for modals) ─────────────────────────────────
 const clampPct = v => Math.max(0, Math.min(100, v));
 
+// Точки интерполяции числового результата: старт = 0%, промежуточные значения,
+// цель = 100%, упорядоченные по значению. Общие для расчёта прогресса и шкалы:
+// без промежуточных значений (null) прогресс линеен, и шкале точки не нужны.
+function krProgressPoints(kr) {
+  const raw = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null && c.value !== undefined);
+  if (!raw.length) return null;
+  const start = Number(kr.start || 0), target = Number(kr.target ?? 100);
+  return [{ value: start, pct: 0 }, ...raw.map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })), { value: target, pct: 100 }]
+    .sort((a, b) => a.value - b.value);
+}
+
+// Неокруглённый прогресс в точке value по точкам krProgressPoints: между соседними —
+// линейная интерполяция, за краями — процент крайней точки. Шкала позиционирует по
+// ней же, поэтому ползунок не может разойтись с процентом.
+function progressAt(points, value) {
+  const cur = Number(value);
+  const first = points[0], last = points[points.length - 1];
+  if (cur <= first.value) return clampPct(first.pct);
+  if (cur >= last.value) return clampPct(last.pct);
+  for (let i = 0; i < points.length - 1; i++) {
+    const l = points[i], r = points[i + 1];
+    if (cur >= l.value && cur <= r.value) {
+      if (r.value === l.value) return clampPct(l.pct);
+      return clampPct(l.pct + (cur - l.value) / (r.value - l.value) * (r.pct - l.pct));
+    }
+  }
+  return 0;
+}
+
+// Зазор между подписями шкалы на одном ярусе.
+const TIER_GAP = 6;
+
+// Раскладка подписей шкалы по ярусам — чистая функция от позиций и ширин.
+// items — подписи в порядке «старт, промежуточные, цель»: pos в процентах, width
+// в пикселях. Возвращает ярус каждой: 0, 1 или -1 (скрыта). Старт выравнивается по
+// левому краю шкалы, цель — по правому: они не скрываются никогда и предустановлены
+// на ярусе 0, промежуточные раскладываются уже вокруг них — по порядку позиции жадно
+// на ярус 0, иначе на ярус 1, иначе скрываются.
+function layoutScaleLabels(items, trackWidth) {
+  const lastIdx = items.length - 1;
+  const rectOf = (it, i) => {
+    if (i === 0) return { l: 0, r: it.width };
+    if (i === lastIdx) return { l: trackWidth - it.width, r: trackWidth };
+    const x = it.pos * trackWidth / 100;
+    return { l: x - it.width / 2, r: x + it.width / 2 };
+  };
+  const fits = (r, placed) => placed.every(q => r.l >= q.r + TIER_GAP || q.l >= r.r + TIER_GAP);
+  const placed = [[rectOf(items[0], 0), rectOf(items[lastIdx], lastIdx)], []];
+  const tiers = new Array(items.length).fill(-1);
+  tiers[0] = 0;
+  tiers[lastIdx] = 0;
+  const order = items.map((_, i) => i).slice(1, -1).sort((a, b) => items[a].pos - items[b].pos);
+  for (const i of order) {
+    const r = rectOf(items[i], i);
+    for (let t = 0; t <= 1; t++) {
+      if (fits(r, placed[t])) { placed[t].push(r); tiers[i] = t; break; }
+    }
+  }
+  return tiers;
+}
+
 function calcKRProgress(kr) {
   if (kr.krType === 'BOOLEAN') return kr.done ? 100 : 0;
   if (kr.krType === 'PROJECT') return Math.min(100, (kr.stages || []).filter(s => s.done).reduce((a, s) => a + (s.weight || 0), 0));
   // NUMERICAL: linear interpolation between points when checkpoints are set, otherwise plain linear.
   const start = Number(kr.start || 0), target = Number(kr.target ?? 100), cur = Number(kr.current || 0);
-  const raw = (kr.checkpoints || []).filter(c => c.value !== '' && c.value !== null && c.value !== undefined);
-  if (raw.length) {
-    const pts = [{ value: start, pct: 0 }, ...raw.map(c => ({ value: Number(c.value), pct: Number(c.progress_percent) })), { value: target, pct: 100 }].sort((a, b) => a.value - b.value);
-    if (cur <= pts[0].value) return clampPct(pts[0].pct);
-    const last = pts[pts.length - 1];
-    if (cur >= last.value) return clampPct(last.pct);
-    for (let i = 0; i < pts.length - 1; i++) {
-      const l = pts[i], r = pts[i + 1];
-      if (cur >= l.value && cur <= r.value) {
-        if (r.value === l.value) return clampPct(l.pct);
-        return clampPct(Math.round(l.pct + (cur - l.value) / (r.value - l.value) * (r.pct - l.pct)));
-      }
-    }
-    return 0;
-  }
+  const points = krProgressPoints(kr);
+  if (points) return Math.round(progressAt(points, cur));
   if (start === target) return cur >= target ? 100 : 0;
   return clampPct(Math.round((cur - start) / (target - start) * 100));
 }
@@ -350,6 +398,17 @@ function fmtNum(n) {
   return parts.join('.');
 }
 function fmtVal(n, unit) { return unit ? `${fmtNum(n)} ${unit}` : fmtNum(n); }
+
+// fmtCompact — краткая запись крупных чисел для свёрнутой подписи: от 10 000 по
+// модулю — разряд «тыс»/«млн»/«млрд» и не больше одного знака после разделителя,
+// незначащий ноль отбрасывается. Разделитель дробной части — точка, как у fmtNum.
+function fmtCompact(n) {
+  const num = Number(n);
+  if (!isFinite(num) || Math.abs(num) < 10000) return fmtNum(n);
+  const abs = Math.abs(num);
+  const [div, suffix] = abs >= 1e9 ? [1e9, 'млрд'] : abs >= 1e6 ? [1e6, 'млн'] : [1e3, 'тыс'];
+  return `${Math.round(num / div * 10) / 10} ${suffix}`;
+}
 
 // groupDigits formats a RAW numeric string with space thousands separators while
 // preserving a trailing dot, fractional digits and a leading minus during typing
@@ -1189,18 +1248,42 @@ function KRProgressModal({ kr, onSave, onClose, accent, goalTitle = '' }) {
   );
 }
 
-// Шкала текущего значения с промежуточными отметками. Положение отметки — доля
-// пути от старта к цели, а её подпись говорит, какой процент прогресса она даёт:
-// из-за промежуточных значений шкала нелинейная, и это видно глазом.
+// Шкала прогресса с промежуточными отметками. Положение отметки — процент прогресса,
+// который даёт её значение: старт на 0%, цель на 100%, промежуточное значение — на
+// своём проценте, поэтому подписи значений идут вдоль шкалы неравномерно — так видна
+// нелинейность. Текущее значение и заливка стоят на текущем прогрессе и совпадают с
+// процентом в окне. Без промежуточных значений прогресс линеен, и шкала совпадает со
+// шкалой по значению.
 function KRScale({ start, target, current, unit, checkpoints, color }) {
   const s0 = Number(start) || 0;
   const t0 = Number(target ?? 100);
   const cur = Number(current) || 0;
-  const posOf = v => t0 === s0 ? 0 : Math.max(0, Math.min(100, (v - s0) / (t0 - s0) * 100));
   const cps = (checkpoints || [])
     .filter(c => c.value !== '' && c.value !== null && c.value !== undefined)
     .map(c => ({ v: Number(c.value), pct: Number(c.progress_percent) }));
+  const points = krProgressPoints({ start, target, checkpoints });
+  const posOf = points ? v => progressAt(points, v) : v => t0 === s0 ? 0 : Math.max(0, Math.min(100, (v - s0) / (t0 - s0) * 100));
   const up = t0 >= s0;
+  const labelsRef = useRef(null);
+  const [tiers, setTiers] = useState(null);
+  // Раскладка подписей по ярусам — по измеренным ширинам в useLayoutEffect, до
+  // отрисовки кадра, без мигания. От текущего значения подписи не зависят, поэтому
+  // cur в зависимостях нет. Ширина шкалы резиновая (width: min(...) у модалки),
+  // поэтому раскладку пересчитывает ResizeObserver на контейнере подписей.
+  const layoutKey = `${s0}|${t0}|${unit || ''}|${cps.map(c => `${c.v}:${c.pct}`).join(',')}`;
+  React.useLayoutEffect(() => {
+    const box = labelsRef.current;
+    if (!box || !cps.length) { setTiers(null); return; }
+    const relayout = () => {
+      const els = [...box.querySelectorAll('.kr-scale__lbl')];
+      const items = els.map(el => ({ pos: parseFloat(el.dataset.pos), width: el.getBoundingClientRect().width }));
+      setTiers(layoutScaleLabels(items, box.clientWidth));
+    };
+    relayout();
+    const ro = new ResizeObserver(relayout);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [layoutKey]);
   return (
     <>
       <div className="kr-scale">
@@ -1216,14 +1299,19 @@ function KRScale({ start, target, current, unit, checkpoints, color }) {
         ))}
         <span className="kr-scale__cur" style={{ left: `${posOf(cur)}%`, borderColor: color }} />
       </div>
-      <div className="kr-scale__labels">
-        <span className="kr-scale__lbl" style={{ left: 0 }}>{fmtNum(s0)}</span>
-        {cps.map((c, i) => (
-          <span key={i} className="kr-scale__lbl kr-scale__lbl--cp" style={{ left: `${posOf(c.v)}%` }}>
-            {fmtNum(c.v)}<b>{c.pct}%</b>
-          </span>
-        ))}
-        <span className="kr-scale__lbl" style={{ left: '100%' }}>{fmtNum(t0)}</span>
+      <div className={`kr-scale__labels${cps.length ? ' kr-scale__labels--tiers' : ''}`} ref={labelsRef}>
+        <span className="kr-scale__lbl" data-pos={0} style={{ left: 0 }}>{fmtNum(s0)}</span>
+        {cps.map((c, i) => {
+          const tier = tiers ? tiers[i + 1] : 0;
+          return (
+            <span key={i}
+              className={`kr-scale__lbl kr-scale__lbl--cp${tier === 1 ? ' kr-scale__lbl--tier1' : ''}${tier < 0 ? ' kr-scale__lbl--hidden' : ''}`}
+              data-pos={posOf(c.v)} style={{ left: `${posOf(c.v)}%` }}>
+              {fmtNum(c.v)}<b>{c.pct}%</b>
+            </span>
+          );
+        })}
+        <span className="kr-scale__lbl" data-pos={100} style={{ left: '100%' }}>{fmtNum(t0)}</span>
       </div>
       {cps.length > 0 && (
         <div className="kr-scale__note">Промежуточные значения задают, какой прогресс даёт значение метрики — шкала нелинейная.</div>
@@ -1507,19 +1595,27 @@ function krMeasureTip(kr) {
   // записанном значении). Поэтому утверждаем только при явном false: если признака в
   // ответе нет, подсказка про обновления молчит.
   const neverUpdated = kr.currentRecorded === false;
+  const cps = kr.checkpoints || [];
   const lines = [
     `Было: ${fmtVal(start, kr.unit)}`,
     neverUpdated
       ? `Стало: ${fmtVal(cur, kr.unit)} — прогресс ещё не обновляли`
-      : `Стало: ${fmtVal(cur, kr.unit)}`,
+      : cps.length
+        // kr.progress — то же число, что в строке результата: подсказка не может
+        // разойтись со строкой, под которой показана.
+        ? `Стало: ${fmtVal(cur, kr.unit)} · ${kr.progress}% прогресса`
+        : `Стало: ${fmtVal(cur, kr.unit)}`,
     `Цель: ${fmtVal(target, kr.unit)}`,
   ];
-  const cps = kr.checkpoints || [];
   if (cps.length) {
-    // По направлению метрики: подсказка читается как путь от старта к цели.
+    // Путь к цели: точки от старта к цели по направлению метрики, каждая с процентом,
+    // который она даёт. Старт и цель — вокруг списка промежуточных значений и в его
+    // лимит не входят.
     const ordered = [...cps].sort((a, b) => (up ? a.value - b.value : b.value - a.value));
-    lines.push('', 'Промежуточные значения:');
-    lines.push(...tipList(ordered.map(c => `${fmtVal(c.value, kr.unit)} → ${c.progress_percent}% прогресса`)));
+    lines.push('', 'Путь к цели:');
+    lines.push(`0% — ${fmtVal(start, kr.unit)} · старт`);
+    lines.push(...tipList(ordered.map(c => `${c.progress_percent}% — ${fmtVal(c.value, kr.unit)}`)));
+    lines.push(`100% — ${fmtVal(target, kr.unit)} · цель`);
     lines.push('Прогресс зависит от значения нелинейно.');
   }
   return { title: `Метрика · ${up ? 'повысить' : 'снизить'}`, body: lines.join('\n') };
@@ -1536,10 +1632,14 @@ function KRTargetLabel({ kr }) {
   const target = Number(kr.target) || 0;
   const cur = Number(kr.current) || 0;
   const up = target >= start;
+  // Краткая запись крупных чисел; если она не различает текущее и целевое значения
+  // («3 млн → 3 млн»), оба числа выводятся полностью.
+  const curCompact = fmtCompact(cur), targetCompact = fmtCompact(target);
+  const full = cur !== target && curCompact === targetCompact;
   return (
     <span className="kr-target__val">
       <span className={`kr-target__dir kr-target__dir--${up ? 'up' : 'down'}`}>{up ? '↑' : '↓'}</span>
-      {fmtNum(cur)} → {fmtNum(target)}{kr.unit ? ` ${kr.unit}` : ''}
+      {full ? fmtNum(cur) : curCompact} → {full ? fmtNum(target) : targetCompact}{kr.unit ? ` ${kr.unit}` : ''}
     </span>
   );
 }
