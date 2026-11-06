@@ -1268,14 +1268,21 @@ function KRScale({ start, target, current, unit, checkpoints, color }) {
   const [tiers, setTiers] = useState(null);
   // Раскладка подписей по ярусам — по измеренным ширинам в useLayoutEffect, до
   // отрисовки кадра, без мигания. От текущего значения подписи не зависят, поэтому
-  // cur в зависимостях нет; ширина окна фиксирована (.modal-box--w480).
+  // cur в зависимостях нет. Ширина шкалы резиновая (width: min(...) у модалки),
+  // поэтому раскладку пересчитывает ResizeObserver на контейнере подписей.
   const layoutKey = `${s0}|${t0}|${unit || ''}|${cps.map(c => `${c.v}:${c.pct}`).join(',')}`;
   React.useLayoutEffect(() => {
     const box = labelsRef.current;
     if (!box || !cps.length) { setTiers(null); return; }
-    const els = [...box.querySelectorAll('.kr-scale__lbl')];
-    const items = els.map(el => ({ pos: parseFloat(el.dataset.pos), width: el.getBoundingClientRect().width }));
-    setTiers(layoutScaleLabels(items, box.clientWidth));
+    const relayout = () => {
+      const els = [...box.querySelectorAll('.kr-scale__lbl')];
+      const items = els.map(el => ({ pos: parseFloat(el.dataset.pos), width: el.getBoundingClientRect().width }));
+      setTiers(layoutScaleLabels(items, box.clientWidth));
+    };
+    relayout();
+    const ro = new ResizeObserver(relayout);
+    ro.observe(box);
+    return () => ro.disconnect();
   }, [layoutKey]);
   return (
     <>

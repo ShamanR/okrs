@@ -2835,7 +2835,9 @@ function notifPanel() {
 
 // Раскладка подписей шкалы по ярусам после вставки окна: ширины подписей известны
 // только в DOM. В приложении то же делает KRScale через useLayoutEffect, здесь —
-// один проход после renderOverlays.
+// один проход после renderOverlays плюс ResizeObserver на случай ресайза окна:
+// ширина шкалы резиновая (width: min(...) у модалки), ярусы надо пересчитывать.
+let krScaleResizeObserver = null;
 function layoutKRScaleLabels() {
   const box = document.querySelector('.kr-scale__labels--tiers');
   if (!box) return;
@@ -2848,11 +2850,18 @@ function layoutKRScaleLabels() {
 }
 
 function renderOverlays() {
+  if (krScaleResizeObserver) { krScaleResizeObserver.disconnect(); krScaleResizeObserver = null; }
   const el = document.getElementById('overlays');
   if (state.notifOpen) { el.innerHTML = notifPanel(); return; }
   const m = state.modal;
   if (!m) { el.innerHTML = ''; return; }
-  if (m.type === 'kr') { el.innerHTML = krModal(m); layoutKRScaleLabels(); return; }
+  if (m.type === 'kr') {
+    el.innerHTML = krModal(m);
+    layoutKRScaleLabels();
+    const box = document.querySelector('.kr-scale__labels--tiers');
+    if (box) { krScaleResizeObserver = new ResizeObserver(layoutKRScaleLabels); krScaleResizeObserver.observe(box); }
+    return;
+  }
   if (m.type === 'kredit') { el.innerHTML = krEditModal(m); return; }
   if (m.type === 'export') { el.innerHTML = exportModal(m); return; }
   if (m.type === 'transfer') { el.innerHTML = transferModal(m); return; }
