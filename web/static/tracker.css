@@ -333,6 +333,15 @@
 .kr-scale__cp--hit { background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
 .kr-scale__cur { position: absolute; top: 0; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #fff; border: 3px solid; box-sizing: border-box; box-shadow: 0 1px 3px rgba(0,0,0,.18); }
 .kr-scale__labels { position: relative; height: 30px; margin: 4px 6px 0; }
+/* С промежуточными значениями подписи раскладываются по двум ярусам: высоты одной
+   строки подписей уже не хватает. Подпись — две строки (значение + процент) по
+   ~26px, второй ярус уходит вниз на её высоту с небольшим зазором. */
+.kr-scale__labels--tiers { height: 56px; }
+.kr-scale__lbl--tier1 { top: 28px; }
+/* Подпись, которой не хватило места и на втором ярусе: скрыта, но остаётся в DOM —
+   при пересчёте раскладки её ширина снова измеряется. Значение и процент доступны
+   по наведению на отметку .kr-scale__cp. */
+.kr-scale__lbl--hidden { visibility: hidden; }
 .kr-scale__lbl { position: absolute; top: 0; transform: translateX(-50%); font-size: 11px; color: #6b7280; white-space: nowrap; font-variant-numeric: tabular-nums; display: flex; flex-direction: column; align-items: center; line-height: 1.25; }
 .kr-scale__lbl:first-child { transform: none; align-items: flex-start; }
 .kr-scale__lbl:last-child { transform: translateX(-100%); align-items: flex-end; }

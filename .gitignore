@@ -11,5 +11,7 @@ design-system/dist/
 .design-sync/
 .agents/
 .claude/
+.kimi-code/
 .gortex/
 .opencode/
+GEMINI.md
