@@ -51,8 +51,10 @@ An empty tracker is not very interesting, so load the demo data:
 docker compose exec -T db psql -U postgres -d okrs < seed_demo.sql
 ```
 
-That script starts with `TRUNCATE`, so it is safe to re-run — it replaces the contents rather than
-adding to them. Never point it at a database you care about. It gives you 32 teams across two
+The script is a thin wrapper over the `seed_demo_data(tenant_id)` SQL function (migration 051) —
+the same function the app calls when a new tenant is created. It is safe to re-run: the function
+deletes its own previous data for that tenant first. Still, its contract is demo tenants only —
+never point it at a database you care about. It gives you 32 teams across two
 parallel hierarchies, nine periods (annual and quarterly), 31 goals with 60 key results of all three
 kinds, shared goals, a discussion thread with a resolved remark, a decomposition tree and an
 activity feed.
@@ -92,7 +94,8 @@ docker compose down -v                                               # drop the 
 ```
 
 Beware that `-seed` is idempotent for team rows but not for goals, so a second run against the same
-database gives you the goals twice. `seed_demo.sql` truncates first and is safe to repeat.
+database gives you the goals twice. `seed_demo.sql` removes its own previous data first and is safe
+to repeat.
 
 ## Quick start
 
@@ -497,8 +500,8 @@ numeric ids.
   binary. `WEB_ASSETS_DEV=1` swaps in the development React build for readable stack traces.
 - `go test ./...` runs everything. Tests that need a database use testcontainers and skip
   themselves when Docker is unavailable.
-- If you change a table, keep `seed_demo.sql` working — it is the dataset the screenshots and the
-  demo rely on.
+- If you change a table, keep the `seed_demo_data` function (migration 051, wrapped by
+  `seed_demo.sql`) working — it is the dataset the screenshots and the demo rely on.
 
 ### Documentation and specifications
 

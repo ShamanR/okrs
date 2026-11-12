@@ -59,7 +59,7 @@ func TestAttachMemberAppliesDefaultAccess(t *testing.T) {
 	)
 	grantRepo := grants.NewGrantRepository(pool)
 	prov := provisioning.New(
-		tnRepo, tenants.NewTenantCache(tnRepo),
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grantRepo), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
 	)
@@ -105,7 +105,7 @@ func TestUpdateTenantInvalidatesCache(t *testing.T) {
 	)
 	grantRepo := grants.NewGrantRepository(pool)
 	prov := provisioning.New(
-		tnRepo, tnCache,
+		pool, tnRepo, tnCache,
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grantRepo), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
 	)
@@ -156,7 +156,7 @@ func TestSetMemberRoleLastAdminGuard(t *testing.T) {
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	prov := provisioning.New(
-		tnRepo, tenants.NewTenantCache(tnRepo),
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
 	)
@@ -203,7 +203,7 @@ func TestSetSystemAdminGuards(t *testing.T) {
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	prov := provisioning.New(
-		tnRepo, tenants.NewTenantCache(tnRepo),
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
 	)
@@ -263,7 +263,7 @@ func TestProvisioningRemoveMember(t *testing.T) {
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := provisioning.New(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grantsCache, newOnboardingForTest(t, pool), users.NewUserRepository(pool))
+	prov := provisioning.New(pool, tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grantsCache, newOnboardingForTest(t, pool), users.NewUserRepository(pool))
 
 	scope := domain.TenantScope{TenantID: 1}
 	var teamID int64
@@ -301,7 +301,7 @@ func TestProvisioningDenyMember(t *testing.T) {
 		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
-	prov := provisioning.New(tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool))
+	prov := provisioning.New(pool, tnRepo, tenants.NewTenantCache(tnRepo), memRepo, memberships.NewMembershipCache(memRepo), settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool))
 
 	if _, err := memRepo.Upsert(ctx, domain.Membership{UserID: 1, TenantID: 1, Role: domain.RoleUser, Status: domain.MembershipRequested}); err != nil {
 		t.Fatalf("seed requested: %v", err)
@@ -328,7 +328,7 @@ func TestProvisioningLifecycle(t *testing.T) {
 		settings.NewSystemSettingsCache(sysRepo), sysRepo,
 	)
 	prov := provisioning.New(
-		tnRepo, tenants.NewTenantCache(tnRepo),
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
 	)
@@ -374,5 +374,85 @@ func TestProvisioningLifecycle(t *testing.T) {
 	got, _ = tnRepo.GetByID(ctx, tn.ID)
 	if got.Status != domain.TenantActive {
 		t.Fatalf("status = %q, want active", got.Status)
+	}
+}
+
+func TestCreateTenantSeedsDemo(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tnRepo := tenants.NewTenantRepository(pool)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := settingssvc.New(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	prov := provisioning.New(
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
+		memRepo, memberships.NewMembershipCache(memRepo),
+		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
+	)
+
+	tn, err := prov.CreateTenant(ctx, "Demo Co", "demo-co")
+	if err != nil {
+		t.Fatalf("create tenant: %v", err)
+	}
+
+	var teams, goals int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM teams WHERE tenant_id = $1`, tn.ID).Scan(&teams); err != nil {
+		t.Fatalf("count teams: %v", err)
+	}
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM goals WHERE tenant_id = $1`, tn.ID).Scan(&goals); err != nil {
+		t.Fatalf("count goals: %v", err)
+	}
+	if teams == 0 || goals == 0 {
+		t.Fatalf("demo not seeded: teams=%d goals=%d", teams, goals)
+	}
+
+	// Периоды актуальны на дату создания: текущий год и его текущий квартал присутствуют.
+	var yearName string
+	if err := pool.QueryRow(ctx,
+		`SELECT name FROM periods WHERE tenant_id = $1 AND start_date <= now() AND end_date >= now()
+		 AND name LIKE 'Y%'`, tn.ID).Scan(&yearName); err != nil {
+		t.Fatalf("current year period: %v", err)
+	}
+	var quarterName string
+	if err := pool.QueryRow(ctx,
+		`SELECT name FROM periods WHERE tenant_id = $1 AND start_date <= now() AND end_date >= now()
+		 AND name LIKE 'Q%'`, tn.ID).Scan(&quarterName); err != nil {
+		t.Fatalf("current quarter period: %v", err)
+	}
+}
+
+func TestCreateTenantSeedingFailureRollsBack(t *testing.T) {
+	pool, cleanup := testutil.SetupDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	tnRepo := tenants.NewTenantRepository(pool)
+	memRepo := memberships.NewMembershipRepository(pool)
+	tsRepo := tenantsettings.NewTenantSettingsRepository(pool)
+	sysRepo := settings.NewSettingsRepository(pool)
+	settingsSvc := settingssvc.New(
+		tenantsettings.NewTenantSettingsCache(tsRepo), tsRepo,
+		settings.NewSystemSettingsCache(sysRepo), sysRepo,
+	)
+	prov := provisioning.New(
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
+		memRepo, memberships.NewMembershipCache(memRepo),
+		settingsSvc, grants.NewGrantsCache(grants.NewGrantRepository(pool)), newOnboardingForTest(t, pool), users.NewUserRepository(pool),
+	)
+
+	// Ломаем сидер: функции нет → вызов падает.
+	if _, err := pool.Exec(ctx, `DROP FUNCTION seed_demo_data(bigint)`); err != nil {
+		t.Fatalf("drop function: %v", err)
+	}
+	if _, err := prov.CreateTenant(ctx, "Rollback Co", "rollback-co"); err == nil {
+		t.Fatalf("expected seeding error, got nil")
+	}
+	// Тенант откачен: slug свободен, записи нет.
+	if _, err := tnRepo.GetBySlug(ctx, "rollback-co"); !errors.Is(err, tenants.ErrNotFound) {
+		t.Fatalf("tenant should be rolled back, got %v", err)
 	}
 }

@@ -68,10 +68,11 @@ var reservedTenantSlugs = map[string]bool{
 	"assets": true, "mail": true, "auth": true, "system": true,
 }
 
-// ValidTenantSlug enforces the slug grammar ^[a-z0-9]([a-z0-9-]{0,30}[a-z0-9])?$
-// (lowercase, 2..32 chars, no leading/trailing dash) and rejects reserved subdomains.
+// ValidTenantSlug enforces the slug grammar ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$
+// (lowercase, 2..63 chars, no leading/trailing dash) and rejects reserved subdomains.
+// The 63-char ceiling is the DNS label limit: slugs take part in subdomain routing.
 func ValidTenantSlug(s string) bool {
-	if len(s) < 2 || len(s) > 32 || reservedTenantSlugs[s] {
+	if len(s) < 2 || len(s) > 63 || reservedTenantSlugs[s] {
 		return false
 	}
 	for i := 0; i < len(s); i++ {

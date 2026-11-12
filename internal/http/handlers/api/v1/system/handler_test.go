@@ -62,7 +62,7 @@ func buildRouter(t *testing.T, user *domain.User) (*chi.Mux, *tenants.TenantRepo
 		tnRepo, settingsSvc, grantsCache, nil,
 	)
 	prov := provisioningsvc.New(
-		tnRepo, tenants.NewTenantCache(tnRepo),
+		pool, tnRepo, tenants.NewTenantCache(tnRepo),
 		memRepo, memberships.NewMembershipCache(memRepo),
 		settingsSvc, grantsCache, onboardingSvc, userRepo,
 	)
@@ -235,8 +235,16 @@ func TestSystemListMembersAndEntitlements(t *testing.T) {
 	}
 	var members []map[string]any
 	_ = json.NewDecoder(w.Body).Decode(&members)
-	if len(members) != 1 || members[0]["role"] != "admin" || members[0]["status"] != "active" {
-		t.Fatalf("members = %v", members)
+	// Демо-наполнение добавляет заявку demo:requester (status requested) — ищем
+	// именно прикреплённого активного админа.
+	var found bool
+	for _, m := range members {
+		if m["user_id"] == float64(1) && m["role"] == "admin" && m["status"] == "active" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("active admin member not found in %v", members)
 	}
 
 	w = httptest.NewRecorder()
