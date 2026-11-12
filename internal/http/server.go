@@ -289,6 +289,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 		onboardingEvents,
 	)
 	provisioning := provisioningsvc.New(
+		st.DB,
 		st.Tenants, tenantCache,
 		st.Memberships, membershipCache,
 		settingsSvc, grantsCache, onboardingSvc, st.Users,

@@ -28,12 +28,28 @@ func NewTenantRepository(db *pgxpool.Pool) *TenantRepository {
 	return &TenantRepository{db: db}
 }
 
+// queryRower is satisfied by both *pgxpool.Pool and pgx.Tx, so repository methods
+// can run standalone or inside a caller-owned transaction.
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 func (r *TenantRepository) Create(ctx context.Context, slug, name string) (*domain.Tenant, error) {
+	return createTenant(ctx, r.db, slug, name)
+}
+
+// CreateTx is Create inside a caller-owned transaction: the caller decides the
+// transaction boundary (e.g. tenant creation + demo seeding must be atomic).
+func (r *TenantRepository) CreateTx(ctx context.Context, tx pgx.Tx, slug, name string) (*domain.Tenant, error) {
+	return createTenant(ctx, tx, slug, name)
+}
+
+func createTenant(ctx context.Context, q queryRower, slug, name string) (*domain.Tenant, error) {
 	if !domain.ValidTenantSlug(slug) {
 		return nil, ErrInvalidSlug
 	}
 	var t domain.Tenant
-	err := r.db.QueryRow(ctx, `
+	err := q.QueryRow(ctx, `
 		INSERT INTO tenants (slug, name) VALUES ($1, $2)
 		RETURNING id, slug, name, status, created_at, deleted_at`,
 		slug, name).Scan(&t.ID, &t.Slug, &t.Name, &t.Status, &t.CreatedAt, &t.DeletedAt)
@@ -44,6 +60,17 @@ func (r *TenantRepository) Create(ctx context.Context, slug, name string) (*doma
 		return nil, fmt.Errorf("create tenant: %w", err)
 	}
 	return &t, nil
+}
+
+// SeedDemoTx populates the tenant with the demo dataset via the seed_demo_data SQL
+// function (migration 051). It MUST run inside the tenant-creation transaction so a
+// seeding failure rolls the tenant back instead of leaving an empty tenant with a
+// taken slug.
+func (r *TenantRepository) SeedDemoTx(ctx context.Context, tx pgx.Tx, tenantID int64) error {
+	if _, err := tx.Exec(ctx, `SELECT seed_demo_data($1)`, tenantID); err != nil {
+		return fmt.Errorf("seed demo data: %w", err)
+	}
+	return nil
 }
 
 func (r *TenantRepository) GetByID(ctx context.Context, id int64) (*domain.Tenant, error) {

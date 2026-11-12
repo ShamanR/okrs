@@ -9,6 +9,8 @@ import (
 	"okrs/internal/service/settings"
 	"okrs/internal/store/memberships"
 	"okrs/internal/store/tenants"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ErrLastAdmin is returned when an operation would leave a tenant with zero active admins.
@@ -42,6 +44,7 @@ type SystemAdminStore interface {
 }
 
 type Service struct {
+	db            *pgxpool.Pool
 	tenants       *tenants.TenantRepository
 	tenantCache   *tenants.TenantCache
 	members       *memberships.MembershipRepository
@@ -53,12 +56,14 @@ type Service struct {
 }
 
 func New(
+	db *pgxpool.Pool,
 	tnRepo *tenants.TenantRepository, tenantCache *tenants.TenantCache,
 	memRepo *memberships.MembershipRepository, memberCache *memberships.MembershipCache,
 	settings *settings.Service, grants GrantRemover, defaultAccess DefaultAccessApplier,
 	users SystemAdminStore,
 ) *Service {
 	return &Service{
+		db:            db,
 		tenants:       tnRepo,
 		tenantCache:   tenantCache,
 		members:       memRepo,
@@ -70,9 +75,26 @@ func New(
 	}
 }
 
-// CreateTenant provisions a new tenant (slug validated by the repository).
+// CreateTenant provisions a new tenant (slug validated by the repository) and seeds it
+// with the demo dataset (periods relative to the creation date, teams, goals, KRs).
+// Both run in one transaction: a seeding failure rolls the tenant back, freeing the slug.
 func (p *Service) CreateTenant(ctx context.Context, name, slug string) (*domain.Tenant, error) {
-	return p.tenants.Create(ctx, slug, name)
+	tx, err := p.db.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	t, err := p.tenants.CreateTx(ctx, tx, slug, name)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.tenants.SeedDemoTx(ctx, tx, t.ID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return t, nil
 }
 
 // RenameTenant changes only the tenant's display name (tenant-admin path) and invalidates the cache.
