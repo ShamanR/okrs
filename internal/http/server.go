@@ -81,7 +81,6 @@ import (
 	periodsactivate "okrs/internal/http/handlers/api/v1/periods/teams/activate"
 	periodsclose "okrs/internal/http/handlers/api/v1/periods/teams/close"
 	sessionmemberships "okrs/internal/http/handlers/api/v1/session/memberships"
-	sessiontenant "okrs/internal/http/handlers/api/v1/session/tenant"
 	sessiontenants "okrs/internal/http/handlers/api/v1/session/tenants"
 	sysnotifchan "okrs/internal/http/handlers/api/v1/system/notificationchannels"
 	syssettings "okrs/internal/http/handlers/api/v1/system/settings"
@@ -297,7 +296,7 @@ func NewServer(st *store.Store, grantsCache *grants.GrantsCache, logger *slog.Lo
 
 	resolver := opts.Resolver
 	if resolver == nil {
-		resolver = auth.NewTenantResolver(auth.NewSessionStrategy(tenantCache, membershipCache))
+		resolver = auth.NewTenantResolver(auth.NewHeaderStrategy(tenantCache, membershipCache))
 	}
 	ent := opts.Entitlements
 	if ent == nil {
@@ -427,8 +426,8 @@ func (s *Server) Routes() http.Handler {
 			weblogin.RegisterRoutes(r, weblogin.New(s.auth, s.tmpl, s.logger))
 		}
 		webauthstart.RegisterRoutes(r, webauthstart.New(s.auth))
-		webauthcallback.RegisterRoutes(r, webauthcallback.New(s.auth, s.logger, s.onboarding, s.store.Sessions))
-		webinvite.RegisterRoutes(r, webinvite.New(s.onboarding, s.store.Sessions))
+		webauthcallback.RegisterRoutes(r, webauthcallback.New(s.auth, s.logger, s.onboarding))
+		webinvite.RegisterRoutes(r, webinvite.New(s.onboarding))
 		weblogout.RegisterRoutes(r, weblogout.New(s.auth))
 
 		// Legacy redirects for bookmarks.
@@ -453,6 +452,17 @@ func (s *Server) Routes() http.Handler {
 
 			webnoaccess.RegisterRoutes(r, webnoaccess.New(s.noMembershipName))
 
+			// SPA-shell'ы — tenant-agnostic: страница одинакова для всех пространств,
+			// контекст резолвит клиент после загрузки (X-Tenant-ID на API-запросах).
+			// Поэтому шеллы живут вне membership-гейта, вместе с no-access: иначе
+			// пользователь без членства (или с чужим сохранённым пространством) не
+			// получил бы даже каркас приложения. Гейты остаются на API и admin API.
+			shellH := shell.New(s.tmpl, func() shell.Data { return shell.Data{Dev: s.assetsDev} })
+			shellH.RegisterShells(r, shell.Public)
+			shellH.RegisterShells(r, shell.TenantAdmin)
+			shell.RegisterRedirects(r, shell.MemberRedirects)
+			shell.RegisterRedirects(r, shell.AdminRedirects)
+
 			// /api/v1/me is global identity ("who am I"), not tenant data — available to any
 			// authenticated user, including one without a membership (so the no-access shell
 			// can render the shared header the same way every other page does).
@@ -460,20 +470,20 @@ func (s *Server) Routes() http.Handler {
 
 			joinrequest.RegisterRoutes(r, joinrequest.New(s.onboarding))
 
-			// Tenant switcher: authenticated but NOT membership-gated, so a user whose active
-			// tenant is suspended (or where they lost membership) can still list their tenants
-			// and switch to one they're active in — otherwise RequireMembership would lock them
-			// out before they could recover. These handlers key off the user + explicit target,
-			// not the resolved active tenant.
+			// Tenant switcher: authenticated but NOT membership-gated, so a user whose
+			// stored tenant is suspended (or where they lost membership) can still list
+			// their tenants and pick one they're active in — otherwise RequireMembership
+			// would lock them out before they could recover. These handlers key off the
+			// user + explicit target, not the resolved active tenant. The switch itself
+			// is client state (per-tab storage + X-Tenant-ID), there is no server endpoint.
 			sessiontenants.RegisterRoutes(r, sessiontenants.New(s.store.Memberships, s.store.Tenants))
-			sessiontenant.RegisterRoutes(r, sessiontenant.New(s.store.Memberships, s.store.Tenants, s.store.Sessions))
 			sessionmemberships.RegisterRoutes(r, sessionmemberships.New(s.store.Memberships, s.onboarding))
 
 			// Hand-off for links that left the product: it makes the notification's
 			// space active before walking to the page. Not membership-gated for the
 			// same reason as the switcher above — the recipient may be sitting in a
 			// space they lost, and this is the route back to the right one.
-			openlink.RegisterRoutes(r, openlink.New(s.store.Memberships, s.store.Sessions))
+			openlink.RegisterRoutes(r, openlink.New(s.store.Memberships))
 
 			// Authed control-plane mounts (SaaS): authed but not membership-gated
 			// (e.g. self-service "create organization"). nil in OSS.
@@ -518,12 +528,6 @@ func (s *Server) Routes() http.Handler {
 func (s *Server) registerWebRoutes(r chi.Router, deps common.Dependencies) {
 	d := s.deps
 
-	// SPA-shell'ы и legacy-редиректы — декларативные таблицы в handlers/web/shell,
-	// а не по пакету на URI: в них нет логики, только «URI → шаблон» и «URI → target».
-	shellH := shell.New(s.tmpl, func() shell.Data { return shell.Data{Dev: s.assetsDev} })
-	shellH.RegisterShells(r, shell.Public)
-	shell.RegisterRedirects(r, shell.MemberRedirects)
-
 	// Goal delete is still used by tracker.js via the legacy form endpoint.
 	webgoalsdelete.RegisterRoutes(r, webgoalsdelete.New(deps, d.GoalUC))
 }
@@ -535,11 +539,6 @@ func (s *Server) registerAdminRoutes(r chi.Router, deps common.Dependencies) {
 		if !s.auth.Disabled() {
 			r.Use(auth.RequireTenantAdminMiddleware)
 		}
-
-		// Admin-shell'ы и legacy deep-links — те же таблицы (см. handlers/web/shell).
-		adminShellH := shell.New(s.tmpl, func() shell.Data { return shell.Data{Dev: s.assetsDev} })
-		adminShellH.RegisterShells(r, shell.TenantAdmin)
-		shell.RegisterRedirects(r, shell.AdminRedirects)
 
 		// Admin user API.
 		// /api/v1/admin/** — пакет на URI-сегмент.

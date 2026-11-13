@@ -23,7 +23,7 @@ func (f fakeMembers) ListByUser(_ context.Context, uid int64) ([]domain.Membersh
 	return f.m[uid], nil
 }
 
-func TestResolvePrefersSessionActiveTenant(t *testing.T) {
+func headerStrategyFixture() (fakeTenants, fakeMembers) {
 	tenants := fakeTenants{m: map[int64]*domain.Tenant{
 		1: {ID: 1, Slug: "default", Status: domain.TenantActive},
 		2: {ID: 2, Slug: "acme", Status: domain.TenantActive},
@@ -31,12 +31,15 @@ func TestResolvePrefersSessionActiveTenant(t *testing.T) {
 	members := fakeMembers{m: map[int64][]domain.Membership{
 		10: {{UserID: 10, TenantID: 1, Role: domain.RoleUser}, {UserID: 10, TenantID: 2, Role: domain.RoleAdmin}},
 	}}
-	r := NewTenantResolver(NewSessionStrategy(tenants, members))
-	user := &domain.User{ID: 10}
-	active := int64(2)
-	sess := &domain.AuthSession{ActiveTenantID: &active}
+	return tenants, members
+}
 
-	tn, role, err := r.Resolve(context.Background(), user, sess)
+func TestResolveHeaderTenantWins(t *testing.T) {
+	tenants, members := headerStrategyFixture()
+	r := NewTenantResolver(NewHeaderStrategy(tenants, members))
+	ctx := WithHeaderTenantID(context.Background(), 2)
+
+	tn, role, err := r.Resolve(ctx, &domain.User{ID: 10}, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -45,12 +48,22 @@ func TestResolvePrefersSessionActiveTenant(t *testing.T) {
 	}
 }
 
-func TestResolveFallsBackToFirstMembership(t *testing.T) {
+func TestResolveForeignHeaderTenantNotResolved(t *testing.T) {
+	tenants, members := headerStrategyFixture()
+	r := NewTenantResolver(NewHeaderStrategy(tenants, members))
+	ctx := WithHeaderTenantID(context.Background(), 77)
+
+	if _, _, err := r.Resolve(ctx, &domain.User{ID: 10}, nil); !errors.Is(err, ErrNoMembership) {
+		t.Fatalf("want ErrNoMembership, got %v", err)
+	}
+}
+
+func TestResolveSingleMembershipWithoutHeader(t *testing.T) {
 	tenants := fakeTenants{m: map[int64]*domain.Tenant{1: {ID: 1, Status: domain.TenantActive}}}
 	members := fakeMembers{m: map[int64][]domain.Membership{10: {{UserID: 10, TenantID: 1, Role: domain.RoleUser}}}}
-	r := NewTenantResolver(NewSessionStrategy(tenants, members))
+	r := NewTenantResolver(NewHeaderStrategy(tenants, members))
 
-	tn, role, err := r.Resolve(context.Background(), &domain.User{ID: 10}, &domain.AuthSession{})
+	tn, role, err := r.Resolve(context.Background(), &domain.User{ID: 10}, nil)
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -59,9 +72,18 @@ func TestResolveFallsBackToFirstMembership(t *testing.T) {
 	}
 }
 
+func TestResolveSeveralMembershipsWithoutHeader(t *testing.T) {
+	tenants, members := headerStrategyFixture()
+	r := NewTenantResolver(NewHeaderStrategy(tenants, members))
+
+	if _, _, err := r.Resolve(context.Background(), &domain.User{ID: 10}, nil); !errors.Is(err, ErrNoMembership) {
+		t.Fatalf("want ErrNoMembership, got %v", err)
+	}
+}
+
 func TestResolveNoMembership(t *testing.T) {
-	r := NewTenantResolver(NewSessionStrategy(fakeTenants{m: map[int64]*domain.Tenant{}}, fakeMembers{m: map[int64][]domain.Membership{}}))
-	if _, _, err := r.Resolve(context.Background(), &domain.User{ID: 99}, &domain.AuthSession{}); !errors.Is(err, ErrNoMembership) {
+	r := NewTenantResolver(NewHeaderStrategy(fakeTenants{m: map[int64]*domain.Tenant{}}, fakeMembers{m: map[int64][]domain.Membership{}}))
+	if _, _, err := r.Resolve(context.Background(), &domain.User{ID: 99}, nil); !errors.Is(err, ErrNoMembership) {
 		t.Fatalf("want ErrNoMembership, got %v", err)
 	}
 }

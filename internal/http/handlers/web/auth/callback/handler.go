@@ -5,6 +5,8 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,20 +24,14 @@ type Onboarder interface {
 	EnsureRegistration(ctx context.Context, userID int64) (bool, error)
 }
 
-// SessionWriter focuses a session on a tenant after a claim.
-type SessionWriter interface {
-	SetActiveTenant(ctx context.Context, sessionID string, tenantID int64) error
-}
-
 type Handler struct {
 	mgr      *authpkg.Manager
 	logger   *slog.Logger
 	onboard  Onboarder
-	sessions SessionWriter
 }
 
-func New(mgr *authpkg.Manager, logger *slog.Logger, onboard Onboarder, sessions SessionWriter) *Handler {
-	return &Handler{mgr: mgr, logger: logger, onboard: onboard, sessions: sessions}
+func New(mgr *authpkg.Manager, logger *slog.Logger, onboard Onboarder) *Handler {
+	return &Handler{mgr: mgr, logger: logger, onboard: onboard}
 }
 
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
@@ -86,7 +82,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	secure := r.TLS != nil
 	authpkg.SetSessionCookie(w, h.mgr.CookieName(), sess.ID, h.mgr.SessionTTL(), secure)
 
-	h.onboardAfterLogin(w, r, user.ID, sess.ID)
+	claimedTenant := h.onboardAfterLogin(w, r, user.ID)
 
 	h.logLogin(r.Context(), user.ID, identity.Provider)
 
@@ -96,6 +92,13 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 			next = nc.Value
 		}
 		http.SetCookie(w, &http.Cookie{Name: "okrs_oauth_next", MaxAge: -1, Path: "/"})
+	}
+	if claimedTenant > 0 {
+		sep := "?"
+		if strings.Contains(next, "?") {
+			sep = "&"
+		}
+		next += sep + "tenant=" + strconv.FormatInt(claimedTenant, 10)
 	}
 	http.Redirect(w, r, next, http.StatusFound)
 }
@@ -117,15 +120,15 @@ func (h *Handler) logLogin(ctx context.Context, userID int64, provider string) {
 }
 
 // onboardAfterLogin redeems a pending invite (priority) or registers a new user into the
-// default tenant. It never blocks login: an invalid invite or a no-default-tenant case just
-// leaves the user without a membership, and RequireMembershipMiddleware routes them to
-// /no-access on the next request (the single source of truth for that gate).
-func (h *Handler) onboardAfterLogin(w http.ResponseWriter, r *http.Request, userID int64, sessionID string) {
+// default tenant, and returns the claimed tenant id (0 when none). It never blocks login:
+// an invalid invite or a no-default-tenant case just leaves the user without a membership,
+// and RequireMembershipMiddleware routes them to /no-access on the next request (the single
+// source of truth for that gate).
+func (h *Handler) onboardAfterLogin(w http.ResponseWriter, r *http.Request, userID int64) int64 {
 	if ic, err := r.Cookie("okrs_invite"); err == nil && ic.Value != "" {
 		http.SetCookie(w, &http.Cookie{Name: "okrs_invite", MaxAge: -1, Path: "/"})
 		if m, err := h.onboard.ClaimInvitation(r.Context(), ic.Value, userID); err == nil {
-			_ = h.sessions.SetActiveTenant(r.Context(), sessionID, m.TenantID)
-			return
+			return m.TenantID
 		}
 		// Invalid invite falls through to normal new-user routing below.
 	}
@@ -135,4 +138,5 @@ func (h *Handler) onboardAfterLogin(w http.ResponseWriter, r *http.Request, user
 			slog.Int64(logging.KeyActorID, userID),
 			slog.String("err", err.Error()))
 	}
+	return 0
 }

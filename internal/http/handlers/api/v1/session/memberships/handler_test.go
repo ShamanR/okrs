@@ -22,7 +22,6 @@ type stubDeps struct {
 	memberships []domain.Membership
 	withTenant  []memberships.MembershipWithTenant
 	tenants     map[int64]*domain.Tenant
-	setCalled   int64
 	leftTenant  int64
 	leaveErr    error
 }
@@ -59,13 +58,8 @@ func (s *stubDeps) GetByID(_ context.Context, id int64) (*domain.Tenant, error) 
 	return nil, context.Canceled
 }
 
-func (s *stubDeps) SetActiveTenant(_ context.Context, _ string, tenantID int64) error {
-	s.setCalled = tenantID
-	return nil
-}
-
 func authedReq(method, body string) *http.Request {
-	req := httptest.NewRequest(method, "/api/v1/session/tenant", strings.NewReader(body))
+	req := httptest.NewRequest(method, "/api/v1/session/memberships", strings.NewReader(body))
 	ctx := auth.WithUser(req.Context(), &domain.User{ID: 10})
 	ctx = auth.WithSession(ctx, &domain.AuthSession{ID: "s1"})
 	return req.WithContext(ctx)

@@ -35,21 +35,9 @@ func (f *fakeOnboarder) EnsureRegistration(_ context.Context, _ int64) (bool, er
 	return f.ensureCreated, nil
 }
 
-type fakeSessions struct {
-	activeTenant int64
-	sessionID    string
-}
-
-func (f *fakeSessions) SetActiveTenant(_ context.Context, sessionID string, tenantID int64) error {
-	f.sessionID = sessionID
-	f.activeTenant = tenantID
-	return nil
-}
-
 func TestHandleInviteAuthenticatedClaimsImmediately(t *testing.T) {
 	ob := &fakeOnboarder{claimTenant: 7}
-	sw := &fakeSessions{}
-	h := New(ob, sw)
+	h := New(ob)
 	r := chi.NewRouter()
 	r.Get("/invite/{token}", h.Get)
 
@@ -57,14 +45,11 @@ func TestHandleInviteAuthenticatedClaimsImmediately(t *testing.T) {
 	rw := httptest.NewRecorder()
 	r.ServeHTTP(rw, httptest.NewRequest(http.MethodGet, "/invite/tok", nil).WithContext(ctx))
 
-	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/" {
-		t.Fatalf("want 302 → /, got %d → %q", rw.Code, rw.Header().Get("Location"))
+	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/?tenant=7" {
+		t.Fatalf("want 302 → /?tenant=7, got %d → %q", rw.Code, rw.Header().Get("Location"))
 	}
 	if ob.claimCalls != 1 || ob.lastClaimUser != 3 {
 		t.Fatalf("claim not invoked for the user: %+v", ob)
-	}
-	if sw.activeTenant != 7 || sw.sessionID != "sess-1" {
-		t.Fatalf("active tenant not focused on claimed tenant: %+v", sw)
 	}
 	for _, c := range rw.Result().Cookies() {
 		if c.Name == "okrs_invite" && c.Value != "" && c.MaxAge >= 0 {
@@ -74,7 +59,7 @@ func TestHandleInviteAuthenticatedClaimsImmediately(t *testing.T) {
 }
 
 func TestHandleInviteSetsCookieAndRedirects(t *testing.T) {
-	h := New(nil, nil)
+	h := New(nil)
 	r := chi.NewRouter()
 	r.Get("/invite/{token}", h.Get)
 

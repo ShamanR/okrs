@@ -53,6 +53,8 @@ function SidebarAvatar({ user, size }) {
 }
 
 // SidebarTenant — шапка тенанта + переключатель организаций (если тенантов > 1).
+// Активное пространство — клиентское состояние вкладки (api.js: sessionStorage +
+// localStorage), серверного переключателя больше нет.
 function SidebarTenant({ user }) {
   const [tenants, setTenants] = React.useState([]);
   const [open, setOpen] = React.useState(false);
@@ -62,16 +64,15 @@ function SidebarTenant({ user }) {
       .then(list => { if (Array.isArray(list)) setTenants(list); })
       .catch(() => {});
   }, []);
-  const active = tenants.find(t => t.active) || null;
+  const activeId = tenantRead();
+  const active = tenants.find(t => t.id === activeId) || null;
   const name = active ? (active.name || active.slug) : 'OKR Tracker';
   const canSwitch = tenants.length > 1;
+  // Переключение чисто клиентское: записываем выбор и перезагружаем страницу —
+  // каждый SPA-экран при старте перечитывает данные с новым X-Tenant-ID.
   const switchTo = (id) => {
-    fetch('/api/v1/session/tenant', {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': _sbCSRF() },
-      body: JSON.stringify({ tenant_id: id }),
-    }).then(r => { if (r.ok) location.reload(); });
+    tenantWrite(id);
+    location.reload();
   };
   React.useEffect(() => {
     if (!open) return;
@@ -99,10 +100,10 @@ function SidebarTenant({ user }) {
           {tenants.map(t => (
             <button
               key={t.id}
-              className={`sidebar__tenant-item${t.active ? ' sidebar__tenant-item--active' : ''}`}
-              onClick={() => { t.active ? setOpen(false) : switchTo(t.id); }}
+              className={`sidebar__tenant-item${t.id === activeId ? ' sidebar__tenant-item--active' : ''}`}
+              onClick={() => { t.id === activeId ? setOpen(false) : switchTo(t.id); }}
             >
-              <span className="sidebar__tenant-item-icon">{t.active ? '✓' : '🏢'}</span>{t.name || t.slug}
+              <span className="sidebar__tenant-item-icon">{t.id === activeId ? '✓' : '🏢'}</span>{t.name || t.slug}
             </button>
           ))}
         </div>

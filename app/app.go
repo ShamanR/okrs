@@ -37,7 +37,7 @@ type Config struct {
 	Auth                 auth.Config
 	EntitlementsName     string   // registry key; "" → "unlimited"
 	NoMembershipName     string   // "" → "stub"
-	ResolveStrategyNames []string // nil → ["session"]
+	ResolveStrategyNames []string // nil → ["header"]
 	AssetsDev            bool     // serve development vendored React; false → production build
 	// NotificationChannels are the delivery channels this build offers. Assembled by
 	// the caller, so a private module can add its own without touching this one; the
@@ -138,10 +138,10 @@ func New(cfg Config) (*App, error) {
 		return nil, fmt.Errorf("app: auth: %w", err)
 	}
 
-	// Resolve strategies (default: session).
+	// Resolve strategies (default: header).
 	names := cfg.ResolveStrategyNames
 	if len(names) == 0 {
-		names = []string{"session"}
+		names = []string{"header"}
 	}
 	// One tenant + membership cache instance, shared between the resolver (read) and the
 	// server's provisioning/onboarding services (invalidate). Two instances would let a write

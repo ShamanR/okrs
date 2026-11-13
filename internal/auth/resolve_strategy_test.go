@@ -38,9 +38,9 @@ func TestTenantResolverNoneResolvedIsErrNoMembership(t *testing.T) {
 	}
 }
 
-func TestResolveStrategyRegistryHasSession(t *testing.T) {
-	f, ok := ResolveStrategyFactoryByName("session")
+func TestResolveStrategyRegistryHasHeader(t *testing.T) {
+	f, ok := ResolveStrategyFactoryByName("header")
 	if !ok || f(ResolveDeps{}) == nil {
-		t.Fatal("session strategy must be registered by default")
+		t.Fatal("header strategy must be registered by default")
 	}
 }

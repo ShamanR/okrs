@@ -13,6 +13,12 @@ function NoAccess() {
   const [msg, setMsg] = useState(null); // {text, ok}
   useEffect(() => {
     fetch('/api/v1/me', { credentials:'include' }).then(r => r.ok ? r.json() : null).then(setMe).catch(()=>{});
+    // Страница показывается клиентом при пустом списке членств; если членство
+    // уже появилось (заявку подтвердили, а вкладка осталась) — уходим в продукт.
+    fetch('/api/v1/session/tenants', { credentials:'include' })
+      .then(r => r.ok ? r.json() : [])
+      .then(list => { if (Array.isArray(list) && list.length) { tenantWrite(list[0].id); location.href = '/'; } })
+      .catch(()=>{});
   }, []);
   const submit = async (e) => {
     e.preventDefault(); setMsg(null);

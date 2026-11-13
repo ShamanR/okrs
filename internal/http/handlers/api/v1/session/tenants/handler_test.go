@@ -18,7 +18,6 @@ type stubDeps struct {
 	memberships []domain.Membership
 	withTenant  []memberships.MembershipWithTenant
 	tenants     map[int64]*domain.Tenant
-	setCalled   int64
 	leftTenant  int64
 	leaveErr    error
 }
@@ -55,13 +54,8 @@ func (s *stubDeps) GetByID(_ context.Context, id int64) (*domain.Tenant, error) 
 	return nil, context.Canceled
 }
 
-func (s *stubDeps) SetActiveTenant(_ context.Context, _ string, tenantID int64) error {
-	s.setCalled = tenantID
-	return nil
-}
-
 func authedReq(method, body string) *http.Request {
-	req := httptest.NewRequest(method, "/api/v1/session/tenant", strings.NewReader(body))
+	req := httptest.NewRequest(method, "/api/v1/session/tenants", strings.NewReader(body))
 	ctx := auth.WithUser(req.Context(), &domain.User{ID: 10})
 	ctx = auth.WithSession(ctx, &domain.AuthSession{ID: "s1"})
 	return req.WithContext(ctx)
@@ -72,10 +66,12 @@ func TestListMyTenants(t *testing.T) {
 		memberships: []domain.Membership{
 			{UserID: 10, TenantID: 1, Role: domain.RoleUser},
 			{UserID: 10, TenantID: 2, Role: domain.RoleAdmin},
+			{UserID: 10, TenantID: 3, Role: domain.RoleUser},
 		},
 		tenants: map[int64]*domain.Tenant{
 			1: {ID: 1, Slug: "default", Name: "Default", Status: domain.TenantActive},
 			2: {ID: 2, Slug: "acme", Name: "Acme", Status: domain.TenantActive},
+			3: {ID: 3, Slug: "frozen", Name: "Frozen", Status: domain.TenantSuspended},
 		},
 	}
 	h := New(deps, deps)
@@ -90,6 +86,8 @@ func TestListMyTenants(t *testing.T) {
 	if err := json.Unmarshal(rw.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
+	// Приостановленное пространство не предлагается: клиент выбирает из списка
+	// fallback, и недоступное пространство в нём — гарантированный 403.
 	if len(got) != 2 || got[0].Slug != "default" || got[1].Slug != "acme" {
 		t.Fatalf("unexpected list: %+v", got)
 	}

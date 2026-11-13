@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -136,7 +137,9 @@ func ScopeMiddleware(policy *PolicyEvaluator, mgr *Manager) func(http.Handler) h
 
 // TenantResolveMiddleware resolves the active tenant for the authenticated user and
 // injects it (plus the user's role in that tenant) into the request context.
-// On no membership / lookup error it leaves the tenant unset; RequireMembership decides.
+// The tenant the client asks for arrives as the X-Tenant-ID header and is handed to
+// the resolver through the context. On no membership / lookup error it leaves the
+// tenant unset; RequireMembership decides.
 func TenantResolveMiddleware(resolver *TenantResolver) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -144,6 +147,9 @@ func TenantResolveMiddleware(resolver *TenantResolver) func(http.Handler) http.H
 			if user == nil {
 				next.ServeHTTP(w, r)
 				return
+			}
+			if id, err := strconv.ParseInt(r.Header.Get("X-Tenant-ID"), 10, 64); err == nil && id > 0 {
+				r = r.WithContext(WithHeaderTenantID(r.Context(), id))
 			}
 			sess := SessionFromContext(r.Context())
 			tn, role, err := resolver.Resolve(r.Context(), user, sess)
@@ -159,6 +165,9 @@ func TenantResolveMiddleware(resolver *TenantResolver) func(http.Handler) http.H
 }
 
 // RequireMembershipMiddleware blocks requests without an active, non-suspended tenant.
+// The API answer tells the two failures apart: a request that named a tenant the user
+// cannot use gets tenant_forbidden, one that resolved to nothing gets no_membership —
+// the client routes the first back to a space it can use and the second to no-access.
 func RequireMembershipMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tn := TenantFromContext(r.Context())
@@ -169,7 +178,13 @@ func RequireMembershipMiddleware(next http.Handler) http.Handler {
 				logDenied(r, "tenant is not active")
 			}
 			if isAPIRequest(r) {
-				http.Error(w, `{"error":"forbidden"}`, http.StatusForbidden)
+				code := "no_membership"
+				if _, asked := HeaderTenantIDFromContext(r.Context()); asked {
+					code = "tenant_forbidden"
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"` + code + `"}`))
 				return
 			}
 			http.Redirect(w, r, "/no-access", http.StatusFound)
