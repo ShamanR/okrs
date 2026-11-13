@@ -21,10 +21,9 @@ type TenantLookup interface {
 }
 
 type tenantDTO struct {
-	ID     int64  `json:"id"`
-	Slug   string `json:"slug"`
-	Name   string `json:"name"`
-	Active bool   `json:"active"`
+	ID   int64  `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 type Handler struct {
@@ -37,15 +36,12 @@ func New(members MembershipLookup, tenants TenantLookup) *Handler {
 }
 
 // Get returns the current user's active-membership tenants for the switcher.
+// Which of them is active is client state (per-tab), not something the server knows.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	user := auth.UserFromContext(r.Context())
 	if user == nil {
 		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 		return
-	}
-	var activeID int64
-	if sess := auth.SessionFromContext(r.Context()); sess != nil && sess.ActiveTenantID != nil {
-		activeID = *sess.ActiveTenantID
 	}
 
 	ms, err := h.members.ListByUser(r.Context(), user.ID)
@@ -61,7 +57,7 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		out = append(out, tenantDTO{ID: tn.ID, Slug: tn.Slug, Name: tn.Name, Active: tn.ID == activeID})
+		out = append(out, tenantDTO{ID: tn.ID, Slug: tn.Slug, Name: tn.Name})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)

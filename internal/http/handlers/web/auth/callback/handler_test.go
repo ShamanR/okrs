@@ -32,26 +32,14 @@ func (f *fakeOnboarder) EnsureRegistration(_ context.Context, _ int64) (bool, er
 	return f.ensureCreated, nil
 }
 
-type fakeSessions struct {
-	activeTenant int64
-	sessionID    string
-}
-
-func (f *fakeSessions) SetActiveTenant(_ context.Context, sessionID string, tenantID int64) error {
-	f.sessionID = sessionID
-	f.activeTenant = tenantID
-	return nil
-}
-
 func TestOnboardAfterLoginClaimsInvite(t *testing.T) {
 	ob := &fakeOnboarder{claimTenant: 7}
-	sess := &fakeSessions{}
-	h := New(nil, nil, ob, sess)
+	h := New(nil, nil, ob)
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/x/callback", nil)
 	req.AddCookie(&http.Cookie{Name: "okrs_invite", Value: "tok"})
 	rw := httptest.NewRecorder()
-	h.onboardAfterLogin(rw, req, 42, "sess-1")
+	claimed := h.onboardAfterLogin(rw, req, 42)
 
 	if ob.claimCalls != 1 || ob.lastClaimUser != 42 {
 		t.Fatalf("claim not invoked for the user: %+v", ob)
@@ -59,23 +47,26 @@ func TestOnboardAfterLoginClaimsInvite(t *testing.T) {
 	if ob.ensureCalls != 0 {
 		t.Fatalf("ensure must be skipped after a successful claim")
 	}
-	if sess.activeTenant != 7 || sess.sessionID != "sess-1" {
-		t.Fatalf("active tenant not set to claimed tenant: %+v", sess)
+	if claimed != 7 {
+		t.Fatalf("claimed tenant = %d, want 7 (goes to the client as ?tenant=)", claimed)
 	}
 }
 
 func TestOnboardAfterLoginRegistersWhenNoInvite(t *testing.T) {
 	ob := &fakeOnboarder{ensureCreated: true}
-	h := New(nil, nil, ob, &fakeSessions{})
+	h := New(nil, nil, ob)
 
 	req := httptest.NewRequest(http.MethodGet, "/auth/x/callback", nil)
 	rw := httptest.NewRecorder()
-	h.onboardAfterLogin(rw, req, 9, "sess-2")
+	claimed := h.onboardAfterLogin(rw, req, 9)
 
 	if ob.claimCalls != 0 {
 		t.Fatalf("no invite cookie → claim must not run")
 	}
 	if ob.ensureCalls != 1 {
 		t.Fatalf("ensure registration must run")
+	}
+	if claimed != 0 {
+		t.Fatalf("claimed tenant = %d, want 0", claimed)
 	}
 }

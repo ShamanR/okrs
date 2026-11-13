@@ -25,7 +25,7 @@ func loginRecord(t *testing.T, buf *bytes.Buffer) map[string]any {
 }
 
 func loggingHandler(buf *bytes.Buffer) *Handler {
-	return New(nil, logging.New(logging.Config{Output: buf}), &fakeOnboarder{}, &fakeSessions{})
+	return New(nil, logging.New(logging.Config{Output: buf}), &fakeOnboarder{})
 }
 
 // Успешный вход обязан оставлять след: без него в логе не видно, кто и когда

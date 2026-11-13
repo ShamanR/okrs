@@ -38,6 +38,11 @@ const state = {
     rootId: null, rootOpen: false, rootQ: '', periodMenu: false,
   },
   chartHover: null,
+  // Контекст пространства: booting — шелл загружен, клиент ещё не резолвил
+  // пространство (sessionStorage → localStorage → членства); switching — идёт
+  // переключение пространства без перезагрузки страницы.
+  booting: true,
+  switching: false,
 };
 
 const period = () => PERIODS.find(p => p.id === state.periodId) || PERIODS[0];
@@ -2900,7 +2905,46 @@ function refitBoard() { fitGoalCardOwners(); markClippedTitles(); }
 window.addEventListener('resize', refitBoard);
 
 // ── Рендер целиком ───────────────────────────────────────────────────────────
+// Состояние «шелл без контекста пространства»: скелет сайдбара и спиннер в
+// рабочей области. До резолва пространства ни одно данное не запрошено.
+function renderBoot() {
+  document.getElementById('sidebar').innerHTML = `
+    <div class="sidebar__tenant">
+      <div class="sidebar__tenant-avatar pt-skel pt-skel--avatar"></div>
+      <div class="pt-skel pt-skel--line" style="flex:1;margin:0 12px"></div>
+    </div>
+    <div class="sidebar__sections">
+      <div class="sidebar__section-label">Разделы</div>
+      ${'<div class="pt-skel pt-skel--nav"></div>'.repeat(4)}
+    </div>`;
+  document.getElementById('topbar').innerHTML = '';
+  document.getElementById('stepper').innerHTML = '';
+  document.getElementById('content').innerHTML = `
+    <div class="pt-load">
+      <div class="pt-load__spin"></div>
+      <div class="pt-load__text">Определяем пространство…</div>
+    </div>`;
+  document.getElementById('overlays').innerHTML = '';
+}
+
+// Переключение пространства без перезагрузки: шапка сайдбара меняется сразу,
+// рабочая область показывает спиннер, пока клиент перезапрашивает данные
+// с новым X-Tenant-ID.
+function renderSwitching() {
+  renderSidebar();
+  document.getElementById('topbar').innerHTML = '';
+  document.getElementById('stepper').innerHTML = '';
+  document.getElementById('content').innerHTML = `
+    <div class="pt-load">
+      <div class="pt-load__spin"></div>
+      <div class="pt-load__text">Переключаем пространство…</div>
+    </div>`;
+  renderOverlays();
+}
+
 function render() {
+  if (state.booting) { renderBoot(); return; }
+  if (state.switching) { renderSwitching(); return; }
   document.getElementById('app').className = 'app' + (state.navOpen ? ' app--nav-open' : '');
   renderSidebar();
   renderTopbar();
@@ -3056,11 +3100,16 @@ document.addEventListener('click', e => {
   const tenantSet = hit('[data-tenant-set]');
   if (tenantSet) {
     const id = +tenantSet.dataset.tenantSet;
+    if (TENANTS.find(t => t.id === id && t.active)) { state.tenantMenu = false; renderSidebar(); return; }
     TENANTS.forEach(t => { t.active = t.id === id; });
     state.tenantMenu = false;
-    // В продукте смена пространства перезагружает страницу; здесь просто
-    // перерисовываем — данные у прототипа одни на все пространства.
-    render(); return;
+    // В продукте переключение пишет sessionStorage/localStorage и перезапрашивает
+    // данные с новым X-Tenant-ID — без перезагрузки страницы. Здесь имитируем
+    // задержку перезапроса; данные у прототипа одни на все пространства.
+    state.switching = true;
+    render();
+    setTimeout(() => { state.switching = false; render(); }, 700);
+    return;
   }
   if (state.tenantMenu && !hit('.sidebar__tenant')) { state.tenantMenu = false; renderSidebar(); }
 
@@ -3770,6 +3819,15 @@ document.addEventListener('wheel', e => {
 }, { passive: false });
 
 render();
+// Первый рендер — шелл без контекста; через задержку клиент «резолвил»
+// пространство и перерисовывает приложение.
+setTimeout(() => { state.booting = false; render(); }, 900);
+// Кнопка в плашке прототипа — проиграть первую загрузку ещё раз.
+document.getElementById('banner-boot').addEventListener('click', () => {
+  state.booting = true;
+  render();
+  setTimeout(() => { state.booting = false; render(); }, 900);
+});
 
 // Всплывающая подсказка для «?» (.info-hint): читает data-hint или title. Ей же показывается
 // полный текст обрезанного заголовка (data-hint ставит markClippedTitles) — по ширине текста.

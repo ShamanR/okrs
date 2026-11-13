@@ -13,6 +13,7 @@ const (
 	sessionContextKey contextKey = iota
 	tenantContextKey
 	activeRoleContextKey
+	headerTenantContextKey
 )
 
 func withUser(ctx context.Context, u *domain.User) context.Context {
@@ -78,10 +79,20 @@ func TenantScopeFromContext(ctx context.Context) (domain.TenantScope, bool) {
 // WithActiveRole injects the user's role in the active tenant into the context.
 func WithActiveRole(ctx context.Context, role domain.Role) context.Context {
 	return context.WithValue(ctx, activeRoleContextKey, role)
-}
-
-// ActiveRoleFromContext returns the user's role in the active tenant.
+}// ActiveRoleFromContext returns the user's role in the active tenant.
 func ActiveRoleFromContext(ctx context.Context) (domain.Role, bool) {
 	role, ok := ctx.Value(activeRoleContextKey).(domain.Role)
 	return role, ok
+}
+
+// WithHeaderTenantID injects the tenant id the client asked for via the
+// X-Tenant-ID request header (parsed by TenantResolveMiddleware).
+func WithHeaderTenantID(ctx context.Context, id int64) context.Context {
+	return context.WithValue(ctx, headerTenantContextKey, id)
+}
+
+// HeaderTenantIDFromContext returns the requested tenant id, if the client sent one.
+func HeaderTenantIDFromContext(ctx context.Context) (int64, bool) {
+	id, ok := ctx.Value(headerTenantContextKey).(int64)
+	return id, ok
 }

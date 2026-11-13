@@ -19,4 +19,9 @@ func TestAPICacheControlIsPrivateNoCache(t *testing.T) {
 	if !strings.Contains(got, "private") || !strings.Contains(got, "no-cache") {
 		t.Fatalf("Cache-Control = %q, want private + no-cache", got)
 	}
+	// The tenant is a request header now: without Vary a heuristic cache could serve
+	// one space's response for another space's request.
+	if vary := w.Header().Get("Vary"); !strings.Contains(vary, "X-Tenant-ID") {
+		t.Fatalf("Vary = %q, want it to include X-Tenant-ID", vary)
+	}
 }

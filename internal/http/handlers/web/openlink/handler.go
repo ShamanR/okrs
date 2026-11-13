@@ -1,13 +1,15 @@
 // Package openlink serves GET /open — the hand-off a notification link outside
 // the product goes through.
 //
-// A message in a messenger is read by someone whose session may be active in
-// another space: /admin and the tracker both render whatever the SESSION says is
-// active, so a plain deep link would quietly show the wrong space's data. This
-// hand-off makes the event's space active first and only then walks to the page.
+// A message in a messenger is read by someone whose current tab may be focused on
+// another space: pages render whatever space the CLIENT stored for the tab, so a
+// plain deep link would quietly show the wrong space's data. This hand-off verifies
+// the recipient is an active member of the event's space and forwards the space as
+// the ?tenant= query parameter — the client bootstrap adopts it into the tab's
+// storage on arrival.
 //
 // It stays outside the membership gate on purpose: the recipient may currently be
-// active in a space they lost or that was suspended, and this is exactly the route
+// focused on a space they lost or that was suspended, and this is exactly the route
 // that gets them back to the one the notification is about.
 package openlink
 
@@ -19,34 +21,28 @@ import (
 
 	"okrs/internal/auth"
 	"okrs/internal/core/domain"
-	"okrs/internal/http/httperr"
 )
 
 // MembershipLookup lists the caller's memberships so the target space can be
-// verified before the session is moved to it.
+// verified before it is handed to the client.
 type MembershipLookup interface {
 	ListByUser(ctx context.Context, userID int64) ([]domain.Membership, error)
 }
 
-// SessionWriter persists the session's active tenant.
-type SessionWriter interface {
-	SetActiveTenant(ctx context.Context, sessionID string, tenantID int64) error
-}
-
 type Handler struct {
-	members  MembershipLookup
-	sessions SessionWriter
+	members MembershipLookup
 }
 
-func New(members MembershipLookup, sessions SessionWriter) *Handler {
-	return &Handler{members: members, sessions: sessions}
+func New(members MembershipLookup) *Handler {
+	return &Handler{members: members}
 }
 
-// Get switches the session to ?tenant= (when the caller is an active member of it)
-// and redirects to ?to=. Anything it cannot honour lands on the product's root
-// rather than on a page showing another space's data.
+// Get verifies ?tenant= (the caller must be an active member of it) and redirects
+// to ?to= with the tenant parameter carried over. Anything it cannot honour lands
+// on the product's root rather than on a page showing another space's data.
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
-	target := safePath(r.URL.Query().Get("to"))
+	raw := r.URL.Query().Get("to")
+	target := safePath(raw)
 	tenantID, _ := strconv.ParseInt(r.URL.Query().Get("tenant"), 10, 64)
 
 	if tenantID > 0 {
@@ -56,26 +52,22 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 			// from whatever space they are in now, which is not what the message
 			// was about. Send them home instead.
 			target = "/"
-		default:
-			if err := h.switchTo(r.Context(), tenantID); err != nil {
-				// The reason goes to the request record, not to the reader. They
-				// still reach the product, just in their current space.
-				_ = httperr.Record(w, httperr.CodeForStatus(http.StatusInternalServerError), err)
-				target = "/"
-			}
+		case target != "/" || raw == "/":
+			// The tenant focus parameter rides along only with a target that
+			// survived sanitation — a refused address stays a plain root.
+			target = withTenantParam(target, tenantID)
 		}
 	}
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
-// switchTo moves the session. A session-less request (AUTH_MODE=disabled has no
-// session) has nothing to move, and there is only one identity there anyway.
-func (h *Handler) switchTo(ctx context.Context, tenantID int64) error {
-	sess := auth.SessionFromContext(ctx)
-	if sess == nil {
-		return nil
+// withTenantParam appends the tenant focus parameter to an in-product path.
+func withTenantParam(path string, tenantID int64) string {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
 	}
-	return h.sessions.SetActiveTenant(ctx, sess.ID, tenantID)
+	return path + sep + "tenant=" + strconv.FormatInt(tenantID, 10)
 }
 
 func (h *Handler) isActiveMember(ctx context.Context, tenantID int64) bool {

@@ -46,7 +46,7 @@ func TestAppAssemblesAndServes(t *testing.T) {
 		Pool:                 pool,
 		Zone:                 time.UTC,
 		Auth:                 auth.DefaultConfig(), // AUTH_MODE=disabled
-		ResolveStrategyNames: []string{"session"},
+		ResolveStrategyNames: []string{"header"},
 		// Mount into the public tier so the test needs no auth/session plumbing.
 		PublicRoutes: func(r chi.Router) {
 			r.Get("/ext/ping", func(w http.ResponseWriter, _ *http.Request) { mounted = true; w.WriteHeader(http.StatusOK) })
@@ -167,13 +167,14 @@ func TestRemovedMemberLosesTenantResolutionImmediately(t *testing.T) {
 	}
 	cookie := &http.Cookie{Name: "okrs_session", Value: "sess-victim"}
 
-	// 1. Active member → tracker resolves and serves (this populates the resolver's cache).
+	// 1. Active member → tenant-scoped API resolves and serves (this populates the resolver's cache).
 	rw := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/periods", nil)
 	req.AddCookie(cookie)
+	req.Header.Set("X-Tenant-ID", "1")
 	a.Handler.ServeHTTP(rw, req)
 	if rw.Code != http.StatusOK {
-		t.Fatalf("pre-removal GET / = %d, want 200", rw.Code)
+		t.Fatalf("pre-removal GET /api/v1/periods = %d (%s), want 200", rw.Code, rw.Body.String())
 	}
 
 	// 2. Remove the member via the system plane (invalidates the services' membership cache).
@@ -186,13 +187,16 @@ func TestRemovedMemberLosesTenantResolutionImmediately(t *testing.T) {
 		t.Fatalf("remove member = %d (%s), want 204", rw.Code, rw.Body.String())
 	}
 
-	// 3. The removed user must no longer resolve the tenant → membership gate redirects to /no-access.
+	// 3. The removed user must no longer resolve the tenant → 403 tenant_forbidden
+	// (the header names a space they can no longer use; the client re-resolves and,
+	// finding no memberships left, lands on no-access).
 	rw = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/periods", nil)
 	req.AddCookie(cookie)
+	req.Header.Set("X-Tenant-ID", "1")
 	a.Handler.ServeHTTP(rw, req)
-	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/no-access" {
-		t.Fatalf("post-removal GET / = %d → %q, want 302 → /no-access (stale resolver membership cache)", rw.Code, rw.Header().Get("Location"))
+	if rw.Code != http.StatusForbidden || !strings.Contains(rw.Body.String(), "tenant_forbidden") {
+		t.Fatalf("post-removal GET /api/v1/periods = %d (%s), want 403 tenant_forbidden (stale resolver membership cache)", rw.Code, rw.Body.String())
 	}
 }
 
@@ -230,9 +234,10 @@ func TestSystemPlaneReachableByTokenOnlyMachineCaller(t *testing.T) {
 	}
 }
 
-// A user whose active tenant is suspended must still reach the tenant switcher to recover:
-// the list/switch routes are authenticated but NOT membership-gated, so RequireMembership can't
-// lock them out of a tenant they're still active in.
+// A user focused on a suspended tenant must still reach the tenant list to recover:
+// the list route is authenticated but NOT membership-gated, so RequireMembership can't
+// lock them out of a tenant they're still active in. The focus itself is client state
+// (X-Tenant-ID header), not a server-side session flag.
 func TestTenantSwitcherReachableWhenActiveTenantSuspended(t *testing.T) {
 	pool, cleanup := testutil.SetupDB(t)
 	defer cleanup()
@@ -257,10 +262,6 @@ func TestTenantSwitcherReachableWhenActiveTenantSuspended(t *testing.T) {
 	if _, err := sessRepo.CreateSession(ctx, "sess-sw", uid, "github", time.Hour, "", ""); err != nil {
 		t.Fatalf("seed session: %v", err)
 	}
-	// Focus the session on tenant 1, then suspend it — the resolver now yields a suspended tenant.
-	if err := sessRepo.SetActiveTenant(ctx, "sess-sw", 1); err != nil {
-		t.Fatalf("set active tenant: %v", err)
-	}
 	if _, err := pool.Exec(ctx, `UPDATE tenants SET status = 'suspended' WHERE id = 1`); err != nil {
 		t.Fatalf("suspend tenant 1: %v", err)
 	}
@@ -274,17 +275,16 @@ func TestTenantSwitcherReachableWhenActiveTenantSuspended(t *testing.T) {
 	}
 	cookie := &http.Cookie{Name: "okrs_session", Value: "sess-sw"}
 
-	// Sanity: the tracker itself is blocked (active tenant suspended).
+	// The shell itself is tenant-agnostic: it renders without any tenant context.
 	rw := httptest.NewRecorder()
 	greq := httptest.NewRequest(http.MethodGet, "/", nil)
 	greq.AddCookie(cookie)
 	a.Handler.ServeHTTP(rw, greq)
-	if rw.Code != http.StatusFound || rw.Header().Get("Location") != "/no-access" {
-		t.Fatalf("GET / with suspended active tenant = %d → %q, want redirect to /no-access", rw.Code, rw.Header().Get("Location"))
+	if rw.Code != http.StatusOK {
+		t.Fatalf("GET / = %d, want 200 (shell is tenant-agnostic)", rw.Code)
 	}
 
-	// The switcher list must still be reachable (was 403 behind the membership gate). The GET
-	// also seeds the CSRF double-submit cookie the switch POST needs.
+	// The switcher list must be reachable and name both spaces.
 	rw = httptest.NewRecorder()
 	lreq := httptest.NewRequest(http.MethodGet, "/api/v1/session/tenants", nil)
 	lreq.AddCookie(cookie)
@@ -292,24 +292,24 @@ func TestTenantSwitcherReachableWhenActiveTenantSuspended(t *testing.T) {
 	if rw.Code != http.StatusOK {
 		t.Fatalf("GET /api/v1/session/tenants = %d, want 200 (switcher must stay reachable)", rw.Code)
 	}
-	var csrf string
-	for _, c := range rw.Result().Cookies() {
-		if c.Name == "okr_csrf_token" {
-			csrf = c.Value
-		}
-	}
-	if csrf == "" {
-		t.Fatal("expected okr_csrf_token cookie from switcher GET")
+
+	// A tenant-scoped API call focused on the suspended tenant is refused as
+	// tenant_forbidden; refocused on the active one it passes the gate.
+	rw = httptest.NewRecorder()
+	areq := httptest.NewRequest(http.MethodGet, "/api/v1/periods", nil)
+	areq.AddCookie(cookie)
+	areq.Header.Set("X-Tenant-ID", "1")
+	a.Handler.ServeHTTP(rw, areq)
+	if rw.Code != http.StatusForbidden || !strings.Contains(rw.Body.String(), "tenant_forbidden") {
+		t.Fatalf("GET /api/v1/periods X-Tenant-ID:1 = %d (%s), want 403 tenant_forbidden", rw.Code, rw.Body.String())
 	}
 
-	// And the user can switch to the still-active tenant 2 (double-submit CSRF).
 	rw = httptest.NewRecorder()
-	sreq := httptest.NewRequest(http.MethodPost, "/api/v1/session/tenant", strings.NewReader(`{"tenant_id":2}`))
-	sreq.AddCookie(cookie)
-	sreq.AddCookie(&http.Cookie{Name: "okr_csrf_token", Value: csrf})
-	sreq.Header.Set("X-CSRF-Token", csrf)
-	a.Handler.ServeHTTP(rw, sreq)
-	if rw.Code != http.StatusNoContent {
-		t.Fatalf("POST /api/v1/session/tenant = %d (%s), want 204", rw.Code, rw.Body.String())
+	areq = httptest.NewRequest(http.MethodGet, "/api/v1/periods", nil)
+	areq.AddCookie(cookie)
+	areq.Header.Set("X-Tenant-ID", "2")
+	a.Handler.ServeHTTP(rw, areq)
+	if rw.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/periods X-Tenant-ID:2 = %d (%s), want 200", rw.Code, rw.Body.String())
 	}
 }

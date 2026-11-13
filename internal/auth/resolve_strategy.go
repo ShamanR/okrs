@@ -43,23 +43,27 @@ func ResolveStrategyFactoryByName(name string) (ResolveStrategyFactory, bool) {
 }
 
 func init() {
-	RegisterResolveStrategy("session", func(d ResolveDeps) ResolveStrategy {
-		return NewSessionStrategy(d.Tenants, d.Memberships)
+	RegisterResolveStrategy("header", func(d ResolveDeps) ResolveStrategy {
+		return NewHeaderStrategy(d.Tenants, d.Memberships)
 	})
 }
 
-// SessionStrategy resolves from auth_sessions.active_tenant_id, falling back to the first
-// active membership. This is the OSS default (works everywhere).
-type SessionStrategy struct {
+// HeaderStrategy resolves the active tenant from the X-Tenant-ID request header,
+// validated against the user's active memberships. Without the header a user with
+// exactly one membership resolves to it; with several the client must choose
+// (not resolved → the caller gates with no_membership). A header naming a tenant
+// the user is not an active member of never resolves — the request is rejected
+// downstream as tenant_forbidden. This is the OSS default (works everywhere).
+type HeaderStrategy struct {
 	tenants TenantLookup
 	members MembershipLookup
 }
 
-func NewSessionStrategy(t TenantLookup, m MembershipLookup) ResolveStrategy {
-	return &SessionStrategy{tenants: t, members: m}
+func NewHeaderStrategy(t TenantLookup, m MembershipLookup) ResolveStrategy {
+	return &HeaderStrategy{tenants: t, members: m}
 }
 
-func (s *SessionStrategy) Resolve(ctx context.Context, user *domain.User, sess *domain.AuthSession) (*domain.Tenant, domain.Role, bool, error) {
+func (s *HeaderStrategy) Resolve(ctx context.Context, user *domain.User, sess *domain.AuthSession) (*domain.Tenant, domain.Role, bool, error) {
 	memberships, err := s.members.ListByUser(ctx, user.ID)
 	if err != nil {
 		return nil, "", false, err
@@ -67,14 +71,21 @@ func (s *SessionStrategy) Resolve(ctx context.Context, user *domain.User, sess *
 	if len(memberships) == 0 {
 		return nil, "", false, nil // not resolved → next strategy / ErrNoMembership
 	}
-	pick := memberships[0]
-	if sess != nil && sess.ActiveTenantID != nil {
-		for _, m := range memberships {
-			if m.TenantID == *sess.ActiveTenantID {
-				pick = m
+	var pick *domain.Membership
+	if want, ok := HeaderTenantIDFromContext(ctx); ok {
+		for i := range memberships {
+			if memberships[i].TenantID == want {
+				pick = &memberships[i]
 				break
 			}
 		}
+		if pick == nil {
+			return nil, "", false, nil // foreign tenant → tenant_forbidden downstream
+		}
+	} else if len(memberships) == 1 {
+		pick = &memberships[0]
+	} else {
+		return nil, "", false, nil // several memberships, no choice made
 	}
 	tn, err := s.tenants.GetByID(ctx, pick.TenantID)
 	if err != nil {

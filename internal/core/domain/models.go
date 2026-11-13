@@ -258,8 +258,6 @@ type AuthSession struct {
 	LastSeenAt time.Time
 	UserAgent  string
 	IP         string
-
-	ActiveTenantID *int64
 }
 
 const (

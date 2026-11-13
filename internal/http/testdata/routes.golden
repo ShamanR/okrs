@@ -127,7 +127,6 @@ POST /api/v1/notifications/read
 POST /api/v1/onboarding/join-request
 POST /api/v1/periods/{periodID}/teams/activate
 POST /api/v1/periods/{periodID}/teams/close
-POST /api/v1/session/tenant
 POST /api/v1/system/tenants
 POST /api/v1/system/tenants/{id}/activity/purge
 POST /api/v1/system/tenants/{id}/members
