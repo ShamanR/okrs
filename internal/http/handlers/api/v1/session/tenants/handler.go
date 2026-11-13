@@ -54,7 +54,9 @@ func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	out := make([]tenantDTO, 0, len(ms))
 	for _, m := range ms {
 		tn, err := h.tenants.GetByID(r.Context(), m.TenantID)
-		if err != nil {
+		if err != nil || tn.Status != domain.TenantActive {
+			// Приостановленное пространство не предлагаем: клиент выбирает fallback
+			// из этого списка, и выбрать недоступное — значит гарантировать 403.
 			continue
 		}
 		out = append(out, tenantDTO{ID: tn.ID, Slug: tn.Slug, Name: tn.Name})

@@ -92,29 +92,34 @@ function tenantExempt(url) {
 // Обёртка fetch: дожидается резолва контекста и проставляет X-Tenant-ID на все
 // tenant-scoped API-запросы, какой бы помощник (apiGet/apiPost/голый fetch) ни
 // собрал вызов. Ответы различает по коду ошибки: no_membership → страница
-// no-access; tenant_forbidden → контекст вкладки протух, перерезолв и один retry.
+// no-access (но не со страниц system-плоскости: она доступна и без членств);
+// tenant_forbidden → контекст вкладки протух, перерезолв и retry — только для
+// безопасных методов: повторять мутацию в другом пространстве нельзя, она была
+// задумана для исходного.
 const _origFetch = window.fetch.bind(window);
 window.fetch = async function (url, opts = {}) {
   const u = typeof url === 'string' ? url : (url && url.url) || '';
   if (tenantExempt(u)) return _origFetch(url, opts);
   const id = await tenantResolve();
   if (id === null) {
-    if (!location.pathname.startsWith('/no-access')) location.href = '/no-access';
+    if (!location.pathname.startsWith('/no-access') && !location.pathname.startsWith('/system')) location.href = '/no-access';
     return new Response('{"error":"no_membership"}', { status: 403, headers: { 'Content-Type': 'application/json' } });
   }
   opts.headers = { ...(opts.headers || {}), 'X-Tenant-ID': String(id) };
   let r = await _origFetch(url, opts);
   if (r.status === 403) {
     const code = await r.clone().json().then(b => b && b.error).catch(() => '');
-    if (code === 'tenant_forbidden') {
+    const method = (opts.method || 'GET').toUpperCase();
+    const safe = method === 'GET' || method === 'HEAD';
+    if (code === 'tenant_forbidden' && safe) {
       const fresh = await tenantReresolve();
       if (fresh === null) {
-        if (!location.pathname.startsWith('/no-access')) location.href = '/no-access';
+        if (!location.pathname.startsWith('/no-access') && !location.pathname.startsWith('/system')) location.href = '/no-access';
         return r;
       }
       opts.headers['X-Tenant-ID'] = String(fresh);
       r = await _origFetch(url, opts);
-    } else if (code === 'no_membership' && !location.pathname.startsWith('/no-access')) {
+    } else if (code === 'no_membership' && !location.pathname.startsWith('/no-access') && !location.pathname.startsWith('/system')) {
       location.href = '/no-access';
     }
   }

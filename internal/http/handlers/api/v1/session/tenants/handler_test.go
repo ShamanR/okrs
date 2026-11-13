@@ -66,10 +66,12 @@ func TestListMyTenants(t *testing.T) {
 		memberships: []domain.Membership{
 			{UserID: 10, TenantID: 1, Role: domain.RoleUser},
 			{UserID: 10, TenantID: 2, Role: domain.RoleAdmin},
+			{UserID: 10, TenantID: 3, Role: domain.RoleUser},
 		},
 		tenants: map[int64]*domain.Tenant{
 			1: {ID: 1, Slug: "default", Name: "Default", Status: domain.TenantActive},
 			2: {ID: 2, Slug: "acme", Name: "Acme", Status: domain.TenantActive},
+			3: {ID: 3, Slug: "frozen", Name: "Frozen", Status: domain.TenantSuspended},
 		},
 	}
 	h := New(deps, deps)
@@ -84,6 +86,8 @@ func TestListMyTenants(t *testing.T) {
 	if err := json.Unmarshal(rw.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
+	// Приостановленное пространство не предлагается: клиент выбирает из списка
+	// fallback, и недоступное пространство в нём — гарантированный 403.
 	if len(got) != 2 || got[0].Slug != "default" || got[1].Slug != "acme" {
 		t.Fatalf("unexpected list: %+v", got)
 	}
